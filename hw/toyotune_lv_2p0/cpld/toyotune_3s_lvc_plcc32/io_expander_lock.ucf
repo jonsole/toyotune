@@ -1,0 +1,132 @@
+
+#PINLOCK_BEGIN
+
+#Fri Jan 14 11:04:37 2011
+
+NET "d_a<8>"         LOC =  "S:PIN49";
+NET "d_a<9>"         LOC =  "S:PIN50";
+NET "d_a<10>"        LOC =  "S:PIN37";
+NET "d_a<11>"        LOC =  "S:PIN36";
+NET "d_a<12>"        LOC =  "S:PIN45";
+NET "d_a<13>"        LOC =  "S:PIN46";
+NET "d_a<14>"        LOC =  "S:PIN47";
+NET "d_a<15>"        LOC =  "S:PIN48";
+NET "d_adr"          LOC =  "S:PIN90";
+NET "d_adr" 			PULLUP;
+NET "d_n_irp"        LOC =  "S:PIN55";
+NET "d_n_irp" 			PULLUP;
+NET "d_n_rd"         LOC =  "S:PIN83";
+NET "d_n_rd" 			PULLUP;
+NET "d_n_wr"         LOC =  "S:PIN89";
+NET "d_n_wr" 			PULLUP;
+NET "d_cclk"         LOC =  "S:PIN88";
+NET "d_cclk" 			PULLUP;
+NET "d_n_init"       LOC =  "S:PIN81";
+
+NET "e_n_init"       LOC =  "S:PIN98";
+NET "e_n_init" 		PULLUP;
+NET "e_n_is"         LOC =  "S:PIN54";
+NET "e_n_is" 			PULLUP;
+NET "e_n_os"         LOC =  "S:PIN65";
+
+NET "c_dra<0>"       LOC =  "S:PIN30";
+NET "c_dra<0>" 		SLEW = "SLOW";
+NET "c_dra<1>"       LOC =  "S:PIN31";
+NET "c_dra<1>" 		SLEW = "SLOW";
+NET "c_dra<2>"       LOC =  "S:PIN33";
+NET "c_dra<2>" 		SLEW = "SLOW";
+NET "c_dra<3>"       LOC =  "S:PIN40";
+NET "c_dra<3>" 		SLEW = "SLOW";
+NET "c_dra<4>"       LOC =  "S:PIN85";
+NET "c_dra<4>" 		SLEW = "SLOW";
+NET "c_dra<5>"       LOC =  "S:PIN93";
+NET "c_dra<5>" 		SLEW = "SLOW";
+NET "c_dra<6>"       LOC =  "S:PIN96";
+NET "c_dra<6>" 		SLEW = "SLOW";
+NET "c_dra<7>"       LOC =  "S:PIN100";
+NET "c_dra<7>" 		SLEW = "SLOW";
+NET "c_drb<0>"       LOC =  "S:PIN28";
+NET "c_drb<0>" 		SLEW = "SLOW";
+NET "c_drb<1>"       LOC =  "S:PIN24";
+NET "c_drb<1>" 		SLEW = "SLOW";
+NET "c_drb<2>"       LOC =  "S:PIN20";
+NET "c_drb<2>" 		SLEW = "SLOW";
+NET "c_drb<3>"       LOC =  "S:PIN16";
+NET "c_drb<3>" 		SLEW = "SLOW";
+NET "c_drb<4>"       LOC =  "S:PIN10";
+NET "c_drb<4>" 		SLEW = "SLOW";
+NET "c_drb<5>"       LOC =  "S:PIN8";
+NET "c_drb<5>" 		SLEW = "SLOW";
+NET "c_drb<6>"       LOC =  "S:PIN6";
+NET "c_drb<6>" 		SLEW = "SLOW";
+NET "c_drb<7>"       LOC =  "S:PIN2";
+NET "c_drb<7>" 		SLEW = "SLOW";
+
+NET "c_pa<0>"        LOC =  "S:PIN29";
+NET "c_pa<0>" 			SLEW = "SLOW";
+NET "c_pa<1>"        LOC =  "S:PIN32";
+NET "c_pa<1>" 			SLEW = "SLOW";
+NET "c_pa<2>"        LOC =  "S:PIN35";
+NET "c_pa<2>" 			SLEW = "SLOW";
+NET "c_pa<3>"        LOC =  "S:PIN41";
+NET "c_pa<3>" 			SLEW = "SLOW";
+NET "c_pa<4>"        LOC =  "S:PIN84";
+NET "c_pa<4>" 			SLEW = "SLOW";
+NET "c_pa<5>"        LOC =  "S:PIN92";
+NET "c_pa<5>" 			SLEW = "SLOW";
+NET "c_pa<6>"        LOC =  "S:PIN94";
+NET "c_pa<6>" 			SLEW = "SLOW";
+NET "c_pa<7>"        LOC =  "S:PIN99";
+NET "c_pa<7>" 			SLEW = "SLOW";
+NET "c_pb<0>"        LOC =  "S:PIN27";
+NET "c_pb<0>" 			SLEW = "SLOW";
+NET "c_pb<1>"        LOC =  "S:PIN25";
+NET "c_pb<1>" 			SLEW = "SLOW";
+NET "c_pb<2>"        LOC =  "S:PIN21";
+NET "c_pb<2>" 			SLEW = "SLOW";
+NET "c_pb<3>"        LOC =  "S:PIN17";
+NET "c_pb<3>" 			SLEW = "SLOW";
+NET "c_pb<4>"        LOC =  "S:PIN12";
+NET "c_pb<4>" 			SLEW = "SLOW";
+NET "c_pb<5>"        LOC =  "S:PIN7";
+NET "c_pb<5>" 			SLEW = "SLOW";
+NET "c_pb<6>"        LOC =  "S:PIN5";
+NET "c_pb<6>" 			SLEW = "SLOW";
+NET "c_pb<7>"        LOC =  "S:PIN1";
+NET "c_pb<7>" 			SLEW = "SLOW";
+
+NET "d_al<0>"        LOC =  "S:PIN64";
+NET "d_al<1>"        LOC =  "S:PIN63";
+NET "d_al<2>"        LOC =  "S:PIN44";
+NET "d_al<3>"        LOC =  "S:PIN42";
+NET "d_al<4>"        LOC =  "S:PIN79";
+NET "d_al<5>"        LOC =  "S:PIN80";
+NET "d_al<6>"        LOC =  "S:PIN57";
+NET "d_al<7>"        LOC =  "S:PIN56";
+
+NET "d_da<0>"        LOC =  "S:PIN75";
+NET "d_da<1>"        LOC =  "S:PIN76";
+NET "d_da<2>"        LOC =  "S:PIN77";
+NET "d_da<3>"        LOC =  "S:PIN60";
+NET "d_da<4>"        LOC =  "S:PIN72";
+NET "d_da<5>"        LOC =  "S:PIN71";
+NET "d_da<6>"        LOC =  "S:PIN61";
+NET "d_da<7>"        LOC =  "S:PIN58";
+
+NET "msel<0>"        LOC =  "S:PIN52";
+NET "msel<0>" 			PULLUP;
+NET "msel<1>"        LOC =  "S:PIN53";
+NET "msel<1>" 			PULLUP;
+NET "msel<2>"        LOC =  "S:PIN70";
+NET "msel<2>" 			PULLUP;
+
+NET "m_a<15>"        LOC =  "S:PIN69";
+NET "m_a<16>"        LOC =  "S:PIN68";
+NET "m_a<17>"        LOC =  "S:PIN67";
+
+NET "m_rom_n_cs"     LOC =  "S:PIN78";
+NET "m_ram_n_cs"		LOC =  "S:PIN22";
+NET "m_n_rd"     		LOC =  "S:PIN14";
+NET "m_n_wr"			LOC =  "S:PIN19";
+
+#PINLOCK_END
