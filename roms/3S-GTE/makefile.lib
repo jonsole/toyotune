@@ -1,0 +1,54 @@
+ASM=tasm32
+ASMFLAGS= -t8x -b -f5F -h 
+CHKSUM = checksum
+SCRAMBLE = scramble
+
+OUTDIR ?= output
+LOGFILE ?= output/build.txt
+
+XOR ?= 00
+CODE ?= 01234567
+
+BINS ?= $(foreach ASM,$(ASMS),$(OUTDIR)/$(basename $(ASM)).bin)
+BINS_TOYOTUNE ?= $(foreach ASM,$(ASMS),$(OUTDIR)/toyotune/$(basename $(ASM)).bin)
+BINS_TECHTOM ?= $(foreach ASM,$(ASMS),$(OUTDIR)/techtom/$(basename $(ASM)).bin)
+
+win_path = $(subst /,\,$1)
+make_dir = @if not exist "$(call win_path,$1)" mkdir $(call win_path,$1)
+rm_dir = @if exist "$(call win_path,$1)" rmdir /Q /S $(call win_path,$1)
+
+$(OUTDIR)/%.out : %.asm
+	$(call make_dir,$(OUTDIR))
+	@echo Assembling $(notdir $<)
+	@$(ASM) >>$(LOGFILE) 2>&1 $(ASMFLAGS) $< $@ $(basename $@).lst
+
+$(OUTDIR)/%.bin : %.bin
+	$(call make_dir,$(OUTDIR))
+	@echo Checksuming $(notdir $@)
+	@$(CHKSUM) $< $@
+
+$(OUTDIR)/%.bin : $(OUTDIR)/%.out
+	$(call make_dir,$(OUTDIR))
+	@echo Checksuming $(notdir $@)
+	@$(CHKSUM) $< $@
+
+$(OUTDIR)/toyotune/%.bin : $(OUTDIR)/%.bin
+	$(call make_dir,$(OUTDIR))
+	$(call make_dir,$(OUTDIR)/toyotune)
+	@echo Resizing $(notdir $@) to 32K
+	@$(SCRAMBLE) $(call win_path,$<) 0 - $(call win_path,$@) 8000 FF 00 01234567
+	
+$(OUTDIR)/techtom/%.bin : $(OUTDIR)/%.bin
+	$(call make_dir,$(OUTDIR)/techtom)
+	@echo Scrambling $(notdir $@) with code $(XOR),$(CODE)
+	@$(SCRAMBLE) $(call win_path,$<) 0 4000 $(call win_path,$@) 8000 FF $(XOR) $(CODE)
+	
+rom : $(BINS)
+
+rom_toyotune : $(BINS_TOYOTUNE)
+
+rom_techtom : $(BINS_TECHTOM)
+
+clean:
+	$(call rm_dir,$(OUTDIR))
+	

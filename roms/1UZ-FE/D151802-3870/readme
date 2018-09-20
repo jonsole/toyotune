@@ -1,0 +1,17 @@
+Toyota ECU from USDM 1991 1UZ-GE A/T ECU
+Toyota p/n:89661-50030
+Denso p/n:175000-2264 12V
+
+Factory code extracted from MCU
+
+MCU:
+D151802-3870
+7433-1352
+12kB ROM
+
+Software:
+checksum: 
+version: 1352h
+
+Notes:
+Dual MCU, this is 7433(1)
