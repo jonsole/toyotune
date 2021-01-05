@@ -13,9 +13,13 @@ BINS ?= $(foreach ASM,$(ASMS),$(OUTDIR)/$(basename $(ASM)).bin)
 BINS_TOYOTUNE ?= $(foreach ASM,$(ASMS),$(OUTDIR)/toyotune/$(basename $(ASM)).bin)
 BINS_TECHTOM ?= $(foreach ASM,$(ASMS),$(OUTDIR)/techtom/$(basename $(ASM)).bin)
 
+mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
+mkfile_dir := $(dir $(mkfile_path))
+bin_dir := $(mkfile_dir)../bin
+
 win_path = $(subst /,\,$1)
 
-export TASMTABS = C:\Users\jonso\OneDrive\Documents\toyotune-rom\trunk\bin
+export TASMTABS = $(bin_dir)
 make_dir = @if not exist "$(call win_path,$1)" mkdir $(call win_path,$1)
 rm_dir = @if exist "$(call win_path,$1)" rmdir /Q /S $(call win_path,$1)
 
@@ -27,15 +31,15 @@ $(OUTDIR)/%.out : %.asm
 	@echo Assembling $(notdir $<)
 	@$(ASM) >>$(LOGFILE) 2>&1 $(ASMFLAGS) $< $@ $(basename $@).lst
 
-$(OUTDIR)/%.bin : %.bin
-	@$(call make_dir,$(OUTDIR))
-	@echo Checksuming $(notdir $@)
-	@$(CHKSUM) $< $@
-
 $(OUTDIR)/%.bin : $(OUTDIR)/%.out
 	@$(call make_dir,$(OUTDIR))
 	@echo Checksuming $(notdir $@)
 	@$(CHKSUM) $< $@
+
+#$(OUTDIR)/%.bin : %.bin
+#	@$(call make_dir,$(OUTDIR))
+#	@echo Checksuming $(notdir $@)
+#	@$(CHKSUM) $< $@
 
 $(OUTDIR)/toyotune/%.bin : $(OUTDIR)/%.bin
 	@$(call make_dir,$(OUTDIR))
