@@ -1,0 +1,27 @@
+# Build artifacts (see "Building a ROM" in CLAUDE.md)
+output/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor config
+.vscode/
+
+# Profiler output
+*.prof
+
+# Stale superseded snapshots (see CLAUDE.md "- Copy files" note)
+* - Copy.*
+* - Copy
+
+# Scratch dev-run leftovers from d8x_assembler development, not test fixtures
+# or source
+/roms/d8x_assembler/output
+/roms/d8x_assembler/output.bin
+/roms/d8x_assembler/output.lst
+/roms/d8x_assembler/output.lst2
+/roms/d8x_assembler/D151803-9651.ASM
+/roms/d8x_assembler/D151803-9651.lst
+/roms/d8x_assembler/D151804-0461_DIAG16_32K_JS.ASM
+/roms/d8x_assembler/D151804-0461_DIAG16_32K_JS.BIN
