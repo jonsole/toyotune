@@ -8,6 +8,212 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, latin-1 encoding, \r\n line
 
 ## Completed subsystems
 
+### CPU2 (D151803-9661): periodic warning/diagnostic-output debounce phase documented
+`loc_D037`-`loc_D0B0` (immediately after the TVSV block's `drive_DOUT2_tvsv`,
+scoped out as a separate item last session) - part of the same main-loop
+periodic tick as the enrichment chain (falls through to `loc_D317` ->
+`loc_D333` -> `update_ect_enrich_clamp`). Two independent debounced
+warning checks:
+
+1) **PORTA.2**, gated on `dmarx_battery >= 11.4V` and `dmarx_unk_D4 >
+   0x0F`: compares an RPM x `dmarx_word_CB` product against a MAP-indexed
+   2-point table (one of two curves, selected by a battery-voltage
+   threshold - the higher-voltage curve is systematically lower/stricter),
+   with a two-stage debounce (~2.9s then ~32ms) before setting the output.
+   `dmarx_word_CB` is used nowhere else in the file - its physical meaning
+   isn't confirmed. The shape (RPM/MAP/battery-dependent, decreasing
+   threshold curve) is suggestive of a charging-system or load
+   rationality check, flagged as a hypothesis, not a confirmed reading.
+2) **PORTA.3**, gated on ECT/speed/RPM/PIM/THAM all simultaneously
+   exceeding fixed thresholds (a combined high-load condition), debounced
+   over ~4.9s. Suggestive of an overheat/high-load warning, likewise not
+   independently confirmed.
+
+Both use the same "clear a debounce counter unless condition holds, set
+output once counter crosses a threshold" idiom seen elsewhere (e.g. the
+TVSV limiter-cooldown scale). Full trace in the ASM header above `loc_D037`.
+
+### CPU2 (D151803-9661): TVSV boost-control duty-cycle calculation documented
+Full prose write-up for `loc_CE86`-`loc_D036` (previously flagged as an
+"entirely unexplored" subsystem, but turned out to already have
+meaningful variable names from earlier work - just never had the
+connecting narrative). Computes `var_tvsv_117`, a 0-200 PWM duty consumed
+by `drive_DOUT2_tvsv` to drive the TVSV solenoid via `DOUT.2` (confirmed:
+`var_tvsv_cnt` free-runs 0->200, `DOUT.2` high while `var_tvsv_cnt <
+var_tvsv_117`).
+
+Calculation shape: a limiter-cooldown scale (`var_tvsv_scale_limiter`,
+reduced for ~1s after a CPU1 boost/rev-limiter event) combines with a base
+RPM table, then (via a dead code path - see below) four independent
+saturating-multiplied correction factors - TPS/RPM map, remaining
+knock-retard margin, TPS/gear map, intake air temp - into
+`var_tvsv_scale_total`, which is rate-limited against the previous
+cycle's output (`var_tvsv_117` itself, a feedback term) before a final
+RPM-based ceiling clamp.
+
+**Notable finding - dead code, confirmed via the assembled `.lst` and the
+startup RAM-clear range, not just a grep:** `dmatx_unk_16A` is written
+**only as 0** anywhere in this ROM (one explicit write in
+`update_odb_flags`, plus `clear_variables_high`'s startup sweep covering
+its address `0x016A`). Two separate pieces of code gate on
+`dmatx_unk_16A == 0x0F`:
+- The TVSV block's main ECT/THA/RPM/speed override gate (`loc_CEA3`-
+  `loc_CEF8`) - this entire branch is unreachable; TVSV always takes the
+  "not 0x0F" fallthrough (defaults toward off/minimum) in the code as
+  currently understood.
+- A `+6` ECT adjustment in the enrichment chain documented two sessions
+  ago (`loc_CAC3`) - the opposite effect: that `beq` never fires, so the
+  `+6` always applies.
+
+Flagged inline at both sites (`loc_CE86`'s header and `loc_CAC3`) and
+cross-referenced. Not 100% provably exhaustive (an exotic indirect-write
+mechanism can't be entirely ruled out) but thoroughly checked - same
+confidence level as the `unk_51` "no reader" finding two sessions ago.
+
+**Scoped out, not traced:** `loc_D037` (immediately after
+`drive_DOUT2_tvsv`) is a different, unrelated battery-voltage/PIM-gated
+calculation driving `PORTA.2` - flagged inline, moved to Pending work.
+
+### CPU2 (D151803-9661): remaining 6 sub_ functions resolved
+All 11 originally-unresolved `sub_` functions on CPU2 are now named (5 from
+the prior enrichment-decay-chain session, 6 this session). Confirmed the
+prediction that some would turn out to be library functions shared with
+CPU1:
+
+- **`interp_table_pair`** (was `sub_C67C`): shared linear-interpolation
+  tail primitive for CPU2's whole table-interpolation family (used by
+  `table_rB_fixed_rA_interpolate`, `table_rD_fixed8/16/32_interpolate`,
+  and `map_rD_rX_map_interpolate`) - analogous role to CPU1's
+  `interp_y_pair` (`sub_C45C`), not a byte-for-byte match but the same
+  function-family position.
+- **`signed_proportional_update`** (was `loc_C790`): verified
+  **byte-for-byte identical** to CPU1's function of the same name
+  (`sub_C56D`) - confirmed instruction-by-instruction, not just inferred
+  from calling convention. Moves `*Y` a fraction (`B/256`) of the way
+  toward `D`, signed.
+- **`update_rpm_filter_EA`** (was `sub_CCDF`): smooths `unk_EA` toward `D`
+  at ~12.5%/call via `signed_proportional_update`, with a hard reset to
+  raw RPM when `dmarx_var_flags_46.0` is clear. `unk_EA` joins `unk_EC`
+  (see last session's `update_rpm_smooth_filter`) as a second,
+  differently-smoothed RPM tracker - their distinct purposes not
+  confirmed. Only reached with `D` already set to an RPM-delta/ratio value
+  computed further up in `main_continue` - that computation itself isn't
+  traced.
+- **`update_ect_enrich_clamp`** (was `sub_CAE9`): refreshes
+  `var_unk_ect_table_10A`, the ECT-table clamp ceiling consumed by the
+  enrichment chain documented last session (`main_continue_2`'s fuel
+  enrichment `min()`). Called periodically (~64ms) alongside
+  `update_odb_flags`, not from the enrichment chain itself - closes a
+  loose end from that earlier write-up.
+- **`factory_selfcheck`** (was `sub_D1DB`) + **`selfcheck_io_pump`** (was
+  `sub_D2D3`): a substantial find - CPU2's manufacturing/dealer diagnostic
+  self-test entry point. Gated on a diagnostic-connector-shorted-at-
+  standstill input combination, dispatches on a CPU1-supplied
+  `dmarx_flags2` command byte to either run a full RAM check + ROM
+  checksum (verified against `0xAA55`) with a pass/fail PORTA blink
+  pattern, or force PORTA/PORTB/DOUT to a fixed output-test pattern.
+  `selfcheck_io_pump` keeps I/O and the CPU1 DMA link alive while parked
+  in the test loop, mirroring `check_startup`'s own reset-detection check
+  so a genuine reset can still interrupt self-test.
+- **`update_dmatx_status_flags`** (was `sub_D59A`): packs 10 individual
+  status bits (`var_flags_40.6`, `unk_47.2/3`, `var_enrich_flags.5/6`,
+  `var_input_bits.5/6/7`, `PORTC.7`, `PORTD_ASRIN.5`) into two DMA bytes
+  (`dmatx_unk_169`/`dmatx_unk_16B`) for CPU1. Physical meaning of the
+  individual source bits beyond their existing names isn't confirmed.
+
+Full header comments added at each function in the ASM (bit-by-bit for
+`update_dmatx_status_flags`, dispatch-table-style for
+`factory_selfcheck`). No CPU2 `sub_` functions remain - any further CPU2
+work is now `loc_`-level tracing (284 remaining) or full subsystem
+write-ups (the TVSV/boost-control section is one such write-up, done in a
+later session - see "TVSV boost-control duty-cycle calculation documented"
+above), not "find and name the unresolved function" work.
+
+### CPU2 (D151803-9661): first systematic pass - enrichment-decay chain
+CPU2 turns out to be far more advanced than the prior "not yet started"
+note implied: ~52% of its labels already have meaningful names (683 total,
+354 non-generic) and only 11 `sub_` functions remained genuinely
+unresolved, from earlier targeted DMA cross-reference work. This session's
+first systematic pass on CPU2:
+
+**Resolved 5 of the 11 remaining `sub_` functions**, all clustered around
+`calc_ignition_timing`'s periodic (8ms/32ms) gated calls:
+- `sub_C9E2` -> `update_rpm_smooth_filter`: maintains `unk_EC`, a
+  low-pass-filtered RPM tracker (rounded average, reset to 0 on stall/
+  restart elsewhere), and writes `unk_51` (an RPM-deviation magnitude) -
+  but **`unk_51` has no reader anywhere in this file**, so its actual
+  purpose/consumer is unconfirmed; left unrenamed.
+- `sub_CB2E` -> `decay_enrichment_unk_53`, `sub_CBEB` -> `decay_unk_103`:
+  multiplicative decay (x0xF0/256, ~93.75%) toward zero when their
+  respective variable is nonzero.
+- `sub_CB54` -> `decay_enrichment_unk_FE`: multiplicative decay
+  (x0xF8/256, ~96.9%), additionally gated on `var_cnt32ms_B2 < 0x3D` or
+  `dmarx_pim2`'s high byte `< 0x33`.
+- `sub_CBA5` -> `decay_enrichment_unk_100`: the one exception - a linear
+  decrement (-3, clamped to 0) gated on an ECT-table lookup vs
+  `dmarx_unk_D4`, not a multiplicative scale.
+
+**Discovered the pattern they all belong to**: `main_continue_2` ->
+`main_continue_3` -> `loc_CB3D` -> `loc_CB6D` -> `loc_CBCE` (falls into
+`calc_params`) is a chain of 5 enrichment-term calculations (fuel
+enrichment, warmup enrichment, and 3 ECT/THA-table-lookup terms), each
+sent to CPU1 as a `dmatx_*` value. The 4 decay functions above are each
+that periodic "fade toward zero when not actively refreshed" companion
+for one specific term in the chain - not called from the chain itself, but
+from `calc_ignition_timing`'s timer-gated calls. Full write-up as a header
+comment above `main_continue_2` in the ASM. The individual terms'
+real-world physical meaning (beyond "ECT/THA table lookup, gated on
+`var_flags_40.0`/`dmarx_var_flags_46.0`") is NOT confirmed.
+
+**Corrected a pre-existing doc error**: the header comment above
+`calc_params` claimed its "Fuel VE / speed-density section" spanned a
+single `CC53-CCDA` address range covering 6 items. Verified via the
+assembled `.lst` that items 3/4 (`dmatx_ve_corr_map`/
+`dmatx_ve_corr_map_tps`) are NOT in that range - they're actually computed
+much later, at `CE4E`/`CE67`, deep inside `calc_ignition_timing` itself,
+interspersed with unrelated ignition-retard-map and PORTB output logic.
+Also flagged a pre-existing internal inconsistency noticed while fixing
+this: items 2 and 3 both separately claim to equal CPU1's
+`dmarx_word_226`, which can't both be true (not resolved this session).
+
+**Found and scoped out a new large subsystem**: `loc_CE86` onward (right
+after the corrected VE section) is a substantial, entirely unexplored
+TVSV/boost-control duty-cycle calculation (knock retard, ECT, TPS, RPM,
+gear ratio, and limiter flags all feed into it) - matches the "boost
+control" role from the architecture notes. Flagged in the ASM and moved to
+Pending work below rather than traced this session.
+
+### ramp_limit_inj_pw / ramp_limit_inj_pw_simple full branch trace (was "NOT fully traced")
+Full branch-by-branch trace of `ramp_limit_inj_pw`'s nine-way branch
+structure (`loc_DBB5`/`DBDE`/`DBF1`/`DC0C`/`DC17`/`DC24`/`DC34`/`DC35`/
+`DC37`), re-verifying `mov` direction at every step. Full detail in
+fuel_calculation_system.md's "Branch-by-branch trace" section; header
+comments added at `ramp_limit_inj_pw`, `ramp_limit_inj_pw_simple`, and
+`calc_inj_pw_base` in the ASM.
+
+**Key finding:** `unk_1C0`/`unk_1C4`/`unk_1C6` do not have single fixed
+identities (candidate / carried-forward value / ceiling) - each gets
+overwritten with a different one of {fresh VE-map candidate,
+`var_adc_lambda`, the `unk_1C8` ceiling, a ratio-deviation result,
+`var_inj_pw_base`} depending on which branch runs. This explains why no
+clean rename was found in earlier passes - there isn't one to find.
+`unk_1C2` is the one variable in this cluster with a stable role (a ratio,
+nominally `0xCCCD`).
+
+**Correction to a prior-session claim:** `ramp_limit_inj_pw_simple` is
+called from `loc_DA58` when `var_adc_lambda` (signed lambda sensor
+voltage) is below `0x4D`, not `var_inj_pw_base` as previously documented -
+`X` holds `var_adc_lambda` at that point, loaded earlier in the same block
+and never reloaded before the gate.
+
+**Partially resolved:** `unk_1C8` (compared as a PW-scale ceiling in
+`ramp_limit_inj_pw`) is written from a computation near `loc_E665`
+(~`E620`-`E6B0`) that folds in `var_pim2`-derived `dmatx_pim`, confirming
+the "PIM/MAP-pressure-linked" read. The rest of that computation's inputs
+(`unk_131`, `var_unk_knk_133`/`135`, `var_nv_trim_unk_98`, `unk_1CA`) are
+not traced - moved to Pending work below, grouped with the neighboring
+`E363`-onward exploration since it's in the same address range.
+
 ### CPU1<->CPU2 DMA cross-reference (working copy created, targeted lookup only)
 Created 3S-GTE/D151803-9661/Claude/D151803-9661.asm as CPU2's working copy
 (exact copy of the buildable D151803-9661.ASM, verified assembles cleanly
@@ -510,19 +716,42 @@ Key renames:
   and inline-commented, but no header-block writeup yet
 
 ### Not yet started
-- CPU2 ROM (D151803-9661) - working copy now exists at
-  3S-GTE/D151803-9661/Claude/D151803-9661.asm (verified assembles cleanly,
-  0 errors), but no systematic renaming/documentation pass has been done
-  yet. Notably, this file already has substantial pre-existing meaningful
-  renames (dmarx_pim2/dmarx_tps/dmarx_ect/var_map_ve/etc.) from work that
-  predates this journal system - leverage those rather than re-deriving.
-  See "CPU1<->CPU2 DMA cross-reference" below for what's been established
-  so far via a targeted lookup (not a full pass).
+- **calc_params/calc_ignition_timing's item-2/item-3 dmarx_word_226
+  inconsistency** - both dmatx_scaled_ve and dmatx_ve_corr_map claim to
+  equal CPU1's dmarx_word_226 in the pre-existing header comment; only one
+  can be right. Not resolved this session.
+- **unk_51's consumer** (written by CPU2's update_rpm_smooth_filter, no
+  reader found anywhere in this file) - either dead code, read via
+  indirect addressing not caught by a plain grep, or genuinely unused in
+  this ROM revision. Worth a closer look if update_rpm_smooth_filter's
+  purpose becomes relevant to other work.
+- **main_continue's RPM-delta/ratio computation** (loc_C9BC, feeds
+  update_rpm_filter_EA's D input) - traced only far enough to establish
+  what update_rpm_filter_EA does with D, not what the delta/ratio
+  computation itself against unk_E8 and dmarx_unk_D6 means physically.
+- CPU2 ROM (D151803-9661) systematic pass - substantial progress across
+  two sessions (see Completed subsystems above; all originally-unresolved
+  sub_ functions are now named), but still far from complete: ~52% of
+  labels have meaningful pre-existing names and most functions (284
+  remaining loc_ labels) lack the gold-standard header-comment treatment
+  even where renamed. Leverage existing renames (dmarx_pim2/dmarx_tps/
+  dmarx_ect/var_map_ve/etc.) rather than re-deriving. See "CPU1<->CPU2 DMA
+  cross-reference" below for the targeted (not full-pass) DMA lookup work
+  done earlier.
 - loc_E112 onward, and the start of chunk E363 up to the restore point
   around address E37F - continuation of the DC77/DD38/DD59 diagnostic
   phase; loc_DD59 jumps directly to loc_E112.
-- ramp_limit_inj_pw's branch-by-branch logic (which of dmarx_word_226/228/22A
-  is which is now resolved, see below)
+- **sub_E551 (~E551-E6B0+, 350+ bytes) - a substantial, entirely
+  uncharacterized function**, scoped out this session while chasing
+  unk_1C8's producer chain (its immediate write site, loc_E6A8, sits just
+  past this function's end and folds in a dmatx_pim/var_pim2-linked value
+  that traces back into sub_E551's output). Calls sub_E767, uses TPS delta
+  (get_tps_unk/var_tps_delta), runs a signed_proportional_update loop
+  against var_unk_knk_133, and calls set_knock_sensor_err_flag/
+  check_knock_sensor_err_flag - looks like its own knock/PIM-linked
+  limiting calculation (possibly boost/overpressure-related), not a small
+  helper. Recommend a dedicated session, same treatment as D931 got.
+  See fuel_calculation_system.md Open Questions for detail.
 - sub_E551, loc_FC38 (called from chunk C9DA) - not deep-dived
 - The second closed-loop lambda trim system in chunk D1DD
   (var_nv_trim_unk_96/unk_6B/var_lambda_count_unk_6C) - distinguish its

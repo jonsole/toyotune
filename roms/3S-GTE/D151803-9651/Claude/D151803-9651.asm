@@ -7802,10 +7802,13 @@ loc_D92D:							; CODE XREF: calc_iscv+45Ej
 ;     - see docs/fuel_calculation_system.md's "mov direction" note),
 ;     producing a raw candidate stored via unk_1C0/var_inj_pw_base and a
 ;     clamp indicator unk_1BD.
-;  4) (DA10-DA60) Every ~488ms (var_4ms_cnt_B5 >= 0x7A), refines the
-;     candidate against var_lambda_integrator direction and var_adc_lambda
-;     sign, clamps var_inj_pw_base via ram_1BE_limits (range 0x0000-0x0500,
-;     i.e. 0-~5.12ms of injector time), and conditionally calls ramp_limit_inj_pw_simple.
+;  4) (DA10-DA60) Every ~488ms (var_4ms_cnt_B5 >= 0x7A), nudges
+;     var_inj_pw_base by +0x0C/-0x02 based on var_lambda_integrator vs
+;     var_adc_lambda's sign, clamped via ram_1BE_limits. In closed-loop
+;     mode (unk_1BD==0xC8) also overwrites unk_1C0 with var_adc_lambda
+;     itself. Then calls ramp_limit_inj_pw_simple when var_adc_lambda
+;     (not var_inj_pw_base - corrected this session, see
+;     ramp_limit_inj_pw_simple's header) is below 0x4D.
 ;  5) Hands off to loc_DC77 (next chunk, not deep-dived - appears to start
 ;     a new phase: restores var_flags_4F from unk_1DA, and computes an
 ;     RPM-based flag unrelated to fuel calculation).
@@ -7814,11 +7817,19 @@ loc_D92D:							; CODE XREF: calc_iscv+45Ej
 ; ram_1BE_limits' range [0, 0x500] matches known injector PW units
 ; elsewhere in the ROM, e.g. injector_cold_start's 0x04E2/0x09C4 constants,
 ; and it's the value everything else in this cluster reads/writes as "the"
-; working pulse-width). unk_1C0/1C2/1C4/1C6/1C8/1BD were NOT renamed -
-; they clearly participate in a ~0.8x-per-step (0xCCCD/0x10000) ramp-limiter
-; feeding ramp_limit_inj_pw/ramp_limit_inj_pw_simple, but their precise distinct roles (raw multiply
-; result vs open-loop candidate vs closed-loop candidate vs limiter state)
-; weren't pinned down with enough confidence to rename safely.
+; working pulse-width). unk_1C0/1C2/1C4/1C6/1C8/1BD were NOT renamed - and,
+; after this session's full branch-by-branch trace of ramp_limit_inj_pw
+; (see its header and docs/fuel_calculation_system.md), that's now a
+; confirmed finding rather than a gap: unk_1C0/1C4/1C6 genuinely do NOT
+; have single fixed identities, each gets overwritten with a different one
+; of {fresh VE-map candidate, var_adc_lambda, the unk_1C8 ceiling,
+; ratio-deviation result, var_inj_pw_base} depending on which branch runs,
+; so a clean per-variable rename would misrepresent the code. unk_1C2 is
+; the ramp_limit_inj_pw_simple output / ramp_limit_inj_pw's deviation
+; input (a ratio, nominal 0xCCCD). unk_1C8 is read as a bound comparable to
+; PW-scale values and traced (partially) to a var_pim2/dmatx_pim-linked
+; producer near loc_E665 (E620-E6B0) - not renamed since that producer's
+; own logic (unk_131/var_unk_knk_133/135/var_nv_trim_unk_98) isn't traced.
 ; ---------------------------------------------------------------------------
 
 calc_inj_pw_base:							; CODE XREF: divide_d_by_x:loc_D4C6j
@@ -8405,34 +8416,70 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4j
 ; ---------------------------------------------------------------------------
 ; ramp_limit_inj_pw: fuel pulse-width ramp limiter / blend step
 ;
-; Called every ~488ms from calc_inj_pw_base's continuation (var_4ms_cnt_B5 gate).
-; Uses var_flags_4E as var_trim_state (see the aliasing note above
-; calc_inj_pw_base) and var_flags_4E bits 0/1/3/4 in this function are therefore
-; trim_state bits, not flags_4E's usual meaning.
+; Called every ~488ms from calc_inj_pw_base's continuation (var_4ms_cnt_B5
+; gate), and once more directly from calc_inj_pw_base itself in "diagnostic
+; only" mode (see bit4 below). Uses var_flags_4E as var_trim_state (see the
+; aliasing note above calc_inj_pw_base); var_flags_4E bits 0/1/3/4 in this
+; function are therefore trim_state bits, not flags_4E's usual meaning.
 ;
-; Compares unk_1C0 (the VE-map candidate from CPU2 - see
-; docs/fuel_calculation_system.md) against var_inj_pw_base (the current
-; working PW), and against unk_1C8 (a MAP-pressure-derived maximum PW
-; ceiling - computed elsewhere from dmatx_pim with clamping, not itself
-; part of this function). unk_1C2 tracks a dynamically-adjusted blend
-; ratio (nominally 0xCCCD ~ 0.8 in Q16, but adjusted based on how far the
-; previous step's result deviated from that nominal ratio - not a fixed
-; exponential filter) via mult_rDrX/divide_d_by_x. When the intermediate
-; result exceeds sane bounds, calls set_knock_sensor_err_flag
-; (var_diag_errors_5.0 - reused here as a general "computation out of
-; range" flag, not knock-specific, per the same bit also being touched by
-; unrelated threshold checks in calc_iscv) and clamps via ram_1BE_limits.
-; Writes the blended result back to var_inj_pw_base/unk_1C4/unk_1C6
-; depending on which branch was taken - unk_1C4 appears to be the value
-; carried forward between calls when no new blend was needed (candidate
-; unchanged from current PW).
+; FULLY TRACED this session (branch-by-branch, mov-direction-verified) -
+; see docs/fuel_calculation_system.md's "ramp-limiter cluster" section for
+; the complete instruction-level walkthrough. Summary:
 ;
-; NOT fully traced: the precise conditions selecting each of the several
-; branches (loc_DBB5/DBDE/DBF1/DC0C/DC17/DC24/DC34/DC35/DC37) - the overall
-; shape (rate-limited approach toward the VE-map target, clamped to the
-; MAP-derived ceiling, with error-flagging on overflow) is clear; the
-; branch-by-branch reasoning for exactly how the MAP ceiling interacts with
-; the blend is not.
+; - trim_state.4 set on entry (or discovered set again at loc_DBDB, since
+;   nothing in between modifies it): "diagnostic-only" mode. Only computes a
+;   ratio-deviation value (unk_1C2 vs 0xCCCD, scaled by the unk_1C0
+;   candidate via mult_rDrX) and flags var_diag_errors_5.0 via
+;   set_knock_sensor_err_flag if unk_1C2 was below nominal - the result is
+;   left in D for the CALLER to consume (calc_inj_pw_base's loc_D9FA does
+;   exactly this, storing the return value into unk_1C4) and none of
+;   var_inj_pw_base/unk_1C0/unk_1C6 are touched. Exits via loc_DC3A, which
+;   clears trim_state.4 (the flag is "consumed" by being handled).
+; - trim_state.4 clear + unk_1C0 == var_inj_pw_base (candidate unchanged):
+;   fast path, D = unk_1C4 (last carried-forward value), straight to the
+;   ceiling check (loc_DBDE) - no error-flag pass runs.
+; - trim_state.4 clear + candidate changed: runs the same ratio-deviation
+;   computation as the diagnostic-only path, then continues into the
+;   ceiling check with the freshly-computed D.
+; - loc_DBDE compares D against unk_1C8 (a PIM/MAP-pressure-linked bound -
+;   traced its producer to loc_E665's area near E620-E6B0, which folds
+;   var_pim2-derived dmatx_pim into it; the surrounding computation
+;   involving unk_131/var_unk_knk_133/135/var_nv_trim_unk_98 is not itself
+;   traced - see docs/fuel_calculation_system.md Open Questions).
+;   - D <= unk_1C8: falls into loc_DBF1 (blend-toward-ceiling path).
+;   - D > unk_1C8 and trim_state bits 0 AND 1 both set and unk_1C4 (the
+;     prior carried-forward value) is NOT itself already above unk_1C8:
+;     also falls into loc_DBF1.
+;   - D > unk_1C8 and (trim_state.0 clear OR trim_state.1 clear): simplest
+;     exit - clears trim_state.3, stores D into unk_1C6, done (var_inj_pw_base/
+;     unk_1C0/unk_1C4 untouched).
+;   - D > unk_1C8 and unk_1C4 also already > unk_1C8 (i.e. sustained
+;     over-ceiling): loc_DC24 - in closed-loop mode (unk_1BD == 0xC8) only,
+;     resets unk_1C0 back to var_inj_pw_base (discards the stale candidate);
+;     either way clears trim_state.3 and stores the original loc_DBDE-entry
+;     D (the candidate/blend value itself, NOT the ceiling) into unk_1C6.
+; - loc_DBF1 (blend-toward-ceiling): sets trim_state.3, computes
+;   X = 0xCCCD - unk_1C8, then D = 0xCCCD - unk_1C2.
+;   - unk_1C2 >= 0xCCCD (at/above nominal ratio): D = var_inj_pw_base
+;     unchanged, skip the divide.
+;   - unk_1C2 < 0xCCCD (below nominal): D = (0xCCCD-unk_1C2)/(0xCCCD-unk_1C8)
+;     via divide_d_by_x, clamped to [0,0x0500] via ram_1BE_limits, and
+;     stored into unk_1C0 - i.e. the candidate itself gets refined here,
+;     not just var_inj_pw_base.
+;   Either way: if trim_state.0 is clear, commits D to var_inj_pw_base and
+;   stashes the ceiling (unk_1C8, popped back off the stack) into unk_1C4;
+;   if trim_state.0 is set, var_inj_pw_base/unk_1C4 are left alone. unk_1C6
+;   always ends up holding the ceiling value (unk_1C8) on this path,
+;   regardless of trim_state.0.
+;
+; Net effect: unk_1C0/unk_1C4/unk_1C6 do NOT have single fixed identities
+; ("the candidate" / "the carried-forward value" / "the ceiling") - each
+; gets overwritten with a different one of {fresh candidate, ceiling,
+; ratio-deviation result, var_inj_pw_base} depending on which branch runs.
+; They're best understood as a small pool of PW/ratio-scale scratch
+; registers reused contextually across this whole cluster, which is why a
+; clean per-variable rename wasn't possible even after this full trace -
+; see docs/fuel_calculation_system.md.
 ; ---------------------------------------------------------------------------
 
 ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+146Fp
@@ -8577,13 +8624,23 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDBj
 ;
 ; Same 0xCCCD ramp-ratio pattern as ramp_limit_inj_pw (error-flags via
 ; set_knock_sensor_err_flag on overflow, same variable cluster), but a
-; shorter, single-path version operating on unk_1C4/var_inj_pw_base
-; directly rather than ramp_limit_inj_pw's multi-branch logic. Also sets/clears
+; shorter, single-path version: D = var_inj_pw_base / (unk_1C4 - 0xCCCD)
+; via divide_d_by_x, then the result is +/-0xCCCD-adjusted (sign per
+; whether the divide's error flag fired) and stored to unk_1C2 - i.e. this
+; function's "output" register (unk_1C2) is a different one of the pool
+; than the ones it reads (unk_1C4/var_inj_pw_base). Also sets/clears
 ; var_flags_4E.2 (== var_trim_state.2, per the aliasing note above
-; calc_inj_pw_base) based on whether the result exceeds 0xC7AE. Called from
-; loc_DA58 when var_inj_pw_base is below 0x4D counts (very small pulse
-; width) - likely a dedicated path for the near-zero/idle-fuel edge case
-; where the general ramp_limit_inj_pw blend would be numerically awkward.
+; calc_inj_pw_base) based on whether the result exceeds 0xC7AE.
+;
+; CORRECTED this session: the caller gate at loc_DA58 is
+; "cmp x, #004Dh / bcs" where X was loaded from var_adc_lambda (signed
+; lambda sensor voltage) at loc_DA17 and never reloaded since - i.e. this
+; is called when var_adc_lambda < 0x4D (unsigned compare on whatever X
+; holds at that point), NOT when var_inj_pw_base is below 0x4D as
+; previously stated here. var_inj_pw_base is loaded into D earlier in that
+; same block for an unrelated small lambda-driven nudge (+0x0C/-0x02,
+; clamped via ram_1BE_limits) that has already happened by the time this
+; gate is checked.
 ; ---------------------------------------------------------------------------
 
 ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+14C2p

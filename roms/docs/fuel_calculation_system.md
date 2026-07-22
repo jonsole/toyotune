@@ -187,12 +187,25 @@ specific thresholds
 
 ### 4) Rate-limited blend (`DA10`-`DA60`)
 
-Every ~488ms (`var_4ms_cnt_B5 >= 0x7A`): refines the candidate against
-`var_lambda_integrator`'s direction and `var_adc_lambda`'s sign, clamps
-`var_inj_pw_base` via `ram_1BE_limits` (range `0x0000`-`0x0500`, i.e.
+Every ~488ms (`var_4ms_cnt_B5 >= 0x7A`): nudges `var_inj_pw_base` by
+`+0x0C`/`-0x02` based on `var_lambda_integrator` vs `var_adc_lambda`'s
+sign, clamped via `ram_1BE_limits` (range `0x0000`-`0x0500`, i.e.
 0-~5.12ms of injector time - matches known PW constants elsewhere, e.g.
-`injector_cold_start`'s `0x04E2`/`0x09C4`), and conditionally calls
-`ramp_limit_inj_pw_simple`.
+`injector_cold_start`'s `0x04E2`/`0x09C4`). In closed-loop mode
+(`unk_1BD == 0xC8`) also overwrites `unk_1C0` with `var_adc_lambda` itself.
+Then calls `ramp_limit_inj_pw_simple` when `var_adc_lambda` (**not**
+`var_inj_pw_base` - see the correction under "The ramp-limiter cluster"
+below) is below `0x4D`.
+
+**Confirmed: the `var_lambda_integrator` threshold checks (`cmp #66h,
+var_lambda_integrator` / `cmp #76h, var_lambda_integrator`) are high-byte-only
+comparisons.** Checked the assembler source (`roms/d8x_assembler/instruction.py`):
+`cmp #nn, nn` encodes as opcode `0x79` with two 8-bit operands (immediate,
+direct-page address) - a genuine 8-bit compare against a single byte, not
+the full 16-bit variable. Since `var_lambda_integrator` is `0x8000` at
+stoich, thresholds `0x66`/`0x76` (as a high byte) correspond to roughly
+`0x6600`-`0x76FF` - both below stoich, consistent with the lean-side
+interpretation used above.
 
 ### 5) Hand-off to `loc_DC77`
 
@@ -270,24 +283,113 @@ steps causing driveability issues.
   `loc_DA94`'s area (not deep-dived) - likely on a mode transition that
   should discard the ramp state entirely.
 - **`init_pw_closed_loop`/`init_pw_open_loop`**: see above (path init).
-- **`ramp_limit_inj_pw`**: the main blend step, called every ~488ms. Compares
-  `unk_1C0` (candidate) against `var_inj_pw_base` (current) and `unk_1C8`
-  (a third reference, not traced), applies the 0.8x ratio via
-  `mult_rDrX`/`divide_d_by_x`, and on out-of-range results calls
-  `set_knock_sensor_err_flag` (`var_diag_errors_5.0` - a general
-  "computation out of range" signal reused across several subsystems, not
-  literally knock-specific; the same bit is touched by unrelated threshold
-  checks in `calc_iscv`). The branch-by-branch logic
-  (`loc_DBB5`/`DBDE`/`DBF1`/`DC0C`/`DC17`/`DC24`/`DC34`/`DC35`/`DC37`)
-  wasn't fully traced - the overall shape (rate-limited exponential
-  approach with overflow flagging) is clear, the exact branch conditions
-  are not.
-- **`ramp_limit_inj_pw_simple`**: a shorter, single-path variant of the same pattern,
-  operating on `unk_1C4`/`var_inj_pw_base` directly. Called from `loc_DA58`
-  when `var_inj_pw_base < 0x4D` (a very small pulse width) - likely a
-  dedicated path for the near-zero/idle-fuel edge case where `ramp_limit_inj_pw`'s
-  general blend would be numerically awkward. Also sets/clears
-  `var_trim_state.2` (via the alias) based on a `0xC7AE` threshold.
+- **`ramp_limit_inj_pw`**: the main blend step, called every ~488ms from
+  `calc_inj_pw_base`'s continuation, and once more directly from
+  `calc_inj_pw_base` itself in a "diagnostic only" mode (see `trim_state.4`
+  below). **Fully traced this session** (branch-by-branch, with `mov`
+  direction re-verified at every step) - see "Branch-by-branch trace"
+  below for the complete walkthrough.
+- **`ramp_limit_inj_pw_simple`**: a shorter, single-path variant of the same
+  pattern: `D = var_inj_pw_base / (unk_1C4 - 0xCCCD)` via `divide_d_by_x`,
+  then `+/-0xCCCD`-adjusted (sign depending on whether the divide's error
+  flag fired) and stored to `unk_1C2`. Also sets/clears `var_trim_state.2`
+  (via the alias) based on a `0xC7AE` threshold.
+
+  **Correction to a prior-session claim:** this is called from `loc_DA58`
+  when **`var_adc_lambda` (signed lambda sensor voltage) is below `0x4D`**,
+  not `var_inj_pw_base` as previously stated. `X` is loaded from
+  `var_adc_lambda` at `loc_DA17` and never reloaded before the `loc_DA58`
+  gate - `var_inj_pw_base` is loaded into `D` in that same block for an
+  unrelated small lambda-driven nudge (`+0x0C`/`-0x02`, clamped via
+  `ram_1BE_limits`) that has already completed by the time the gate is
+  checked.
+
+### Branch-by-branch trace of `ramp_limit_inj_pw`
+
+Entry: `X = unk_1C0` (the current candidate), `trim_state` bits 0/1/3/4 are
+read/written throughout (via the alias - real `var_flags_4E` bits, not
+`var_trim_state`'s own documented meaning during this span).
+
+1. **`trim_state.4` set on entry** (checked again, unchanged, at `loc_DBDB`
+   since nothing between clears it): "diagnostic-only" mode. Computes
+   `D = unk_1C2 - 0xCCCD`, error-flags via `set_knock_sensor_err_flag` if
+   negative (ratio below nominal), then `D = mult_rDrX(D, unk_1C0)`
+   (deviation scaled by the candidate) `+/- 0xCCCD` (sign per whether the
+   error flag fired), and exits via `loc_DC3A` **without** touching
+   `var_inj_pw_base`/`unk_1C0`/`unk_1C6` - the computed `D` is left for the
+   *caller* to consume. `calc_inj_pw_base`'s `loc_D9FA` is exactly this
+   caller: it force-sets `var_inj_pw_base` itself, sets `trim_state.4`, calls
+   `ramp_limit_inj_pw`, then stores the returned `D` into `unk_1C4`.
+   `loc_DC3A` clears `trim_state.4` - the flag is "consumed" by being
+   handled once.
+2. **`trim_state.4` clear + `unk_1C0 == var_inj_pw_base`** (candidate
+   unchanged since last call): fast path, `D = unk_1C4` (last
+   carried-forward value), skips straight to the ceiling check
+   (`loc_DBDE`) - no ratio/error-flag pass runs at all.
+3. **`trim_state.4` clear + candidate changed**: runs the same
+   ratio-deviation computation as case 1, then falls into the ceiling
+   check with the freshly-computed `D`.
+4. **`loc_DBDE`** compares `D` against `unk_1C8` (see below for what this
+   is):
+   - `D <= unk_1C8`: falls into `loc_DBF1` (blend-toward-ceiling).
+   - `D > unk_1C8`, `trim_state` bits 0 **and** 1 both set, and `unk_1C4`
+     (the prior carried-forward value) is **not** itself already above
+     `unk_1C8`: also falls into `loc_DBF1`.
+   - `D > unk_1C8` and (`trim_state.0` clear **or** `trim_state.1` clear):
+     simplest exit (`loc_DC35`/`DC37`) - clears `trim_state.3`, stores `D`
+     into `unk_1C6`, done. `var_inj_pw_base`/`unk_1C0`/`unk_1C4` untouched.
+   - `D > unk_1C8` **and** `unk_1C4` also already `> unk_1C8` (sustained
+     over-ceiling): `loc_DC24` - in closed-loop mode (`unk_1BD == 0xC8`)
+     only, resets `unk_1C0` back to `var_inj_pw_base` (discards the stale
+     candidate); either way clears `trim_state.3` and stores the original
+     `loc_DBDE`-entry `D` (the candidate/blend value itself, **not** the
+     ceiling) into `unk_1C6`.
+5. **`loc_DBF1`** (blend-toward-ceiling): sets `trim_state.3`, computes
+   `X = 0xCCCD - unk_1C8`, `D = 0xCCCD - unk_1C2`.
+   - `unk_1C2 >= 0xCCCD` (at/above nominal ratio): `D = var_inj_pw_base`
+     unchanged, skip the divide.
+   - `unk_1C2 < 0xCCCD` (below nominal): `D = (0xCCCD-unk_1C2) /
+     (0xCCCD-unk_1C8)` via `divide_d_by_x`, clamped to `[0,0x0500]` via
+     `ram_1BE_limits`, and stored into **`unk_1C0`** - the candidate itself
+     gets refined here, not just `var_inj_pw_base`.
+
+     Either way: if `trim_state.0` is clear, commits `D` to
+     `var_inj_pw_base` and stashes the ceiling (`unk_1C8`, popped back off
+     the stack) into `unk_1C4`; if `trim_state.0` is set, both are left
+     alone. `unk_1C6` always ends up holding the ceiling value (`unk_1C8`)
+     on this path, regardless of `trim_state.0`.
+
+**Key finding:** `unk_1C0`/`unk_1C4`/`unk_1C6` do **not** have single fixed
+identities ("the candidate" / "the carried-forward value" / "the
+ceiling"). Each gets overwritten with a different one of {fresh VE-map
+candidate, `var_adc_lambda`, the `unk_1C8` ceiling, the ratio-deviation
+result, `var_inj_pw_base`} depending on which branch runs - see the
+Variable Reference below for the full per-branch inventory. This is why a
+clean per-variable rename was never found even after this full trace:
+there isn't one to find. `unk_1C2` is the one exception with a stable
+role - it's `ramp_limit_inj_pw_simple`'s output and `ramp_limit_inj_pw`'s
+deviation input, always a ratio nominally around `0xCCCD`.
+
+**`unk_1C8`'s producer - scoped, not traced:** its immediate write site is
+`loc_E6A8` (`st d, unk_1C8`), fed by a `dmatx_pim`/`var_pim2`-linked
+computation confirming the "MAP/PIM-pressure-linked" characterization used
+above. Tracing further back, that computation's own inputs (`unk_131`,
+`var_unk_knk_135`) are themselves produced by a **much larger, entirely
+separate function starting at `sub_E551`** (`~E551`-`E6B0`+, 350+ bytes) -
+not a small helper. `sub_E551` calls `sub_E767`, uses TPS delta
+(`get_tps_unk`/`var_tps_delta`), runs a `signed_proportional_update` loop
+against `var_unk_knk_133`, and calls `set_knock_sensor_err_flag`/
+`check_knock_sensor_err_flag` - i.e. it looks like its own knock/PIM-linked
+limiting calculation (possibly dynamic boost/overpressure-related, given
+the knock-error-flag involvement and `var_pim2` inputs), not simply a
+"compute the injector PW ceiling" helper. `unk_1C8` is just where its
+output happens to land for `ramp_limit_inj_pw`'s purposes.
+
+**Recommendation:** treat `sub_E551` as its own subsystem for a future
+dedicated session (matching how `D931` itself was flagged in an earlier
+pass) rather than pursuing it as a footnote to injector PW - the knock/PIM
+signal involvement suggests it may turn out to matter more broadly than
+just this one ceiling value.
 
 ---
 
@@ -297,11 +399,11 @@ steps causing driveability issues.
 |---|---|
 | `var_inj_pw_base` | Working base injector pulse-width (was `unk_1BE`), clamped to 0x0000-0x0500 via `ram_1BE_limits` |
 | `unk_1BD` | Open-loop (0) vs closed-loop (0xC8) path selector, set by `init_pw_open_loop`/`init_pw_closed_loop` |
-| `unk_1C0` | A pulse-width candidate distinct from `var_inj_pw_base` - not renamed, precise distinction from `unk_1C4`/`unk_1C8` unclear |
-| `unk_1C2` | Ramp-limiter working value, reset to `0xCCCD` by `reset_pw_ramp_limiter`/`init_pw_closed_loop`/`init_pw_open_loop` |
-| `unk_1C4` | Another pulse-width-scale value, used by `ramp_limit_inj_pw`/`ramp_limit_inj_pw_simple` |
-| `unk_1C6` | Reset to `0xCCCD` alongside `unk_1C2`, role otherwise not traced |
-| `unk_1C8` | A third reference value compared against in `ramp_limit_inj_pw`, not traced |
+| `unk_1C0` | The VE-map candidate, but reused as scratch: also overwritten with `var_adc_lambda` (DA10-DA60, closed-loop), the `unk_1C8` ceiling-driven divide result (`ramp_limit_inj_pw`'s `loc_DBF1`), or `var_inj_pw_base` (`loc_DC24`, closed-loop). No single fixed identity - see `ramp_limit_inj_pw`'s branch trace |
+| `unk_1C2` | Ratio value nominally `0xCCCD` (~0.8 in Q16) - `ramp_limit_inj_pw_simple`'s output, `ramp_limit_inj_pw`'s deviation input. The one variable in this cluster with a stable role |
+| `unk_1C4` | Carried-forward PW-scale value at `ramp_limit_inj_pw`'s entry, but overwritten with the `unk_1C8` ceiling in `loc_DBF1` when `trim_state.0` clear, or with the ratio-deviation result by `calc_inj_pw_base`'s diagnostic-only call. No single fixed identity |
+| `unk_1C6` | The final per-call output register of `ramp_limit_inj_pw` - ends up holding the ceiling (`unk_1C8`) on the `loc_DBF1` path, or the candidate/blend value on the `loc_DC24`/`loc_DC35` paths |
+| `unk_1C8` | A PIM/MAP-pressure-linked bound compared against PW-scale values in `ramp_limit_inj_pw`. Producer partially traced to `loc_E665` (~`E620`-`E6B0`), which folds `var_pim2`-derived `dmatx_pim` into it - the rest of that computation isn't traced (see Open Questions) |
 | `var_cnt_6A` | Reset by `calc_inj_pw_base`'s entry gate; consumer not traced this session |
 | `dmarx_word_226` | CPU2's MAP-only VE/fuel correction table (`table_map_unk_C53D`, indexed by MAP) |
 | `dmarx_word_228` | CPU2's MAP+TPS bilinear VE correction (`map_map_tps_C51F`), zeroed during idle debounce |
@@ -312,9 +414,14 @@ steps causing driveability issues.
 
 ## Open Questions (not resolved this session)
 
-- The precise distinction between `unk_1C0`/`unk_1C4`/`unk_1C8` as "the"
-  candidate at any given point in `ramp_limit_inj_pw`.
-- `ramp_limit_inj_pw`'s exact branch-by-branch conditions.
+- `unk_1C8`'s full producer chain: traced as far as `loc_E665`
+  (~`E620`-`E6B0`) and confirmed it folds in `var_pim2`-derived
+  `dmatx_pim`, but the surrounding computation (`unk_131`,
+  `var_unk_knk_133`/`135`, `var_nv_trim_unk_98`, `unk_1CA`,
+  `divide_rD_64_saturate`/`divide_rD_16`/`mult_rArX`) isn't traced. This
+  sits inside the still-largely-unexplored `E363`-onward region flagged
+  below - worth resolving together with that pending work rather than as
+  an isolated one-off.
 - `loc_DC77`'s body past its entry commit, and chunks `DD38`/`DD59`/`E112`/
   start-of-`E363` - all still under the `var_flags_4E`-is-`var_trim_state`
   alias (confirmed), not yet read/traced or renamed.

@@ -1365,7 +1365,7 @@ table_knock_enrichment:		.db 00h				; CA12o
 				.db 00h, 0Eh, 16h, 1Fh,	28h
 
 
-table_ect_C3F5:			.db  1Fh			; sub_CAE9o
+table_ect_C3F5:			.db  1Fh			; update_ect_enrich_clampo
 				.db 0C0h ; �
 				.db  4Dh ; M
 				.db  4Dh ; M
@@ -1688,7 +1688,7 @@ table_rD_fixed8_interpolate:					; CA26p
 
 loc_C65B:							; C657j
 				bsr	table_rD_clamp
-				bra	sub_C67C
+				bra	interp_table_pair
 ; End of function table_rD_fixed8_interpolate
 
 
@@ -1760,7 +1760,29 @@ loc_C677:							; C673j
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_C67C:							; C65Dj ...
+interp_table_pair:							; C65Dj ...
+; ---------------------------------------------------------------------------
+; interp_table_pair: linear interpolation between two adjacent table bytes
+;
+; Shared tail primitive for CPU2's whole table-interpolation family -
+; analogous role to CPU1's interp_y_pair (sub_C45C). Given Y pointing at
+; two adjacent table bytes (Table[0], Table[1]) and a fractional index (A,
+; 0-255) with a pre-scaled "256/index-delta" value on the stack (pointed
+; to by X), computes Table[0] + (Table[1]-Table[0]) * A/256 - i.e. a
+; standard 8-bit lerp.
+;
+; Two entry points:
+; - This label's own top (the "add a,#02h; add y,a" below): reached either
+;   by falling through from table_rB_fixed_rA_interpolate's own min/max
+;   clamp, or jumped to directly by table_rD_fixed8_interpolate after its
+;   own table_rD_clamp (a 16-bit clamp used in place of
+;   table_rB_fixed_rA_interpolate's 8-bit one).
+; - loc_C67F below: entered directly by map_rD_rX_map_interpolate
+;   (bilinear: after two bsr calls to this function's main body, for the
+;   two Y-adjacent map rows), to do the final X-direction interpolation
+;   between those two already-computed row results - skips the
+;   table-advance since Y already points at the right pair.
+; ---------------------------------------------------------------------------
 				add	a, #02h
 				add	y, a			; Advance Y to element in table
 
@@ -1785,7 +1807,7 @@ loc_C68F:							; C688j
 loc_C692:							; C680j
 				add	a, y + 00h		; A = A	+ Table[0]
 				ret				; Finished
-; End of function sub_C67C
+; End of function interp_table_pair
 
 ; START	OF FUNCTION CHUNK FOR table_rb_fixed_64_ect_interp
 
@@ -1906,13 +1928,13 @@ map_rD_rX_map_interpolate:
 				mov	d, y
 				push	y
 				ld	d, var_map_temp_x
-				bsr	sub_C67C
+				bsr	interp_table_pair
 				st	a, var_map_temp
 				pull	y
 				pull	b
 				add	y, b
 				ld	d, var_map_temp_x
-				bsr	sub_C67C
+				bsr	interp_table_pair
 				st	a, unk_5A
 				ld	y, #var_map_temp
 				pull	b
@@ -2194,7 +2216,11 @@ mult_rArX:							; C79Ep ...
 ; End of function mult_rArX
 
 
-loc_C790:							; CCEBp
+signed_proportional_update:							; CCEBp
+; Byte-for-byte identical to CPU1's signed_proportional_update
+; (3S-GTE/D151803-9651, sub_C56D) - moves *Y a fraction (B/256) of the way
+; from its current value toward D, signed. Confirmed instruction-by-
+; instruction match, not just a naming guess.
 				push	b
 				mov	x, d
 				sub	d, y + 00h
@@ -2561,7 +2587,7 @@ loc_C9A5:							; C996j
 				jsr	divide_rD_16		; D=D/16
 				ld	y, #loc_C992
 				push	x
-				jsr	sub_C67C
+				jsr	interp_table_pair
 				shr	d
 				add	a, #40h
 				pull	x
@@ -2600,7 +2626,7 @@ loc_C9DB:							; C9C0j ...
 				st	d, unk_E8
 
 loc_C9DD:							; C9CCj
-				jsr	sub_CCDF
+				jsr	update_rpm_filter_EA
 
 loc_C9E0:							; C9BAj
 				bra	main_continue_2
@@ -2609,7 +2635,25 @@ loc_C9E0:							; C9BAj
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_C9E2:							; CD83p
+update_rpm_smooth_filter:							; CD83p
+; ---------------------------------------------------------------------------
+; update_rpm_smooth_filter: RPM low-pass filter + deviation sample
+;
+; unk_EC is a smoothed RPM tracker (rounded average: unk_EC = (RPM +
+; unk_EC)/2 via the rorc-based rounding-divide-by-2 idiom used elsewhere in
+; this codebase) - reset to 0 elsewhere (loc_C960) on a stall/restart
+; condition (var_cnt8ms_AF >= 0x3D), alongside unk_E8/unk_EA.
+;
+; unk_51 = |unk_EC - var_rpm_x_5p12| (saturating divide, then sign-restored
+; via unk_48 and re-biased by 0x80) - a magnitude-ish RPM deviation sample.
+;
+; NOT CONFIRMED: unk_51 has no reader anywhere in this file (grepped) - its
+; consumer, if any, isn't in this ROM's own code path. Left unrenamed;
+; don't assume it feeds anything downstream without finding that reader.
+; Called every ~32ms from calc_ignition_timing (var_flags_41.6 gate),
+; alongside decay_enrichment_unk_53/decay_enrichment_unk_FE and the
+; dmarx_tham-indexed table lookup that follows it there.
+; ---------------------------------------------------------------------------
 				clrb	bit0, unk_48
 				ld	d, unk_EC
 				sub	d, var_rpm_x_5p12
@@ -2634,11 +2678,56 @@ loc_C9F8:							; C9F4j
 				rorc	b
 				st	d, unk_EC
 				ret
-; End of function sub_C9E2
+; End of function update_rpm_smooth_filter
 
 ; START	OF FUNCTION CHUNK FOR check_startup
 
 main_continue_2:						; loc_C9E0j
+; ---------------------------------------------------------------------------
+; main_continue_2 / main_continue_3 / loc_CB3D / loc_CB6D / loc_CBCE:
+; the enrichment-term chain feeding calc_params/calc_ignition_timing
+;
+; A sequence of five near-identical blocks, each computing one enrichment
+; term from a map/table lookup (gated on ECT/TPS/RPM/PIM/dmarx flags) and
+; sending it to CPU1 as a dmatx_* value. Falls through into calc_params at
+; the end (loc_CBE9). Each term (except the first) has a matching periodic
+; DECAY function (see each one's own header) that scales or decrements it
+; toward zero when its own refresh condition isn't currently met - called
+; from calc_ignition_timing at various periods (8ms/32ms) via
+; var_flags_41/var_cnt8ms_B0 gates, NOT from this chain itself. Terms, in
+; order:
+;
+; 1) (main_continue_2, CA06-CAD7) var_knock_enrichment (RPM>2000rpm &&
+;    ECT>31C gated, table_knock_enrichment indexed by dmarx_knock) feeds
+;    var_knock_fuel_enrichment (open/closed-loop MAP-gated map lookup +
+;    knock enrichment, closed_loop/open_loop labels), which combines with
+;    var_throttle_enrichment (TPS/ECT 3D map) via a min() - the smallest
+;    of the two wins, clamped to var_unk_ect_table_10A (update_ect_enrich_clamp's output,
+;    an ECT table lookup) - result: var_fuel_enrichment/dmatx_fuel_enrichment.
+;    No decay function for this one - it's fully recomputed every call.
+; 2) (main_continue_3, CAE7-CB27) var_warmup_enrichment_FD/
+;    dmatx_warmup_enrichment_157 (ECT x RPM two-table product, via
+;    mult_rBrX2) - always recomputed, no decay. Falls into:
+;    var_enrichment_unk_53/dmatx_unk_158 (ECT-table lookup, gated on
+;    var_flags_40.0 clear + dmarx_var_flags_46.0 set + ECT/THA thresholds)
+;    - decayed by decay_enrichment_unk_53.
+; 3) (loc_CB3D-CB52) var_enrichment_unk_FE/dmatx_unk_159 (ECT-table
+;    lookup, same var_flags_40.0/dmarx_var_flags_46.0 gate pattern) -
+;    decayed by decay_enrichment_unk_FE.
+; 4) (loc_CB6D-CBCE) dmatx_unk_enrich (PIM-scaled product of
+;    var_enrichment_unk_FE and a fixed-point PIM division, always
+;    recomputed) falls into var_enrichment_unk_100/dmatx_unk_15A (ECT
+;    table x dmarx_unk_D5 product, same gate pattern) - decayed (by
+;    subtraction, not scaling) by decay_enrichment_unk_100.
+; 5) (loc_CBCE-CBE9) unk_103/dmatx_unk_15D (THA-table lookup, same gate
+;    pattern) - decayed by decay_unk_103. Falls into calc_params.
+;
+; Physical meaning of the individual enrichment terms (2-5) beyond "ECT/THA
+; table lookup, gated on operating mode" is NOT confirmed - the shared
+; var_flags_40.0/dmarx_var_flags_46.0 gate pattern and consistent decay
+; shape are what's established this session, not their real-world purpose
+; (candidates: post-start/warmup enrichment sub-terms, but not verified).
+; ---------------------------------------------------------------------------
 				clr	a			; Default to no	fuel enrichment
 
 loc_CA06:							; Check	RPM against 2000rpm
@@ -2764,6 +2853,9 @@ loc_CABC:							; CAB9j
 loc_CAC3:							; CAC0j
 				cmpz	b
 				beq	loc_CACF
+; CONFIRMED (while tracing the TVSV section, see loc_CE86's header):
+; dmatx_unk_16A is written ONLY as 0 anywhere in this ROM, never 0x0F, so
+; this beq is never taken - the add b,#06h below always executes.
 				ld	a, dmatx_unk_16A
 				cmpb	a, #0Fh
 				beq	loc_CACF
@@ -2791,12 +2883,17 @@ loc_CAE4:							; CADEj
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_CAE9:							; loc_D333p
+update_ect_enrich_clamp:							; loc_D333p
+; Refreshes var_unk_ect_table_10A (the ECT-table clamp ceiling that
+; main_continue_2's fuel-enrichment min() is bounded against - see the
+; enrichment-chain header above main_continue_2) from table_ect_C3F5.
+; Called periodically (every ~64ms-ish tick, gated at loc_D317/loc_D333)
+; alongside update_odb_flags, not from the enrichment chain itself.
 				ld	y, #table_ect_C3F5	; get address of table
 				jsr	table_rb_fixed_64_ect_interp
 				st	a, var_unk_ect_table_10A
 				ret
-; End of function sub_CAE9
+; End of function update_ect_enrich_clamp
 
 ; START	OF FUNCTION CHUNK FOR check_startup
 
@@ -2835,7 +2932,10 @@ loc_CB2C:							; CB11j
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_CB2E:							; CDAEp
+decay_enrichment_unk_53:							; CDAEp
+; Decay var_enrichment_unk_53 toward 0 by x0xF0/256 (~93.75%) per call when
+; nonzero - see the header above main_continue_2 for the whole
+; enrichment-chain/decay-function pattern this belongs to.
 				ld	x, var_enrichment_unk_53
 				beq	locret_CB3C
 				ld	a, #0F0h
@@ -2845,7 +2945,7 @@ sub_CB2E:							; CDAEp
 
 locret_CB3C:							; CB30j
 				ret
-; End of function sub_CB2E
+; End of function decay_enrichment_unk_53
 
 ; START	OF FUNCTION CHUNK FOR check_startup
 
@@ -2869,7 +2969,12 @@ loc_CB52:							; CB42j
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_CB54:							; CD86p
+decay_enrichment_unk_FE:							; CD86p
+; Decay var_enrichment_unk_FE toward 0 by x0xF8/256 (~96.9%) per call, but
+; only when var_cnt32ms_B2 (a full byte, no truncation) < 0x3D or
+; dmarx_pim2's high byte (16-bit var, cmp #imm8 truncates to one byte -
+; see fuel_calculation_system.md's cmp-width note) < 0x33 - see the header
+; above main_continue_2 for the enrichment-chain pattern this belongs to.
 				cmp	#3Dh, var_cnt32ms_B2
 				bcc	loc_CB5E
 				cmp	#33h, dmarx_pim2
@@ -2885,7 +2990,7 @@ loc_CB5E:							; CB57j
 
 locret_CB6C:							; CB5Cj ...
 				ret
-; End of function sub_CB54
+; End of function decay_enrichment_unk_FE
 
 ; START	OF FUNCTION CHUNK FOR check_startup
 
@@ -2924,7 +3029,13 @@ loc_CB9D:							; CB7Dj ...
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_CBA5:							; loc_CDBBp
+decay_enrichment_unk_100:							; loc_CDBBp
+; Decrement var_enrichment_unk_100 by 3 (clamped to 0), but only when an
+; ECT-table lookup (table_C3A3_ect, ECT halved above ~0x51/2 - the halving
+; matches a similar >67C branch in calc_ignition_timing's own ECT reads)
+; does NOT exceed dmarx_unk_D4 - a linear decay, unlike the other three
+; functions' multiplicative ~x0.94-0.97 scaling. See the header above
+; main_continue_2 for the enrichment-chain pattern this belongs to.
 				ld	d, var_enrichment_unk_100
 				beq	locret_CBCD
 				ld	y, #table_C3A3_ect
@@ -2950,7 +3061,7 @@ loc_CBC7:							; CBC3j
 
 locret_CBCD:							; CBA8j ...
 				ret
-; End of function sub_CBA5
+; End of function decay_enrichment_unk_100
 
 ; START	OF FUNCTION CHUNK FOR check_startup
 
@@ -2976,7 +3087,11 @@ loc_CBE9:							; CBD3j
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_CBEB:							; CDB1p
+decay_unk_103:							; CDB1p
+; Decay unk_103 toward 0 by x0xF0/256 (~93.75%) per call when nonzero -
+; same shape as decay_enrichment_unk_53. See the header above
+; main_continue_2 for the whole enrichment-chain/decay-function pattern
+; this belongs to.
 				ld	x, unk_103
 				beq	locret_CBFB
 				ld	a, #0F0h
@@ -2986,7 +3101,7 @@ sub_CBEB:							; CDB1p
 
 locret_CBFB:							; CBEEj
 				ret
-; End of function sub_CBEB
+; End of function decay_unk_103
 
 ; Calculate parameters
 ; START	OF FUNCTION CHUNK FOR check_startup
@@ -3055,9 +3170,17 @@ calc_params:							; loc_CBE9j
 				st	b, dmatx_unk_167
 
 ; ---------------------------------------------------------------------------
-; Fuel VE / speed-density section (CC53-CCDA) - the CPU2 side of CPU1's
+; Fuel VE / speed-density section - the CPU2 side of CPU1's
 ; calc_inj_pw_base (3S-GTE/D151803-9651). Every term here is sent to CPU1
 ; over the shared DMA buffer (CPU1_addr = CPU2_addr + 0xDA - see CLAUDE.md).
+;
+; CORRECTED this session: items 1/2/5/6 below ARE computed here in
+; calc_params (verified addresses CC69/CC76/CCA0/CCDA - all within
+; CC53-CCDA), but items 3/4 are NOT - despite the range this comment
+; originally claimed, dmatx_ve_corr_map/dmatx_ve_corr_map_tps are actually
+; computed much later, inside calc_ignition_timing (verified addresses
+; CE4E/CE67), interspersed with unrelated ignition-retard-map and PORTB
+; output logic. See calc_ignition_timing's own body near loc_CE67.
 ;
 ; 1) var_map_ve = map_c006_ve(RPM, dmarx_pim) - the base VE map, already
 ;    fully transcribed with real units in this file (X = RPM 400-7200,
@@ -3071,12 +3194,18 @@ calc_params:							; loc_CBE9j
 ;    reflects the CPU1-side consumption, not a literal re-derivation of
 ;    this exact value; see docs/fuel_calculation_system.md for the
 ;    cross-reference caveat).
-; 3) dmatx_ve_corr_map = table_ve_corr_map(dmarx_pim2)/32 (a MAP-only
-;    correction table, distinct from the main VE map) = CPU1's
-;    dmarx_word_226.
-; 4) dmatx_ve_corr_map_tps = map_ve_corr_map_tps(MAP, dmarx_tps) bilinear
-;    correction, forced to 0 when dmarx_var_flags_46.2 is set (CPU1's
-;    idle-debounce flag, relayed back via DMA) = CPU1's dmarx_word_228.
+; 3) (in calc_ignition_timing, CE4E) dmatx_ve_corr_map =
+;    table_ve_corr_map(dmarx_pim2)/32 (a MAP-only correction table,
+;    distinct from the main VE map) = CPU1's dmarx_word_226.
+;
+;    NOTE: items 2 and 3 both claim "= CPU1's dmarx_word_226" - that's
+;    inconsistent (dmarx_word_226 is a single CPU1 variable, can't equal
+;    two different CPU2 outputs) and predates this session; not resolved
+;    here, flagging for whoever picks this up next.
+; 4) (in calc_ignition_timing, CE67) dmatx_ve_corr_map_tps =
+;    map_ve_corr_map_tps(MAP, dmarx_tps) bilinear correction, forced to 0
+;    when dmarx_var_flags_46.2 is set (CPU1's idle-debounce flag, relayed
+;    back via DMA) = CPU1's dmarx_word_228.
 ; 5) dmatx_ve_x_pim_x_rpm (= var_ve_x_pim_x_rpm) = var_map_ve scaled by a
 ;    fraction (~0x8C4E/65536) then multiplied by RPM and by dmarx_pim2/16
 ;    - i.e. VE x MAP x RPM, the classic speed-density load term, saturated
@@ -3171,7 +3300,15 @@ loc_CCDA:							; CCA5j ...
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_CCDF:							; loc_C9DDp
+update_rpm_filter_EA:							; loc_C9DDp
+; update_rpm_filter_EA: smooth unk_EA toward D at ~12.5%/call (B=0x20/256
+; via signed_proportional_update), hard-resetting it to raw RPM first when
+; dmarx_var_flags_46.0 is clear. Only reached (via loc_C9DD, in
+; main_continue's fall-through) after main_continue has already computed
+; D as an RPM-delta/ratio value relative to unk_E8 - NOT raw RPM itself.
+; unk_EA joins unk_EC (see update_rpm_smooth_filter) as a second,
+; differently-smoothed RPM-tracking variable; their relationship/distinct
+; purposes aren't confirmed.
 				ld	x, var_rpm_x_5p12
 				tbbc	bit0, dmarx_var_flags_46, loc_CCE6
 				st	x, unk_EA
@@ -3179,9 +3316,9 @@ sub_CCDF:							; loc_C9DDp
 loc_CCE6:							; CCE1j
 				ld	y, #unk_EA
 				ld	b, #20h
-				jsr	loc_C790
+				jsr	signed_proportional_update
 				ret
-; End of function sub_CCDF
+; End of function update_rpm_filter_EA
 
 ; START	OF FUNCTION CHUNK FOR check_startup
 
@@ -3278,8 +3415,8 @@ loc_CD61:							; CD51j ...
 				bne	loc_CD97
 				ld	d, #(var_cnt32ms_B2 << 8) + 0Ah
 				jsr	increment_counters
-				jsr	sub_C9E2
-				jsr	sub_CB54
+				jsr	update_rpm_smooth_filter
+				jsr	decay_enrichment_unk_FE
 				ld	y, #table_C3BB_tham
 				ld	b, dmarx_tham
 				jsr	table_rB_fixed_32_interpolate
@@ -3298,8 +3435,8 @@ loc_CDA1:							; CD99j
 				clr	var_cnt8ms_B0
 				ld	d, #(var_cnt_C1	<< 8) +	02h
 				jsr	increment_counters
-				jsr	sub_CB2E
-				jsr	sub_CBEB
+				jsr	decay_enrichment_unk_53
+				jsr	decay_unk_103
 
 loc_CDB4:							; CDA4j
 				tbs	bit2, var_flags_41
@@ -3307,7 +3444,7 @@ loc_CDB4:							; CDA4j
 				jmp	loc_CDBE
 
 loc_CDBB:							; CDB6j
-				jsr	sub_CBA5
+				jsr	decay_enrichment_unk_100
 
 loc_CDBE:							; CDB8j
 				tbbc	bit0, var_flags_40, loc_CDD7
@@ -3397,6 +3534,12 @@ loc_CE30:							; loc_CE24j ...
 				clr	a
 				st	a, unk_112
 				st	a, dmatx_knock_unk_160
+; dmatx_ve_corr_map/dmatx_ve_corr_map_tps: items 3/4 of the fuel VE section
+; documented above calc_params - despite living here inside
+; calc_ignition_timing rather than in calc_params itself (that header
+; comment's claimed CC53-CCDA range was corrected this session), these are
+; conceptually still part of the fuel VE/speed-density term set, not
+; ignition timing.
 				ld	d, dmarx_pim2
 				ld	y, #table_ve_corr_map
 				jsr	table_rD_fixed16_interpolate
@@ -3415,6 +3558,9 @@ loc_CE30:							; loc_CE24j ...
 
 loc_CE67:							; CE53j
 				st	d, dmatx_ve_corr_map_tps
+; loc_CE86 onward: TVSV/boost-control duty-scale calculation - a large,
+; separate, unexplored subsystem, NOT part of ignition timing or fuel VE.
+; See docs/session_journal.md pending work.
 				bra	loc_CE86
 ; END OF FUNCTION CHUNK	FOR check_startup
 
@@ -3444,6 +3590,60 @@ loc_CE83:							; CE7Ej
 ; START	OF FUNCTION CHUNK FOR check_startup
 
 loc_CE86:							; CE6Aj
+; ---------------------------------------------------------------------------
+; loc_CE86 - loc_D036: TVSV boost-control duty-cycle calculation
+;
+; Computes var_tvsv_117, the PWM duty (0-200 scale) that drive_DOUT2_tvsv
+; (immediately below) uses to drive the physical TVSV solenoid via DOUT.2.
+; Most of the individual variables here already had meaningful names from
+; earlier work (var_tvsv_scale_*, var_tvsv_117/cnt/unk_120) - this session
+; adds the prose connecting them into one calculation, not new renames.
+;
+; 1) (CE86-CE97) var_tvsv_scale_limiter: 0x66 (reduced) while
+;    var_cnt32ms_tvsv_limiter <= 0x1F (~1s cooldown after a CPU1
+;    boost/rev-limiter event, per dmarx_limiter_flags bits 2/3), else
+;    0x80 (full/no reduction).
+; 2) (CEA3-CEFA) An elaborate ECT/THA/RPM/speed diagnostic-override gate,
+;    but only entered when dmatx_unk_16A == 0x0F - CONFIRMED this session
+;    that dmatx_unk_16A is written ONLY as 0 anywhere in this ROM (one
+;    explicit write in update_odb_flags, plus the startup
+;    clear_variables_high sweep which covers its address 0x016A) - this
+;    gate is therefore dead code, never entered. (The same
+;    dmatx_unk_16A==0x0F check gates a +6 ECT adjustment in the
+;    enrichment chain documented above main_continue_2 - that check is
+;    likewise always false there, so that +6 always applies.) In normal
+;    operation this whole block just falls through to CEFA: clears
+;    var_flags_46 bits 0/1 and jumps to loc_D009 with a near-zero scale -
+;    i.e. TVSV defaults toward off/minimum unless the (dead) override path
+;    would have been taken.
+; 3) (CF02-CF97) Main scale calculation, only reached via the dead path
+;    above - table_C4AA_rpm(RPM) as a base (unk_11E), then, unless a
+;    low-throttle/low-RPM bypass applies (var_flags_46.0 + TPS<0x29 +
+;    RPM_div_25<0x40), multiplies together four independent correction
+;    factors (each 8-bit saturating): map_C403_tvsv_tps_rpm(TPS,RPM),
+;    table_C4B4_knock_tvsv(remaining knock-retard margin - i.e. less
+;    margin before hitting var_max_retard_unk means more reduction),
+;    map_C490_tvsv_tps_gear(TPS,gear), table_tha_tvsv(intake air temp) -
+;    into var_tvsv_scale_total.
+; 4) (CF97-D009) Rate-limits the new candidate against var_tvsv_117 (the
+;    PREVIOUS cycle's output - a feedback/integrator term, via
+;    table_tvsv_C4C2 and a 0x3C threshold), applies mode-latch hysteresis
+;    on var_flags_46.1 (comparing against unk_11E +/- a boost-mode
+;    adjustment and var_tvsv_scale_total vs 0xA6), then ALL paths
+;    (gated-out/bypass/full-calc) converge here: a final ceiling clamp via
+;    table_C4F2(RPM), MIN'd against whatever value the taken path
+;    produced, stored to var_tvsv_117.
+;
+; NOT resolved: the physical meaning of var_flags_46.0/.1 (CPU2-local,
+; distinct from CPU1's own var_flags_46) in this context, and whether
+; "TVSV" here means the same physical solenoid Toyota shop manuals call
+; VSV for boost control on this platform (assumed, not independently
+; confirmed against a wiring diagram).
+;
+; loc_D037 (right after drive_DOUT2_tvsv) is a DIFFERENT, unrelated
+; calculation - battery-voltage/PIM-gated, drives PORTA.2 not DOUT.2 - not
+; traced this session.
+; ---------------------------------------------------------------------------
 				ld	a, #80h
 				tbbs	bit3, dmarx_limiter_flags, loc_CE8E
 				tbbc	bit2, dmarx_limiter_flags, loc_CE90
@@ -3695,6 +3895,12 @@ loc_D01C:							; CFB4j
 
 ; ********************************************************************************
 ; Drive	DOUT.2 to control TVSV
+;
+; Software PWM comparator, confirmed this session as the consumer of
+; var_tvsv_117 (see the header above loc_CE86 for how that's computed):
+; var_tvsv_cnt free-runs 0->200 (+8/call, wraps at 0xC8), and DOUT.2 is
+; driven high while var_tvsv_cnt < var_tvsv_117 - i.e. var_tvsv_117 is a
+; literal 0-200 duty-cycle value for the TVSV solenoid.
 ; ********************************************************************************
 
 drive_DOUT2_tvsv:						; D47Ap
@@ -3721,6 +3927,46 @@ locret_D036:							; D032j
 ; START	OF FUNCTION CHUNK FOR check_startup
 
 loc_D037:							; loc_D01Cj
+; ---------------------------------------------------------------------------
+; loc_D037 - loc_D0B0: periodic warning/diagnostic-output debounce phase
+;
+; Two independent debounced warning checks, both part of the same
+; main-loop periodic tick as the enrichment chain and update_ect_enrich_clamp
+; (falls through to loc_D317 -> loc_D333 at the end - see the header above
+; main_continue_2). Different from - and unrelated to - the TVSV
+; boost-control block immediately above (which drives DOUT.2, not PORTA).
+;
+; 1) (D037-D084) PORTA.2 warning, gated on dmarx_battery >= 11.4V (skips
+;    entirely below that) and dmarx_unk_D4 > 0x0F:
+;    Computes (var_rpm_x_5p12's high byte * dmarx_word_CB) * 0x038A / 256
+;    (via mult_rArX then mult_rDrX) and compares it against a MAP-indexed
+;    2-point table lookup (table_C515, or table_C51A - a systematically
+;    LOWER curve - when dmarx_battery >= 0xA3, a higher voltage
+;    threshold), shifted right 3 (/8). If the computed value is BELOW
+;    that MAP-scaled threshold, var_cnt32ms_B4 is left running; once it's
+;    accumulated ~2.9s (0x5C * 32ms) continuously, an additional ~32ms
+;    debounce (var_cnt4ms_A9 >= 8) gates setting PORTA.2. Any pass of the
+;    condition (computed >= threshold) or the initial gate failing resets
+;    both counters and clears PORTA.2 immediately.
+;
+;    NOT CONFIRMED: dmarx_word_CB's physical meaning (used nowhere else in
+;    this file) or what PORTA.2 physically drives. The RPM/MAP/battery
+;    shape (decreasing-with-MAP threshold curves, stricter at higher
+;    battery voltage) is suggestive of a charging-system or load
+;    rationality check, but that's a hypothesis, not a confirmed reading.
+;
+; 2) (D084-D0B0) PORTA.3 warning, gated on var_flags_40.0 clear: resets
+;    var_cnt32ms_B5 unless ECT/speed/RPM/PIM/THAM ALL simultaneously
+;    exceed their own fixed thresholds (0xE4/0x32/0x28/0x5A/0x9E
+;    respectively - i.e. a combined high-load condition). Once
+;    var_cnt32ms_B5 has accumulated ~4.9s (0x99 * 32ms) under that
+;    combined condition, sets PORTA.3; otherwise clears it. Suggestive of
+;    an overheat/high-load warning, not independently confirmed.
+;
+; Both blocks share the same "clear a debounce counter unless condition X
+; holds, set the output once the counter crosses a threshold" idiom used
+; elsewhere in this ROM (e.g. the TVSV limiter-cooldown scale above).
+; ---------------------------------------------------------------------------
 				tbbs	bit0, var_flags_40, loc_D077
 				tbbs	bit2, var_input_bits, loc_D070
 				tbbs	bit0, dmarx_var_flags_46, loc_D070
@@ -4031,10 +4277,39 @@ loc_D1D8:							; D0B2j
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_D1DB:							; D388p
+factory_selfcheck:							; D388p
 
 ; FUNCTION CHUNK AT D316 SIZE 00000001 BYTES
 
+; ---------------------------------------------------------------------------
+; factory_selfcheck: manufacturing/dealer diagnostic self-test entry point
+;
+; Gated on a specific combination of digital inputs (var_input_bits bits
+; 0/2, dmarx_flags_1 bits 5/2), var_spd < ~0xB4, and var_rpm_x_5p12 == 0
+; (engine stopped) - i.e. a diagnostic-connector-shorted-at-standstill
+; condition. If not met, clears var_flags_40.0 or exits immediately
+; (loc_D204/loc_D206 -> locret_D316).
+;
+; Once entered, dispatches on dmarx_flags2 (a CPU1-supplied command byte
+; over DMA):
+; - 0x40: runs selfcheck_run - a full RAM check (write/verify every byte
+;   from var_flags_40 to ram_end) followed by a ROM checksum (summing
+;   words from rom_start until wraparound, compared against 0xAA55) - then
+;   blinks a pass/fail pattern on PORTA.0.
+; - 0x20 (when the 0x40 check falls through): forces PORTA/PORTB/DOUT to a
+;   fixed pattern derived from dmarx_flags1/dmarx_flags2 - an
+;   output-forcing test mode, presumably for dealer tool verification of
+;   the DOUT/PORTA/PORTB-driven actuators.
+; - Otherwise (loc_D24B/loc_D210 loop): calls selfcheck_io_pump repeatedly
+;   while parked here, to keep I/O reads and the CPU1 DMA link alive
+;   during whichever test is running.
+;
+; All paths funnel through check_startup's shared reset-detection check
+; (IRQLL.0 / PORTB.6 -> loc_D2E9, "some kind of reset, wait for a bit and
+; then clear all RAM" per the pre-existing comment there) to abort back to
+; normal operation if a reset/interrupt condition appears while parked in
+; self-test.
+; ---------------------------------------------------------------------------
 				ld	b, #0C0h
 				st	b, dmatx_unk_16C
 				tbbc	bit0, var_input_bits, loc_D204
@@ -4108,7 +4383,7 @@ loc_D24B:							; D220j ...
 loc_D24E:							; D24Fj
 				inc	x
 				bne	loc_D24E
-				jsr	sub_D2D3
+				jsr	selfcheck_io_pump
 				ld	x, #0F9C0h
 
 loc_D257:							; D258j
@@ -4215,13 +4490,17 @@ loc_D2C3:							; D2C4j
 				cmp	b, #0AAh
 				bne	loc_D2AE
 				jmp	selfcheck_loop
-; End of function sub_D1DB
+; End of function factory_selfcheck
 
 
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_D2D3:							; D251p
+selfcheck_io_pump:							; D251p
+; Keeps I/O reads and the CPU1 DMA link alive while factory_selfcheck is
+; parked in its idle/test loop. Mirrors check_startup's own reset-detection
+; check (same IRQLL.0/PORTB.6 -> loc_D2E9 exit) so a genuine reset can
+; still interrupt the self-test.
 				push	d
 				jsr	check_io_inputs
 				jsr	serial_dma_start
@@ -4229,7 +4508,7 @@ sub_D2D3:							; D251p
 				tbbs	bit6, PORTB, loc_D2E9	; Port B Data Register
 				pull	d
 				ret
-; End of function sub_D2D3
+; End of function selfcheck_io_pump
 
 
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
@@ -4285,11 +4564,11 @@ loc_D2FC:							; D300j
 				jmp	loc_C88E
 ; End of function check_startup
 
-; START	OF FUNCTION CHUNK FOR sub_D1DB
+; START	OF FUNCTION CHUNK FOR factory_selfcheck
 
 locret_D316:							; loc_D206j
 				ret
-; END OF FUNCTION CHUNK	FOR sub_D1DB
+; END OF FUNCTION CHUNK	FOR factory_selfcheck
 ; START	OF FUNCTION CHUNK FOR check_startup
 
 loc_D317:							; loc_D1D8j
@@ -4309,7 +4588,7 @@ loc_D31E:							; D319j
 				jsr	increment_counters
 
 loc_D333:							; D32Bj
-				jsr	sub_CAE9
+				jsr	update_ect_enrich_clamp
 				jsr	update_odb_flags
 				tbbc	bit2, unk_48, loc_D371
 				ld	a, var_ve_x_pim_x_rpm
@@ -4365,10 +4644,10 @@ loc_D37C:							; D378j
 
 loc_D386:							; D37Ej
 				setb	bit0, PORTA
-				jsr	sub_D1DB
+				jsr	factory_selfcheck
 
 loc_D38B:							; D31Bj
-				jsr	sub_D59A
+				jsr	update_dmatx_status_flags
 				nop
 				nop
 				nop
@@ -4802,7 +5081,34 @@ loc_D57B:							; D583j
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
-sub_D59A:							; loc_D38Bp
+update_dmatx_status_flags:							; loc_D38Bp
+; ---------------------------------------------------------------------------
+; update_dmatx_status_flags: pack misc status bits into two DMA bytes
+;
+; Called once per main-loop tick (loc_D38B, when var_flags_41.7 is set -
+; the alternate path to update_ect_enrich_clamp/update_odb_flags's
+; loc_D333, not called alongside it). Two independent bitfields, each
+; built by clearing A then OR-ing in a bit per condition:
+;
+; dmatx_unk_169:
+;   bit2 = var_flags_40.6 clear
+;   bit3 = unk_47.2 clear
+;   bit4 = unk_47.3 clear
+;   bit5 = var_enrich_flags.6 clear
+;   bit6 = var_enrich_flags.5 clear
+;
+; dmatx_unk_16B:
+;   bit0 = var_input_bits.6 clear
+;   bit1 = var_input_bits.7 clear
+;   bit2 = PORTC.7 clear
+;   bit3 = var_input_bits.5 clear
+;   bit4 = PORTD_ASRIN.5 clear
+;
+; Physical meaning of the individual source bits beyond their existing
+; names/ports is not confirmed - this just establishes that these two
+; dmatx_* bytes are a packed status snapshot for CPU1, not independently
+; meaningful values.
+; ---------------------------------------------------------------------------
 				clr	a
 				tbbc	bit6, var_flags_40, loc_D5A0
 				or	a, #04h
@@ -4848,7 +5154,7 @@ loc_D5CC:							; loc_D5C7j
 loc_D5D1:							; loc_D5CCj
 				st	a, dmatx_unk_16B
 				ret
-; End of function sub_D59A
+; End of function update_dmatx_status_flags
 
 
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
