@@ -207,6 +207,9 @@ var_enrich_flags:		.block 1			; CA29r ...
 								; 4F.7 -
 								;
 var_rpm_div_25:			.block 1			; C985w ...
+; unk_51: written by update_rpm_smooth_filter, no in-ROM reader - resolved
+; as externally-readable-only via serial_debug_check's generic RAM-word
+; debug protocol (see its header comment), not dead code.
 unk_51:				.block 1			; C9FAw
 var_spd:			.block 1			; CCC6r ...
 var_enrichment_unk_53:		.block 1			; loc_CB27w ...
@@ -1580,7 +1583,16 @@ min_max_done:							; C60Bj
 
 				ld	a, dmarx_ect
 
-loc_C613:							; CF6Ep ...
+table_pair_interpolate_rpm_entry:							; CF6Ep ...
+; table_pair_interpolate_rpm_entry: entry point into table_pair_interpolate
+; (falls through below) with B defaulted to 0 and D set to var_rpm_x_5p12
+; before the call - table_pair_interpolate's own first instruction
+; preserves D across the lookup (restored via "mov x, d" at its tail), so
+; this variant is used by callers that need RPM to survive the
+; interpolation call. Caller supplies A (lookup value) and Y (map
+; pointer) as usual. Called 3x, all from the TVSV boost-control
+; calculation and its neighboring warning-debounce block (see the headers
+; above loc_CE86/loc_D037).
 				clr	b
 				.db  8Ch ; �
 				ld	d, var_rpm_x_5p12
@@ -2351,6 +2363,65 @@ loc_C824:							; C7C9j ...
 
 				; public reset_vector
 reset_vector:							; FFFEo
+; ---------------------------------------------------------------------------
+; reset_vector / clear_variables / loc_C88E / main_loop: CPU2 boot sequence
+; and main control-flow backbone
+;
+; Full architecture documented this session (previously only individual
+; pieces of the periodic-tick chain past main_continue were covered):
+;
+; 1) reset_vector (this label): raw hardware init - OMODE, ASR0/1 edge
+;    counters, TIMER3, PORTA/B/D, DOUT/DOM, TAIT (with a PORTD_ASRIN-bit-6
+;    read feeding back into which ASR3 edge to capture), IRQL/IMASK clear,
+;    stack pointer. Notably sets up the inter-MCU DMA registers: ASR2 to
+;    var_serbus_rx (the serial RX buffer) and **ASR3 to dmatx_ve_corr_map**
+;    - confirming that variable is literally the first byte of the entire
+;    DMA TX buffer sent to CPU1, not merely "one item in the fuel VE
+;    section" as its own header describes it.
+; 2) clear_variables (falls through from reset_vector): zero-fills two RAM
+;    ranges (var_flags_40-unk_7F byte-wise, var_ne_count-word_16D
+;    word-wise) - the working-variable region. Does NOT clear the
+;    var_flags_40-adjacent low region (0x0040-0x023F-ish) that
+;    loc_D2E9's reset-recovery path clears separately (see below) - the
+;    two clears cover different, only-partially-overlapping ranges.
+; 3) loc_C88E: shared soft-init entry point, reached BOTH from cold reset
+;    (falls through from clear_variables) AND from the runtime
+;    reset-recovery path (loc_D2E9, inside factory_selfcheck's function
+;    chunks, jumps here directly - see its own comment). Re-inits NE
+;    counters, several flags/counters to fixed defaults (0xFF/0xFE/0xF4/
+;    0xDE), primes ADC via two check_io_inputs calls, re-arms interrupts
+;    (IMASK=0x1006), then spins (loc_C8C3) until unk_47.5 is set (an
+;    external condition - not traced which interrupt sets it) before
+;    falling into main_loop.
+; 4) main_loop: the actual free-running top-level loop. Re-primes several
+;    peripheral registers (DDRA, DOM, IMASK, TAIT, TIMER3, ASR0/1, and
+;    ASR2/ASR3 again - same DMA buffer pointers as reset_vector),
+;    conditionally processes a received DMA frame (copy_serbus_rx, gated
+;    on unk_47.5), runs several small per-tick housekeeping/debounce
+;    checks (PORTB.5, var_cnt4ms_AA/AB/AC resets keyed off RAMST/IRQLL.5/
+;    PORTD_ASRIN.5/var_input_bits.2), then computes RPM: if
+;    var_cnt8ms_AF < 0x3D (recently reset - a stall/restart condition,
+;    matching update_rpm_smooth_filter's own reset note), zeroes
+;    unk_E8/EA/EC and re-inits NE counters instead of computing; otherwise
+;    calls calc_rpm (see its own header). Either way stores the result to
+;    var_rpm_x_5p12/dmatx_rpm_x_5p12/var_rpm_div_25, then hands off to
+;    main_continue - the entry to the whole periodic-tick chain documented
+;    across earlier sessions (RPM filter -> enrichment chain ->
+;    calc_params -> calc_ignition_timing -> TVSV -> warning-debounce ->
+;    loc_D317 -> update_ect_enrich_clamp/update_odb_flags/
+;    factory_selfcheck dispatch).
+;
+; The loop closes via factory_selfcheck's shared reset-detection check
+; (IRQLL.0/PORTB.6, embedded in check_startup and selfcheck_io_pump,
+; called throughout the tick chain): on trigger, execution unwinds to
+; loc_D2E9, which does a hardware settle delay, clears RAM 0x0040-0x02FF
+; (a THIRD, still-different range from clear_variables's two - all of RAM
+; below the DMA-buffer region, essentially), resets the stack, re-inits
+; PORTA/PORTB/PORTD_ASRIN/DOUT, sets var_flags_40.0, and jumps back to
+; loc_C88E - i.e. this is a full soft-reset triggered by an
+; interrupt/reset condition detected anywhere in the periodic tick, not
+; just at power-on.
+; ---------------------------------------------------------------------------
 				ld	#07h, OMODE		; Mode control Register
 				di
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
@@ -2558,6 +2629,25 @@ loc_C97D:							; C978j
 
 
 calc_rpm:							; C97Bp
+; calc_rpm: converts var_ne_sum (raw NE pulse period sum) to var_rpm_x_5p12
+; via a normalize/lookup/de-normalize reciprocal approximation, avoiding a
+; full division despite RPM's huge dynamic range:
+; 1) Clamp D (the period) to a minimum of 0x0300 (prevents a pathologically
+;    small period - i.e. implausibly high RPM - from breaking the
+;    normalization below).
+; 2) Left-shift D repeatedly (loc_C992/loc_C995) until its sign bit sets
+;    (normalized to the top bit), counting shifts by walking X through the
+;    divide_rD_128/64/32/16/8/4/2 cascade (incrementing X selects the next
+;    one - the same shared-fall-through cascade pattern used throughout
+;    this codebase's math library).
+; 3) Look up a correction byte (interp_table_pair, table adjacent to
+;    loc_C992) indexed by the shift count, halve D, bias the correction by
+;    0x40, then apply whichever divide_rD_N the shift count selected
+;    (computed jsr through X) and double the result.
+; NOT independently re-derived: the exact table_c99c constants and the
+; 0x40 bias - the overall shape (normalize, table-correct, power-of-2
+; divide, matching a classic reciprocal-approximation technique) is
+; confirmed, the precise numerical justification for each constant is not.
 				ld	d, var_ne_sum		; Get sum of NE	pulses
 				cmp	a, #03h			; Check	NE sum is greater than minimum (0300h)
 				bcc	loc_C992		; Jump forward if so
@@ -2603,6 +2693,25 @@ main_continue:							; C987j
 				bra	loc_C9E0
 
 loc_C9BC:							; main_continuej
+; ---------------------------------------------------------------------------
+; loc_C9BC: gated (1/32-per-call) low-pass filter for unk_E8, feeding
+; update_rpm_filter_EA below. RESOLVED this session:
+;
+; unk_E8 tracks var_rpm_x_5p12, but HOW depends on dmarx_unk_D6's sign and
+; whether RPM's high byte falls in [0x09,0x19) (~450-1250rpm, an
+; idle-ish band):
+; - dmarx_unk_D6 >= 0 (positive/zero), OR RPM's high byte outside that
+;   band: unk_E8 snaps directly to var_rpm_x_5p12, no smoothing.
+; - dmarx_unk_D6 < 0 AND RPM in that idle-ish band: unk_E8 = unk_E8 +
+;   max(1, (var_rpm_x_5p12 - unk_E8)/32) toward var_rpm_x_5p12 - i.e. a
+;   slow (~1/32 per call) approach with a minimum-step-of-1 safeguard
+;   against a shrinking delta rounding to a permanent stall.
+;
+; dmarx_unk_D6 (a single signed byte from CPU1 via DMA) is used only by
+; its sign, here and at one other site (loc_CCA0's dmatx_unk_162 gate,
+; part of the fuel VE section) - its physical meaning (a CPU1-side trim
+; direction of some kind, unconfirmed which) isn't traced on CPU1's side.
+; ---------------------------------------------------------------------------
 				ld	d, var_rpm_x_5p12
 				ld	x, dmarx_unk_D6
 				bpz	loc_C9DB
@@ -2647,9 +2756,13 @@ update_rpm_smooth_filter:							; CD83p
 ; unk_51 = |unk_EC - var_rpm_x_5p12| (saturating divide, then sign-restored
 ; via unk_48 and re-biased by 0x80) - a magnitude-ish RPM deviation sample.
 ;
-; NOT CONFIRMED: unk_51 has no reader anywhere in this file (grepped) - its
-; consumer, if any, isn't in this ROM's own code path. Left unrenamed;
-; don't assume it feeds anything downstream without finding that reader.
+; RESOLVED: unk_51 has no reader anywhere in this ROM's own control-flow
+; code - its only "consumer" is external tooling, via
+; serial_debug_check's generic RAM-word debug protocol (see that
+; function's header). Not fed into any downstream ECU calculation; left
+; unrenamed since its physical meaning ("RPM deviation sample") is
+; already captured above and a live-data-only value doesn't need a
+; control-flow-oriented name.
 ; Called every ~32ms from calc_ignition_timing (var_flags_41.6 gate),
 ; alongside decay_enrichment_unk_53/decay_enrichment_unk_FE and the
 ; dmarx_tham-indexed table lookup that follows it there.
@@ -3189,19 +3302,27 @@ calc_params:							; loc_CBE9j
 ; 2) dmatx_scaled_ve = mult_rDrX_saturate(var_map_ve + 0x51, 0x200F) - VE
 ;    rescaled (CPU2's own near-identical twin of CPU1's
 ;    mult_rDrX_saturate) for whatever units CPU1 expects it in.
-;    = CPU1's dmarx_word_226 -> table_ve_corr_map(dmarx_pim2)/32 (a
-;    MAP-only VE correction table on CPU1's side - the naming here
-;    reflects the CPU1-side consumption, not a literal re-derivation of
-;    this exact value; see docs/fuel_calculation_system.md for the
-;    cross-reference caveat).
+;    = CPU1's dmarx_scaled_ve (NOT dmarx_word_226 - see the resolved-
+;    inconsistency note below), consumed in chunk CE6C's accel/idle-
+;    enrichment scaling (divide_d_by_x:loc_E4EB, as a mult_rDrX operand).
 ; 3) (in calc_ignition_timing, CE4E) dmatx_ve_corr_map =
 ;    table_ve_corr_map(dmarx_pim2)/32 (a MAP-only correction table,
 ;    distinct from the main VE map) = CPU1's dmarx_word_226.
 ;
-;    NOTE: items 2 and 3 both claim "= CPU1's dmarx_word_226" - that's
-;    inconsistent (dmarx_word_226 is a single CPU1 variable, can't equal
-;    two different CPU2 outputs) and predates this session; not resolved
-;    here, flagging for whoever picks this up next.
+;    RESOLVED (was flagged as an inconsistency - both items 2 and 3 used
+;    to claim "= CPU1's dmarx_word_226", which can't both be true):
+;    verified via the DMA offset formula (CPU1_addr = CPU2_addr + 0xDA)
+;    against the assembled .lst of both ROMs. dmatx_ve_corr_map's address
+;    (0x014D + 0xDA = 0x0227) matches dmarx_word_226 (0x0226, off by the
+;    same 1-byte padding already documented elsewhere for word-sized DMA
+;    variables). dmatx_scaled_ve's address (0x0153 + 0xDA = 0x022D) does
+;    NOT match dmarx_word_226 at all (7 bytes off) - it matches CPU1's
+;    already-separately-named dmarx_scaled_ve (0x022C, same 1-byte
+;    padding) instead, which was simply never cross-referenced back here.
+;    The computation shape agrees too: item 3 (table lookup indexed by
+;    dmarx_pim2, /32) exactly matches dmarx_word_226's CPU1-side described
+;    producer; item 2 (a saturating multiply-and-rescale of var_map_ve) does
+;    not.
 ; 4) (in calc_ignition_timing, CE67) dmatx_ve_corr_map_tps =
 ;    map_ve_corr_map_tps(MAP, dmarx_tps) bilinear correction, forced to 0
 ;    when dmarx_var_flags_46.2 is set (CPU1's idle-debounce flag, relayed
@@ -3778,7 +3899,7 @@ loc_CF5F:							; CF62j
 				st	a, var_tvsv_scale_knock
 				ld	y, #table_tha_tvsv
 				ld	a, dmarx_tha
-				jsr	loc_C613
+				jsr	table_pair_interpolate_rpm_entry
 				st	a, var_tvsv_scale_tha
 				ld	a, var_tvsv_scale_tps_rpm
 				mul	a, var_tvsv_scale_knock
@@ -3833,7 +3954,7 @@ loc_CFBF:							; CFBBj
 loc_CFC4:							; CFC1j
 				st	a, var_tvsv_unk_120
 				ld	y, #table_tvsv_C4C2
-				jsr	loc_C613
+				jsr	table_pair_interpolate_rpm_entry
 				mov	a, b
 				clr	a
 				add	b, var_tvsv_117
@@ -3981,7 +4102,7 @@ loc_D037:							; loc_D01Cj
 
 loc_D055:							; D050j
 				ld	a, dmarx_pim2
-				jsr	loc_C613
+				jsr	table_pair_interpolate_rpm_entry
 				shr	d
 				shr	d
 				shr	d
@@ -4533,7 +4654,12 @@ check_startup:							; D283p ...
 				tbbs	bit0, IRQLL, loc_D2E9	; Check	if IRL interrupt pending, jump if so
 				tbbs	bit6, PORTB, loc_D2E9	; Port B Data Register
 				ret
-;Some kind of reset, wait for a	bit and	then clear all RAM
+; CONFIRMED (was a tentative guess): this is a full soft-reset back into
+; the boot sequence, not just "some kind of reset". Hardware settle delay,
+; clears RAM 0x0040-0x02FF, resets the stack, re-inits PORTA/PORTB/
+; PORTD_ASRIN/DOUT, sets var_flags_40.0, then jumps to loc_C88E - see the
+; comprehensive header above reset_vector for the full boot/main-loop/
+; reset-recovery architecture this is one piece of.
 
 loc_D2E9:							; D2DAj ...
 				ld	x, #0F9C0h
@@ -5263,6 +5389,28 @@ int_return:							; loc_D614j
 
 
 serial_debug_check:						; D46Ep
+; Implements a generic "read an arbitrary 16-bit RAM word by index" debug
+; protocol over the K-line/diagnostic serial link (SIDR_SODR/SSD),
+; polled every 4ms from iv6_4ms_process. On receiving a request byte
+; (with SSD.6 clear - meaning not confirmed), loc_D648 doubles D (the
+; request index, populated by an earlier stage of this same protocol
+; across ticks - not fully traced) to get a byte address, reads the 16-bit
+; word there via indirect [y], and transmits it back over serial. Special
+; case: index 0x1F returns rom_version instead of a computed address - an
+; "identify device" query, confirming this is a live-data/debug-tool
+; protocol (matches known external tool capability to live-read ECU RAM
+; on these ECUs).
+;
+; RESOLVED: this is why unk_51 (and most other RAM bytes) has no in-ROM
+; reader - its "consumer" is external tooling via this protocol (index
+; 0x28 would read the word at 0x50-0x51, covering unk_51 as its low
+; byte), not internal ECU control logic. No bounds-check on the index was
+; found in what's traced here, so this likely reaches most/all of RAM.
+;
+; NOT fully traced: the exact byte-by-byte framing (how the 2-byte index
+; accumulates across multiple 4ms ticks, what SSD.6 distinguishes) - a
+; full write-up of this protocol would be a worthwhile future subsystem
+; doc, similar treatment to adc_system.md/knock_sensor_system.md.
 				clrb	bit1, SSD		; Prime	serial Tx buffer
 				ld	a, #0DAh		; Write	0xDA...
 				st	a, SIDR_SODR		; ...to	serial Tx buffer

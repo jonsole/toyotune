@@ -10686,6 +10686,12 @@ loc_E4D4:							; CODE XREF: divide_d_by_x+1F31j
 				mov	d, x
 
 loc_E4EB:							; CODE XREF: divide_d_by_x+1F4Aj
+; dmarx_scaled_ve = CPU2's dmatx_scaled_ve (verified via the 0xDA DMA
+; offset formula - see docs/fuel_calculation_system.md), a rescaled copy
+; of CPU2's base VE map (mult_rDrX_saturate(var_map_ve+0x51, 0x200F)) -
+; distinct from dmarx_word_226/228/22A (the speed-density terms consumed
+; by calc_inj_pw_base). Used here purely as a mult_rDrX scale operand for
+; this chunk's accel/idle-enrichment combination.
 				ld	d, dmarx_scaled_ve
 				jsr	mult_rDrX
 

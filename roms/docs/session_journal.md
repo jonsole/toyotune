@@ -8,6 +8,100 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, latin-1 encoding, \r\n line
 
 ## Completed subsystems
 
+### CPU2 (D151803-9661): boot sequence and main control-flow backbone documented
+First slice of the "broad prose-documentation gap" work: full write-up of
+`reset_vector` -> `clear_variables` -> `loc_C88E` -> `main_loop` ->
+`calc_rpm`, plus the runtime reset-recovery path that closes the loop.
+Previously only individual pieces of the periodic-tick chain *past*
+`main_continue` were documented - this fills in everything before it.
+
+- **`reset_vector`**: raw hardware init. Notably, `ASR3` (the DMA TX
+  register) is set to `dmatx_ve_corr_map`'s address - confirming that
+  variable is literally the first byte of the entire inter-MCU DMA TX
+  buffer, not just "one item in the fuel VE section" as documented
+  elsewhere.
+- **`clear_variables`**: zero-fills two RAM ranges (byte-wise
+  `var_flags_40`-`unk_7F`, word-wise `var_ne_count`-`word_16D`) - the
+  working-variable region, distinct from the reset-recovery path's clear.
+- **`loc_C88E`**: a shared soft-init entry point reached both from cold
+  reset and from the runtime reset-recovery path below - re-inits NE
+  counters and several fixed-default flags/counters, primes ADC, re-arms
+  interrupts, then spins until `unk_47.5` sets before falling into
+  `main_loop`.
+- **`main_loop`**: the actual free-running top-level loop - re-primes
+  peripherals, conditionally processes a received DMA frame, runs several
+  small per-tick debounce checks, computes RPM (via `calc_rpm`, or a
+  stall/restart reset path when `var_cnt8ms_AF` is still low), then hands
+  off to `main_continue` - the already-documented periodic-tick chain.
+- **`calc_rpm`**: converts `var_ne_sum` to RPM via a normalize/table-
+  lookup/de-normalize reciprocal approximation (left-shift to normalize,
+  correction-table lookup, then the appropriate power-of-2 divide from
+  the shared `divide_rD_128`-`divide_rD_2` cascade) - avoids a full
+  division despite RPM's huge dynamic range. Exact table constants not
+  independently re-derived; the overall algorithm shape is confirmed.
+- **Closed the loop**: confirmed `loc_D2E9` (reached via the shared
+  `IRQLL.0`/`PORTB.6` reset-detection check embedded in `check_startup`
+  and `selfcheck_io_pump`, called throughout the periodic tick) does a
+  hardware settle delay, clears RAM `0x0040`-`0x02FF` (a third,
+  still-different range from `clear_variables`'s two), resets the stack,
+  re-inits PORTA/PORTB/PORTD_ASRIN/DOUT, and jumps back to `loc_C88E` -
+  i.e. a full soft-reset triggerable by any reset/interrupt condition
+  detected anywhere in the tick chain, not just at power-on. Resolved a
+  pre-existing tentative comment ("Some kind of reset...") into a
+  confirmed explanation.
+
+Full detail in the header comment above `reset_vector` in the ASM.
+
+### CPU2 (D151803-9661): three flagged loose ends resolved
+- **dmarx_word_226 double-claim, resolved**: verified via the DMA offset
+  formula against both ROMs' assembled `.lst` files. `dmatx_ve_corr_map`
+  (`0x014D`) is the real match for CPU1's `dmarx_word_226` (`0x0226`, off
+  by the already-documented 1-byte padding). `dmatx_scaled_ve` (`0x0153`)
+  does not match at all (7 bytes off) - it's actually CPU1's
+  already-separately-named `dmarx_scaled_ve` (`0x022C`), just never
+  cross-referenced. Fixed `calc_params`'s header on CPU2, added a
+  cross-reference comment at the CPU1 consumer site (chunk `CE6C`'s
+  `loc_E4EB`), and updated the DMA cross-reference table in
+  `fuel_calculation_system.md` (which also had stale pre-rename CPU2
+  variable names - fixed those too).
+- **unk_51's consumer, resolved**: found `serial_debug_check` (already
+  named, never examined) implements a generic "read arbitrary 16-bit RAM
+  word by index" debug protocol over the K-line serial link, polled every
+  4ms from `iv6_4ms_process`. Special index `0x1F` returns `rom_version`
+  - an "identify device" query, confirming this is a live-data/debug-tool
+  protocol with no apparent bounds-check on the index. `unk_51`'s "no
+  in-ROM reader" finding from two sessions ago is now explained: its
+  consumer is external tooling, not ECU logic - not dead code. Full
+  protocol byte-framing not traced (a worthwhile future subsystem doc,
+  flagged in Pending work).
+- **main_continue's RPM-delta computation (loc_C9BC), resolved**: a gated
+  low-pass filter for `unk_E8` (which feeds `update_rpm_filter_EA`).
+  `dmarx_unk_D6`'s sign selects between two modes: negative (and RPM in a
+  ~450-1250rpm idle-ish band) gives a slow ~1/32-per-call approach with a
+  minimum-step-of-1 safeguard; otherwise `unk_E8` snaps directly to
+  current RPM. `dmarx_unk_D6` itself (a signed byte from CPU1, used only
+  by its sign here and at one other site) remains uncharacterized on
+  CPU1's side.
+
+### CPU2 (D151803-9661): loc_ sweep - audited for mis-classified routines
+Swept all 284 `loc_` labels for the specific failure mode of "this is
+actually a callable subroutine that never got promoted from IDA's default
+name" - checked for every `jsr loc_*`/`bsr loc_*` call site (a `loc_`
+label reached via a *call* instruction, not just a branch, is functionally
+a subroutine regardless of its name). Found exactly **one**:
+`loc_C613` (called 3x, all from the TVSV/warning-debounce area documented
+last session) -> renamed to `table_pair_interpolate_rpm_entry`: an entry
+point into the already-named `table_pair_interpolate` that defaults B=0
+and preserves RPM in D across the call (table_pair_interpolate's own first
+instruction stashes D for the duration).
+
+Everything else among the 284 is a genuine internal branch target (`bra`/
+`beq`/`bne`/etc.) within an already-named function - the expected, correct
+state per IDA's convention (`loc_` = internal label, `sub_` = callable
+routine), not an oversight. This sweep is a check, not a renaming task in
+itself - no further "loc_ hiding a real function" work is needed on CPU2
+unless new code gets traced that calls into a currently-unexamined `loc_`.
+
 ### CPU2 (D151803-9661): periodic warning/diagnostic-output debounce phase documented
 `loc_D037`-`loc_D0B0` (immediately after the TVSV block's `drive_DOUT2_tvsv`,
 scoped out as a separate item last session) - part of the same main-loop
@@ -710,55 +804,79 @@ Key renames:
 
 ## Pending work (next targets)
 
-### Functions renamed but not commented
-- calc_ign_timing_min (sub_EB57)
-- check_limiters_active / check_limiters_active_2 (near injector_drive) - renamed
-  and inline-commented, but no header-block writeup yet
+Split by which CPU/ROM each item belongs to - CPU1 (D151803-9651) and
+CPU2 (D151803-9661) are physically separate chips with separate address
+spaces; addresses/chunk names below are only meaningful within their own
+ROM.
 
-### Not yet started
-- **calc_params/calc_ignition_timing's item-2/item-3 dmarx_word_226
-  inconsistency** - both dmatx_scaled_ve and dmatx_ve_corr_map claim to
-  equal CPU1's dmarx_word_226 in the pre-existing header comment; only one
-  can be right. Not resolved this session.
-- **unk_51's consumer** (written by CPU2's update_rpm_smooth_filter, no
-  reader found anywhere in this file) - either dead code, read via
-  indirect addressing not caught by a plain grep, or genuinely unused in
-  this ROM revision. Worth a closer look if update_rpm_smooth_filter's
-  purpose becomes relevant to other work.
-- **main_continue's RPM-delta/ratio computation** (loc_C9BC, feeds
-  update_rpm_filter_EA's D input) - traced only far enough to establish
-  what update_rpm_filter_EA does with D, not what the delta/ratio
-  computation itself against unk_E8 and dmarx_unk_D6 means physically.
-- CPU2 ROM (D151803-9661) systematic pass - substantial progress across
-  two sessions (see Completed subsystems above; all originally-unresolved
-  sub_ functions are now named), but still far from complete: ~52% of
-  labels have meaningful pre-existing names and most functions (284
-  remaining loc_ labels) lack the gold-standard header-comment treatment
-  even where renamed. Leverage existing renames (dmarx_pim2/dmarx_tps/
-  dmarx_ect/var_map_ve/etc.) rather than re-deriving. See "CPU1<->CPU2 DMA
-  cross-reference" below for the targeted (not full-pass) DMA lookup work
-  done earlier.
-- loc_E112 onward, and the start of chunk E363 up to the restore point
-  around address E37F - continuation of the DC77/DD38/DD59 diagnostic
-  phase; loc_DD59 jumps directly to loc_E112.
+### CPU1 (D151803-9651)
+
+**Functions renamed but not commented:**
+- calc_ign_timing_min (sub_EB57)
+- check_limiters_active / check_limiters_active_2 (near injector_drive) -
+  renamed and inline-commented, but no header-block writeup yet
+
+**Not yet started:**
 - **sub_E551 (~E551-E6B0+, 350+ bytes) - a substantial, entirely
-  uncharacterized function**, scoped out this session while chasing
-  unk_1C8's producer chain (its immediate write site, loc_E6A8, sits just
-  past this function's end and folds in a dmatx_pim/var_pim2-linked value
-  that traces back into sub_E551's output). Calls sub_E767, uses TPS delta
+  uncharacterized function**, scoped out while chasing unk_1C8's producer
+  chain (its immediate write site, loc_E6A8, sits just past this
+  function's end and folds in a dmatx_pim/var_pim2-linked value that
+  traces back into sub_E551's output). Calls sub_E767, uses TPS delta
   (get_tps_unk/var_tps_delta), runs a signed_proportional_update loop
   against var_unk_knk_133, and calls set_knock_sensor_err_flag/
   check_knock_sensor_err_flag - looks like its own knock/PIM-linked
   limiting calculation (possibly boost/overpressure-related), not a small
-  helper. Recommend a dedicated session, same treatment as D931 got.
-  See fuel_calculation_system.md Open Questions for detail.
-- sub_E551, loc_FC38 (called from chunk C9DA) - not deep-dived
+  helper. Recommend a dedicated session, same treatment as D931 got. See
+  fuel_calculation_system.md Open Questions for detail. **Related:**
+  loc_FC38 (also called from chunk C9DA, alongside sub_E551) - not
+  deep-dived either, worth tackling in the same pass.
+- loc_E112 onward, and the start of chunk E363 up to the restore point
+  around address E37F - continuation of the DC77/DD38/DD59 diagnostic
+  phase; loc_DD59 jumps directly to loc_E112.
 - The second closed-loop lambda trim system in chunk D1DD
   (var_nv_trim_unk_96/unk_6B/var_lambda_count_unk_6C) - distinguish its
   purpose from the zone-based nv_afr_trim system
 - loc_DA63's lambda_avg/lambda_integrator adjustment logic (traced/renamed
   for the alias, but not characterized - looks like yet another distinct
   lambda-trim mechanism, see fuel_calculation_system.md Open Questions)
+
+### CPU2 (D151803-9661)
+
+All functions are now named (verified: every jsr/bsr call target,
+indirect/computed call target, and interrupt vector table entry resolves
+to a meaningful name - see "loc_ sweep" above). What's left is prose
+documentation and a few specific loose ends, not "find the function" work.
+
+**Not yet started:**
+- **serial_debug_check's full protocol framing** - discovered while
+  resolving unk_51's consumer: a generic "read arbitrary RAM word by
+  index" debug protocol over the K-line serial link (see that function's
+  header comment). The overall existence and purpose is established, but
+  the exact byte-by-byte framing (how the 2-byte index accumulates across
+  4ms ticks, what SSD.6 distinguishes) isn't traced. Worth a dedicated
+  subsystem doc, similar treatment to adc_system.md.
+- **dmarx_unk_D6's physical meaning** - a signed byte from CPU1, used
+  only by its sign on CPU2 (loc_C9BC's RPM filter gate, and
+  loc_CCA0's dmatx_unk_162 gate). Not traced on CPU1's side - what CPU1
+  computation produces it, and what a negative value represents, is
+  unknown.
+- **Broad prose-documentation gap**: ~52% of labels have meaningful
+  pre-existing names and all functions are resolved (see above), but most
+  of the 284 remaining loc_ labels' surrounding code lacks the
+  gold-standard header-comment treatment - fuel VE, ignition timing base,
+  the enrichment-decay chain, TVSV boost control, the warning-debounce
+  phase, factory_selfcheck, the RPM-smoothing helpers, and (as of this
+  session) the boot sequence/main control-flow backbone
+  (reset_vector/clear_variables/loc_C88E/main_loop/calc_rpm) have real
+  write-ups so far - most of what's left is main_continue_2 onward's
+  neighbors not yet covered, the TVSV/warning-debounce area's own
+  neighbors, update_odb_flags's full body, and the serial/ADC/interrupt
+  handling not yet covered (int_vector_e_asr2/iv6_ne_process,
+  int_vector_0, int_vector_6_sw_int, int_vector_4_kph/update_spd,
+  copy_serbus_rx, check_io_inputs, generate_vf_PORTA_4). Leverage existing
+  renames (dmarx_pim2/dmarx_tps/dmarx_ect/var_map_ve/etc.) rather than
+  re-deriving. See "CPU1<->CPU2 DMA cross-reference" below for the
+  targeted (not full-pass) DMA lookup work done earlier.
 
 ---
 
@@ -802,8 +920,13 @@ Key renames:
 ---
 
 ## Architecture notes
-- CPU1 (D151803-9651): real-time I/O — ADC, ignition, injectors, idle control
-- CPU2 (D151803-9661): fuel/ignition maps, boost control, lambda calculations
+- CPU1 (D151803-9651): real-time I/O — ADC, ignition, injectors, idle
+  control, closed-loop lambda trim (var_lambda_integrator/nv_afr_trim_base)
+- CPU2 (D151803-9661): fuel/ignition maps, boost control (TVSV duty-cycle
+  calculation). **Correction**: does NOT do lambda calculations itself -
+  only reads dmarx_adc_lambda (relayed from CPU1) to pack a rich/lean
+  status bit into an OBD diagnostic output byte (update_odb_flags). All
+  closed-loop lambda trim ownership is CPU1's.
 - Inter-CPU: ASR2 (DMA RX 0x81DE) / ASR3 (DMA TX 0x9200), 4ms frame rate
 - TIMER resolution: 4us per count (TIMERC/8)
 - NE pulses: 24 per revolution (6 per cylinder x 4 cylinders)

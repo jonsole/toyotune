@@ -171,9 +171,21 @@ used instead of the numeric formula):
 
 | CPU1 name | CPU2 name | CPU2 computation |
 |---|---|---|
-| `dmarx_word_226` | `dmatx_map_table_unk_14D` | `table_map_unk_C53D` lookup indexed by `dmarx_pim2` (MAP, received from CPU1), `/32` - a MAP-only VE/fuel correction table |
-| `dmarx_word_228` | `dmatx_unk_14F` | `map_map_tps_C51F` bilinear lookup indexed by `dmarx_pim2` (MAP) and `dmarx_tps` (TPS, from CPU1), `/32` - forced to 0 when `dmarx_var_flags_46.2` is set (CPU1's idle-debounce flag, relayed back to CPU2 via DMA) |
-| `dmarx_word_22A` | `dmatx_unk_151` (= `var_ve_x_pim_x_rpm_unk_10C`, saturated) | `var_map_ve` (CPU2's base VE map, `map_c006_ve`, indexed by RPM and MAP) multiplied by `var_rpm_x_5p12` and by `dmarx_pim2/16`, i.e. **VE × MAP × RPM** - the classic speed-density airflow/load term |
+| `dmarx_word_226` | `dmatx_ve_corr_map` (was `dmatx_map_table_unk_14D`, renamed in a later CPU2 session) | `table_ve_corr_map` lookup indexed by `dmarx_pim2` (MAP, received from CPU1), `/32` - a MAP-only VE/fuel correction table. Computed inside `calc_ignition_timing`, not `calc_params` - see that ASM's own header comments |
+| `dmarx_word_228` | `dmatx_ve_corr_map_tps` (was `dmatx_unk_14F`) | `map_ve_corr_map_tps` bilinear lookup indexed by `dmarx_pim2` (MAP) and `dmarx_tps` (TPS, from CPU1), `/32` - forced to 0 when `dmarx_var_flags_46.2` is set (CPU1's idle-debounce flag, relayed back to CPU2 via DMA). Also computed inside `calc_ignition_timing` |
+| `dmarx_word_22A` | `dmatx_ve_x_pim_x_rpm` (was `dmatx_unk_151`, = `var_ve_x_pim_x_rpm`, saturated) | `var_map_ve` (CPU2's base VE map, `map_c006_ve`, indexed by RPM and MAP) multiplied by `var_rpm_x_5p12` and by `dmarx_pim2/16`, i.e. **VE × MAP × RPM** - the classic speed-density airflow/load term |
+
+**Also resolved (separate from the three DMA words above):** CPU1's
+`dmarx_scaled_ve` (`0x022C`) = CPU2's `dmatx_scaled_ve` (`0x0153`, verified
+via the `0xDA` offset formula) - `mult_rDrX_saturate(var_map_ve + 0x51,
+0x200F)`, a differently-rescaled copy of the base VE map. This was
+previously mis-cross-referenced in `calc_params`'s own header comment as
+"= CPU1's `dmarx_word_226`" (a genuine inconsistency, since two CPU2
+outputs can't both equal one CPU1 variable) - corrected there. Consumed
+on CPU1's side in chunk `CE6C`'s accel/idle-enrichment scaling
+(`divide_d_by_x:loc_E4EB`, as a `mult_rDrX` operand), not by
+`calc_inj_pw_base` at all - i.e. it's unrelated to the speed-density base
+fuel load calculation this section otherwise covers.
 
 So this calculation is confirmed to be a **speed-density base fuel
 load computation**: CPU2 looks up VE from a MAP/RPM table, forms the
