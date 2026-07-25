@@ -97,8 +97,15 @@ ROM. The raw bits were not traced back to their source this session.
 
 A separate threshold check (`byte_C36C`/`C36E`/`C370`, also switch-selected)
 sets `var_diag_errors_5.0` and feeds both `check_knock_sensor_err_flag` and
-an accumulator `unk_1A7` — purpose not fully confirmed, but it participates
-in the Phase 1 sum and later resurfaces in Phase 3.
+an accumulator `unk_1A7`. **Resolved**: `set_knock_sensor_err_flag`/
+`check_knock_sensor_err_flag` share one fall-through tail with `negate_rD`
+(see their own header comment in `D151803-9651.asm`) - `var_diag_errors_5.0`
+isn't knock-sensor-specific here, it's reused as a generic "did we negate
+D" remember-bit for a disguised abs()/restore-sign idiom. So this site is
+computing a delta that may go negative, taking its magnitude (recording
+that via the flag), summing it into `unk_1A7`, then presumably restoring
+the sign later via `check_knock_sensor_err_flag` wherever `unk_1A7`
+resurfaces in Phase 3 - not independently re-traced this session.
 
 The five terms are summed, plus a `table_iscv_C391` entry (values `0x00, 0x08,
 0x10, 0x20`) selected by `var_io_input2` bits 6/7 (undocumented elsewhere in

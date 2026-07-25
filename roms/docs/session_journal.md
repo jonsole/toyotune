@@ -2,9 +2,177 @@
 
 ## Session overview
 Reverse engineering of Toyota 3S-GTE ECU CPU1 ROM (Toshiba D8X / Denso 8X MCU).
-Working file: D151803-9651.ASM (IDA Pro disassembly, latin-1 encoding, \r\n line endings)
+Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
+"Claude/ working copies converted to UTF-8" below -, \r\n line endings)
 
 ---
+
+### Claude/ working copies converted to UTF-8 (recovering earlier silent corruption)
+Both `Claude/D151803-9651.asm` and `Claude/D151803-9661.asm` were CP437-
+encoded (the old IBM PC/DOS codepage IDA exported them in), not Latin-1/
+CP1252 as CLAUDE.md previously claimed. Investigating a user question about
+"odd bytes" (0x18/0x19 before xref type letters - already documented in
+CLAUDE.md as invisible stray control bytes) turned up that they're CP437's
+control-range glyphs for `↑`/`↓` (IDA's xref-direction markers) - and, more
+importantly, that a **separate, much larger corruption had already silently
+happened**: every CP437 byte ≥0x80 (the decorative box-drawing "SUBROUTINE"/
+section-divider banners) had been mangled into the Unicode replacement
+character `�` (U+FFFD) at some point during this project's prior Read/Edit
+tool round-trips, which assume UTF-8. This was already baked into git HEAD
+for both files (3,822 instances in the CPU2 copy, 42,235 in the CPU1 copy) -
+not something this session caused, but not previously noticed either.
+
+**Recovered, not just patched over**: the non-`Claude/` buildable siblings
+(`D151803-9661.ASM`, `D151803-9651.ASM`) were never round-tripped this way
+and still had clean, original CP437 bytes, including the banner lines -
+which are pure unmodified IDA boilerplate never touched by any RE rename.
+Reconstruction approach: line-diff the buildable file against the Claude
+copy (normalizing high-byte/corruption runs to a placeholder so corrupted
+and clean versions of the same boilerplate line still match as "equal"),
+then for every corrupted line in the Claude copy that diffed as unchanged
+boilerplate, substitute the buildable file's clean bytes (CP437-decoded).
+A handful of lines (the file's own top IDA-header banner on both files, and
+one mid-function section divider on CPU1 that fell outside the diff's
+alignment) needed manual identification by content/context matching rather
+than automatic diffing. Verified byte-for-byte: every line's ASCII-only
+content matched between before/after (proving no real text was lost or
+altered, only the encoding representation changed), and both files still
+assemble to the identical binary as their buildable counterparts via
+`verify_assembly_match.py` (0 real edit regions).
+
+Scope: only the two actively-edited `Claude/` working copies were converted.
+The rest of the repo's ~40 other `.ASM`/`.asm` files are still raw CP437 and
+still carry both risks (silent corruption on any UTF-8-assuming tool
+round-trip, and invisible-byte edit-tool mismatches) - not addressed this
+session, left for a future decision on scope. See CLAUDE.md's updated
+encoding note.
+
+### CPU2 (D151803-9661): serial_dma_start/int_vector_0's ASR2/ASR3/TIMER3 protocol decoded
+Largely closes the "serial_dma_start/int_vector_0's exact protocol/timing"
+pending item - the software-side register format is now understood, even
+though the electrical-level details (pins/baud rate/clock master) remain
+genuinely unknown without hardware probing (see
+toshiba-8x-technical-reference.md's "Known Unknowns").
+
+- **ASR2/ASR3 register format, confirmed by arithmetic against
+  `main_loop`'s own initial DMA arm** (which uses named symbols instead
+  of these two functions' hard-coded constants, letting the constants be
+  decoded): both are 16-bit registers written as `mode_nibble | address`.
+  ASR2 (RX) = `0x9000 | var_serbus_rx` (`0x9127` on this ROM) - the raw
+  incoming-frame scratch buffer `copy_serbus_rx` unpacks. ASR3 (TX) =
+  `0x8000 | 0x14D` - `0x14D` is `dmatx_ve_corr_map`, the first named
+  `dmatx_*` variable, meaning TX has no separate packing buffer: the
+  engine streams CPU2's live `dmatx_*` variables directly.
+- **`int_vector_0` confirmed = IV0** (its `IRQLL` bit-2 clear matches
+  toshiba-8x-technical-reference.md's own "IV0 - Enable: set IMASKL bit
+  2") - a periodic ~353Hz tick (per that doc's separate timing
+  measurement), not something triggered by serial activity. So this
+  whole subsystem is a fixed-rate software poll/re-arm loop, not an
+  edge-triggered ISR.
+- **TIMER3** is written with full 8-bit values here, which doesn't fit
+  the technical reference's base-variant "Timer LSB bits [2:0]"
+  description - flagged there as a probable enhanced-variant difference,
+  exact bits not decoded.
+- unk_55/unk_56 given confident (not fully confirmed) readings as
+  timeout-retry counters; **correction**: the previous header's claim
+  that this subsystem relates to unk_47.7 was wrong - unk_47.7 is never
+  written anywhere in this file (by any instruction), only cleared by
+  check_starter_running, which is itself an open question but unrelated
+  to serial_dma_start.
+- **Still open**: unk_126's bit 6/7 semantics (shadowed into the real
+  ASR0N register - whether ASR0 is itself partly repurposed on this
+  variant isn't established), and all electrical-level protocol details.
+
+toshiba-8x-technical-reference.md's Appendix updated with the ASR2/ASR3/
+TIMER3 findings. Verified via verify_assembly_match.py - 0 real edit
+regions.
+
+### CPU2 (D151803-9661): dmarx_unk_D6 resolved - it's CPU1's var_lambda_state
+Closes the "dmarx_unk_D6's physical meaning" pending item. Discovered a
+second CPU1<->CPU2 DMA offset formula in the process: for the CPU1-tx/
+CPU2-rx direction (CPU1 sends, CPU2 receives - the opposite direction from
+the already-documented `CPU1_addr = CPU2_addr + 0xDA`), **CPU1_addr =
+CPU2_addr + 0x13B**, confirmed via four independent already-named pairs
+(dmarx/dmatx tps/ect/pim/battery, all exactly 0x13B apart).
+
+- **`dmarx_unk_D6` -> `dmarx_lambda_state`**: = CPU1's `var_lambda_state`
+  (`0x211 - 0xD6 = 0x13B`, and independently confirmed by `copy_dma_tx`'s
+  `st a, dmatx_unk_211` sourced directly from `ld a, var_lambda_state` -
+  no intermediate computation). On CPU1, `var_lambda_state` is a
+  fuel-cut/overrun-recovery timer (0x80/negative = idle, 0x66 = a decel
+  fuel-cut recovery window just started, counts up by 2/call via
+  `sub_CB00` until it overflows back to negative) - CPU2's two consumers
+  (`loc_C9BC`'s `unk_E8` filter, and the fuel VE section's `dmatx_unk_162`
+  clamp) both key off its sign to detect "CPU1 is currently in that
+  recovery window."
+- **`dmatx_unk_162`**: confirmed = CPU1's `dmarx_lambda_trim` (`0xDA`
+  offset formula, exact match) - consumed by `calc_4ms_corrections`'
+  lambda/AFR trim path (not itself deep-dived, CPU1 work). Matches the
+  existing "likely deceleration/overrun-related" guess in the fuel VE
+  section header.
+
+CPU1's `var_lambda_state`/`sub_CB00`/`calc_4ms_corrections` weren't
+deep-dived beyond what was needed to resolve these two DMA cross-
+references - not added as new CPU1 pending work since `var_lambda_state`
+already has inline comments from an earlier session (see
+`divide_d_by_x+B3Cr` area, ~CA-CB in the CPU1 ASM).
+
+Verified via `verify_assembly_match.py` - 0 real edit regions.
+
+### CPU2 (D151803-9661): calc_params's ignition-timing/ISCV DMA group cross-referenced
+Follow-up to calc_ignition_timing's write-up: calc_params's own header
+flagged its 5-byte "ignition timing fallback/table values" group as "not
+examined, out of scope" - checking CPU1's corresponding DMA addresses
+(the `0xDA` offset formula) turned up that all five already have resolved
+names on CPU1's side, so no new RE work was actually needed, just
+adopting them:
+
+- `dmatx_ign_timing_unk_165` -> **`dmatx_ign_timing_fallback2`** (= CPU1's
+  `dmarx_ign_timing_fallback2`)
+- `dmatx_unk_168` -> **`dmatx_iscv_duty`** (= CPU1's `dmarx_iscv_duty`,
+  itself originally `dmarx_unk_242_168` - the "168" was CPU2's own address,
+  already embedded in CPU1's pre-simplification name)
+- `dmatx_ign_timing_fallback1`, `dmatx_ign_timing_unk_166`, `dmatx_unk_167`
+  were already named; confirmed exact-address matches to CPU1's
+  `dmarx_ign_timing_fallback1`/`dmarx_ign_timing_unk_166`/
+  `dmarx_unk_241_167`.
+
+All five are consumed by CPU1's `sub_E865` (an ignition timing blend) -
+traced far enough to confirm the fallback role (fallback1/fallback2
+substitute for the primary values when `var_diag_errors_5.0` is set) but
+`sub_E865` itself was unexamined at the time - added to CPU1 pending work
+below rather than tackled here. Full detail in fuel_calculation_system.md's
+DMA cross-reference section. Verified via verify_assembly_match.py - 0 real
+edit regions (renames/comments only). **Update (see "sub_E865 partially
+traced" below):** this isn't knock-sensor-fault gating - `var_diag_errors_5.0`
+is a repo-wide reused negate/abs() remember-bit, and `sub_E865` uses it
+purely as its own local state, unrelated to actual knock sensor faults.
+
+### CPU2 (D151803-9661): calc_ignition_timing documented
+Prose-documentation pass, closing the one still-undocumented link in the
+main-loop chain (main_continue_2 -> calc_params -> calc_ignition_timing ->
+TVSV -> warning-debounce - calc_params, TVSV and the warning-debounce phase
+were already done).
+
+- **`calc_ignition_timing`**: base ignition timing (`map_ignition_C12C`,
+  indexed by RPM and `var_pim2_peak`) minus a `table_ignition_retard` entry
+  selected by `var_input_bits.7`/PORTC.7, clamped to 0, -> `dmatx_ign_timing`.
+  Also computes `var_flags_45`'s two hysteresis bits (high-RPM latch,
+  cold/off-boost latch), `word_16D` (an RPM-retard table entry gated on
+  both), and `var_max_retard_unk`/`dmatx_max_retard_161` - the per-condition
+  knock-retard ceiling sent to CPU1 (= `dmarx_max_retard_23B_161`, already
+  cross-referenced in fuel_calculation_system.md). The rest of the function
+  is periodic housekeeping that happens to share this tick (counter
+  increments/decay calls, three debounced PORTB output-bit drives whose
+  physical purpose isn't confirmed) plus items 3/4 of the fuel VE section
+  (already documented above `calc_params`).
+- **`drive_DOUT0`**: a small standalone function embedded in the same
+  chunk - same software-PWM-comparator idiom as `drive_DOUT2_tvsv`, but
+  driving DOUT.0 from a duty cycle received directly over DMA
+  (`dmarx_unk_E1`) rather than computed locally.
+
+Verified via `verify_assembly_match.py` against the buildable `.ASM` -
+0 real edit regions (comment/header additions only, no byte changes).
 
 ### Tooling: Makefiles now build via the Python assembler, not Tasm32.exe
 `roms/3S-GTE/makefile.lib`'s assemble step now calls `roms/d8x_assembler/asm_d8x.py`
@@ -994,6 +1162,37 @@ ROM.
 - loc_DA63's lambda_avg/lambda_integrator adjustment logic (traced/renamed
   for the alias, but not characterized - looks like yet another distinct
   lambda-trim mechanism, see fuel_calculation_system.md Open Questions)
+- **sub_E865 (~E865-E9E9, partially traced this session)** - an ignition
+  timing blend gated on `var_schedule_flag_41.3` (runs only on ticks where
+  that bit is clear; otherwise returns immediately). Two confirmed parts:
+  1. **Init/reset path** (`unk_44.5` set): seeds `var_unk_knock_12B`/
+     `unk_12D`/`unk_12F` to `table_pim_unk_C154(dmatx_pim)/2` and zeroes
+     `unk_129`/`unk_127`/sets `unk_AA=0xFF` - a first-run/reset baseline.
+  2. **Normal path** (`unk_44.5` clear, every other tick): clamps
+     `var_unk_knock_12B` between `unk_12F` and the PIM-table baseline
+     (whichever's larger/smaller), using `var_diag_errors_5.0` purely as
+     its own local "did the clamped value drop since last tick" flag - NOT
+     knock-sensor-fault handling despite the flag's name (see
+     `set_knock_sensor_err_flag`'s own header comment and the
+     "fall-through code-reuse trick" architecture note - this was a
+     genuine correction to what this entry said in an earlier session).
+     That flag then selects `dmarx_ign_timing_fallback1/2` vs the primary
+     `dmarx_ign_timing`/`dmarx_ign_timing_unk_166` for a
+     multiply/table_C163 blend feeding an `unk_129` accumulator, and later
+     a `table_pair_interpolate` lookup (`unk_13F`/`unk_141`-selected)
+     feeding `unk_127`, ending with a call to `sub_E832`.
+  **Not yet confirmed with full instruction-level confidence:** the exact
+  arithmetic of the middle blend (the `mul`/`jsr mult_rDrX`/`mov`
+  sequence around `table_C163`, roughly E8C4-E948) - register flow through
+  `mult_rDrX`'s X-clobbering (`X` becomes the overflow MSW, not preserved)
+  makes a couple of `mov` steps there ambiguous without more careful
+  re-derivation. Also not traced: `sub_E832`'s own body, `table_C163`'s
+  real-world meaning, and whether this whole function is actually part of
+  the same knock-fault-handling area as `sub_E551` (they share
+  `set_knock_sensor_err_flag`/`check_knock_sensor_err_flag` calls, but
+  per the correction above that's no longer strong evidence of a shared
+  subject matter - it's a generic negate primitive both happen to use).
+  Worth a dedicated follow-up session for the middle blend specifically.
 
 ### CPU2 (D151803-9661)
 
@@ -1010,33 +1209,36 @@ documentation and a few specific loose ends, not "find the function" work.
   the exact byte-by-byte framing (how the 2-byte index accumulates across
   4ms ticks, what SSD.6 distinguishes) isn't traced. Worth a dedicated
   subsystem doc, similar treatment to adc_system.md.
-- **dmarx_unk_D6's physical meaning** - a signed byte from CPU1, used
-  only by its sign on CPU2 (loc_C9BC's RPM filter gate, and
-  loc_CCA0's dmatx_unk_162 gate). Not traced on CPU1's side - what CPU1
-  computation produces it, and what a negative value represents, is
-  unknown.
-- **`serial_dma_start`/`int_vector_0`'s exact protocol/timing** - scoped
-  out while documenting `copy_serbus_rx` (see Completed subsystems above):
-  the low-level serial DMA hardware state machine's overall role is
-  established, but the precise meaning of its `unk_55`/`unk_56`/`unk_126`
-  state values and register-reprogramming sequence isn't. Worth a
-  dedicated session.
+- **`unk_126`'s bit 6/7 semantics** (remainder of the former
+  `serial_dma_start`/`int_vector_0` item - the ASR2/ASR3/TIMER3 register
+  format and `int_vector_0`=IV0 identification are now resolved, see
+  Completed subsystems above): `unk_126` shadows the real ASR0N hardware
+  register, but bits 6/7 are toggled in ways that don't fit ASR0N's
+  documented "falling edge counter" role - whether ASR0 is itself partly
+  repurposed on this variant, or these are pure software flags on a
+  shadowed register, isn't established. Electrical-level protocol details
+  (pins/baud rate/clock master) remain unknown without hardware probing -
+  out of scope for static analysis.
 - **Broad prose-documentation gap**: ~52% of labels have meaningful
   pre-existing names and all functions are resolved (see above), but most
   of the 284 remaining loc_ labels' surrounding code lacks the
   gold-standard header-comment treatment. Subsystems with real write-ups
-  so far (see Completed subsystems above for each): fuel VE, ignition
-  timing base, the enrichment-decay chain, TVSV boost control, the
-  warning-debounce phase, factory_selfcheck, the RPM-smoothing helpers,
-  the boot sequence/main control-flow backbone, the NE interrupt
-  architecture, I/O input reading and DMA receive unpacking, vehicle
-  speed/VF diagnostics, the OBD datastream, and the shared utilities
-  (increment_counters/check_starter_running/check_startup). What's left
-  is mainly main_continue_2 onward's neighbors not yet covered, and the
-  TVSV/warning-debounce area's own neighbors. Leverage existing renames
-  (dmarx_pim2/dmarx_tps/dmarx_ect/var_map_ve/etc.) rather than
-  re-deriving. See "CPU1<->CPU2 DMA cross-reference" below for the
-  targeted (not full-pass) DMA lookup work done earlier.
+  so far (see Completed subsystems above for each): fuel VE,
+  calc_ignition_timing (base timing, knock-retard ceiling, drive_DOUT0),
+  the enrichment-decay chain, TVSV boost control, the warning-debounce
+  phase, factory_selfcheck, the RPM-smoothing helpers, the boot
+  sequence/main control-flow backbone, the NE interrupt architecture, I/O
+  input reading and DMA receive unpacking (including the ASR2/ASR3/TIMER3
+  serial DMA re-arm protocol), vehicle speed/VF diagnostics, the OBD
+  datastream, and the shared utilities
+  (increment_counters/check_starter_running/check_startup). Now that the
+  whole main_continue_2 -> calc_params -> calc_ignition_timing -> TVSV ->
+  warning-debounce chain is documented, what's left is mostly outside that
+  chain: any remaining loc_ labels not reachable from that chain or from
+  the already-documented boot/NE/I/O/OBD/vehicle-speed subsystems.
+  Leverage existing renames (dmarx_pim2/dmarx_tps/dmarx_ect/var_map_ve/
+  etc.) rather than re-deriving. See "CPU1<->CPU2 DMA cross-reference"
+  below for the targeted (not full-pass) DMA lookup work done earlier.
 
 ---
 
@@ -1088,6 +1290,13 @@ documentation and a few specific loose ends, not "find the function" work.
   status bit into an OBD diagnostic output byte (update_odb_flags). All
   closed-loop lambda trim ownership is CPU1's.
 - Inter-CPU: ASR2 (DMA RX 0x81DE) / ASR3 (DMA TX 0x9200), 4ms frame rate
+- **DMA buffer offsets - two separate formulas, one per direction:**
+  CPU2-tx/CPU1-rx: `CPU1_addr = CPU2_addr + 0xDA` (word-sized variables
+  have a 1-byte padding discrepancy in one region - see "CPU1<->CPU2 DMA
+  cross-reference" below). CPU1-tx/CPU2-rx (the opposite direction):
+  `CPU1_addr = CPU2_addr + 0x13B`, confirmed via four independent pairs
+  (tps/ect/pim/battery) with no padding discrepancy found so far - see
+  "dmarx_unk_D6 resolved" above.
 - TIMER resolution: 4us per count (TIMERC/8)
 - NE pulses: 24 per revolution (6 per cylinder x 4 cylinders)
 - The D8X "enhanced" variant (used here) has 8 CPRs (CPR0-7), ASR2/3 = serial DMA
@@ -1106,6 +1315,25 @@ documentation and a few specific loose ends, not "find the function" work.
   span that's been read/traced so far - use the same technique (a new
   `.equ` label at the aliased variable's address) if another instance of
   this pattern turns up elsewhere.
+- **Fall-through code-reuse trick (a second ROM-space-saving idiom, distinct
+  from variable-aliasing above):** `set_knock_sensor_err_flag`,
+  `check_knock_sensor_err_flag`, and `negate_rD` are three separate,
+  separately-named functions with no `ret` between them - each one's body
+  falls straight into the next's. `set_knock_sensor_err_flag` (`setb bit0,
+  var_diag_errors_5`) falls into `check_knock_sensor_err_flag`'s test of
+  that same bit (now guaranteed set) which falls into `negate_rD` - so
+  calling "set the knock error flag" also unconditionally negates D.
+  `check_knock_sensor_err_flag` alone conditionally negates D based on
+  whichever call set (or didn't set) the flag earlier in the same
+  computation. Despite the name, `var_diag_errors_5.0` is reused repo-wide
+  as a generic "did we take the absolute value of D" remember-bit, not
+  something knock-sensor-specific outside the actual knock subsystem -
+  confirmed at three unrelated sites (`ramp_limit_inj_pw`'s loc_DBB5,
+  `calc_iscv`'s threshold check per idle_control_system.md, and CPU1's
+  `sub_E865`). Watch for this shape - `jsr set_knock_sensor_err_flag`/
+  `jsr check_knock_sensor_err_flag` immediately before or after a
+  subtract/compare on D - anywhere a stray-looking "knock" flag call
+  doesn't fit the surrounding computation's subject matter.
 - **`mov` operand direction is reversed from `ld`/`st`:** `mov src, dest`,
   not `dest, src` — e.g. `mov x, d` means `D = X`, not `X = D`. Confirmed
   two ways: the technical reference's instruction table states this

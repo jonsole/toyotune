@@ -1487,7 +1487,7 @@ The CPU2 ROM uses `dmarx_` / `dmatx_` variable naming to distinguish data receiv
 - Which SIN/SOUT pins carry the inter-CPU link on each MCU
 - Which CPU is the serial clock master
 - Baud rate of the link
-- Exact DMA register protocol — how $18–$1Bh and $34–$35h are programmed and used
+- Exact DMA register protocol — how $18–$1Bh and $34–$35h are programmed and used. **Partially resolved** on CPU2 (D151803-9661): see the Appendix's "Serial DMA Protocol" section below for the confirmed ASR2/ASR3 register format and re-arm logic — the electrical-level details (pins, baud rate, clock master) are still unknown, but the software-side arm/re-arm sequence is now understood.
 - Whether any GPIO lines supplement the serial link
 
 ---
@@ -1501,6 +1501,41 @@ This ECU uses the **enhanced variant** D8X with 8 compare registers and ASR2/ASR
 ### Serial DMA Protocol (CPU1 ↔ CPU2)
 
 The inter-CPU link uses a DMA-style serial transfer. CPU2 RAM uses the naming convention `dmarx_` for data received from CPU1 and `dmatx_` for data transmitted to CPU1. The full packet structure per 4ms frame, inferred from variable names, is:
+
+**ASR2/ASR3 register format (confirmed on CPU2, D151803-9661):** both are
+16-bit registers written as a mode nibble ORed with a target RAM address
+(not just an edge-counter compare value, per their enhanced-variant DMA
+role) — `serial_dma_start`/`int_vector_0` in `3S-GTE/D151803-9661/Claude/`
+have the full write-up. In outline:
+
+- **ASR2 (RX)** = `0x9000 | address`. CPU2 arms it once at the top of
+  every `main_loop` pass with the raw incoming-frame scratch buffer's own
+  address (`var_serbus_rx`, giving `0x9127` on this ROM); `copy_serbus_rx`
+  then unpacks that scratch buffer into the named `dmarx_*` variables
+  below. The DMA engine's own re-arm logic (`serial_dma_start`, and the
+  periodic `int_vector_0`/IV0 tick that polls it) re-programs ASR2 with
+  the same constant on every timeout/retry — it always targets the same
+  buffer, never a different one.
+- **ASR3 (TX)** = `0x8000 | address`. Armed with the address of the first
+  named `dmatx_*` variable itself (no separate packing buffer needed for
+  TX — the hardware streams CPU2's live `dmatx_*` variables directly from
+  their real addresses).
+- **TIMER3** ($03h) is written here with full 8-bit mode/phase values
+  that don't fit the "Timer LSB bits [2:0]" description given earlier in
+  this document for the base variant — on the enhanced variant it appears
+  to double as a DMA engine timeout/phase register. Exact bit meanings
+  not decoded.
+- `int_vector_0` is confirmed to be IV0 (its `IRQLL` bit-2 clear matches
+  this document's own "IV0 - Enable: set IMASKL bit 2"), i.e. this
+  whole subsystem runs off IV0's own periodic tick rather than being
+  triggered by serial activity - consistent with IV0 being a
+  general-purpose periodic timer that this ECU's CPU2 firmware also uses
+  to service the DMA engine, alongside (not necessarily instead of)
+  whatever its primary role is.
+
+Electrical-level detail (which pins, baud rate, clock master) is still
+unknown - this is software-side register/timing behavior only, derived
+from CPU2's own ASM.
 
 **CPU1 → CPU2 (sensor data):**
 
