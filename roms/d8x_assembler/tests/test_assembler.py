@@ -18,12 +18,12 @@ class NonClosingBytesIO(io.BytesIO):
         pass
 
 
-def run_assembler(source):
+def run_assembler(source, fill_byte=0x00):
     asm = Assembler()
     output = NonClosingBytesIO()
     stdout = io.StringIO()
     with contextlib.redirect_stdout(stdout):
-        num_lines = asm.Assemble(io.StringIO(source), output, None, "bin")
+        num_lines = asm.Assemble(io.StringIO(source), output, None, "bin", fill_byte)
     return num_lines, output.getvalue(), stdout.getvalue(), asm
 
 
@@ -166,6 +166,72 @@ class TestLabelsChangedTracking(unittest.TestCase):
         pass2 = AssemblerPass(pass1)
         pass2.SetLabel('foo', 10)
         self.assertFalse(pass2.LabelsChanged)
+
+
+class TestFillByte(unittest.TestCase):
+    """Assemble()'s 'bin' output fills the gap *between* .org blocks with a
+    configurable byte, matching tasm32's '-f<xx>' flag (e.g. -f5F fills
+    unused ROM space with 0x5F rather than leaving it zeroed) - this
+    matters because checksum.exe sums every byte of the final image, so a
+    gap filled differently than tasm32 would produce a different checksum
+    for any ROM with more than one .org block.
+    """
+
+    def test_default_fill_is_zero(self):
+        source = (
+            "\t.org 0\n"
+            "\tnop\n"
+            "\t.org 4\n"
+            "\tnop\n"
+        )
+        num_lines, data, log, asm = run_assembler(source)
+        self.assertEqual(asm.diagnostics, [])
+        self.assertEqual(data, b'\x00\x00\x00\x00\x00')
+
+    def test_custom_fill_byte_fills_gap_between_blocks(self):
+        source = (
+            "\t.org 0\n"
+            "\tnop\n"
+            "\t.org 4\n"
+            "\tnop\n"
+        )
+        num_lines, data, log, asm = run_assembler(source, fill_byte=0x5F)
+        self.assertEqual(asm.diagnostics, [])
+        # byte 0 = nop, bytes 1-3 = gap fill, byte 4 = nop
+        self.assertEqual(data, b'\x00\x5F\x5F\x5F\x00')
+
+    def test_fill_byte_does_not_pad_before_first_block(self):
+        # Output starts exactly at the first block's own address - a
+        # nonzero fill byte must not retroactively fill address 0 up to
+        # the first .org, matching tasm32's behaviour (confirmed against
+        # real tasm32 output for ROMs whose first real content starts
+        # well above address 0).
+        source = (
+            "\t.org 100h\n"
+            "\tnop\n"
+        )
+        num_lines, data, log, asm = run_assembler(source, fill_byte=0x5F)
+        self.assertEqual(asm.diagnostics, [])
+        self.assertEqual(data, b'\x00')
+
+    def test_cli_fill_flag(self):
+        script = os.path.join(os.path.dirname(__file__), '..', 'asm_d8x.py')
+        src_path = os.path.join(os.path.dirname(__file__), '_cli_fill_input.asm')
+        out_path = os.path.join(os.path.dirname(__file__), '_cli_fill_output.bin')
+        with open(src_path, 'w') as f:
+            f.write("\t.org 0\n\tnop\n\t.org 4\n\tnop\n")
+        try:
+            import subprocess
+            result = subprocess.run(
+                [sys.executable, script, '-p', '5F', src_path, out_path],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with open(out_path, 'rb') as f:
+                self.assertEqual(f.read(), b'\x00\x5F\x5F\x5F\x00')
+        finally:
+            for p in (src_path, out_path):
+                if os.path.exists(p):
+                    os.remove(p)
 
 
 class TestExitCode(unittest.TestCase):

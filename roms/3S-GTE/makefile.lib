@@ -1,5 +1,6 @@
-ASM = tasm32
-ASMFLAGS = -t8x -b -f5F -h
+PYTHON ?= python
+ASM = $(PYTHON)
+ASMFLAGS = -p 5F
 CHKSUM = checksum
 SCRAMBLE = scramble
 
@@ -16,10 +17,10 @@ BINS_TECHTOM ?= $(foreach ASM,$(ASMS),$(OUTDIR)/techtom/$(basename $(ASM)).bin)
 mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
 mkfile_dir := $(dir $(mkfile_path))
 bin_dir := $(mkfile_dir)../bin
+asm_script := $(mkfile_dir)../d8x_assembler/asm_d8x.py
 
 win_path = $(subst /,\,$1)
 
-export TASMTABS = $(bin_dir)
 make_dir = @if not exist "$(call win_path,$1)" mkdir $(call win_path,$1)
 rm_dir = @if exist "$(call win_path,$1)" rmdir /Q /S $(call win_path,$1)
 
@@ -29,7 +30,7 @@ rm_dir = @if exist "$(call win_path,$1)" rmdir /Q /S $(call win_path,$1)
 $(OUTDIR)/%.out : %.asm
 	@$(call make_dir,$(OUTDIR))
 	@echo Assembling $(notdir $<)
-	@$(ASM) >>$(LOGFILE) 2>&1 $(ASMFLAGS) $< $@ $(basename $@).lst
+	@$(ASM) >>$(LOGFILE) 2>&1 "$(call win_path,$(asm_script))" $(ASMFLAGS) $< $@ $(basename $@).lst
 
 $(OUTDIR)/%.bin : $(OUTDIR)/%.out
 	@$(call make_dir,$(OUTDIR))
@@ -60,4 +61,3 @@ rom_techtom : $(BINS_TECHTOM)
 
 clean:
 	@$(call rm_dir,$(OUTDIR))
-	

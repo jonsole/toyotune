@@ -6,6 +6,31 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, latin-1 encoding, \r\n line
 
 ---
 
+### Tooling: Makefiles now build via the Python assembler, not Tasm32.exe
+`roms/3S-GTE/makefile.lib`'s assemble step now calls `roms/d8x_assembler/asm_d8x.py`
+instead of `Tasm32.exe`. `checksum.exe`/`scramble.exe` are untouched - they still run
+as separate Makefile steps on the assembler's plain `.bin` output.
+
+Before switching, every buildable ECU source in the repo was assembled with both
+`asm_d8x.py` and real `Tasm32.exe` and compared byte-for-byte. One genuine
+discrepancy turned up: `asm_d8x.py`'s plain `.bin` output zero-filled the gap
+*between* `.org` blocks, while `Tasm32.exe -f5F` fills that gap with `0x5F` - this
+only showed up on `Jon_ST205_ECU`'s sparse-layout sources (16663/32768 bytes
+differed), not on any of the other, contiguous-layout ECU sources, and matters
+because `checksum.exe` sums every byte of the image. Fixed by adding a `fill_byte`
+parameter to `Assembler.Assemble()` (default `0x00`, so existing callers/tests are
+unaffected) and a `-p`/`--fill` CLI flag; `makefile.lib` now passes `-p 5F` to match
+`Tasm32.exe`'s old behavior exactly. Re-verified all 7 distinct ECU sources
+byte-identical against real `Tasm32.exe` output after the fix.
+
+`checksum.exe`/`scramble.exe` themselves fail to launch in at least one dev
+environment (`STATUS_DLL_NOT_FOUND`, independent of this change - confirmed by
+running them standalone with no arguments) - this is the pre-existing DLL-load
+caveat CLAUDE.md already documents for the `bin/*.exe` tools, not a regression.
+Full `make.exe rom` was smoke-tested through the assemble step (succeeds, produces
+a correct `.lst`) but the final checksummed `.bin` could not be produced end-to-end
+in that environment for this unrelated reason.
+
 ### CPU2 (D151803-9661): shared utilities documented
 Sixth slice of the prose-documentation pass - a survey of the 63
 functions with clean `; End of function` markers turned up a handful of

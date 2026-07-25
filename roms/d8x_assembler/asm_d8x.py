@@ -400,14 +400,14 @@ class Assembler(object):
         return False
 
     # Parse lines into intermediate object code
-    def Assemble(self, input, output, listing, format="bin"):
+    def Assemble(self, input, output, listing, format="bin", fill_byte=0x00):
         self.diagnostics = []
         try:
-            return self._Assemble(input, output, listing, format)
+            return self._Assemble(input, output, listing, format, fill_byte)
         finally:
             output.close()
 
-    def _Assemble(self, input, output, listing, format):
+    def _Assemble(self, input, output, listing, format, fill_byte=0x00):
 
         lines = [line.rstrip('\n') for line in input]
 
@@ -483,8 +483,13 @@ class Assembler(object):
                 for b in current_pass._blocks:
                     block_addr = b['address']
 
-                    # fill space between last block and this one
-                    output.write(bytearray(block_addr - output_addr))
+                    # fill space between last block and this one - matches
+                    # tasm32's '-f<xx>' flag, which fills unused memory
+                    # space with a chosen byte (this Makefile pipeline uses
+                    # -f5F) rather than leaving it zeroed. Only the *gap
+                    # between* blocks is filled; nothing is emitted before
+                    # the first block's own address.
+                    output.write(bytes([fill_byte]) * (block_addr - output_addr))
 
                     # output block
                     output.write(b['bytes'])
@@ -496,6 +501,16 @@ class Assembler(object):
 
         return len(lines)
 
+def _HexByte(text):
+    try:
+        value = int(text, 16)
+    except ValueError:
+        raise argparse.ArgumentTypeError("'{}' is not a valid hex byte".format(text))
+    if not 0 <= value <= 0xFF:
+        raise argparse.ArgumentTypeError("'{}' is out of range for a byte (00-FF)".format(text))
+    return value
+
+
 if __name__ == '__main__':
     import sys
     import argparse
@@ -506,12 +521,15 @@ if __name__ == '__main__':
     parser.add_argument('input', type=argparse.FileType(mode='r', encoding="ascii", errors="surrogateescape"), default=sys.stdin, help="Input file")
     parser.add_argument('output', type=argparse.FileType(mode='wb'), help="Output file")
     parser.add_argument('listing', nargs='?', type=argparse.FileType('w', encoding="ascii", errors="surrogateescape"), help="Listing file")
-    parser.add_argument('-f', '--format', choices=["bin", "obj"], default="bin") 
+    parser.add_argument('-f', '--format', choices=["bin", "obj"], default="bin")
+    parser.add_argument('-p', '--fill', type=_HexByte, default=0x00, metavar='XX',
+                         help="Hex byte (e.g. 5F) to fill unused memory space between .org "
+                              "blocks with, matching tasm32's '-f<xx>' flag. Default: 00")
     args = parser.parse_args()
 
     time_start = time.perf_counter()
     asm = Assembler()
-    num_lines = asm.Assemble(args.input, args.output, args.listing, args.format)
+    num_lines = asm.Assemble(args.input, args.output, args.listing, args.format, args.fill)
     time_stop = time.perf_counter()
     time_elapsed = time_stop - time_start
     print("Processed {0} lines in {1:.2f} seconds, {2:.2f} lines/sec".format(num_lines, time_elapsed, num_lines / time_elapsed))
