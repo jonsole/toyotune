@@ -6,7 +6,137 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, latin-1 encoding, \r\n line
 
 ---
 
-## Completed subsystems
+### CPU2 (D151803-9661): shared utilities documented
+Sixth slice of the prose-documentation pass - a survey of the 63
+functions with clean `; End of function` markers turned up a handful of
+pervasively-used utilities that had no header of their own (most of the
+list is generic math-library code - divide/multiply/table-interpolate -
+already adequately self-explanatory from their names and existing
+per-line comments).
+
+- **`increment_counters`**: previously entirely undocumented despite
+  being called dozens of times throughout the ROM via the
+  `ld d, #((counter << 8) + N); jsr increment_counters` idiom. Now
+  explained: saturating-increments N consecutive byte counters starting
+  at the given direct-page address.
+- **`check_starter_running`**: force-resets the NE pulse counters (once
+  per sustained-set period, via a one-shot latch) while `var_input_bits.2`
+  is held for >= 48ms.
+- **`check_startup`**: clarified that the real function is just its
+  3-instruction body (the shared reset-detection check) - the long
+  "FUNCTION CHUNK AT..." list above it is IDA misattributing unrelated
+  code (calc_params, TVSV, factory_selfcheck, etc.) as its chunks, the
+  same artifact CPU1's `divide_d_by_x` has.
+
+### CPU2 (D151803-9661): OBD/diagnostic datastream fully documented
+Fifth slice of the prose-documentation pass, closing the loop with the
+vehicle speed/VF write-up above: `update_odb_flags`, `next_odb_byte`,
+`table_odb`, and `output_odb_bit`.
+
+- **`update_odb_flags`**: computes two OBD status bytes (`var_obd_flags1`
+  reflects enrichment-mode bits sourced from the enrichment chain and
+  `dmarx_var_flags_46`/`dmarx_unk_DB`; `var_odb_flags2` reflects
+  diagnostic-condition/lambda/A-C/idle/starter bits - one bit, `.3`, is
+  permanently forced set and marked "Unused (Neutral switch on A/T)" in a
+  pre-existing comment, a placeholder not read from real hardware). Also
+  selects the VF diagnostic signal's voltage level (0V/2.5V/5V, encoded as
+  `var_vf` = 0/8/16) from lambda/O2-sensor/diagnostic-condition state, and
+  is confirmed as the sole write site for `dmatx_unk_16A` (already known
+  to always be 0, from earlier sessions' dead-code finding).
+- **`next_odb_byte`/`table_odb`**: `next_odb_byte` walks an 11-entry table
+  of ECU values (NE period, injector/ignition/ISCV OBD snapshots, RPM,
+  MAP, ECT, TPS, speed, O2 reading, a fixed zero, and the two status
+  bytes above) every 4ms, loading each into a shift register.
+- **`output_odb_bit`**: shifts that register out one bit at a time onto
+  PORTA.4, called from `int_vector_c_timer`. Confirmed **mutually
+  exclusive** with `generate_vf_PORTA_4` (documented previously) on the
+  same `var_input_bits.1` gate - PORTA.4 is a shared pin, outputting
+  either the VF voltage/PWM signal or the OBD serial bitstream depending
+  on whether a scan tool has activated the datastream. Updated
+  `generate_vf_PORTA_4`'s own comment to reference this now-complete
+  picture.
+
+### CPU2 (D151803-9661): vehicle speed and VF diagnostic signal documented
+Fourth slice of the prose-documentation pass.
+
+- **`int_vector_4_kph`**: vehicle speed sensor hardware ISR (fires on ASR3
+  edges). Alternates capturing rising/falling edges, applies a
+  plausibility filter that rejects sub-250-tick periods as bounce/noise
+  (skipped if enough time has already elapsed that any edge is obviously
+  valid), and increments a saturating edge counter.
+- **`update_spd`**: turns the accumulated edge count into `var_spd`, called
+  every ~536ms from `iv6_4ms_process`. Uses a two-slot counter (primary +
+  carry-over) as a simple period-to-period smoothing tap, then floors
+  results of 2 or fewer counts to 0 (stopped) to avoid a noisy near-zero
+  reading.
+- **`generate_vf_PORTA_4`**: drives PORTA.4 as a TIMER-based PWM output
+  encoding `var_vf` - Toyota's "VF" diagnostic-terminal duty-cycle signal,
+  intended to be read with an analog voltmeter on the diagnostic
+  connector. Skips while the OBD serial datastream is active so the two
+  outputs don't contend for the same terminal.
+
+Also fixed a stale cross-reference: `factory_selfcheck`'s header quoted
+`loc_D2E9`'s old placeholder comment ("some kind of reset, wait for a bit
+and then clear all RAM"), which was rewritten to a proper explanation in
+an earlier pass. Updated the quote to match.
+
+### CPU2 (D151803-9661): I/O input reading and DMA receive unpacking documented
+Third slice of the prose-documentation pass.
+
+- **`check_io_inputs`**: reads 8 digital inputs into a bitfield (PORTB.6/7,
+  IRQLL.0 starter-running, PORTC.6, PORTA.6/7, SMRC_SIR's SIN1/SIN2), then
+  applies a two-sample de-glitch filter (a bit only updates in
+  `var_input_bits` if it matched in both this call and the previous one)
+  before anything else trusts it. Called very frequently - confirmed
+  twice-back-to-back in `loc_C88E`'s startup sequence primes both samples
+  before the first real de-glitch.
+- **`copy_serbus_rx`**: unpacks the raw DMA receive buffer (`var_serbus_rx`
+  - the literal ASR2 destination, per `reset_vector`) into the named
+  `dmarx_*` variables. Confirms `dmarx_pim2` is the first word-sized
+  `dmarx_*` variable, at the same relative offset as `var_serbus_rx`'s own
+  start (33 words copied verbatim, then 4 explicit single-byte copies for
+  tail flag variables that don't fit the word stride:
+  `dmarx_unk_4B`/`dmarx_var_flags_46`/`dmarx_flags_1`/
+  `dmarx_limiter_flags`).
+- **`serial_dma_start`/`int_vector_0`** - scoped out, not traced in
+  detail: a low-level serial DMA hardware timing state machine
+  (`ASR0N`/`ASR2`/`ASR3`/`TIMER3`, `unk_55`/`unk_56`/`unk_126`) that sets
+  the "new DMA frame ready" flag `copy_serbus_rx` gates on. The overall
+  role is clear; the exact protocol/timing meaning of each state value
+  isn't - flagged as a dedicated future target rather than rushed here.
+
+### CPU2 (D151803-9661): NE (crank position) interrupt architecture documented
+Second slice of the prose-documentation pass, directly upstream of last
+session's `calc_rpm`/`main_loop` write-up: full architecture of
+`int_vector_e_asr2`/`int_vector_c_timer`/`int_vector_6_sw_int`/
+`iv6_ne_process`, resolving two pre-existing "; ????" comments in the
+process.
+
+- **`int_vector_e_asr2`** (hardware ISR on every NE edge): updates
+  `var_ne_count` (position 0-5/cylinder 0-3 counter) - confirmed the
+  G1/G2 sync markers (`0x35`/`0x15`) are identical to CPU1's own
+  documented convention (`docs/ignition_system.md`), even though CPU2
+  reads G1/G2 via direct `PORTD_ASRIN` pins rather than CPU1's
+  timer-capture scheme.
+- **`int_vector_c_timer`** (periodic hardware TIMER ISR): drives
+  `output_odb_bit` periodically, otherwise just a trigger source.
+- **`int_vector_6_sw_int`** - the key piece: this is the actual "IV6"
+  vector (external interrupt 6), triggered in software by both ISRs
+  above. Runs `iv6_ne_process` and `iv6_4ms_process` as siblings sharing
+  one interrupt priority level, each gated by its own test-and-set
+  "already ran" flag (`var_flags_40.4`/`.3`) so bursts of re-triggers
+  collapse into at most one pass of each per invocation.
+- **`iv6_ne_process`** (the NE background processor): samples the ASR2
+  hardware edge-counter into a 3-slot `var_ne_table` ring buffer at even
+  crank positions only, sums it into `var_ne_sum` (which `calc_rpm`
+  converts to RPM). **Resolved the "; ????" comments**: `var_cnt8ms_AF`
+  doubles as a "no valid previous NE data" flag (via `xch`, which both
+  stores this call's flag and retrieves the previous call's), used to
+  fall back to the same `0x5500` sentinel `init_ne_counters` uses when
+  there's no valid prior ASR2 sample to diff a period against.
+
+Full detail in the header comments above `int_vector_e_asr2` and
+`iv6_ne_process` in the ASM.
 
 ### CPU2 (D151803-9661): boot sequence and main control-flow backbone documented
 First slice of the "broad prose-documentation gap" work: full write-up of
@@ -860,21 +990,26 @@ documentation and a few specific loose ends, not "find the function" work.
   loc_CCA0's dmatx_unk_162 gate). Not traced on CPU1's side - what CPU1
   computation produces it, and what a negative value represents, is
   unknown.
+- **`serial_dma_start`/`int_vector_0`'s exact protocol/timing** - scoped
+  out while documenting `copy_serbus_rx` (see Completed subsystems above):
+  the low-level serial DMA hardware state machine's overall role is
+  established, but the precise meaning of its `unk_55`/`unk_56`/`unk_126`
+  state values and register-reprogramming sequence isn't. Worth a
+  dedicated session.
 - **Broad prose-documentation gap**: ~52% of labels have meaningful
   pre-existing names and all functions are resolved (see above), but most
   of the 284 remaining loc_ labels' surrounding code lacks the
-  gold-standard header-comment treatment - fuel VE, ignition timing base,
-  the enrichment-decay chain, TVSV boost control, the warning-debounce
-  phase, factory_selfcheck, the RPM-smoothing helpers, and (as of this
-  session) the boot sequence/main control-flow backbone
-  (reset_vector/clear_variables/loc_C88E/main_loop/calc_rpm) have real
-  write-ups so far - most of what's left is main_continue_2 onward's
-  neighbors not yet covered, the TVSV/warning-debounce area's own
-  neighbors, update_odb_flags's full body, and the serial/ADC/interrupt
-  handling not yet covered (int_vector_e_asr2/iv6_ne_process,
-  int_vector_0, int_vector_6_sw_int, int_vector_4_kph/update_spd,
-  copy_serbus_rx, check_io_inputs, generate_vf_PORTA_4). Leverage existing
-  renames (dmarx_pim2/dmarx_tps/dmarx_ect/var_map_ve/etc.) rather than
+  gold-standard header-comment treatment. Subsystems with real write-ups
+  so far (see Completed subsystems above for each): fuel VE, ignition
+  timing base, the enrichment-decay chain, TVSV boost control, the
+  warning-debounce phase, factory_selfcheck, the RPM-smoothing helpers,
+  the boot sequence/main control-flow backbone, the NE interrupt
+  architecture, I/O input reading and DMA receive unpacking, vehicle
+  speed/VF diagnostics, the OBD datastream, and the shared utilities
+  (increment_counters/check_starter_running/check_startup). What's left
+  is mainly main_continue_2 onward's neighbors not yet covered, and the
+  TVSV/warning-debounce area's own neighbors. Leverage existing renames
+  (dmarx_pim2/dmarx_tps/dmarx_ect/var_map_ve/etc.) rather than
   re-deriving. See "CPU1<->CPU2 DMA cross-reference" below for the
   targeted (not full-pass) DMA lookup work done earlier.
 

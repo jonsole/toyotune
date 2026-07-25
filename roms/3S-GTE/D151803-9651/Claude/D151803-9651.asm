@@ -321,15 +321,17 @@ var_flags_4E:			.block 1			; DATA XREF: divide_d_by_x+456w
 ; code (see the header comment above calc_inj_pw_base in divide_d_by_x, and
 ; docs/fuel_calculation_system.md).
 ;
-; Applied so far: calc_inj_pw_base's own body, reset_pw_ramp_limiter/ramp_limit_inj_pw/ramp_limit_inj_pw_simple, and
-; loc_DA63's full body (through locret_DB74, including sub_DB75/sub_DB77) -
-; all fully traced this session. NOT yet applied: loc_DC77's body past its
-; entry commit, and everything through chunks DD38/DD59/E112/start-of-E363
-; up to the restore at address ~E37F - still says "var_flags_4E" even
-; though it's provably the same alias (no var_flags_4E_copy2 restore
-; happens in between), because that code hasn't been read/traced yet and
-; renaming without reading it risks getting something subtly wrong. Apply
-; this same rename there once that code gets its own pass.
+; Applied so far: calc_inj_pw_base's own body, reset_pw_ramp_limiter/
+; ramp_limit_inj_pw/ramp_limit_inj_pw_simple, and loc_DA63's full body
+; (through locret_DB74, including sub_DB75/sub_DB77).
+;
+; NOT yet applied: loc_DC77's body past its entry commit, and everything
+; through chunks DD38/DD59/E112/start-of-E363 up to the restore at
+; address ~E37F - still says "var_flags_4E" even though it's provably
+; the same alias (no var_flags_4E_copy2 restore happens in between),
+; because that code hasn't been read/traced yet and renaming without
+; reading it risks getting something subtly wrong. Apply this same
+; rename there once that code gets its own pass.
 var_trim_state_alias:		.equ var_flags_4E
 
 var_flags_4F:			.block 1			; DATA XREF: divide_d_by_x+95Dw
@@ -2400,6 +2402,16 @@ map_rD_rX_interpolate:						; CODE XREF: calc_iscv+3B9p
 ; ��������������� S U B	R O U T	I N E ���������������������������������������
 
 
+; increment_counters: saturating-increments B consecutive byte counters
+; starting at direct-page address A (X = A + 0x0000 forms the address).
+; Each counter stops at 0xFF rather than wrapping to 0.
+;
+; Called throughout this ROM as jsr increment_counters after
+; ld d, #COUNTER_ARG(first_counter, count) - D's high byte becomes A
+; (the start address), low byte becomes B (the count). COUNTER_ARG is a
+; .define macro (see below) wrapping the underlying
+; ((first_counter << 8) + count) encoding.
+				.define COUNTER_ARG(counter, n) ((counter << 8) + n)
 increment_counters:						; CODE XREF: update_lambda_avg+Dp
 								; divide_d_by_x+C53p ...
 				ld	x, #0000h
@@ -3960,10 +3972,11 @@ locret_C9D9:							; CODE XREF: sub_C996+3Cj
 ;     bit 6 gates whether the ISCV runs closed-loop or a fixed override).
 ;     Also sets var_flags_4E.7 in this specific path (that bit is documented
 ;     elsewhere as "boost limit exceeded" - not clear if this is the same
-;     condition or bit reuse; not resolved this session).
-;     Then calls sub_E454 (fuel enrichment scaling), sub_E551, loc_FC38 and
-;     sub_D2C5 (NV trim validation, see below) - none of these were
-;     deep-dived this session except sub_D2C5.
+;     condition or bit reuse).
+;
+;     Then calls sub_E454 (fuel enrichment scaling), sub_E551, loc_FC38
+;     and sub_D2C5 (NV trim validation, see below) - only sub_D2C5 has
+;     been deep-dived.
 ;  2) (CA3D-CAE2) Overrun/deceleration fuel-cut decision feeding
 ;     injector_warmup - see the header comment on injector_warmup itself.
 ;  3) (CAE2-CAFE) var_lambda_state-gated calls to inj_overrun_end /
@@ -5864,7 +5877,7 @@ update_lambda_avg:							; CODE XREF: divide_d_by_x+A3Bp
 				rorc	a				; A /= 2 (rolling average)
 				st	a, var_lambda_avg
 				setb	bit1, var_flags_4F		; Mark: lambda average valid this cycle
-				ld	d, #(var_trim_stable_cnt << 8) | 02h
+				ld	d, #COUNTER_ARG(var_trim_stable_cnt, 02h)
 				jsr	increment_counters		; Increment trim stability counters
 				ret
 
@@ -5989,7 +6002,7 @@ loc_D1DD:							; CODE XREF: divide_d_by_x+BE9j
 				tbs	bit6, var_schedule_flag_41
 				bne	loc_D1FD
 
-				ld	d, #(var_cnt_CD	<< 8) |	14h ; Increment	counters at 0CDh - 0E0h
+				ld	d, #COUNTER_ARG(var_cnt_CD, 14h) ; Increment	counters at 0CDh - 0E0h
 				jsr	increment_counters
 
 				jsr	sub_C91A
@@ -6006,7 +6019,7 @@ loc_D1FD:							; CODE XREF: divide_d_by_x+C4Ej
 				bcs	loc_D20C
 
 				clr	var_cnt_C8
-				ld	d, #(var_cnt_EA	<< 8) |	05h ; Increment	counters at 0EAh - 0EEh
+				ld	d, #COUNTER_ARG(var_cnt_EA, 05h) ; Increment	counters at 0EAh - 0EEh
 				jsr	increment_counters
 
 				inc	unk_EF
@@ -7807,8 +7820,8 @@ loc_D92D:							; CODE XREF: calc_iscv+45Ej
 ;     var_adc_lambda's sign, clamped via ram_1BE_limits. In closed-loop
 ;     mode (unk_1BD==0xC8) also overwrites unk_1C0 with var_adc_lambda
 ;     itself. Then calls ramp_limit_inj_pw_simple when var_adc_lambda
-;     (not var_inj_pw_base - corrected this session, see
-;     ramp_limit_inj_pw_simple's header) is below 0x4D.
+;     (not var_inj_pw_base - see ramp_limit_inj_pw_simple's header) is
+;     below 0x4D.
 ;  5) Hands off to loc_DC77 (next chunk, not deep-dived - appears to start
 ;     a new phase: restores var_flags_4F from unk_1DA, and computes an
 ;     RPM-based flag unrelated to fuel calculation).
@@ -7817,19 +7830,20 @@ loc_D92D:							; CODE XREF: calc_iscv+45Ej
 ; ram_1BE_limits' range [0, 0x500] matches known injector PW units
 ; elsewhere in the ROM, e.g. injector_cold_start's 0x04E2/0x09C4 constants,
 ; and it's the value everything else in this cluster reads/writes as "the"
-; working pulse-width). unk_1C0/1C2/1C4/1C6/1C8/1BD were NOT renamed - and,
-; after this session's full branch-by-branch trace of ramp_limit_inj_pw
-; (see its header and docs/fuel_calculation_system.md), that's now a
-; confirmed finding rather than a gap: unk_1C0/1C4/1C6 genuinely do NOT
-; have single fixed identities, each gets overwritten with a different one
-; of {fresh VE-map candidate, var_adc_lambda, the unk_1C8 ceiling,
-; ratio-deviation result, var_inj_pw_base} depending on which branch runs,
-; so a clean per-variable rename would misrepresent the code. unk_1C2 is
-; the ramp_limit_inj_pw_simple output / ramp_limit_inj_pw's deviation
-; input (a ratio, nominal 0xCCCD). unk_1C8 is read as a bound comparable to
-; PW-scale values and traced (partially) to a var_pim2/dmatx_pim-linked
-; producer near loc_E665 (E620-E6B0) - not renamed since that producer's
-; own logic (unk_131/var_unk_knk_133/135/var_nv_trim_unk_98) isn't traced.
+; working pulse-width). unk_1C0/1C2/1C4/1C6/1C8/1BD were NOT renamed:
+; per ramp_limit_inj_pw's full branch-by-branch trace (see its header
+; and docs/fuel_calculation_system.md), unk_1C0/1C4/1C6 genuinely do not
+; have single fixed identities - each gets overwritten with a different
+; one of {fresh VE-map candidate, var_adc_lambda, the unk_1C8 ceiling,
+; ratio-deviation result, var_inj_pw_base} depending on which branch
+; runs, so a clean per-variable rename would misrepresent the code.
+;
+; unk_1C2 is the ramp_limit_inj_pw_simple output / ramp_limit_inj_pw's
+; deviation input (a ratio, nominal 0xCCCD). unk_1C8 is read as a bound
+; comparable to PW-scale values and traced (partially) to a
+; var_pim2/dmatx_pim-linked producer near loc_E665 (E620-E6B0) - not
+; renamed since that producer's own logic
+; (unk_131/var_unk_knk_133/135/var_nv_trim_unk_98) isn't traced.
 ; ---------------------------------------------------------------------------
 
 calc_inj_pw_base:							; CODE XREF: divide_d_by_x:loc_D4C6j
@@ -8422,9 +8436,9 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4j
 ; aliasing note above calc_inj_pw_base); var_flags_4E bits 0/1/3/4 in this
 ; function are therefore trim_state bits, not flags_4E's usual meaning.
 ;
-; FULLY TRACED this session (branch-by-branch, mov-direction-verified) -
-; see docs/fuel_calculation_system.md's "ramp-limiter cluster" section for
-; the complete instruction-level walkthrough. Summary:
+; Full branch-by-branch, instruction-level walkthrough in
+; docs/fuel_calculation_system.md's "ramp-limiter cluster" section.
+; Summary:
 ;
 ; - trim_state.4 set on entry (or discovered set again at loc_DBDB, since
 ;   nothing in between modifies it): "diagnostic-only" mode. Only computes a
@@ -8632,15 +8646,14 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDBj
 ; var_flags_4E.2 (== var_trim_state.2, per the aliasing note above
 ; calc_inj_pw_base) based on whether the result exceeds 0xC7AE.
 ;
-; CORRECTED this session: the caller gate at loc_DA58 is
-; "cmp x, #004Dh / bcs" where X was loaded from var_adc_lambda (signed
-; lambda sensor voltage) at loc_DA17 and never reloaded since - i.e. this
-; is called when var_adc_lambda < 0x4D (unsigned compare on whatever X
-; holds at that point), NOT when var_inj_pw_base is below 0x4D as
-; previously stated here. var_inj_pw_base is loaded into D earlier in that
-; same block for an unrelated small lambda-driven nudge (+0x0C/-0x02,
-; clamped via ram_1BE_limits) that has already happened by the time this
-; gate is checked.
+; The caller gate at loc_DA58 is "cmp x, #004Dh / bcs" where X was loaded
+; from var_adc_lambda (signed lambda sensor voltage) at loc_DA17 and
+; never reloaded since - i.e. this is called when var_adc_lambda < 0x4D
+; (unsigned compare on whatever X holds at that point), not when
+; var_inj_pw_base is below 0x4D. var_inj_pw_base is loaded into D
+; earlier in that same block for an unrelated small lambda-driven nudge
+; (+0x0C/-0x02, clamped via ram_1BE_limits) that has already happened by
+; the time this gate is checked.
 ; ---------------------------------------------------------------------------
 
 ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+14C2p
@@ -8712,7 +8725,7 @@ loc_DC74:							; CODE XREF: ramp_limit_inj_pw_simple+32j
 ; restore from var_flags_4E_copy2 around address E37F (divide_d_by_x
 ; chunk E363, well past this point).
 ;
-; This chunk and DD38/DD59 (below) are NOT fuel-pulse-width calculation -
+; This chunk and DD38/DD59 (below) are not fuel-pulse-width calculation -
 ; they're the start of a periodic I/O-debounce and diagnostic/error-flag
 ; phase of the main loop:
 ;
@@ -8721,40 +8734,42 @@ loc_DC74:							; CODE XREF: ramp_limit_inj_pw_simple+32j
 ;    resetting var_4ms_cnt_B6/B7 debounce timers (the same counters read
 ;    elsewhere, e.g. calc_iscv/chunk D3A5) based on io_input1/io_input2
 ;    conditions and var_cnt_C9/var_cnt_CA.
-;  - (DD02-DD28) A THIRD, independent instance of the var_flags_4E-aliasing
+;
+;  - (DD02-DD28) A third, independent instance of the var_flags_4E-aliasing
 ;    trick - this time for unk_1CF, not var_trim_state (see unk_1CF_alias's
 ;    declaration comment). Established here, used for a battery/starter
 ;    diagnostic latch (STA signal error, var_error_flags1.0), committed
 ;    back at loc_DD38's entry.
+;
 ;  - (DD38-DD51) STP/limp-mode diagnostic error flag (var_error_flags1.1).
+;
 ;  - (DD59-DD66) PORTA.1 (STP?) edge-triggered flag (var_flags_4D.6) with a
-;    counter reset, then jumps to loc_E112 (not traced this session).
+;    counter reset, then jumps to loc_E112 (not traced).
 ;
 ; loc_DD69 (below, physically adjacent but reached via jsr from a
-; DIFFERENT, later point in the main loop - the short second
-; var_trim_state alias instance right after loc_DA63) has its OWN,
+; different, later point in the main loop - the short second
+; var_trim_state alias instance right after loc_DA63) has its own,
 ; separate instance of the unk_1CF alias (established loc_DDB8, committed
 ; loc_DE7B) wrapping a long run of O2-heater/lambda/coolant-sensor
 ; diagnostic checks. Within it: sub_DE5A (resets unk_187, sets
 ; var_flags_4F.7 if out of [3,0x131) range) and sub_DE71 (saturating
-; increment of unk_187) - both previously flagged as "not deep-dived", now
-; resolved as a simple counter-with-error-flag pair.
+; increment of unk_187) - a simple counter-with-error-flag pair.
 ;
-; RESOLVED: var_flags_4E_copy_2 (note the underscore - distinct from
-; var_flags_4E_copy2, used by the var_trim_state alias) is NOT a
+; var_flags_4E_copy_2 (note the underscore - distinct from
+; var_flags_4E_copy2, used by the var_trim_state alias) is not a
 ; protect-across-a-big-window mechanism. It's a "last-known-good real
-; value" cache: refreshed with the CURRENT real var_flags_4E at several
-; independent points (confirmed at chunk CB1E's loc_CD0B, right after the
+; value" cache: refreshed with the current real var_flags_4E at several
+; independent points (chunk CB1E's loc_CD0B, right after the
 ; boost-limit-flag update, and again at calc_4ms_corrections' loc_EF48),
 ; and consulted/restored at other points (loc_CA1B's continuation just
 ; after chunk C9DA, and loc_DF2A below) whenever code needs a valid real
 ; value that isn't otherwise fresh at hand - e.g. because var_flags_4E is
-; mid-excursion for a DIFFERENT purpose (var_trim_state or unk_1CF). Each
+; mid-excursion for a different purpose (var_trim_state or unk_1CF). Each
 ; write refreshes the cache for whichever read comes next in execution
-; order; it is NOT one write paired with one specific later read. This
-; does not create an overlapping big window and does not affect the
-; var_flags_4E interpretations in chunks C9DA/CB1E/D1DD/D3A5, calc_iscv, or
-; calc_4ms_corrections - all confirmed still correct.
+; order; it is not one write paired with one specific later read. This
+; doesn't create an overlapping big window and doesn't affect the
+; var_flags_4E interpretations in chunks C9DA/CB1E/D1DD/D3A5, calc_iscv,
+; or calc_4ms_corrections.
 ; ---------------------------------------------------------------------------
 
 loc_DC77:							; CODE XREF: divide_d_by_x+13F0j
@@ -10379,7 +10394,7 @@ loc_E363:							; CODE XREF: divide_d_by_x:loc_E112j
 ; ���������������������������������������������������������������������������
 
 loc_E36A:							; CODE XREF: divide_d_by_x+1DCAj
-				ld	d, #(var_cnt_E1	<< 8) |	07h
+				ld	d, #COUNTER_ARG(var_cnt_E1, 07h)
 				jsr	increment_counters
 
 				ld	a, unk_E8
@@ -10388,7 +10403,7 @@ loc_E36A:							; CODE XREF: divide_d_by_x+1DCAj
 				cmpb	a, #01h
 				bne	loc_E37F
 
-				ld	d, #(var_cnt_E9	<< 8) |	01h
+				ld	d, #COUNTER_ARG(var_cnt_E9, 01h)
 				jsr	increment_counters
 
 
@@ -15426,7 +15441,7 @@ loc_F7C0:							; Clear	flag to	run 4ms	background code
 
 iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+Fp
 ; Step 1: Increment main 4ms counters (var_4m_cnt_AD and 0x19 more bytes)
-				ld	d, #(var_4m_cnt_AD << 8) | 19h	; D = [start_addr, count]
+				ld	d, #COUNTER_ARG(var_4m_cnt_AD, 19h)	; D = [start_addr, count]
 				jsr	increment_counters
 
 ; Step 2: Read I/O input pins into var_io_input1
@@ -15579,7 +15594,7 @@ loc_F86A:							; CODE XREF: iv6_4ms_process+91j
 
 ; 8ms sub-slot: increment secondary counters and copy DMA TX buffer
 loc_F870:							; CODE XREF: iv6_4ms_process+8Ej
-				ld	d, #(var_cnt_C7 << 8) | 06h	; D = [start=var_cnt_C7, count=6]
+				ld	d, #COUNTER_ARG(var_cnt_C7, 06h)	; D = [start=var_cnt_C7, count=6]
 				jsr	increment_counters		; Increment var_cnt_C7..var_cnt_CC
 				jsr	copy_dma_tx			; Update DMA TX buffer for inter-CPU transfer
 
