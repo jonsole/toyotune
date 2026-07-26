@@ -7,6 +7,60 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### CPU2 (D151803-9661): unk_ variable rename pass
+Went through every remaining `unk_`/`dmarx_unk_`/`dmatx_unk_` variable in
+CPU2, renaming where a confirmed role exists and adding a reference note
+(pointing at the confirming code, or a cross-referenced-but-equally-
+unresolved CPU1 counterpart) where it doesn't:
+
+- `unk_44`/`unk_47`/`unk_48` -> `var_flags_44`/`var_flags_47`/`var_flags_48`
+  (all fully bit-documented this session - see their declarations).
+- `unk_51` -> `var_rpm_deviation_51` (confirmed physical meaning:
+  `|unk_EC - var_rpm_x_5p12|`, read only by external debug tooling).
+- `unk_55`/`unk_56` -> `var_dma_sync_timeout_55`/`var_dma_rearm_cnt_56`
+  (serial_dma_start's timeout/retry counters).
+- `unk_5A` -> `var_map_temp2_5A` (an unread scratch temp alongside
+  var_map_temp/var_map_temp_x in the bilinear-interpolation helper).
+- `unk_103` -> `var_enrichment_unk_103` (matches its
+  var_enrichment_unk_53/FE/100 decay-chain siblings).
+- `unk_111`/`unk_112` -> `var_unk_111`/`var_knock_unk_112` (still
+  unconfirmed purpose, but knock_unk_112 mirrors its DMA sibling
+  dmatx_knock_unk_160's naming).
+- `unk_11E` -> `var_tvsv_scale_base_11E` (TVSV's RPM-table base value).
+- `unk_126` -> `var_asr0n_shadow_126` (confirmed role: RAM shadow of the
+  real ASR0N register - see serial_dma_start's header for the unconfirmed
+  bit 6/7 semantics that remain).
+- `unk_E8`/`unk_EA`/`unk_EC` -> `var_rpm_smooth_e8`/`_ea`/`_ec` (three
+  distinctly-smoothed RPM trackers; their exact functional differences
+  remain unconfirmed, per the existing header notes).
+- `dmarx_unk_DB` -> `dmarx_add_enrichment_DB`, `dmarx_unk_E1` ->
+  `dmarx_dout0_duty_E1` (both already had confirmed roles from earlier
+  work).
+- `dmatx_unk_158/159/15A/15D` -> `dmatx_enrichment_unk_158/159/15A/15D`
+  (DMA-transmitted siblings of the var_enrichment_unk_53/FE/100/103 chain).
+- `dmatx_unk_169`/`dmatx_unk_16B` -> `dmatx_status1_169`/`dmatx_status2_16B`
+  (confirmed role: packed status snapshots for CPU1, individual bits
+  already documented in update_dmatx_status_flags).
+- `dmatx_unk_16A` -> `dmatx_diag_mode_16A` (the always-dead diagnostic-
+  mode selector documented in TVSV/update_odb_flags).
+- `dmatx_unk_16C` -> `dmatx_ign_advance_hi_16C` (new cross-reference:
+  = CPU1's `dmarx_ign_advance_hi`, written once to the fixed constant
+  0xC0 at factory_selfcheck's entry).
+- `dmatx_unk_162` -> `dmatx_lambda_trim_162` (confirmed cross-reference
+  to CPU1's `dmarx_lambda_trim` from earlier this session, just not
+  renamed at the time).
+
+**Left unrenamed, with reference notes added:** `unk_4D`/`unk_7F`/
+`dmarx_unk_D2` (genuinely unreferenced anywhere - padding/boundary
+markers), `dmarx_unk_D3`/`D4`/`D5` (used only as opaque thresholds/
+multipliers, no confirmed physical meaning), `dmarx_unk_4B` (single
+reference, inside TVSV's dead diagnostic gate), `dmatx_unk_15F`/`167`
+(cross-referenced to CPU1 where applicable, but the CPU1 side is equally
+unresolved). Verified via verify_assembly_match.py after every rename -
+0 real edit regions throughout (pure renames, no byte changes).
+
+---
+
 ### CRITICAL CORRECTION: `tbs` is a destructive test-and-set, not a pure test
 This session spent significant effort concluding that `var_flags_41` (CPU2)
 and `var_schedule_flag_41` (CPU1, same address 0x41) were "dead" - flag

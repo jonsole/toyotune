@@ -145,7 +145,7 @@ var_flags_40:			.block 1			; C87C↓o ...
 								;   (loc_D204). Read widely to skip/alter
 								;   behavior right after a reset: the
 								;   decay_enrichment_unk_53/FE/100/
-								;   decay_unk_103 skip-paths, TVSV's
+								;   decay_var_enrichment_unk_103 skip-paths, TVSV's
 								;   word_16D table select, both
 								;   PORTA.2/PORTA.3 warning blocks, and a
 								;   PORTB.5 pulse in main_loop. Reads as
@@ -158,7 +158,7 @@ var_flags_40:			.block 1			; C87C↓o ...
 								;   cleared when it tests set; read by
 								;   main_continue (loc_C9BC) to gate the
 								;   slow (1/32-per-call) low-pass filter
-								;   for unk_E8. Net effect: only the
+								;   for var_rpm_smooth_e8. Net effect: only the
 								;   first calc_rpm call after each
 								;   iv6_ne_process clear of
 								;   var_flags_41.0 applies the extra
@@ -295,7 +295,7 @@ dmarx_limiter_flags:		.block 1			; CE88↓r ...
 								; 43.5 - Set if	throttle shut
 								; 43.6 - Set if	rev limit active
 								; 43.7 - Set if	boost limit exceeded
-unk_44:				.block 1			; CDFD↓r
+var_flags_44:				.block 1			; CDFD↓r
 								; Only bit0 used, entirely within
 								; calc_ignition_timing's PORTB.2 drive
 								; logic (see that function's header):
@@ -336,7 +336,7 @@ var_flags_46:			.block 1			; CEAD↓r ...
 								; Bit 0 - Read/tested at four points in
 								;   TVSV, but ALL of them sit inside item
 								;   2's dead diagnostic-override gate
-								;   (dmatx_unk_16A==0x0F never happens -
+								;   (dmatx_diag_mode_16A==0x0F never happens -
 								;   see that block's header) or item 3
 								;   (only reachable from within item 2,
 								;   so equally dead): two `tbbs` (pure
@@ -355,11 +355,11 @@ var_flags_46:			.block 1			; CEAD↓r ...
 								;   var_tvsv_scale_total > 0xA6; cleared
 								;   otherwise (loc_D007) or at the top of
 								;   the dead-gate fallthrough (loc_CEFA).
-								;   While set, biases unk_11E's ceiling by
+								;   While set, biases var_tvsv_scale_base_11E's ceiling by
 								;   +0x14 (capped at 0xC8) - reads as a
 								;   "boost mode" hysteresis latch, not
 								;   independently confirmed.
-unk_47:				.block 1			; loc_C8C3↓r ...
+var_flags_47:				.block 1			; loc_C8C3↓r ...
 								; A multi-purpose status byte - each bit
 								; below is an independent flag, unrelated
 								; to the others except by sharing this
@@ -376,14 +376,14 @@ unk_47:				.block 1			; loc_C8C3↓r ...
 								;   start of update_odb_flags' VF-level
 								;   select (loc_D18D); read by
 								;   update_dmatx_status_flags
-								;   (dmatx_unk_16B.3 = this bit clear).
+								;   (dmatx_status2_16B.3 = this bit clear).
 								; Bit 3 - Set in update_odb_flags
 								;   (loc_D179) when PORTA.0 is clear AND
 								;   var_input_bits.4 is set AND
 								;   var_cnt64ms_BE>=8; cleared (and
-								;   unk_48.2 set) otherwise. Read by
+								;   var_flags_48.2 set) otherwise. Read by
 								;   update_dmatx_status_flags
-								;   (dmatx_unk_16B.4 = this bit clear).
+								;   (dmatx_status2_16B.4 = this bit clear).
 								; Bit 4 - Not referenced anywhere in
 								;   this file.
 								; Bit 5 - "New DMA frame ready" - set by
@@ -396,7 +396,7 @@ unk_47:				.block 1			; loc_C8C3↓r ...
 								; Bit 6 - Cleared in serial_dma_start's
 								;   normal-timeout re-arm path (see its
 								;   header - a "first attempt vs repeat"
-								;   distinction via unk_56), set at
+								;   distinction via var_dma_rearm_cnt_56), set at
 								;   serial_dma_start's loc_D53F. Tested
 								;   by iv6_4ms_process's process_8ms
 								;   block to skip the OBD-byte-advance
@@ -409,26 +409,26 @@ unk_47:				.block 1			; loc_C8C3↓r ...
 								;   var_input_bits.2 goes clear - see that
 								;   function's own header for the full
 								;   mechanism.
-unk_48:				.block 1			; C70C↓r ...
+var_flags_48:				.block 1			; C70C↓r ...
 								; Bit 0 - Two unrelated uses: (1) right
 								;   before negate_rD's label, `setb
-								;   bit0,unk_48` immediately followed by
-								;   `tbbc bit0,unk_48,locret_C709` - since
+								;   bit0,var_flags_48` immediately followed by
+								;   `tbbc bit0,var_flags_48,locret_C709` - since
 								;   the bit was just set, the branch can
 								;   never fire; looks like leftover/
 								;   never-taken glue in the math library,
 								;   not a meaningful flag. (2) in
 								;   update_rpm_smooth_filter, a genuine
-								;   sign-tracking flag for the |unk_EC -
+								;   sign-tracking flag for the |var_rpm_smooth_ec -
 								;   var_rpm_x_5p12| calculation - see that
 								;   function's own header.
-								; Bit 1 - Reset alongside unk_111/unk_112's
+								; Bit 1 - Reset alongside var_unk_111/var_knock_unk_112's
 								;   defaults in calc_ignition_timing (see
 								;   that inline comment) - no reader found
 								;   in this file.
 								; Bit 2 - Set in update_odb_flags
 								;   (loc_D187, alongside clearing
-								;   unk_47.3 - see that bit's note) when
+								;   var_flags_47.3 - see that bit's note) when
 								;   the PORTA.0/var_input_bits.4/
 								;   var_cnt64ms_BE debounce condition
 								;   isn't met; read at loc_D333 (the
@@ -464,7 +464,7 @@ dmarx_unk_4B:			.block 1			; CEDB↓r ...
 								; Only bit6 referenced, and only inside
 								; TVSV's dead diagnostic-override gate
 								; (loc_CEA3-loc_CEFA, gated on
-								; dmatx_unk_16A==0x0F which never happens
+								; dmatx_diag_mode_16A==0x0F which never happens
 								; - see that header) - so this received
 								; byte's one consumer never actually
 								; runs. Physical meaning on CPU1's side
@@ -472,6 +472,9 @@ dmarx_unk_4B:			.block 1			; CEDB↓r ...
 								; consumer is dead code).
 				.block 1
 unk_4D:				.block 1
+								; Not referenced anywhere in this file
+								; (no reader or writer found) - unused
+								; padding/reserved space, not renamed.
 dmarx_flags_1:			.block 1			; CCCE↓r ...
 								; Received from CPU1 over DMA, but NOT the
 								; same as CPU1's var_io_input1/var_io_input2
@@ -510,34 +513,43 @@ var_enrich_flags:		.block 1			; CA29↓r ...
 								;   fuel-enrichment tail): set when bit3
 								;   is set, cleared when bit3 is clear.
 								;   Consumed by update_dmatx_status_flags
-								;   (dmatx_unk_169.6).
+								;   (dmatx_status1_169.6).
 								; 4F.6 - Unconditionally cleared by both
 								;   branches of the map-enrichment
 								;   closed/open-loop decision (loc_CA31) -
 								;   no setter found anywhere, so this bit
 								;   is always clear in practice.
 								;   Consumed by update_dmatx_status_flags
-								;   (dmatx_unk_169.5, which per this
+								;   (dmatx_status1_169.5, which per this
 								;   finding also always sees it clear).
 								; 4F.7 - Not referenced anywhere in this
 								;   file.
 								;
 var_rpm_div_25:			.block 1			; C985↓w ...
-; unk_51: written by update_rpm_smooth_filter, but only ever read
+; var_rpm_deviation_51: written by update_rpm_smooth_filter, but only ever read
 ; externally via serial_debug_check's generic RAM-word debug protocol
 ; (see its header comment) - not dead code, just not consumed by any
 ; ECU control-flow.
-unk_51:				.block 1			; C9FA↓w
+var_rpm_deviation_51:				.block 1			; C9FA↓w
 var_spd:			.block 1			; CCC6↓r ...
 var_enrichment_unk_53:		.block 1			; loc_CB27↓w ...
 				.block 1
-unk_55:				.block 1			; loc_D4FD↓r ...
-unk_56:				.block 1			; D533↓r ...
+var_dma_sync_timeout_55:				.block 1			; loc_D4FD↓r ...
+var_dma_rearm_cnt_56:				.block 1			; D533↓r ...
 var_map_temp_x:			.block 2			; C6B0↓w ...
 var_map_temp:			.block 1			; C6C1↓w ...
-unk_5A:				.block 1			; C6D4↓w
+var_map_temp2_5A:				.block 1			; C6D4↓w
+								; Written once, inside a bilinear
+								; map-interpolation helper alongside
+								; var_map_temp/var_map_temp_x - a scratch
+								; temp of the same family. No reader
+								; found anywhere in this file.
 				.block 24h
 unk_7F:				.block 1			; C880↓o
+								; Not a real variable - just the end-
+								; address marker for clear_variables'
+								; zero-fill sweep (var_flags_40-unk_7F).
+								; No other reference; not renamed.
 				.block 20h
 var_ne_count:			.block 1			; C885↓o ...
 								; NE counter
@@ -599,23 +611,40 @@ dmarx_tham:			.block 1			; CD8C↓r ...
 dmarx_battery:			.block 1			; D040↓r ...
 								; DMARX0C:
 dmarx_unk_D2:			.block 1
+								; Not referenced anywhere in this file -
+								; unused padding/reserved DMA slot.
 dmarx_unk_D3:			.block 1			; CCA8↓r ...
 								; DMARX0E:
+								; Read as a threshold in
+								; decay_enrichment_unk_100 (cmp #5Ch) and
+								; the warning-debounce phase (cmp #3Dh) -
+								; physical meaning not confirmed.
 dmarx_unk_D4:			.block 1			; CBB9↓r ...
 								; DMARX0F:
+								; Read as a threshold/limit in
+								; decay_enrichment_unk_100 (an ECT-table
+								; lookup must not exceed it),
+								; calc_ignition_timing's PORTB.2 drive
+								; (>0x0A check), and the PORTA.2 warning
+								; (>0x0F check) - physical meaning not
+								; confirmed.
 dmarx_unk_D5:			.block 1			; CB94↓r
 								; DMARX10:
+								; Read once, as a multiplier in
+								; decay_enrichment_unk_100's neighboring
+								; chunk (loc_CB6D area) - physical
+								; meaning not confirmed.
 								;
 dmarx_lambda_state:			.block 1			; C9BE↓r ...
 dmarx_adc_lambda:		.block 1			; loc_D0E2↓r ...
 dmarx_knock_info:		.block 3			; CF43↓r ...
-dmarx_unk_DB:			.block 1			; loc_D0D3↓r
+dmarx_add_enrichment_DB:			.block 1			; loc_D0D3↓r
 dmarx_obd_inj:			.block 1			; table_odb↓o
 dmarx_obd_ign:			.block 1			; table_odb↓o
 dmarx_obd_iscv:			.block 1			; table_odb↓o
 dmarx_obd_o2_sensor:		.block 1			; table_odb↓o ...
 dmarx_knock:			.block 1			; CA10↓r
-dmarx_unk_E1:			.block 2			; CE79↓r
+dmarx_dout0_duty_E1:			.block 2			; CE79↓r
 var_spd_edge_count:		.block 1			; D580↓o ...
 								; Count	of speed signal	edges
 				.block 1
@@ -623,11 +652,11 @@ var_spd_time:			.block 2			; D5FE↓r ...
 								; Clock	time of	previous speed signal edge
 var_spd_prev:			.block 1			; D62B↓w
 								; Previous calculated road speed
-unk_E8:				.block 1			; C96A↓w ...
+var_rpm_smooth_e8:				.block 1			; C96A↓w ...
 				.block 1
-unk_EA:				.block 1			; C96C↓w ...
+var_rpm_smooth_ea:				.block 1			; C96C↓w ...
 				.block 1
-unk_EC:				.block 1			; C96E↓w ...
+var_rpm_smooth_ec:				.block 1			; C96E↓w ...
 				.block 1
 var_rpm_div_spd:		.block 1			; CF37↓r ...
 var_input_bits_temp:		.block 1			; D697↓o
@@ -642,7 +671,7 @@ var_enrichment_unk_FE:		.block 1			; loc_CB4D↓w ...
 var_enrichment_unk_100:		.block 1			; loc_CB9D↓w ...
 				.block 1
 var_fuel_enrichment:		.block 1			; loc_CAD7↓w
-unk_103:			.block 1			; loc_CBE3↓w ...
+var_enrichment_unk_103:			.block 1			; loc_CBE3↓w ...
 				.block 1
 var_tham_enrich_unk:		.block 1			; CD91↓w
 var_knock_fuel_enrichment:	.block 1			; loc_CA6D↓w ...
@@ -657,8 +686,8 @@ var_pim2_peak:			.block 2			; loc_CCF9↓w ...
 								; Smoothed peak	hold of	dmarx_pim2
 				.block 1
 				.block 1
-unk_111:			.block 1			; CE36↓w
-unk_112:			.block 1			; CE3D↓w
+var_unk_111:			.block 1			; CE36↓w
+var_knock_unk_112:			.block 1			; CE3D↓w
 var_vf:				.block 1			; D1BE↓w ...
 								; VF signal (0 to 11), converted externally to analogue	voltage
 var_max_retard_unk:		.block 1			; CD73↓w ...
@@ -671,7 +700,7 @@ var_knock_info:			.block 1			; loc_CF51↓w
 var_tvsv_scale_knock:		.block 1			; CF66↓w ...
 var_tvsv_scale_total:		.block 1			; loc_CF97↓w ...
 var_tvsv_scale_tha:		.block 1			; CF71↓w ...
-unk_11E:			.block 1			; CF0A↓w ...
+var_tvsv_scale_base_11E:			.block 1			; CF0A↓w ...
 var_tvsv_scale_limiter:		.block 1			; loc_CE97↓w ...
 var_tvsv_unk_120:		.block 1			; loc_CFC4↓w ...
 var_obd_flags1:			.block 1			; loc_D0D9↓w ...
@@ -707,7 +736,7 @@ var_odb_flags2:			.block 1			; loc_D0F9↓w ...
 var_odb_shift_reg:		.block 1			; D105↓r ...
 				.block 1
 var_odb_byte_count:		.block 1			; C8B1↓w ...
-unk_126:			.block 1			; C8A6↓w ...
+var_asr0n_shadow_126:			.block 1			; C8A6↓w ...
 var_serbus_rx:			.block 23h			; C839↓t ...
 dmarx_flags1:			.block 1			; D222↓r ...
 dmarx_flags2:			.block 1			; D1FB↓r ...
@@ -718,17 +747,21 @@ dmatx_ve_x_pim_x_rpm:			.block 2			; loc_CCA0↓w
 dmatx_scaled_ve:		.block 2			; CC76↓w
 dmatx_rpm_x_5p12:		.block 2			; C97F↓w
 dmatx_warmup_enrichment_157:	.block 1			; CB09↓w
-dmatx_unk_158:			.block 1			; CB29↓w ...
-dmatx_unk_159:			.block 1			; CB4F↓w ...
-dmatx_unk_15A:			.block 1			; CBA0↓w ...
+dmatx_enrichment_unk_158:			.block 1			; CB29↓w ...
+dmatx_enrichment_unk_159:			.block 1			; CB4F↓w ...
+dmatx_enrichment_unk_15A:			.block 1			; CBA0↓w ...
 dmatx_unk_enrich:		.block 1			; CB78↓w
 dmatx_tham_enrich:		.block 1			; CD94↓w
-dmatx_unk_15D:			.block 1			; CBE6↓w ...
+dmatx_enrichment_unk_15D:			.block 1			; CBE6↓w ...
 dmatx_fuel_enrichment:		.block 1			; CADB↓w
 dmatx_unk_15F:			.block 1			; CE39↓w
+								; Defaulted to 0xFF alongside var_unk_111
+								; in calc_ignition_timing (see that inline
+								; comment) - no reader found in this file;
+								; CPU1's corresponding address not checked.
 dmatx_knock_unk_160:		.block 1			; CE40↓w
 dmatx_max_retard_161:		.block 1			; CD76↓w
-dmatx_unk_162:			.block 1			; loc_CCDA↓w
+dmatx_lambda_trim_162:			.block 1			; loc_CCDA↓w
 dmatx_ign_timing:		.block 1			; loc_CD27↓w
 dmatx_ign_timing_fallback1:	.block 1			; CC04↓w
 								; = CPU1's dmarx_ign_timing_fallback1 (0xDA offset formula,
@@ -742,6 +775,11 @@ dmatx_ign_timing_fallback2:	.block 1			; CC0F↓w
 								; in sub_E865. Was dmatx_ign_timing_unk_165.
 dmatx_ign_timing_unk_166:	.block 1			; CC35↓w
 dmatx_unk_167:			.block 1			; CC50↓w
+								; = CPU1's dmarx_unk_241_167 (0xDA offset,
+								; exact match) - the CPU1 name is equally
+								; unresolved (see calc_params' inline
+								; comment), so no further specificity is
+								; available from either side yet.
 dmatx_iscv_duty:			.block 1			; CC1A↓w
 								; = CPU1's dmarx_iscv_duty (0xDA offset, exact match;
 								; CPU1 originally named it dmarx_unk_242_168, embedding
@@ -749,10 +787,19 @@ dmatx_iscv_duty:			.block 1			; CC1A↓w
 								; see session_journal.md). Base/nominal ISCV duty,
 								; table_C376_rpm(RPM)/32 - refined by CPU1's own idle
 								; control loop (idle_control_system.md). Was dmatx_unk_168.
-dmatx_unk_169:			.block 1			; loc_D5B4↓w
-dmatx_unk_16A:			.block 1			; CAC6↓r ...
-dmatx_unk_16B:			.block 1			; loc_D5D1↓w
-dmatx_unk_16C:			.block 1			; D1DD↓w
+dmatx_status1_169:			.block 1			; loc_D5B4↓w
+dmatx_diag_mode_16A:			.block 1			; CAC6↓r ...
+dmatx_status2_16B:			.block 1			; loc_D5D1↓w
+dmatx_ign_advance_hi_16C:			.block 1			; D1DD↓w
+								; = CPU1's dmarx_ign_advance_hi (0xDA
+								; offset formula, exact match). Written
+								; once, to the fixed constant 0xC0, right
+								; at factory_selfcheck's entry (before its
+								; own gate check) - presumably a fixed
+								; test/override value for the self-test
+								; mode rather than a normal computed
+								; ignition-advance term; not independently
+								; confirmed.
 word_16D:			.block 2			; loc_CD61↓w ...
 word_16F:			.block 2
 				.block 1
@@ -2285,7 +2332,7 @@ map_rD_rX_map_interpolate:
 				add	y, b
 				ld	d, var_map_temp_x
 				bsr	interp_table_pair
-				st	a, unk_5A
+				st	a, var_map_temp2_5A
 				ld	y, #var_map_temp
 				pull	b
 				bra	loc_C67F
@@ -2431,8 +2478,8 @@ locret_C709:							; C705↑j
 				ret
 ; End of function divide_rD_16_saturate
 
-				setb	bit0, unk_48
-				tbbc	bit0, unk_48, locret_C713
+				setb	bit0, var_flags_48
+				tbbc	bit0, var_flags_48, locret_C713
 
 negate_rD:
 				neg	a
@@ -2792,7 +2839,7 @@ loc_C88E:							; D313↓j
 ; loc_D2E9's reset-recovery path (see main_loop's comment). Re-inits NE
 ; counters, sets several flags/counters to fixed defaults, primes ADC
 ; with two check_io_inputs calls, re-arms interrupts, then spins
-; (loc_C8C3) until unk_47.5 is set before falling into main_loop.
+; (loc_C8C3) until var_flags_47.5 is set before falling into main_loop.
 				jsr	init_ne_counters
 				setb	bit4, var_flags_40
 				setb	bit3, var_flags_40
@@ -2802,7 +2849,7 @@ loc_C88E:							; D313↓j
 				ld	#0FEh, var_cnt4ms_AD
 				ld	#0FEh, var_cnt4ms_AE
 				ld	a, #0F4h
-				st	a, unk_126
+				st	a, var_asr0n_shadow_126
 				ld	#0FFh, var_cnt32ms_B5
 				ld	#0FFh, var_cnt32ms_tvsv_limiter
 				ld	a, #0DEh
@@ -2815,7 +2862,7 @@ loc_C88E:							; D313↓j
 				ld	#01h, TIMER3		; Timer	LSB (bit0~bit2)
 
 loc_C8C3:							; loc_C8C3↓j
-				tbbc	bit5, unk_47, loc_C8C3
+				tbbc	bit5, var_flags_47, loc_C8C3
 				nop
 				nop
 				nop
@@ -2861,10 +2908,10 @@ main_loop:							; D391↓j
 				and	a, #3Bh
 				or	a, #1Bh
 				st	a, TAIT			; Timer	ASR Control
-				ld	a, unk_126
+				ld	a, var_asr0n_shadow_126
 				and	a, #0F4h
 				or	a, #74h
-				st	a, unk_126
+				st	a, var_asr0n_shadow_126
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
 				ld	a, TIMER3		; Timer	LSB (bit0~bit2)
 				and	a, #0F9h
@@ -2880,13 +2927,13 @@ main_loop:							; D391↓j
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	d, #8000h + 14Dh
 				st	d, ASR3			; ASR3 edge counter value MSB
-; A new DMA frame has arrived (unk_47.5 set) - unpack it into dmarx_*.
+; A new DMA frame has arrived (var_flags_47.5 set) - unpack it into dmarx_*.
 				clrb	bit5, var_flags_40
-				tbbc	bit5, unk_47, loc_C92A
+				tbbc	bit5, var_flags_47, loc_C92A
 				jsr	copy_serbus_rx
 
 loc_C92A:							; C924↑j
-				clrb	bit5, unk_47
+				clrb	bit5, var_flags_47
 				tbbc	bit0, dmarx_var_flags_46, loc_C931
 				clr	var_cnt32ms_B2
 
@@ -2937,12 +2984,12 @@ loc_C960:							; C95B↑j
 				bcs	loc_C97A
 				clr	a
 				clr	b
-				st	d, unk_E8
-				st	d, unk_EA
-				st	d, unk_EC
+				st	d, var_rpm_smooth_e8
+				st	d, var_rpm_smooth_ea
+				st	d, var_rpm_smooth_ec
 				jsr	init_ne_counters
 				ei
-				clrb	bit0, unk_47
+				clrb	bit0, var_flags_47
 				clr	a
 				clr	b
 				bra	loc_C97D
@@ -3028,16 +3075,16 @@ main_continue:							; C987↑j
 
 loc_C9BC:							; main_continue↑j
 ; ---------------------------------------------------------------------------
-; loc_C9BC: gated (1/32-per-call) low-pass filter for unk_E8, feeding
+; loc_C9BC: gated (1/32-per-call) low-pass filter for var_rpm_smooth_e8, feeding
 ; update_rpm_filter_EA below.
 ;
-; unk_E8 tracks var_rpm_x_5p12, but the way it tracks depends on
+; var_rpm_smooth_e8 tracks var_rpm_x_5p12, but the way it tracks depends on
 ; dmarx_lambda_state's sign and whether RPM's high byte falls in
 ; [0x09,0x19) (~450-1250rpm, an idle-ish band):
 ; - dmarx_lambda_state >= 0 (positive/zero), OR RPM's high byte outside
-;   that band: unk_E8 snaps directly to var_rpm_x_5p12, no smoothing.
-; - dmarx_lambda_state < 0 AND RPM in that idle-ish band: unk_E8 = unk_E8 +
-;   max(1, (var_rpm_x_5p12 - unk_E8)/32) toward var_rpm_x_5p12 - i.e. a
+;   that band: var_rpm_smooth_e8 snaps directly to var_rpm_x_5p12, no smoothing.
+; - dmarx_lambda_state < 0 AND RPM in that idle-ish band: var_rpm_smooth_e8 = var_rpm_smooth_e8 +
+;   max(1, (var_rpm_x_5p12 - var_rpm_smooth_e8)/32) toward var_rpm_x_5p12 - i.e. a
 ;   slow (~1/32 per call) approach with a minimum-step-of-1 safeguard
 ;   against a shrinking delta rounding to a permanent stall.
 ;
@@ -3045,7 +3092,7 @@ loc_C9BC:							; main_continue↑j
 ; var_lambda_state - confirmed via CPU1's dmatx_unk_211 = var_lambda_state
 ; in copy_dma_tx, and the CPU1_addr = CPU2_addr + 0x13B offset formula for
 ; this direction: 0x211 - 0xD6 = 0x13B) is used only by its sign, here and
-; at one other site (loc_CCA0's dmatx_unk_162 gate, part of the fuel VE
+; at one other site (loc_CCA0's dmatx_lambda_trim_162 gate, part of the fuel VE
 ; section). On CPU1, var_lambda_state is a fuel-cut/overrun-recovery
 ; timer: reset to 0x80 (negative) in the idle/normal state, set to 0x66
 ; when a decel fuel-cut's recovery window starts, then counted up by 2
@@ -3062,7 +3109,7 @@ loc_C9BC:							; main_continue↑j
 				bcs	loc_C9DB
 				cmp	a, #19h
 				bcc	loc_C9DB
-				sub	d, unk_E8
+				sub	d, var_rpm_smooth_e8
 				beq	loc_C9DD
 				rorc	a
 				rorc	b
@@ -3072,10 +3119,10 @@ loc_C9BC:							; main_continue↑j
 				inc	b
 
 loc_C9D9:							; C9D6↑j
-				add	d, unk_E8
+				add	d, var_rpm_smooth_e8
 
 loc_C9DB:							; C9C0↑j ...
-				st	d, unk_E8
+				st	d, var_rpm_smooth_e8
 
 loc_C9DD:							; C9CC↑j
 				jsr	update_rpm_filter_EA
@@ -3091,30 +3138,29 @@ update_rpm_smooth_filter:							; CD83↓p
 ; ---------------------------------------------------------------------------
 ; update_rpm_smooth_filter: RPM low-pass filter + deviation sample
 ;
-; unk_EC is a smoothed RPM tracker (rounded average: unk_EC = (RPM +
-; unk_EC)/2 via the rorc-based rounding-divide-by-2 idiom used elsewhere in
+; var_rpm_smooth_ec is a smoothed RPM tracker (rounded average: var_rpm_smooth_ec = (RPM +
+; var_rpm_smooth_ec)/2 via the rorc-based rounding-divide-by-2 idiom used elsewhere in
 ; this codebase) - reset to 0 elsewhere (loc_C960) on a stall/restart
-; condition (var_cnt8ms_AF >= 0x3D), alongside unk_E8/unk_EA.
+; condition (var_cnt8ms_AF >= 0x3D), alongside var_rpm_smooth_e8/var_rpm_smooth_ea.
 ;
-; unk_51 = |unk_EC - var_rpm_x_5p12| (saturating divide, then sign-restored
-; via unk_48 and re-biased by 0x80) - a magnitude-ish RPM deviation sample.
+; var_rpm_deviation_51 = |var_rpm_smooth_ec - var_rpm_x_5p12| (saturating divide, then sign-restored
+; via var_flags_48 and re-biased by 0x80) - a magnitude-ish RPM deviation sample.
 ;
-; unk_51 has no reader anywhere in this ROM's own control-flow code - its
+; var_rpm_deviation_51 has no reader anywhere in this ROM's own control-flow code - its
 ; only consumer is external tooling, via serial_debug_check's generic
 ; RAM-word debug protocol (see that function's header). Not fed into any
-; downstream ECU calculation; left unrenamed since its physical meaning
-; ("RPM deviation sample") is already captured above and a
-; live-data-only value doesn't need a control-flow-oriented name.
+; downstream ECU calculation - a live-data-only value for diagnostic
+; tools, not ECU control flow.
 ;
 ; Called every ~32ms from calc_ignition_timing (var_flags_41.6 gate),
 ; alongside decay_enrichment_unk_53/decay_enrichment_unk_FE and the
 ; dmarx_tham-indexed table lookup that follows it there.
 ; ---------------------------------------------------------------------------
-				clrb	bit0, unk_48
-				ld	d, unk_EC
+				clrb	bit0, var_flags_48
+				ld	d, var_rpm_smooth_ec
 				sub	d, var_rpm_x_5p12
 				bcc	loc_C9F0
-				setb	bit0, unk_48
+				setb	bit0, var_flags_48
 				neg	a
 				neg	b
 				subc	a, #00h
@@ -3122,17 +3168,17 @@ update_rpm_smooth_filter:							; CD83↓p
 loc_C9F0:							; C9E8↑j
 				jsr	divide_rD_16_saturate
 				shr	b
-				tbbc	bit0, unk_48, loc_C9F8
+				tbbc	bit0, var_flags_48, loc_C9F8
 				neg	b
 
 loc_C9F8:							; C9F4↑j
 				add	b, #80h
-				st	b, unk_51
+				st	b, var_rpm_deviation_51
 				ld	d, var_rpm_x_5p12
-				add	d, unk_EC
+				add	d, var_rpm_smooth_ec
 				rorc	a
 				rorc	b
-				st	d, unk_EC
+				st	d, var_rpm_smooth_ec
 				ret
 ; End of function update_rpm_smooth_filter
 
@@ -3164,19 +3210,19 @@ main_continue_2:						; loc_C9E0↑j
 ; 2) (main_continue_3, CAE7-CB27) var_warmup_enrichment_FD/
 ;    dmatx_warmup_enrichment_157 (ECT x RPM two-table product, via
 ;    mult_rBrX2) - always recomputed, no decay. Falls into:
-;    var_enrichment_unk_53/dmatx_unk_158 (ECT-table lookup, gated on
+;    var_enrichment_unk_53/dmatx_enrichment_unk_158 (ECT-table lookup, gated on
 ;    var_flags_40.0 clear + dmarx_var_flags_46.0 set + ECT/THA thresholds)
 ;    - decayed by decay_enrichment_unk_53.
-; 3) (loc_CB3D-CB52) var_enrichment_unk_FE/dmatx_unk_159 (ECT-table
+; 3) (loc_CB3D-CB52) var_enrichment_unk_FE/dmatx_enrichment_unk_159 (ECT-table
 ;    lookup, same var_flags_40.0/dmarx_var_flags_46.0 gate pattern) -
 ;    decayed by decay_enrichment_unk_FE.
 ; 4) (loc_CB6D-CBCE) dmatx_unk_enrich (PIM-scaled product of
 ;    var_enrichment_unk_FE and a fixed-point PIM division, always
-;    recomputed) falls into var_enrichment_unk_100/dmatx_unk_15A (ECT
+;    recomputed) falls into var_enrichment_unk_100/dmatx_enrichment_unk_15A (ECT
 ;    table x dmarx_unk_D5 product, same gate pattern) - decayed (by
 ;    subtraction, not scaling) by decay_enrichment_unk_100.
-; 5) (loc_CBCE-CBE9) unk_103/dmatx_unk_15D (THA-table lookup, same gate
-;    pattern) - decayed by decay_unk_103. Falls into calc_params.
+; 5) (loc_CBCE-CBE9) var_enrichment_unk_103/dmatx_enrichment_unk_15D (THA-table lookup, same gate
+;    pattern) - decayed by decay_var_enrichment_unk_103. Falls into calc_params.
 ;
 ; Physical meaning of the individual enrichment terms (2-5) beyond "ECT/THA
 ; table lookup, gated on operating mode" is NOT confirmed. What's
@@ -3309,10 +3355,10 @@ loc_CABC:							; CAB9↑j
 loc_CAC3:							; CAC0↑j
 				cmpz	b
 				beq	loc_CACF
-; dmatx_unk_16A is written only as 0 anywhere in this ROM (see loc_CE86's
+; dmatx_diag_mode_16A is written only as 0 anywhere in this ROM (see loc_CE86's
 ; header), never 0x0F, so this beq is never taken - the add b,#06h below
 ; always executes.
-				ld	a, dmatx_unk_16A
+				ld	a, dmatx_diag_mode_16A
 				cmpb	a, #0Fh
 				beq	loc_CACF
 				add	b, #06h
@@ -3379,7 +3425,7 @@ main_continue_3:						; CAE7↑j
 
 loc_CB27:							; CB0E↑j ...
 				st	d, var_enrichment_unk_53
-				st	a, dmatx_unk_158
+				st	a, dmatx_enrichment_unk_158
 
 loc_CB2C:							; CB11↑j
 				bra	loc_CB3D
@@ -3397,7 +3443,7 @@ decay_enrichment_unk_53:							; CDAE↓p
 				ld	a, #0F0h
 				jsr	mult_rArX
 				st	d, var_enrichment_unk_53
-				st	a, dmatx_unk_158
+				st	a, dmatx_enrichment_unk_158
 
 locret_CB3C:							; CB30↑j
 				ret
@@ -3416,7 +3462,7 @@ loc_CB3D:							; loc_CB2C↑j
 
 loc_CB4D:							; CB3F↑j
 				st	d, var_enrichment_unk_FE
-				st	a, dmatx_unk_159
+				st	a, dmatx_enrichment_unk_159
 
 loc_CB52:							; CB42↑j
 				bra	loc_CB6D
@@ -3442,7 +3488,7 @@ loc_CB5E:							; CB57↑j
 				beq	locret_CB6C
 				jsr	mult_rArX
 				st	d, var_enrichment_unk_FE
-				st	a, dmatx_unk_159
+				st	a, dmatx_enrichment_unk_159
 
 locret_CB6C:							; CB5C↑j ...
 				ret
@@ -3478,7 +3524,7 @@ loc_CB75:							; CB71↑j
 
 loc_CB9D:							; CB7D↑j ...
 				st	d, var_enrichment_unk_100
-				st	a, dmatx_unk_15A
+				st	a, dmatx_enrichment_unk_15A
 				bra	loc_CBCE
 ; END OF FUNCTION CHUNK	FOR check_startup
 
@@ -3513,7 +3559,7 @@ loc_CBB6:							; CBB1↑j
 
 loc_CBC7:							; CBC3↑j
 				st	d, var_enrichment_unk_100
-				st	a, dmatx_unk_15A
+				st	a, dmatx_enrichment_unk_15A
 
 locret_CBCD:							; CBA8↑j ...
 				ret
@@ -3533,8 +3579,8 @@ loc_CBCE:							; CB80↑j ...
 				jsr	table_rB_fixed_16_interpolate
 
 loc_CBE3:							; CBD0↑j ...
-				st	d, unk_103
-				st	a, dmatx_unk_15D
+				st	d, var_enrichment_unk_103
+				st	a, dmatx_enrichment_unk_15D
 
 loc_CBE9:							; CBD3↑j
 				bra	calc_params
@@ -3543,21 +3589,21 @@ loc_CBE9:							; CBD3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_unk_103:							; CDB1↓p
-; Decay unk_103 toward 0 by x0xF0/256 (~93.75%) per call when nonzero -
+decay_var_enrichment_unk_103:							; CDB1↓p
+; Decay var_enrichment_unk_103 toward 0 by x0xF0/256 (~93.75%) per call when nonzero -
 ; same shape as decay_enrichment_unk_53. See the header above
 ; main_continue_2 for the whole enrichment-chain/decay-function pattern
 ; this belongs to.
-				ld	x, unk_103
+				ld	x, var_enrichment_unk_103
 				beq	locret_CBFB
 				ld	a, #0F0h
 				jsr	mult_rArX
-				st	d, unk_103
-				st	a, dmatx_unk_15D
+				st	d, var_enrichment_unk_103
+				st	a, dmatx_enrichment_unk_15D
 
 locret_CBFB:							; CBEE↑j
 				ret
-; End of function decay_unk_103
+; End of function decay_var_enrichment_unk_103
 
 ; Calculate parameters
 ; START	OF FUNCTION CHUNK FOR check_startup
@@ -3572,11 +3618,11 @@ locret_CBFB:							; CBEE↑j
 ;
 ; Reads: var_rpm_x_5p12, dmarx_pim, dmarx_pim2, dmarx_lambda_state,
 ;   var_spd, dmarx_flags_1, dmarx_unk_D3, dmarx_unk_D6 (via
-;   dmarx_lambda_state), var_ne_sum, unk_EA
+;   dmarx_lambda_state), var_ne_sum, var_rpm_smooth_ea
 ; Writes: dmatx_ign_timing_fallback1, dmatx_ign_timing_fallback2,
 ;   dmatx_iscv_duty, dmatx_ign_timing_unk_166, dmatx_unk_167, var_map_ve,
 ;   dmatx_scaled_ve, var_ve_x_pim_x_rpm, dmatx_ve_x_pim_x_rpm,
-;   dmatx_unk_162, var_map_temp_x
+;   dmatx_lambda_trim_162, var_map_temp_x
 ; ---------------------------------------------------------------------------
 
 calc_params:							; loc_CBE9↑j
@@ -3725,7 +3771,7 @@ loc_CC86:							; CC82↑j
 
 loc_CCA0:							; CC9B↑j
 
-; dmatx_unk_162 = an RPM/gear/speed-gated clamp, computed only while
+; dmatx_lambda_trim_162 = an RPM/gear/speed-gated clamp, computed only while
 ; dmarx_lambda_state is non-negative (see loc_C9BC's header above for
 ; what that means) - confirming the "deceleration/overrun-related" guess:
 ; = CPU1's dmarx_lambda_trim (0xDA offset formula, exact match), consumed
@@ -3744,7 +3790,7 @@ loc_CCA0:							; CC9B↑j
 				ld	x, var_ne_sum
 				ld	b, #70h
 				jsr	mult_rBrX2
-				ld	x, unk_EA
+				ld	x, var_rpm_smooth_ea
 				jsr	mult_rDrX
 				mov	x, d
 				ld	y, #table_clamp_C5EC
@@ -3759,7 +3805,7 @@ loc_CCD4:							; CCC9↑j ...
 				sub	d, #0180h
 
 loc_CCDA:							; CCA5↑j ...
-				st	b, dmatx_unk_162
+				st	b, dmatx_lambda_trim_162
 				bra	calc_ignition_timing
 ; END OF FUNCTION CHUNK	FOR check_startup
 
@@ -3767,20 +3813,20 @@ loc_CCDA:							; CCA5↑j ...
 
 
 update_rpm_filter_EA:							; loc_C9DD↑p
-; update_rpm_filter_EA: smooth unk_EA toward D at ~12.5%/call (B=0x20/256
+; update_rpm_filter_EA: smooth var_rpm_smooth_ea toward D at ~12.5%/call (B=0x20/256
 ; via signed_proportional_update), hard-resetting it to raw RPM first when
 ; dmarx_var_flags_46.0 is clear. Only reached (via loc_C9DD, in
 ; main_continue's fall-through) after main_continue has already computed
-; D as an RPM-delta/ratio value relative to unk_E8 - NOT raw RPM itself.
-; unk_EA joins unk_EC (see update_rpm_smooth_filter) as a second,
+; D as an RPM-delta/ratio value relative to var_rpm_smooth_e8 - NOT raw RPM itself.
+; var_rpm_smooth_ea joins var_rpm_smooth_ec (see update_rpm_smooth_filter) as a second,
 ; differently-smoothed RPM-tracking variable; their relationship/distinct
 ; purposes aren't confirmed.
 				ld	x, var_rpm_x_5p12
 				tbbc	bit0, dmarx_var_flags_46, loc_CCE6
-				st	x, unk_EA
+				st	x, var_rpm_smooth_ea
 
 loc_CCE6:							; CCE1↑j
-				ld	y, #unk_EA
+				ld	y, #var_rpm_smooth_ea
 				ld	b, #20h
 				jsr	signed_proportional_update
 				ret
@@ -3800,13 +3846,13 @@ loc_CCE6:							; CCE1↑j
 ;
 ; Reads: dmarx_pim2, dmarx_pim, var_rpm_x_5p12, var_input_bits, PORTC,
 ;   dmarx_ect, dmarx_unk_D4, dmarx_tham, var_flags_40, var_flags_41,
-;   var_flags_45, dmarx_var_flags_46, PORTD_ASRIN, unk_44, var_cnt8ms_B0,
+;   var_flags_45, dmarx_var_flags_46, PORTD_ASRIN, var_flags_44, var_cnt8ms_B0,
 ;   var_rpm_div_25
 ; Writes: var_pim2_peak, dmatx_ign_timing, var_flags_45, word_16D,
 ;   var_max_retard_unk, dmatx_max_retard_161, var_cnt32ms_B2,
 ;   var_cnt16ms_B1, var_cnt_C1, var_cnt8ms_B0, var_cnt32ms_B3,
-;   var_tham_enrich_unk, dmatx_tham_enrich, PORTB, unk_47, unk_48,
-;   unk_111, unk_112, dmatx_unk_15F, dmatx_knock_unk_160,
+;   var_tham_enrich_unk, dmatx_tham_enrich, PORTB, var_flags_47, var_flags_48,
+;   var_unk_111, var_knock_unk_112, dmatx_unk_15F, dmatx_knock_unk_160,
 ;   dmatx_ve_corr_map, dmatx_ve_corr_map_tps
 ; ---------------------------------------------------------------------------
 
@@ -3939,7 +3985,7 @@ loc_CD61:							; CD51↑j ...
 ;   decay_enrichment_unk_FE/tham-enrichment-table refresh (bit6)
 ; - var_cnt16ms_B1 (+01h) (bit4)
 ; - var_cnt_C1 (+02h, on its own ~7Ah-tick cadence, unrelated to
-;   var_flags_41) with decay_enrichment_unk_53/decay_unk_103
+;   var_flags_41) with decay_enrichment_unk_53/decay_var_enrichment_unk_103
 ; - decay_enrichment_unk_100, gated on var_flags_41.2
 ;
 ; Unrelated to the ignition-timing work above - just sharing this
@@ -3970,7 +4016,7 @@ loc_CDA1:							; CD99↑j
 				ld	d, #COUNTER_ARG(var_cnt_C1, 02h)
 				jsr	increment_counters
 				jsr	decay_enrichment_unk_53
-				jsr	decay_unk_103
+				jsr	decay_var_enrichment_unk_103
 
 loc_CDB4:							; CDA4↑j
 				tbs	bit2, var_flags_41
@@ -4011,12 +4057,12 @@ loc_CDD7:							; loc_CDBE↑j
 				ld	a, var_rpm_div_25
 				cmp	a, #12h
 				bcc	loc_CDDF
-				clrb	bit0, unk_44
+				clrb	bit0, var_flags_44
 
 loc_CDDF:							; CDDB↑j
 				cmp	a, #16h
 				bcs	loc_CDE5
-				setb	bit0, unk_44
+				setb	bit0, var_flags_44
 
 loc_CDE5:							; CDE1↑j
 				tbbs	bit7, dmarx_var_flags_46, loc_CE03
@@ -4032,7 +4078,7 @@ loc_CDEF:							; CDE8↑j
 
 loc_CDFA:							; CDF4↑j
 				tbbs	bit2, var_input_bits, loc_CE03
-				tbbc	bit0, unk_44, loc_CE03
+				tbbc	bit0, var_flags_44, loc_CE03
 				clrb	bit2, PORTB
 				.db 8Ch
 
@@ -4042,12 +4088,12 @@ loc_CE03:							; loc_CDE5↑j ...
 loc_CE05:							; CDD4↑j
 				cmp	#0Ah, var_rpm_x_5p12
 				bcc	loc_CE0C
-				clrb	bit1, unk_47
+				clrb	bit1, var_flags_47
 
 loc_CE0C:							; CE08↑j
 				cmp	#0Eh, var_rpm_x_5p12
 				bcs	loc_CE13
-				setb	bit1, unk_47
+				setb	bit1, var_flags_47
 
 loc_CE13:							; CE0F↑j
 				cmp	#14h, var_rpm_x_5p12
@@ -4058,28 +4104,28 @@ loc_CE13:							; CE0F↑j
 				ble	loc_CE24
 
 loc_CE22:							; CE16↑j ...
-				setb	bit0, unk_47
+				setb	bit0, var_flags_47
 
 loc_CE24:							; CE20↑j
 				tbbs	bit7, dmarx_var_flags_46, loc_CE30
-				tbbc	bit0, unk_47, loc_CE30
-				tbbc	bit1, unk_47, loc_CE30
+				tbbc	bit0, var_flags_47, loc_CE30
+				tbbc	bit1, var_flags_47, loc_CE30
 				clrb	bit3, PORTB
 				.db 8Ch
 
 loc_CE30:							; loc_CE24↑j ...
 				setb	bit3, PORTB
 
-; Resets unk_48.1 and defaults unk_111/dmatx_unk_15F to 0xFF,
-; unk_112/dmatx_knock_unk_160 to 0 - unconfirmed, no other reader/writer
-; of unk_111/unk_112 found in this file.
+; Resets var_flags_48.1 and defaults var_unk_111/dmatx_unk_15F to 0xFF,
+; var_knock_unk_112/dmatx_knock_unk_160 to 0 - unconfirmed, no other reader/writer
+; of var_unk_111/var_knock_unk_112 found in this file.
 
-				clrb	bit1, unk_48
+				clrb	bit1, var_flags_48
 				ld	a, #0FFh
-				st	a, unk_111
+				st	a, var_unk_111
 				st	a, dmatx_unk_15F
 				clr	a
-				st	a, unk_112
+				st	a, var_knock_unk_112
 				st	a, dmatx_knock_unk_160
 
 ; dmatx_ve_corr_map/dmatx_ve_corr_map_tps: items 3/4 of the fuel VE section
@@ -4117,10 +4163,10 @@ loc_CE67:							; CE53↑j
 ; ---------------------------------------------------------------------------
 ; drive_DOUT0: software-PWM comparator driving DOUT.0, the same idiom as
 ; drive_DOUT2_tvsv (see its header below) but with the duty cycle received
-; directly from CPU1 over DMA (dmarx_unk_E1) rather than computed locally:
+; directly from CPU1 over DMA (dmarx_dout0_duty_E1) rather than computed locally:
 ; var_unk_115 free-runs 0->200 (+6/call, wraps at 0xC8), and DOUT.0 is
-; driven high while var_unk_115 < dmarx_unk_E1. What DOUT.0 physically
-; drives, and dmarx_unk_E1's meaning on CPU1's side, aren't confirmed.
+; driven high while var_unk_115 < dmarx_dout0_duty_E1. What DOUT.0 physically
+; drives, and dmarx_dout0_duty_E1's meaning on CPU1's side, aren't confirmed.
 ; ---------------------------------------------------------------------------
 drive_DOUT0:							; D477↓p
 				ld	b, var_unk_115
@@ -4131,7 +4177,7 @@ drive_DOUT0:							; D477↓p
 
 loc_CE76:							; CE73↑j
 				st	b, var_unk_115
-				ld	b, dmarx_unk_E1
+				ld	b, dmarx_dout0_duty_E1
 				cmp	b, var_unk_115
 				ble	loc_CE83
 				setb	bit0, DOUT
@@ -4163,12 +4209,12 @@ loc_CE86:							; CE6A↑j
 ; calculation - battery-voltage/PIM-gated, drives PORTA.2 not DOUT.2.
 ;
 ; Reads: dmarx_limiter_flags, var_cnt32ms_tvsv_limiter, dmarx_pim2,
-;   dmatx_unk_16A, var_flags_46, dmarx_ect, dmarx_tha, var_cnt4ms_A7,
+;   dmatx_diag_mode_16A, var_flags_46, dmarx_ect, dmarx_tha, var_cnt4ms_A7,
 ;   dmarx_var_flags_46, dmarx_unk_4B, var_rpm_x_5p12, var_spd,
 ;   dmarx_tps, var_rpm_div_spd, dmarx_knock_info, var_max_retard_unk,
-;   var_rpm_div_25, var_cnt4ms_A8, var_tvsv_117, unk_11E
+;   var_rpm_div_25, var_cnt4ms_A8, var_tvsv_117, var_tvsv_scale_base_11E
 ; Writes: var_tvsv_scale_limiter, var_cnt4ms_A7, var_flags_46,
-;   var_cnt32ms_tvsv_limiter, unk_11E, var_tvsv_scale_tps_rpm,
+;   var_cnt32ms_tvsv_limiter, var_tvsv_scale_base_11E, var_tvsv_scale_tps_rpm,
 ;   var_tvsv_scale_tps_x_gear, var_knock_info, var_tvsv_scale_knock,
 ;   var_tvsv_scale_tha, var_tvsv_scale_total, var_map_temp_x,
 ;   var_tvsv_unk_120, var_tvsv_117
@@ -4200,11 +4246,11 @@ loc_CE97:							; CE93↑j
 loc_CEA3:							; CE9F↑j
 
 ; 2) An elaborate ECT/THA/RPM/speed diagnostic-override gate, but only
-;    entered when dmatx_unk_16A == 0x0F. dmatx_unk_16A is written only as
+;    entered when dmatx_diag_mode_16A == 0x0F. dmatx_diag_mode_16A is written only as
 ;    0 anywhere in this ROM (one explicit write in update_odb_flags, plus
 ;    the startup clear_variables_high sweep which covers its address
 ;    0x016A), so this gate is dead code, never entered. (The same
-;    dmatx_unk_16A==0x0F check gates a +6 ECT adjustment in the
+;    dmatx_diag_mode_16A==0x0F check gates a +6 ECT adjustment in the
 ;    enrichment chain documented above main_continue_2 - that check is
 ;    likewise always false there, so that +6 always applies.)
 ;
@@ -4213,7 +4259,7 @@ loc_CEA3:							; CE9F↑j
 ;    scale - i.e. TVSV defaults toward off/minimum unless the (dead)
 ;    override path would have been taken.
 
-				ld	a, dmatx_unk_16A
+				ld	a, dmatx_diag_mode_16A
 				cmpb	a, #0Fh
 				bne	loc_CEFA
 				ld	d, #0CA80h
@@ -4267,7 +4313,7 @@ loc_CEFA:							; CEA8↑j ...
 loc_CF02:							; CEF8↑j
 
 ; 3) Main scale calculation, only reached via the dead path above -
-;    table_C4AA_rpm(RPM) as a base (unk_11E), then, unless a
+;    table_C4AA_rpm(RPM) as a base (var_tvsv_scale_base_11E), then, unless a
 ;    low-throttle/low-RPM bypass applies (var_flags_46.0 + TPS<0x29 +
 ;    RPM_div_25<0x40), multiplies together four independent correction
 ;    factors (each 8-bit saturating): map_C403_tvsv_tps_rpm(TPS,RPM),
@@ -4279,7 +4325,7 @@ loc_CF02:							; CEF8↑j
 				ld	b, var_rpm_x_5p12
 				ld	y, #table_C4AA_rpm
 				jsr	table_rB_fixed_16_interpolate
-				st	a, unk_11E
+				st	a, var_tvsv_scale_base_11E
 				tbs	bit0, var_flags_46
 				beq	loc_CF1B
 				cmp	#29h, dmarx_tps
@@ -4369,7 +4415,7 @@ loc_CF97:							; CF93↑j
 ; 4) Rate-limits the new candidate against var_tvsv_117 (the previous
 ;    cycle's output - a feedback/integrator term, via table_tvsv_C4C2 and
 ;    a 0x3C threshold), applies mode-latch hysteresis on var_flags_46.1
-;    (comparing against unk_11E +/- a boost-mode adjustment and
+;    (comparing against var_tvsv_scale_base_11E +/- a boost-mode adjustment and
 ;    var_tvsv_scale_total vs 0xA6), then all paths (gated-out/bypass/
 ;    full-calc) converge here: a final ceiling clamp via table_C4F2(RPM),
 ;    min'd against whatever value the taken path produced, stored to
@@ -4423,7 +4469,7 @@ loc_CFE1:							; CFDA↑j ...
 				ld	b, var_tvsv_unk_120
 				cmp	b, #40h
 				bcs	loc_D007
-				ld	b, unk_11E
+				ld	b, var_tvsv_scale_base_11E
 				tbbc	bit1, var_flags_46, loc_CFF7
 				add	b, #14h
 				cmp	b, #0C8h
@@ -4437,7 +4483,7 @@ loc_CFF7:							; CFEC↑j ...
 				cmp	b, #0A6h
 				bcs	loc_D007
 				setb	bit1, var_flags_46
-				ld	a, unk_11E
+				ld	a, var_tvsv_scale_base_11E
 				.db  8Ch ; î
 
 loc_D007:							; CFE7↑j ...
@@ -4642,7 +4688,7 @@ update_odb_flags:						; D336↓p
 ;          enrichment" active)
 ;   bit1 - var_warmup_enrichment_FD nonzero (warm-up enrichment active)
 ;   bit5 - dmarx_var_flags_46.1 clear (open-loop mode)
-;   bit6 - dmarx_unk_DB nonzero (additional enrichment active)
+;   bit6 - dmarx_add_enrichment_DB nonzero (additional enrichment active)
 ;
 ; var_odb_flags2:
 ;   bit7 - dmarx_var_flags_46.4 clear (diagnostic condition not good)
@@ -4676,7 +4722,7 @@ loc_D0CE:							; D0CA↑j
 				or	a, #20h			; Open loop mode
 
 loc_D0D3:							; loc_D0CE↑j
-				ld	b, dmarx_unk_DB
+				ld	b, dmarx_add_enrichment_DB
 				beq	loc_D0D9
 				or	a, #40h			; Additional enrichment
 
@@ -4815,32 +4861,32 @@ output_odb_bit_return:						; D158↑j
 ; START	OF FUNCTION CHUNK FOR update_odb_flags
 
 loc_D179:							; loc_D0FC↑j
-; A debounce/counter-reset block (unk_47.3/unk_48.2, keyed on PORTA.0 and
+; A debounce/counter-reset block (var_flags_47.3/var_flags_48.2, keyed on PORTA.0 and
 ; var_input_bits.4 via var_cnt64ms_BE), then the VF diagnostic signal's
 ; level select: var_vf ends up 0 (0V), 8 (2.5V) or 16 (5V) - see the
 ; pre-existing "Set VF voltage to..." comments below - chosen from
 ; var_input_bits.0, dmarx_var_flags_46 bits 1/4, dmarx_flags_1 bits 1/2,
 ; dmarx_obd_o2_sensor thresholds, and dmarx_adc_lambda's sign. Also
-; zeroes dmatx_unk_16A here (its only write site anywhere in this ROM -
+; zeroes dmatx_diag_mode_16A here (its only write site anywhere in this ROM -
 ; see serial_debug_check's header for why that matters).
 				tbbc	bit0, PORTA, loc_D18B	; Port A Data Register
 				tbbc	bit4, var_input_bits, loc_D187
 				cmp	#08h, var_cnt64ms_BE
 				bcs	loc_D18D
-				setb	bit3, unk_47
+				setb	bit3, var_flags_47
 				.db  8Ch ; î
 
 loc_D187:							; D17C↑j
-				clrb	bit3, unk_47
-				setb	bit2, unk_48
+				clrb	bit3, var_flags_47
+				setb	bit2, var_flags_48
 
 loc_D18B:							; loc_D179↑j
 				clr	var_cnt64ms_BE
 
 loc_D18D:							; D182↑j
 				clr	a
-				st	a, dmatx_unk_16A
-				clrb	bit2, unk_47
+				st	a, dmatx_diag_mode_16A
+				clrb	bit2, var_flags_47
 				tbbs	bit0, var_input_bits, loc_D1A8
 				tbbc	bit1, dmarx_var_flags_46, loc_D1B7
 				tbbc	bit1, dmarx_flags_1, loc_D1B9
@@ -4935,7 +4981,7 @@ factory_selfcheck:							; D388↓p
 ;
 ; Reads: var_input_bits, dmarx_flags_1, var_spd, var_rpm_x_5p12,
 ;   dmarx_flags2, dmarx_flags1, PORTA, PORTB
-; Writes: dmatx_unk_16C, var_flags_40, IMASK, DOM, PORTA, PORTB, DOUT
+; Writes: dmatx_ign_advance_hi_16C, var_flags_40, IMASK, DOM, PORTA, PORTB, DOUT
 ; ---------------------------------------------------------------------------
 
 ; Entry gate: a specific combination of digital inputs (var_input_bits
@@ -4945,7 +4991,7 @@ factory_selfcheck:							; D388↓p
 ; immediately (loc_D204/loc_D206 -> locret_D316).
 
 				ld	b, #0C0h
-				st	b, dmatx_unk_16C
+				st	b, dmatx_ign_advance_hi_16C
 				tbbc	bit0, var_input_bits, loc_D204
 				tbbc	bit2, var_input_bits, loc_D206
 				tbbc	bit5, dmarx_flags_1, loc_D206
@@ -5250,7 +5296,7 @@ loc_D31E:							; D319↑j
 loc_D333:							; D32B↑j
 				jsr	update_ect_enrich_clamp
 				jsr	update_odb_flags
-				tbbc	bit2, unk_48, loc_D371
+				tbbc	bit2, var_flags_48, loc_D371
 				ld	a, var_ve_x_pim_x_rpm
 				tbbs	bit0, PORTA, loc_D350	; Port A Data Register
 				ld	b, #28h
@@ -5424,13 +5470,13 @@ check_starter_running:						; D474↓p
 ; check_starter_running: while var_input_bits.2 is set continuously for
 ; >= 48ms (0x0C * 4ms, via var_cnt4ms_A3), force-resets var_ne_count/
 ; var_ne_count_dup to their "no data" state (0xFF) - once only per
-; sustained-set period, via the unk_47.7 one-shot latch (cleared again as
+; sustained-set period, via the var_flags_47.7 one-shot latch (cleared again as
 ; soon as var_input_bits.2 goes clear). Presumably discards stale NE data
 ; while a starter/cranking condition (var_input_bits.2's likely meaning,
 ; per this function's name) is active but not yet producing reliable NE
 ; sync - not independently confirmed.
 				tbbc	bit2, var_input_bits, loc_D3F7
-				tbs	bit7, unk_47
+				tbs	bit7, var_flags_47
 				bne	locret_D3FE
 				cmp	#0Ch, var_cnt4ms_A3
 				bcs	locret_D3FE
@@ -5440,8 +5486,8 @@ check_starter_running:						; D474↓p
 				bra	locret_D3FE
 
 loc_D3F7:							; check_starter_running↑j
-				tbbc	bit7, unk_47, locret_D3FE
-				clrb	bit7, unk_47
+				tbbc	bit7, var_flags_47, locret_D3FE
+				clrb	bit7, var_flags_47
 				clr	var_cnt4ms_A3
 
 locret_D3FE:							; D3E8↑j ...
@@ -5629,7 +5675,7 @@ process_8ms:							; D49B↑j
 				jsr	increment_counters
 				cmp	#05h, var_cnt4ms_obd_byte
 				bgt	loc_D4CA
-				tbbs	bit6, unk_47, loc_D4CA
+				tbbs	bit6, var_flags_47, loc_D4CA
 				tbs	bit6, var_flags_40
 				beq	loc_D4CA
 				clrb	bit6, var_flags_40
@@ -5659,31 +5705,31 @@ serial_dma_start:						; D2D7↑p ...
 ; itself. So this whole subsystem is a software poll/re-arm loop running
 ; on a fixed periodic tick, not an edge- or byte-received-triggered ISR.
 ;
-; Reads: var_cnt4ms_AE, TIMER3, unk_126, unk_55, unk_56, var_cnt4ms_AD
-; Writes: unk_126, ASR0N, var_cnt4ms_AE, TIMER3, ASR3, IMASKL, ASR2,
-;   unk_56, unk_47, var_cnt4ms_AD
+; Reads: var_cnt4ms_AE, TIMER3, var_asr0n_shadow_126, var_dma_sync_timeout_55, var_dma_rearm_cnt_56, var_cnt4ms_AD
+; Writes: var_asr0n_shadow_126, ASR0N, var_cnt4ms_AE, TIMER3, ASR3, IMASKL, ASR2,
+;   var_dma_rearm_cnt_56, var_flags_47, var_cnt4ms_AD
 ;
-; Correction: unk_47.7 is not touched by this function at all - that bit
+; Correction: var_flags_47.7 is not touched by this function at all - that bit
 ; is entirely check_starter_running's own one-shot latch (self-re-armed
 ; via `tbs`'s destructive test-and-set - see toshiba-8x-technical-
 ; reference.md - not an open question, see that function's own header).
 ; An earlier version of this header's claim that this function relates to
-; unk_47.7 was incorrect and has been removed.
+; var_flags_47.7 was incorrect and has been removed.
 
 				cmp	#04h, var_cnt4ms_AE
 				ble	loc_D4DF
 
-; unk_126 is shadowed into the real ASR0N hardware register on every
-; write (every store to unk_126 here is immediately followed by the same
+; var_asr0n_shadow_126 is shadowed into the real ASR0N hardware register on every
+; write (every store to var_asr0n_shadow_126 here is immediately followed by the same
 ; value going to ASR0N). Bits 6/7 are toggled in ways that don't
 ; obviously fit ASR0N's documented "ASR0 falling edge counter" role -
 ; whether ASR0 is itself partly repurposed on this variant (the way
 ; ASR2/ASR3 are) or these are pure software flags piggy-backing on a
 ; shadowed register isn't established. This first occurrence clears bit6.
 
-				ld	a, unk_126
+				ld	a, var_asr0n_shadow_126
 				and	a, #0BFh
-				st	a, unk_126
+				st	a, var_asr0n_shadow_126
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
 				bra	loc_D4E9
 
@@ -5699,7 +5745,7 @@ loc_D4E9:							; D4DD↑j
 
 loc_D4EB:							; D4E7↑j
 
-; unk_126 bit6 set here (see the note above). Also CONFIRMED (by direct
+; var_asr0n_shadow_126 bit6 set here (see the note above). Also CONFIRMED (by direct
 ; arithmetic against main_loop's own initial ASR2/ASR3 programming, which
 ; uses named symbols instead of these functions' hard-coded constants):
 ; ASR3 (TX engine) is a 16-bit register written as 0x8000 | source_addr.
@@ -5718,9 +5764,9 @@ loc_D4EB:							; D4E7↑j
 ; engine rather than a plain timer readout. Worth folding back into the
 ; general technical reference doc as a variant-specific correction.
 
-				ld	a, unk_126
+				ld	a, var_asr0n_shadow_126
 				or	a, #40h
-				st	a, unk_126
+				st	a, var_asr0n_shadow_126
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
 				ld	d, #814Dh
 				st	d, ASR3			; ASR3 edge counter value MSB
@@ -5728,19 +5774,19 @@ loc_D4EB:							; D4E7↑j
 
 loc_D4FD:							; D4E3↑j
 
-; unk_55: a saturating byte counter (int_vector_0 increments it unless
+; var_dma_sync_timeout_55: a saturating byte counter (int_vector_0 increments it unless
 ; TIMER3==0x30 with RAMST.2 clear, which resets it to 0 and sets
-; unk_47.5 - "frame ready"). This `cmp #28h, unk_55` (0x28 = 40 IV0
+; var_flags_47.5 - "frame ready"). This `cmp #28h, var_dma_sync_timeout_55` (0x28 = 40 IV0
 ; ticks, i.e. ~56ms at the ~353Hz rate above) reads as a "how long since
 ; the last successful frame sync" timeout check - not confirmed without
 ; hardware probing.
 
-				cmp	#28h, unk_55
+				cmp	#28h, var_dma_sync_timeout_55
 				bcs	loc_D516
 				clrb	bit2, IMASKL
-				ld	a, unk_126
+				ld	a, var_asr0n_shadow_126
 				and	a, #7Fh
-				st	a, unk_126
+				st	a, var_asr0n_shadow_126
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
 				ld	a, TIMER3		; Timer	LSB (bit0~bit2)
 				or	a, #80h
@@ -5751,11 +5797,11 @@ loc_D516:							; D500↑j
 				setb	bit2, IMASKL
 				cmp	#04h, var_cnt4ms_AD
 				bcs	locret_D543
-				ld	a, unk_126
+				ld	a, var_asr0n_shadow_126
 				and	a, #7Fh
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
 				or	a, #80h
-				st	a, unk_126
+				st	a, var_asr0n_shadow_126
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
 
 ; ASR2 (RX engine) is a 16-bit register written as 0x9000 | target_addr.
@@ -5770,23 +5816,23 @@ loc_D516:							; D500↑j
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 
-; unk_56: a smaller saturating counter, incremented once per
+; var_dma_rearm_cnt_56: a smaller saturating counter, incremented once per
 ; serial_dma_start call along this specific path and compared against 1
-; to decide whether to set unk_47.6 below - reads as a "first re-arm
+; to decide whether to set var_flags_47.6 below - reads as a "first re-arm
 ; attempt vs a repeat" distinction, not confirmed.
 
-				ld	b, unk_56
+				ld	b, var_dma_rearm_cnt_56
 				inc	b
 				bne	loc_D539
 				dec	b
 
 loc_D539:							; D536↑j
-				st	b, unk_56
+				st	b, var_dma_rearm_cnt_56
 				cmp	b, #01h
 				bcs	loc_D541
 
 loc_D53F:							; D514↑j
-				setb	bit6, unk_47
+				setb	bit6, var_flags_47
 
 loc_D541:							; D53D↑j
 				clr	var_cnt4ms_AD
@@ -5801,37 +5847,37 @@ locret_D543:							; D51B↑j
 
 ; See serial_dma_start's header above for the full write-up - this is the
 ; periodic (~353Hz) IV0 tick that drives the same RX re-arm/timeout state
-; (unk_55, unk_47.5, ASR2, TIMER3).
+; (var_dma_sync_timeout_55, var_flags_47.5, ASR2, TIMER3).
 ;
-; Reads: unk_55, TIMER3, RAMST, UNK1C
-; Writes: unk_55, var_cnt4ms_AD, unk_56, unk_47, ASR2, TIMER3
+; Reads: var_dma_sync_timeout_55, TIMER3, RAMST, UNK1C
+; Writes: var_dma_sync_timeout_55, var_cnt4ms_AD, var_dma_rearm_cnt_56, var_flags_47, ASR2, TIMER3
 
 				; public int_vector_0
 int_vector_0:							; FFDE↓o
 				push	x
 				push	y
 				clrb	bit2, IRQLL
-				ld	b, unk_55
+				ld	b, var_dma_sync_timeout_55
 
 ; TIMER3==0x30 with RAMST.2 clear reads as "frame sync detected": resets
-; var_cnt4ms_AD/unk_56 and the unk_55 counter (b) to 0, sets unk_47.5
-; ("frame ready" - see copy_serbus_rx's header), clears unk_47.6.
-; Otherwise (loc_D55E, still waiting): clears unk_47.5 and saturating-
-; increments the unk_55 counter (b) instead.
+; var_cnt4ms_AD/var_dma_rearm_cnt_56 and the var_dma_sync_timeout_55 counter (b) to 0, sets var_flags_47.5
+; ("frame ready" - see copy_serbus_rx's header), clears var_flags_47.6.
+; Otherwise (loc_D55E, still waiting): clears var_flags_47.5 and saturating-
+; increments the var_dma_sync_timeout_55 counter (b) instead.
 
 				ld	a, TIMER3		; Timer	LSB (bit0~bit2)
 				cmpb	a, #30h
 				bne	loc_D55E
 				tbbs	bit2, RAMST, loc_D55E	; Built-in RAM status
 				clr	var_cnt4ms_AD
-				clr	unk_56
+				clr	var_dma_rearm_cnt_56
 				clr	b
-				setb	bit5, unk_47
-				clrb	bit6, unk_47
+				setb	bit5, var_flags_47
+				clrb	bit6, var_flags_47
 				bra	loc_D564
 
 loc_D55E:							; D54E↑j ...
-				clrb	bit5, unk_47
+				clrb	bit5, var_flags_47
 				inc	b
 				bne	loc_D564
 				dec	b
@@ -5842,7 +5888,7 @@ loc_D564:							; D55C↑j ...
 ; serial_dma_start uses (see its header above) and reprograms TIMER3 -
 ; this happens every IV0 tick regardless of which branch above was taken.
 
-				st	b, unk_55
+				st	b, var_dma_sync_timeout_55
 				ld	d, #9127h
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
@@ -5861,7 +5907,7 @@ copy_serbus_rx:							; C927↑p
 ; copy_serbus_rx: unpacks the raw DMA receive buffer (var_serbus_rx - the
 ; address reset_vector/main_loop point ASR2 at, i.e. the literal serial
 ; RX destination) into the named dmarx_* variables CPU2's code actually
-; reads. Called from main_loop, gated on unk_47.5 (a "new DMA frame
+; reads. Called from main_loop, gated on var_flags_47.5 (a "new DMA frame
 ; ready" flag set/cleared by the serial DMA hardware state machine in
 ; int_vector_0/serial_dma_start).
 ;
@@ -5910,14 +5956,14 @@ update_dmatx_status_flags:							; loc_D38B↑p
 ; loc_D333, not called alongside it). Two independent bitfields, each
 ; built by clearing A then OR-ing in a bit per condition:
 ;
-; dmatx_unk_169:
+; dmatx_status1_169:
 ;   bit2 = var_flags_40.6 clear
-;   bit3 = unk_47.2 clear
-;   bit4 = unk_47.3 clear
+;   bit3 = var_flags_47.2 clear
+;   bit4 = var_flags_47.3 clear
 ;   bit5 = var_enrich_flags.6 clear
 ;   bit6 = var_enrich_flags.5 clear
 ;
-; dmatx_unk_16B:
+; dmatx_status2_16B:
 ;   bit0 = var_input_bits.6 clear
 ;   bit1 = var_input_bits.7 clear
 ;   bit2 = PORTC.7 clear
@@ -5934,11 +5980,11 @@ update_dmatx_status_flags:							; loc_D38B↑p
 				or	a, #04h
 
 loc_D5A0:							; D59B↑j
-				tbbc	bit2, unk_47, loc_D5A5
+				tbbc	bit2, var_flags_47, loc_D5A5
 				or	a, #08h
 
 loc_D5A5:							; loc_D5A0↑j
-				tbbc	bit3, unk_47, loc_D5AA
+				tbbc	bit3, var_flags_47, loc_D5AA
 				or	a, #10h
 
 loc_D5AA:							; loc_D5A5↑j
@@ -5950,7 +5996,7 @@ loc_D5AF:							; loc_D5AA↑j
 				or	a, #40h
 
 loc_D5B4:							; loc_D5AF↑j
-				st	a, dmatx_unk_169
+				st	a, dmatx_status1_169
 				clr	a
 				tbbc	bit6, var_input_bits, loc_D5BD
 				or	a, #01h
@@ -5972,7 +6018,7 @@ loc_D5CC:							; loc_D5C7↑j
 				or	a, #10h
 
 loc_D5D1:							; loc_D5CC↑j
-				st	a, dmatx_unk_16B
+				st	a, dmatx_status2_16B
 				ret
 ; End of function update_dmatx_status_flags
 
@@ -6133,9 +6179,9 @@ serial_debug_check:						; D46E↑p
 ; live-data/debug-tool protocol (matches known external tool capability
 ; to live-read ECU RAM on these ECUs).
 ;
-; This is why unk_51 (and most other RAM bytes) has no in-ROM reader -
+; This is why var_rpm_deviation_51 (and most other RAM bytes) has no in-ROM reader -
 ; its consumer is external tooling via this protocol (index 0x28 would
-; read the word at 0x50-0x51, covering unk_51 as its low byte), not
+; read the word at 0x50-0x51, covering var_rpm_deviation_51 as its low byte), not
 ; internal ECU control logic. No bounds-check on the index was found in
 ; what's traced here, so this likely reaches most/all of RAM.
 ;
