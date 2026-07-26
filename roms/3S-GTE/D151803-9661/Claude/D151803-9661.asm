@@ -138,73 +138,389 @@ CPR7L:				.block 1			; Timer	comparison #3 LSB
 				;.segment RAM
 				.org 40h
 var_flags_40:			.block 1			; C87C↓o ...
-								; 40.0 -
-								; 40.1 -
-								; 40.2 -
+								; 40.0 - Set at the end of check_startup's
+								;   soft-reset path (loc_D2E9, before
+								;   jumping to loc_C88E); cleared when
+								;   factory_selfcheck's entry gate fails
+								;   (loc_D204). Read widely to skip/alter
+								;   behavior right after a reset: the
+								;   decay_enrichment_unk_53/FE/100/
+								;   decay_unk_103 skip-paths, TVSV's
+								;   word_16D table select, both
+								;   PORTA.2/PORTA.3 warning blocks, and a
+								;   PORTB.5 pulse in main_loop. Reads as
+								;   "a reset/soft-restart just happened",
+								;   not independently confirmed.
+								; 40.1 - Set in calc_rpm's tail when
+								;   var_flags_41.0 tests clear via `tbs`
+								;   (which also re-arms it - see that
+								;   variable's own declaration comment),
+								;   cleared when it tests set; read by
+								;   main_continue (loc_C9BC) to gate the
+								;   slow (1/32-per-call) low-pass filter
+								;   for unk_E8. Net effect: only the
+								;   first calc_rpm call after each
+								;   iv6_ne_process clear of
+								;   var_flags_41.0 applies the extra
+								;   smoothing.
+								; 40.2 - Not referenced anywhere in this
+								;   file.
 								; 40.3 - Cleared before	IV6 to request 4ms main	update
 								; 40.4 - Cleared before	IV6 to request NE counter update
-								; 40.5 -
+								; 40.5 - Cleared once per main_loop tick
+								;   (loc_C92A, just before the DMA-frame-
+								;   unpack check); no reader found in
+								;   this file - purpose unclear, possibly
+								;   write-only/vestigial.
 								; 40.6 - Toggled every 8ms
-								; 40.7 -
+								; 40.7 - Not referenced anywhere in this
+								;   file.
 								;
 var_flags_41:			.block 1			; C898↓r ...
-								; 41.0 -
-								; 41.1 -
-								; 41.2 -
-								; 41.3 -
-								; 41.4 - Cleared every 16ms to trigger 16ms process
-								; 41.5 - Cleared every 16ms to trigger 2nd 16ms	process
-								; 41.6 - Cleared every 32ms to trigger 32ms process
-								; 41.7 - Cleared every 64ms to trigger 64ms process
+								; CORRECTION (this session initially got
+								; this whole variable wrong): `tbs` is a
+								; destructive test-and-set - it reads the
+								; bit's PRIOR value into Z, then
+								; unconditionally sets the bit to 1 as a
+								; side effect (see toshiba-8x-technical-
+								; reference.md's `tbs` section, corrected
+								; against real Denso 8X test documentation
+								; - `tbbs`/`tbbc` remain pure non-
+								; destructive test-and-branch). Every bit
+								; below is tested via plain `tbs`+`beq`/
+								; `bne`, not `tbbs`/`tbbc` - so each test
+								; ALSO re-arms the bit it just read. This
+								; makes the whole byte a working set of
+								; self-re-arming one-shot gates: an ISR
+								; (iv6_ne_process for bits 0/2,
+								; iv6_4ms_process for bits 4/5/6/7)
+								; periodically CLEARS a bit; the next
+								; `tbs` test of it (elsewhere) reads
+								; "clear" (time's up - run the guarded
+								; block) and re-sets it in the same
+								; instruction, so any further test before
+								; the next periodic clear reads "set"
+								; (already handled - skip). Exactly the
+								; "Cleared every Nms to trigger Nms
+								; process" behavior the pre-existing bit
+								; descriptions already said - this
+								; session's earlier "SUSPECT DEAD"/"no
+								; setter found" notes on this byte (and on
+								; CPU1's var_schedule_flag_41 at the same
+								; address) were wrong and have been
+								; corrected throughout both files.
+								;
+								; 41.0 - Cleared once per NE cycle
+								;   (iv6_ne_process, when var_ne_count_dup
+								;   & 7 == 0); tested (and re-armed) by
+								;   calc_rpm's tail via `tbs`+`bne` to
+								;   decide var_flags_40.1 - see that bit's
+								;   note: only the first calc_rpm call
+								;   after each clear applies the extra
+								;   smoothing.
+								; 41.1 - Not referenced anywhere in this
+								;   file.
+								; 41.2 - Cleared twice per NE revolution
+								;   (iv6_ne_process, when var_ne_count_dup
+								;   == 0 or 0x20); tested/re-armed by
+								;   calc_ignition_timing via `tbs`+`beq`
+								;   to run decay_enrichment_unk_100 only
+								;   on the first call after each clear.
+								; 41.3 - Not referenced anywhere in this
+								;   file.
+								; 41.4 - Cleared every 16ms to trigger 16ms
+								;   process: calc_ignition_timing's `tbs
+								;   bit4,var_flags_41; bne loc_CDA1` runs
+								;   the guarded block (var_cnt16ms_B1
+								;   increment) only on the first call
+								;   after each 16ms clear, then re-arms
+								;   the bit so later calls skip it until
+								;   the next clear.
+								; 41.5 - Cleared every 16ms to trigger 2nd
+								;   16ms process. No tester found anywhere
+								;   in this file (write-only, like 40.5) -
+								;   possibly read by CPU1 instead, or
+								;   vestigial.
+								; 41.6 - Cleared every 32ms to trigger 32ms
+								;   process: calc_ignition_timing's `tbs
+								;   bit6,var_flags_41; bne loc_CD97` (same
+								;   shape as bit4) gates
+								;   var_cnt32ms_B2/update_rpm_smooth_filter/
+								;   decay_enrichment_unk_FE/tham-enrichment
+								;   to once per 32ms.
+								; 41.7 - Cleared every 64ms to trigger 64ms
+								;   process: check_startup's loc_D317
+								;   (`tbs bit7,var_flags_41; beq loc_D31E`)
+								;   gates the var_cnt64ms_BC block to once
+								;   per 64ms.
 dmarx_var_flags_46:		.block 1			; C92C↓r ...
-								; 42.0 -
+								; = CPU1's var_flags_46, relayed over DMA
+								; (0xDA offset formula) - bits below match
+								; CPU1's own var_flags_46 declaration
+								; comment in D151803-9651.asm.
+								; 42.0 - Set when RPM<200rpm, cleared when
+								;   RPM>400rpm (CPU1)
 								; 42.1 - Set if	open loop mode
-								; 42.2 -
-								; 42.3 -
+								; 42.2 - Cleared when throttle open, set
+								;   when closed for certain period -
+								;   CPU1's idle-debounce flag (CPU1)
+								; 42.3 - Some TPS flag (CPU1, itself
+								;   uncertain)
 								; 42.4 - Diagnostics condition,	1 = Bad
-								; 42.5 -
-								; 42.6 -
-								; 42.7 -
+								; 42.5 - Knock sensor error (CPU1)
+								; 42.6 - ISCV in fixed/override opening
+								;   mode, not yet closed-loop (CPU1)
+								; 42.7 - Set on sub-CPU error (CPU1)
 dmarx_limiter_flags:		.block 1			; CE88↓r ...
-								; 43.0 -
-								; 43.1 -
-								; 43.2 -
+								; = CPU1's var_limiter_flags, relayed over
+								; DMA. Bits 3-7 match CPU1's own
+								; declaration comment there.
+								; 43.0 - Not referenced anywhere in this
+								;   file; no entry in CPU1's own bit table
+								;   either.
+								; 43.1 - Not referenced anywhere in this
+								;   file; CPU1's own table has only a
+								;   vague "related to var_cnt_EB" note for
+								;   this bit.
+								; 43.2 - Tested alongside bit3 in TVSV's
+								;   limiter-cooldown gate (loc_CE86, see
+								;   that header) - not in CPU1's own bit
+								;   table either, but grouped with bits
+								;   3-7 (all "some limiter/condition
+								;   active" flags) suggests this is
+								;   likely another limiter-active flag,
+								;   not independently confirmed.
 								; 43.3 - Set if	speed limiter active
 								; 43.4 - Set if	4 IGF pulses missing
 								; 43.5 - Set if	throttle shut
 								; 43.6 - Set if	rev limit active
 								; 43.7 - Set if	boost limit exceeded
 unk_44:				.block 1			; CDFD↓r
+								; Only bit0 used, entirely within
+								; calc_ignition_timing's PORTB.2 drive
+								; logic (see that function's header):
+								; a hysteresis latch on var_rpm_div_25 -
+								; cleared below 0x12 (~450rpm), set
+								; above 0x16 (~550rpm), left unchanged in
+								; the dead zone between. Reads as a
+								; "below idle-ish RPM" latch, feeding
+								; into the PORTB.2 gate alongside
+								; dmarx_var_flags_46 bits 6/7 and
+								; var_input_bits.2. Bits 1-7 not
+								; referenced anywhere in this file.
 var_flags_45:			.block 1			; CD54↓r ...
+								; Only bits 0/1 used, both in
+								; calc_ignition_timing (see that
+								; function's header) - two independent
+								; hysteresis latches:
+								; Bit 0 - Set once dmarx_ect drops below
+								;   0xD2 (~55C) while var_pim2_peak <
+								;   0x57 (off-boost); cleared once ect
+								;   exceeds 0xD2 at all. Reads as "still
+								;   warming up, not boosting", not
+								;   independently confirmed. Also read
+								;   (alongside bit1) to select
+								;   word_16D's table entry, later in
+								;   the same function.
 								; Bit 1	- Set if RPM > 4000
 var_flags_46:			.block 1			; CEAD↓r ...
-								; Bit 0	- Boost	control	flag
-								; Bit 1	- Boost	control	flag
+								; NOTE: this is a CPU2-LOCAL variable,
+								; unrelated to CPU1's var_flags_46 (that
+								; one arrives over DMA as
+								; dmarx_var_flags_46, declared above with
+								; its own bit table - the two share a
+								; name by coincidence, not meaning).
+								; Both bits used only within TVSV
+								; (loc_CE86, see that header).
+								;
+								; Bit 0 - Read/tested at four points in
+								;   TVSV, but ALL of them sit inside item
+								;   2's dead diagnostic-override gate
+								;   (dmatx_unk_16A==0x0F never happens -
+								;   see that block's header) or item 3
+								;   (only reachable from within item 2,
+								;   so equally dead): two `tbbs` (pure
+								;   test) at CEB3/CED3, one `tbs`
+								;   (destructive test-and-set - see
+								;   toshiba-8x-technical-reference.md) at
+								;   CF20 gating the low-throttle/low-RPM
+								;   bypass, and a `clrb` at loc_CEFA.
+								;   Since every touch point - including
+								;   the one `tbs` - is unreachable, this
+								;   bit is inert regardless of `tbs`'s
+								;   side effect.
+								; Bit 1 - A live mode-latch, set (loc_CFE1)
+								;   when the rate-limited TVSV candidate
+								;   clears both a ceiling check and
+								;   var_tvsv_scale_total > 0xA6; cleared
+								;   otherwise (loc_D007) or at the top of
+								;   the dead-gate fallthrough (loc_CEFA).
+								;   While set, biases unk_11E's ceiling by
+								;   +0x14 (capped at 0xC8) - reads as a
+								;   "boost mode" hysteresis latch, not
+								;   independently confirmed.
 unk_47:				.block 1			; loc_C8C3↓r ...
+								; A multi-purpose status byte - each bit
+								; below is an independent flag, unrelated
+								; to the others except by sharing this
+								; address.
+								; Bit 0 - Set in calc_ignition_timing's
+								;   PORTB.3 drive block when RPM>=0x14 OR
+								;   (ECT<=0x26 AND unk_D4>0x0A); read
+								;   there (with bit1) to gate PORTB.3.
+								; Bit 1 - Hysteresis latch on
+								;   var_rpm_x_5p12 in the same PORTB.3
+								;   block: cleared below 0x0A, set at/
+								;   above 0x0E; read alongside bit0.
+								; Bit 2 - Unconditionally cleared at the
+								;   start of update_odb_flags' VF-level
+								;   select (loc_D18D); read by
+								;   update_dmatx_status_flags
+								;   (dmatx_unk_16B.3 = this bit clear).
+								; Bit 3 - Set in update_odb_flags
+								;   (loc_D179) when PORTA.0 is clear AND
+								;   var_input_bits.4 is set AND
+								;   var_cnt64ms_BE>=8; cleared (and
+								;   unk_48.2 set) otherwise. Read by
+								;   update_dmatx_status_flags
+								;   (dmatx_unk_16B.4 = this bit clear).
+								; Bit 4 - Not referenced anywhere in
+								;   this file.
+								; Bit 5 - "New DMA frame ready" - set by
+								;   int_vector_0 on frame-sync detection
+								;   (see serial_dma_start's header),
+								;   cleared by main_loop after
+								;   copy_serbus_rx unpacks the frame;
+								;   also gates loc_C8C3's startup
+								;   spin-wait.
+								; Bit 6 - Cleared in serial_dma_start's
+								;   normal-timeout re-arm path (see its
+								;   header - a "first attempt vs repeat"
+								;   distinction via unk_56), set at
+								;   serial_dma_start's loc_D53F. Tested
+								;   by iv6_4ms_process's process_8ms
+								;   block to skip the OBD-byte-advance
+								;   this tick.
+								; Bit 7 - check_starter_running's
+								;   one-shot latch: read/re-armed via
+								;   `tbs` (destructive test-and-set - see
+								;   toshiba-8x-technical-reference.md),
+								;   cleared explicitly once
+								;   var_input_bits.2 goes clear - see that
+								;   function's own header for the full
+								;   mechanism.
 unk_48:				.block 1			; C70C↓r ...
+								; Bit 0 - Two unrelated uses: (1) right
+								;   before negate_rD's label, `setb
+								;   bit0,unk_48` immediately followed by
+								;   `tbbc bit0,unk_48,locret_C709` - since
+								;   the bit was just set, the branch can
+								;   never fire; looks like leftover/
+								;   never-taken glue in the math library,
+								;   not a meaningful flag. (2) in
+								;   update_rpm_smooth_filter, a genuine
+								;   sign-tracking flag for the |unk_EC -
+								;   var_rpm_x_5p12| calculation - see that
+								;   function's own header.
+								; Bit 1 - Reset alongside unk_111/unk_112's
+								;   defaults in calc_ignition_timing (see
+								;   that inline comment) - no reader found
+								;   in this file.
+								; Bit 2 - Set in update_odb_flags
+								;   (loc_D187, alongside clearing
+								;   unk_47.3 - see that bit's note) when
+								;   the PORTA.0/var_input_bits.4/
+								;   var_cnt64ms_BE debounce condition
+								;   isn't met; read at loc_D333 (the
+								;   main-loop dispatch right after
+								;   update_odb_flags) to gate a
+								;   var_ve_x_pim_x_rpm/PORTA.0-related
+								;   block.
+								; Bits 3-7 - Not referenced anywhere in
+								;   this file.
 var_input_bits:			.block 1			; C934↓r ...
-								; 49.0 -
-								; 49.1 - Enable	ODB stream
-								; 49.2 - Set if	starter	running
-								; 49.3 -
-								; 49.4 -
-								; 49.5 -
-								; 49.6 -
-								; 49.7 - When set cause	ignition timing	retard
+								; All 8 bits sourced by check_io_inputs
+								; (see that function's header) from raw
+								; digital pins, then de-glitched (a bit
+								; only updates if it read the same on two
+								; consecutive calls).
+								; 49.0 - PORTB.6 clear. Physical meaning
+								;   not confirmed.
+								; 49.1 - PORTB.7 clear. Enable	ODB stream
+								; 49.2 - IRQLL.0 clear (IRL̅ pin). Set if
+								;   starter running
+								; 49.3 - PORTC.6 clear. Physical meaning
+								;   not confirmed.
+								; 49.4 - PORTA.6 clear. Physical meaning
+								;   not confirmed.
+								; 49.5 - PORTA.7 set. Physical meaning not
+								;   confirmed.
+								; 49.6 - SMRC_SIR's SIN1 pin high (not
+								;   low). Physical meaning not confirmed.
+								; 49.7 - SMRC_SIR's SIN2 pin high (not
+								;   low). When set cause	ignition timing	retard
 				.block 1
 dmarx_unk_4B:			.block 1			; CEDB↓r ...
+								; Only bit6 referenced, and only inside
+								; TVSV's dead diagnostic-override gate
+								; (loc_CEA3-loc_CEFA, gated on
+								; dmatx_unk_16A==0x0F which never happens
+								; - see that header) - so this received
+								; byte's one consumer never actually
+								; runs. Physical meaning on CPU1's side
+								; not traced (out of scope, since the
+								; consumer is dead code).
 				.block 1
 unk_4D:				.block 1
 dmarx_flags_1:			.block 1			; CCCE↓r ...
+								; Received from CPU1 over DMA, but NOT the
+								; same as CPU1's var_io_input1/var_io_input2
+								; (checked via the 0xDA/0x13B offset
+								; formulas - neither lands here; the CPU1
+								; variable at the predicted address,
+								; unk_189, isn't itself named/understood
+								; yet). All bits tested via pure `tbbs`/
+								; `tbbc` (non-destructive).
+								; Bit 1 - Gates update_odb_flags' VF-level
+								;   select (loc_D179) alongside
+								;   dmarx_var_flags_46.1 and
+								;   dmarx_obd_o2_sensor thresholds.
+								; Bit 2 - Read as "idle switch closed" per
+								;   update_odb_flags' own header (feeds
+								;   var_odb_flags2.1); also gates the
+								;   VF-level select alongside bit1.
+								; Bit 3 - Selects between table_clamp_C5F0/
+								;   table_clamp_C5F4 in calc_params' fuel
+								;   VE section (var_ve_x_pim_x_rpm clamp),
+								;   when var_spd >= 3. Physical meaning
+								;   not confirmed.
+								; Bit 5 - Read as "A/C switch" per
+								;   update_odb_flags' own header (feeds
+								;   var_odb_flags2.2).
+								; Bits 0/4/6/7 - Not referenced anywhere
+								;   in this file.
 var_enrich_flags:		.block 1			; CA29↓r ...
 								; 4F.0 - Map enrichment
 								; 4F.1 - Knock or TPS enrichment
 								; 4F.2 - Throttle enrichment
 								; 4F.3 - Overrall enrichment flag
-								; 4F.4 -
-								; 4F.5 -
-								; 4F.6 -
-								; 4F.7 -
+								; 4F.4 - Not referenced anywhere in this
+								;   file.
+								; 4F.5 - Mirrors bit3 (loc_CAD7, in the
+								;   fuel-enrichment tail): set when bit3
+								;   is set, cleared when bit3 is clear.
+								;   Consumed by update_dmatx_status_flags
+								;   (dmatx_unk_169.6).
+								; 4F.6 - Unconditionally cleared by both
+								;   branches of the map-enrichment
+								;   closed/open-loop decision (loc_CA31) -
+								;   no setter found anywhere, so this bit
+								;   is always clear in practice.
+								;   Consumed by update_dmatx_status_flags
+								;   (dmatx_unk_169.5, which per this
+								;   finding also always sees it clear).
+								; 4F.7 - Not referenced anywhere in this
+								;   file.
 								;
 var_rpm_div_25:			.block 1			; C985↓w ...
 ; unk_51: written by update_rpm_smooth_filter, but only ever read
@@ -361,12 +677,20 @@ var_tvsv_unk_120:		.block 1			; loc_CFC4↓w ...
 var_obd_flags1:			.block 1			; loc_D0D9↓w ...
 								; 0121.0 - After start-up enrichment
 								; 0121.1 - Warm-up enrichment
-								; 0121.2 -
-								; 0121.3 -
-								; 0121.4 -
+								; 0121.2 - Never written by
+								;   update_odb_flags (its only writer) -
+								;   always 0.
+								; 0121.3 - Never written by
+								;   update_odb_flags (its only writer) -
+								;   always 0.
+								; 0121.4 - Never written by
+								;   update_odb_flags (its only writer) -
+								;   always 0.
 								; 0121.5 - Open	loop mode
 								; 0121.6 - Additional enrichment
-								; 0121.7 -
+								; 0121.7 - Never written by
+								;   update_odb_flags (its only writer) -
+								;   always 0.
 								;
 var_odb_flags2:			.block 1			; loc_D0F9↓w ...
 								; 0122.0 - Set when starter running
@@ -375,7 +699,9 @@ var_odb_flags2:			.block 1			; loc_D0F9↓w ...
 								; 0122.3 - Unused (always set)
 								; 0122.4 - Lambda sensor state,	rich or	lean
 								; 0122.5 - Unused
-								; 0122.6 -
+								; 0122.6 - Never written by
+								;   update_odb_flags (its only writer) -
+								;   always 0.
 								; 0122.7 - Set if error	condition exists
 								;
 var_odb_shift_reg:		.block 1			; D105↓r ...
@@ -3238,35 +3564,34 @@ locret_CBFB:							; CBEE↑j
 
 ; ---------------------------------------------------------------------------
 ; calc_params: per-cycle ignition timing + fuel VE terms, sent to CPU1
+; over the shared inter-MCU DMA buffer (CPU1_addr = CPU2_addr + 0xDA,
+; confirmed - see CLAUDE.md and docs/fuel_calculation_system.md). Falls
+; into calc_ignition_timing after (see that header above) - not a real
+; jsr/ret subroutine, so no register calling convention; reads/writes the
+; named variables below/documented inline at each computation.
 ;
-; Computes two unrelated groups of outputs, both transmitted to CPU1 over
-; the shared inter-MCU DMA buffer (CPU1_addr = CPU2_addr + 0xDA, confirmed
-; - see CLAUDE.md and docs/fuel_calculation_system.md):
-;   1) (this label - ~CD0C) Five RPM/ECT-indexed table lookups, each simply
-;      stored (no further combination with each other): dmatx_ign_timing_
-;      fallback1 = table_ign_rpm1(RPM), dmatx_ign_timing_fallback2 =
-;      table_ign_rpm2(RPM) - both = CPU1's dmarx_ign_timing_fallback1/2
-;      (0xDA offset, exact byte match), consumed by CPU1's sub_E865 as
-;      knock-sensor-fault substitutes for dmatx_ign_timing/
-;      dmatx_ign_timing_unk_166 (see that declaration's comment for detail,
-;      sub_E865 itself is CPU1 work, not yet done - see session_journal.md
-;      pending list); dmatx_iscv_duty = table_C376_rpm(RPM)/32 = CPU1's
-;      dmarx_iscv_duty, the base ISCV duty table refined by CPU1's idle
-;      control loop; dmatx_ign_timing_unk_166/dmatx_unk_167 = (table_rpm *
-;      table_ect)/64 saturated, from two different RPM/ECT table pairs -
-;      = CPU1's dmarx_ign_timing_unk_166/dmarx_unk_241_167 (0xDA offset,
-;      exact match) but their physical meaning isn't traced past sub_E865's
-;      knock-fault blending (see above).
-;   2) (~CC53 "VE section" below - CCDA) Fuel VE/speed-density terms -
-;      see the header comment there. Falls into calc_ignition_timing after.
+; Reads: var_rpm_x_5p12, dmarx_pim, dmarx_pim2, dmarx_lambda_state,
+;   var_spd, dmarx_flags_1, dmarx_unk_D3, dmarx_unk_D6 (via
+;   dmarx_lambda_state), var_ne_sum, unk_EA
+; Writes: dmatx_ign_timing_fallback1, dmatx_ign_timing_fallback2,
+;   dmatx_iscv_duty, dmatx_ign_timing_unk_166, dmatx_unk_167, var_map_ve,
+;   dmatx_scaled_ve, var_ve_x_pim_x_rpm, dmatx_ve_x_pim_x_rpm,
+;   dmatx_unk_162, var_map_temp_x
 ; ---------------------------------------------------------------------------
 
 calc_params:							; loc_CBE9↑j
+
+; dmatx_ign_timing_fallback1 = table_ign_rpm1(RPM) - see that variable's
+; own declaration comment above for its CPU1 cross-reference/role.
+
 				ld	d, var_rpm_x_5p12
 				ld	y, #table_ign_rpm1
 				jsr	table_rD_fixed16_interpolate
 				st	a, dmatx_ign_timing_fallback1
 
+
+; dmatx_ign_timing_fallback2 = table_ign_rpm2(RPM) - see its declaration
+; comment above.
 
 				ld	d, var_rpm_x_5p12
 				ld	y, #table_ign_rpm2
@@ -3274,11 +3599,17 @@ calc_params:							; loc_CBE9↑j
 				st	a, dmatx_ign_timing_fallback2
 
 
+; dmatx_iscv_duty = table_C376_rpm(RPM)/32 - see its declaration comment
+; above.
+
 				ld	y, #table_C376_rpm
 				ld	d, var_rpm_x_5p12
 				jsr	table_rD_fixed32_interpolate
 				st	a, dmatx_iscv_duty
 
+
+; dmatx_ign_timing_unk_166 = (table_C356_rpm(RPM) * table_C36A_ect(ECT))/64,
+; saturated - see its declaration comment above.
 
 				ld	y, #table_C36A_ect
 				jsr	table_rb_fixed_64_ect_interp
@@ -3295,6 +3626,9 @@ calc_params:							; loc_CBE9↑j
 				jsr	divide_rD_64_saturate
 				st	b, dmatx_ign_timing_unk_166
 
+
+; dmatx_unk_167 = (table_C360_rpm(RPM) * table_C370_ect(ECT))/64, saturated
+; - see its declaration comment above.
 
 				ld	y, #table_C370_ect
 				jsr	table_rb_fixed_64_ect_interp
@@ -3315,59 +3649,22 @@ calc_params:							; loc_CBE9↑j
 ; Fuel VE / speed-density section - the CPU2 side of CPU1's
 ; calc_inj_pw_base (3S-GTE/D151803-9651). Every term here is sent to CPU1
 ; over the shared DMA buffer (CPU1_addr = CPU2_addr + 0xDA - see CLAUDE.md).
+; Items 3/4 (dmatx_ve_corr_map/dmatx_ve_corr_map_tps) are NOT computed
+; here - they're inside calc_ignition_timing (near loc_CE67), interspersed
+; with unrelated ignition-retard-map and PORTB output logic; see that
+; function's own inline comments.
 ;
-; Items 1/2/5/6 below are computed here in calc_params. Items 3/4 are
-; not - dmatx_ve_corr_map/dmatx_ve_corr_map_tps are actually computed
-; later, inside calc_ignition_timing (near loc_CE67), interspersed with
-; unrelated ignition-retard-map and PORTB output logic.
-;
-; 1) var_map_ve = map_c006_ve(RPM, dmarx_pim) - the base VE map, already
-;    fully transcribed with real units in this file (X = RPM 400-7200,
-;    Y = MAP -12.32 to +13.78 PSI, i.e. vacuum through boost). RPM's low
-;    byte is rounded (cmp/add/rorc) before the 2D interpolation.
-;
-; 2) dmatx_scaled_ve = mult_rDrX_saturate(var_map_ve + 0x51, 0x200F) - VE
-;    rescaled (CPU2's own near-identical twin of CPU1's
-;    mult_rDrX_saturate) for whatever units CPU1 expects it in. =
-;    CPU1's dmarx_scaled_ve, consumed in chunk CE6C's accel/idle-
-;    enrichment scaling (divide_d_by_x:loc_E4EB, as a mult_rDrX operand).
-;
-; 3) (in calc_ignition_timing, CE4E) dmatx_ve_corr_map =
-;    table_ve_corr_map(dmarx_pim2)/32 (a MAP-only correction table,
-;    distinct from the main VE map) = CPU1's dmarx_word_226. Verified via
-;    the DMA offset formula (CPU1_addr = CPU2_addr + 0xDA):
-;    dmatx_ve_corr_map's address (0x014D + 0xDA = 0x0227) matches
-;    dmarx_word_226 (0x0226, off by the same 1-byte padding documented
-;    elsewhere for word-sized DMA variables), and the computation shape
-;    agrees (a table lookup indexed by dmarx_pim2, /32, matching
-;    dmarx_word_226's CPU1-side producer). dmatx_scaled_ve (item 2) does
-;    not match dmarx_word_226 by either address or shape - it maps to
-;    CPU1's own dmarx_scaled_ve instead (0x0153 + 0xDA = 0x022D vs
-;    dmarx_scaled_ve's 0x022C, same 1-byte padding).
-;
-; 4) (in calc_ignition_timing, CE67) dmatx_ve_corr_map_tps =
-;    map_ve_corr_map_tps(MAP, dmarx_tps) bilinear correction, forced to 0
-;    when dmarx_var_flags_46.2 is set (CPU1's idle-debounce flag, relayed
-;    back via DMA) = CPU1's dmarx_word_228.
-;
-; 5) dmatx_ve_x_pim_x_rpm (= var_ve_x_pim_x_rpm) = var_map_ve scaled by a
-;    fraction (~0x8C4E/65536) then multiplied by RPM and by dmarx_pim2/16
-;    - i.e. VE x MAP x RPM, the classic speed-density load term, saturated
-;    = CPU1's dmarx_word_22A.
-;
-; 6) dmatx_unk_162 = an RPM/gear/speed-gated clamp, computed only while
-;    dmarx_lambda_state is non-negative (see loc_C9BC's header above for
-;    what that means) - confirming the "deceleration/overrun-related"
-;    guess: = CPU1's dmarx_lambda_trim (0xDA offset formula, exact match),
-;    consumed by calc_4ms_corrections' lambda/AFR trim path (not itself
-;    deep-dived - CPU1 work).
-;
-; NOT resolved: dmatx_ve_corr_map/dmatx_ve_corr_map_tps's role names above
+; NOT resolved: dmatx_ve_corr_map/dmatx_ve_corr_map_tps's role names
 ; reflect what CPU1 does with them (per the fuel_calculation_system.md
 ; cross-reference), not an independent derivation of their purpose from
 ; CPU2's side alone - table_ve_corr_map and map_ve_corr_map_tps's own
 ; calibration data wasn't examined the way map_c006_ve's was.
 ; ---------------------------------------------------------------------------
+
+; var_map_ve = map_c006_ve(RPM, dmarx_pim) - the base VE map, already fully
+; transcribed with real units in this file (X = RPM 400-7200, Y = MAP
+; -12.32 to +13.78 PSI, i.e. vacuum through boost). RPM's low byte is
+; rounded (cmp/add/rorc) before the 2D interpolation.
 
 				ld	y, #map_c006_ve
 				ld	d, dmarx_pim
@@ -3385,6 +3682,13 @@ calc_params:							; loc_CBE9↑j
 loc_CC66:							; CC60↑j
 				jsr	map_rD_4_rX_map_interpolate
 				st	a, var_map_ve
+
+; dmatx_scaled_ve = mult_rDrX_saturate(var_map_ve + 0x51, 0x200F) - VE
+; rescaled (CPU2's own near-identical twin of CPU1's mult_rDrX_saturate)
+; for whatever units CPU1 expects it in. = CPU1's dmarx_scaled_ve,
+; consumed in chunk CE6C's accel/idle-enrichment scaling
+; (divide_d_by_x:loc_E4EB, as a mult_rDrX operand).
+
 				mov	a, b
 				clr	a
 				add	d, #00051
@@ -3399,6 +3703,12 @@ loc_CC66:							; CC60↑j
 				ld	a, #255
 
 loc_CC86:							; CC82↑j
+
+; dmatx_ve_x_pim_x_rpm (= var_ve_x_pim_x_rpm) = var_map_ve scaled by a
+; fraction (~0x8C4E/65536) then multiplied by RPM and by dmarx_pim2/16 -
+; i.e. VE x MAP x RPM, the classic speed-density load term, saturated =
+; CPU1's dmarx_word_22A.
+
 				jsr	mult_rArX
 				ld	d, var_rpm_x_5p12
 				jsr	mult_rDrX
@@ -3414,6 +3724,14 @@ loc_CC86:							; CC82↑j
 				ld	d, #0FFFFh
 
 loc_CCA0:							; CC9B↑j
+
+; dmatx_unk_162 = an RPM/gear/speed-gated clamp, computed only while
+; dmarx_lambda_state is non-negative (see loc_C9BC's header above for
+; what that means) - confirming the "deceleration/overrun-related" guess:
+; = CPU1's dmarx_lambda_trim (0xDA offset formula, exact match), consumed
+; by calc_4ms_corrections' lambda/AFR trim path (not itself deep-dived -
+; CPU1 work).
+
 				st	d, dmatx_ve_x_pim_x_rpm
 				ld	b, #80h
 				tbbc	bit2, dmarx_var_flags_46, loc_CCDA
@@ -3476,62 +3794,28 @@ loc_CCE6:							; CCE1↑j
 ; here. Reached by falling through from the fuel VE section above (part of
 ; the same main-loop chain as main_continue_2 -> calc_params -> here -> TVSV
 ; -> the warning-debounce phase - see the header above main_continue_2).
+; Falls into loc_CE86 (TVSV boost-control) - see that header below - so
+; (like calc_params before it) this isn't a real jsr/ret subroutine with a
+; register calling convention; it reads/writes the named variables below.
 ;
-; 1) (CCDD-CD27) dmatx_ign_timing: map_ignition_C12C(RPM, var_pim2_peak)
-;    minus a table_ignition_retard entry selected by var_input_bits.7
-;    (A/C-related, per that bit's existing use elsewhere) and PORTC.7,
-;    clamped to a minimum of 0. var_pim2_peak itself = dmarx_pim2, unless
-;    dmarx_pim2 >= dmarx_pim, in which case it's replaced by
-;    average(dmarx_pim, dmarx_pim2) - the same "average when boosting"
-;    idiom used for var_map_ve's MAP index above.
-;
-; 2) (CD27-CD4F) var_flags_45, two independent hysteresis flags:
-;    - bit1: set once var_rpm_x_5p12's high byte reaches 0x80, cleared
-;      below 0x76 (dead zone in between) - a high-RPM latch.
-;    - bit0: set once dmarx_ect drops below 0xD2 (~55C) while
-;      var_pim2_peak < 0x57 (off-boost), cleared once ect exceeds 0xD2 at
-;      all; otherwise (on-boost, ect>=0xD2) left at its "cold" (cleared)
-;      state. Reads as a "still warming up, not boosting" latch, not
-;      independently confirmed.
-;
-; 3) (CD4F-CD97) word_16D: table_rpm_ignition_retard entry (selected by
-;    var_flags_45.1, the high-RPM latch from (2)) when var_flags_40.0 is
-;    set AND var_flags_45.0 (the cold/off-boost latch) is set; 0
-;    otherwise. Computed but its consumer isn't in this function - not
-;    traced further.
-;
-; 4) (CD51-CD7B) var_max_retard_unk / dmatx_max_retard_161:
-;    map_max_knock_retard_C546(RPM, var_pim2_peak) - the per-condition
-;    ceiling on knock retard, relayed to CPU1 (= CPU1's
-;    dmarx_max_retard_23B_161, confirmed via the DMA offset formula - see
-;    fuel_calculation_system.md) where it bounds the knock-retard
-;    integrator.
-;
-; 5) (CD7B-CDB8) Periodic counters/decay, gated on var_flags_41 bits 2/4/6
-;    (the same tick-rate-gating idiom used throughout this ROM):
-;    var_cnt32ms_B2 (+0Ah) with update_rpm_smooth_filter/
-;    decay_enrichment_unk_FE/tham-enrichment-table refresh; var_cnt16ms_B1
-;    (+01h); var_cnt_C1 (+02h, on its own ~7Ah-tick cadence) with
-;    decay_enrichment_unk_53/decay_unk_103; and decay_enrichment_unk_100
-;    gated on var_flags_41.2. Unrelated to (1)-(4); just sharing this
-;    function's periodic-tick context.
-;
-; 6) (CDB8-CE30) Three independent PORTB output-bit drives (PORTB.2 twice,
-;    PORTB.3 once), each a debounced "set the bit unless every gating
-;    condition holds" check in the same style as the PORTA.2/PORTA.3
-;    warnings below (see the header above loc_D037) - RPM/ECT/unk_D4
-;    thresholds and the ASR input pins (PORTD_ASRIN) feed in. What PORTB.2/
-;    PORTB.3 physically drive is not confirmed.
-;
-; 7) (CE30-CE53) Resets unk_48.1 and defaults unk_111/dmatx_unk_15F to
-;    0xFF, unk_112/dmatx_knock_unk_160 to 0 - unconfirmed, no other
-;    reader/writer of unk_111/unk_112 found in this file.
-;
-; 8) (CE53-CE86) dmatx_ve_corr_map/dmatx_ve_corr_map_tps - items 3/4 of the
-;    fuel VE section documented above calc_params; see that header.
-;
-; Falls into loc_CE86 (TVSV boost-control) - see that header below.
+; Reads: dmarx_pim2, dmarx_pim, var_rpm_x_5p12, var_input_bits, PORTC,
+;   dmarx_ect, dmarx_unk_D4, dmarx_tham, var_flags_40, var_flags_41,
+;   var_flags_45, dmarx_var_flags_46, PORTD_ASRIN, unk_44, var_cnt8ms_B0,
+;   var_rpm_div_25
+; Writes: var_pim2_peak, dmatx_ign_timing, var_flags_45, word_16D,
+;   var_max_retard_unk, dmatx_max_retard_161, var_cnt32ms_B2,
+;   var_cnt16ms_B1, var_cnt_C1, var_cnt8ms_B0, var_cnt32ms_B3,
+;   var_tham_enrich_unk, dmatx_tham_enrich, PORTB, unk_47, unk_48,
+;   unk_111, unk_112, dmatx_unk_15F, dmatx_knock_unk_160,
+;   dmatx_ve_corr_map, dmatx_ve_corr_map_tps
 ; ---------------------------------------------------------------------------
+
+; dmatx_ign_timing = map_ignition_C12C(RPM, var_pim2_peak) minus a
+; table_ignition_retard entry selected by var_input_bits.7 (A/C-related,
+; per that bit's existing use elsewhere) and PORTC.7, clamped to a minimum
+; of 0. var_pim2_peak itself = dmarx_pim2, unless dmarx_pim2 >= dmarx_pim,
+; in which case it's replaced by average(dmarx_pim, dmarx_pim2) - the same
+; "average when boosting" idiom used for var_map_ve's MAP index above.
 calc_ignition_timing:						; CCDD↑j
 				ld	d, dmarx_pim2
 				cmp	d, dmarx_pim
@@ -3574,6 +3858,18 @@ loc_CD22:							; loc_CD1D↑j
 
 loc_CD27:							; CD14↑j ...
 				st	a, dmatx_ign_timing
+
+; var_flags_45, two independent hysteresis flags:
+;
+; - bit1: set once var_rpm_x_5p12's high byte reaches 0x80, cleared below
+;   0x76 (dead zone in between) - a high-RPM latch.
+;
+; - bit0 (below): set once dmarx_ect drops below 0xD2 (~55C) while
+;   var_pim2_peak < 0x57 (off-boost), cleared once ect exceeds 0xD2 at
+;   all; otherwise (on-boost) left at its "cold" (cleared) state. Reads
+;   as a "still warming up, not boosting" latch, not independently
+;   confirmed.
+
 				cmp	#080, var_rpm_x_5p12
 				bcc	loc_CD37
 				cmp	#076, var_rpm_x_5p12
@@ -3599,6 +3895,10 @@ loc_CD4D:							; CD3E↑j ...
 				clrb	bit0, var_flags_45	; Clear	flag as	ECT < 55c
 
 loc_CD4F:							; CD48↑j
+; word_16D: table_rpm_ignition_retard entry (selected by var_flags_45.1,
+; the high-RPM latch above) when var_flags_40.0 is set AND var_flags_45.0
+; (the cold/off-boost latch) is set; 0 otherwise. Computed but its
+; consumer isn't in this function - not traced further.
 				clr	a
 				clr	b
 				tbbs	bit0, var_flags_40, loc_CD61
@@ -3613,6 +3913,13 @@ loc_CD5F:							; CD5A↑j
 
 loc_CD61:							; CD51↑j ...
 				st	d, word_16D
+
+; var_max_retard_unk / dmatx_max_retard_161 = map_max_knock_retard_C546
+; (RPM, var_pim2_peak) - the per-condition ceiling on knock retard,
+; relayed to CPU1 (= CPU1's dmarx_max_retard_23B_161, confirmed via the
+; DMA offset formula - see fuel_calculation_system.md) where it bounds
+; the knock-retard integrator.
+
 				ld	d, var_pim2_peak
 				jsr	divide_rD_16
 				mov	d, x
@@ -3621,6 +3928,23 @@ loc_CD61:							; CD51↑j ...
 				jsr	map_rD_8_rX_map_interpolate
 				st	a, var_max_retard_unk
 				st	a, dmatx_max_retard_161
+
+; Periodic counters/decay, gated on var_flags_41 bits 2/4/6 via `tbs`+
+; `beq`/`bne` (the same tick-rate-gating idiom used throughout this ROM) -
+; see var_flags_41's own declaration comment for how `tbs`'s test-and-set
+; behavior makes each of these a working self-re-arming once-per-period
+; gate, genuinely rate-limited to their nominal 16/32ms cadence:
+;
+; - var_cnt32ms_B2 (+0Ah) with update_rpm_smooth_filter/
+;   decay_enrichment_unk_FE/tham-enrichment-table refresh (bit6)
+; - var_cnt16ms_B1 (+01h) (bit4)
+; - var_cnt_C1 (+02h, on its own ~7Ah-tick cadence, unrelated to
+;   var_flags_41) with decay_enrichment_unk_53/decay_unk_103
+; - decay_enrichment_unk_100, gated on var_flags_41.2
+;
+; Unrelated to the ignition-timing work above - just sharing this
+; function's tick context.
+
 				tbs	bit6, var_flags_41
 				bne	loc_CD97
 				ld	d, #COUNTER_ARG(var_cnt32ms_B2, 0Ah)
@@ -3657,6 +3981,14 @@ loc_CDBB:							; CDB6↑j
 				jsr	decay_enrichment_unk_100
 
 loc_CDBE:							; CDB8↑j
+
+; Three independent PORTB output-bit drives follow (PORTB.2 twice, PORTB.3
+; once), each a debounced "set the bit unless every gating condition
+; holds" check in the same style as the PORTA.2/PORTA.3 warnings below
+; (see the header above loc_D037) - RPM/ECT/unk_D4 thresholds and the ASR
+; input pins (PORTD_ASRIN) feed in. What PORTB.2/PORTB.3 physically drive
+; is not confirmed.
+
 				tbbc	bit0, var_flags_40, loc_CDD7
 				tbbc	bit2, var_input_bits, loc_CDCF
 				tbbc	bit0, PORTD_ASRIN, loc_CDCD ; Port D Data Register / ASR Input Data
@@ -3737,6 +4069,11 @@ loc_CE24:							; CE20↑j
 
 loc_CE30:							; loc_CE24↑j ...
 				setb	bit3, PORTB
+
+; Resets unk_48.1 and defaults unk_111/dmatx_unk_15F to 0xFF,
+; unk_112/dmatx_knock_unk_160 to 0 - unconfirmed, no other reader/writer
+; of unk_111/unk_112 found in this file.
+
 				clrb	bit1, unk_48
 				ld	a, #0FFh
 				st	a, unk_111
@@ -3744,10 +4081,12 @@ loc_CE30:							; loc_CE24↑j ...
 				clr	a
 				st	a, unk_112
 				st	a, dmatx_knock_unk_160
+
 ; dmatx_ve_corr_map/dmatx_ve_corr_map_tps: items 3/4 of the fuel VE section
 ; documented above calc_params. They live here inside calc_ignition_timing
 ; rather than in calc_params itself, but are conceptually still part of
 ; the fuel VE/speed-density term set, not ignition timing.
+
 				ld	d, dmarx_pim2
 				ld	y, #table_ve_corr_map
 				jsr	table_rD_fixed16_interpolate
@@ -3806,50 +4145,13 @@ loc_CE83:							; CE7E↑j
 ; START	OF FUNCTION CHUNK FOR check_startup
 
 loc_CE86:							; CE6A↑j
+
 ; ---------------------------------------------------------------------------
 ; loc_CE86 - loc_D036: TVSV boost-control duty-cycle calculation
 ;
 ; Computes var_tvsv_117, the PWM duty (0-200 scale) that drive_DOUT2_tvsv
 ; (immediately below) uses to drive the physical TVSV solenoid via DOUT.2.
-;
-; 1) (CE86-CE97) var_tvsv_scale_limiter: 0x66 (reduced) while
-;    var_cnt32ms_tvsv_limiter <= 0x1F (~1s cooldown after a CPU1
-;    boost/rev-limiter event, per dmarx_limiter_flags bits 2/3), else
-;    0x80 (full/no reduction).
-;
-; 2) (CEA3-CEFA) An elaborate ECT/THA/RPM/speed diagnostic-override gate,
-;    but only entered when dmatx_unk_16A == 0x0F. dmatx_unk_16A is
-;    written only as 0 anywhere in this ROM (one explicit write in
-;    update_odb_flags, plus the startup clear_variables_high sweep which
-;    covers its address 0x016A), so this gate is dead code, never
-;    entered. (The same dmatx_unk_16A==0x0F check gates a +6 ECT
-;    adjustment in the enrichment chain documented above
-;    main_continue_2 - that check is likewise always false there, so
-;    that +6 always applies.)
-;
-;    In normal operation this whole block just falls through to CEFA:
-;    clears var_flags_46 bits 0/1 and jumps to loc_D009 with a near-zero
-;    scale - i.e. TVSV defaults toward off/minimum unless the (dead)
-;    override path would have been taken.
-;
-; 3) (CF02-CF97) Main scale calculation, only reached via the dead path
-;    above - table_C4AA_rpm(RPM) as a base (unk_11E), then, unless a
-;    low-throttle/low-RPM bypass applies (var_flags_46.0 + TPS<0x29 +
-;    RPM_div_25<0x40), multiplies together four independent correction
-;    factors (each 8-bit saturating): map_C403_tvsv_tps_rpm(TPS,RPM),
-;    table_C4B4_knock_tvsv(remaining knock-retard margin - i.e. less
-;    margin before hitting var_max_retard_unk means more reduction),
-;    map_C490_tvsv_tps_gear(TPS,gear), table_tha_tvsv(intake air temp) -
-;    into var_tvsv_scale_total.
-;
-; 4) (CF97-D009) Rate-limits the new candidate against var_tvsv_117 (the
-;    previous cycle's output - a feedback/integrator term, via
-;    table_tvsv_C4C2 and a 0x3C threshold), applies mode-latch hysteresis
-;    on var_flags_46.1 (comparing against unk_11E +/- a boost-mode
-;    adjustment and var_tvsv_scale_total vs 0xA6), then all paths
-;    (gated-out/bypass/full-calc) converge here: a final ceiling clamp via
-;    table_C4F2(RPM), min'd against whatever value the taken path
-;    produced, stored to var_tvsv_117.
+; Four sub-sections, marked inline below at CE86/CEA3/CF02/CF97.
 ;
 ; NOT resolved: the physical meaning of var_flags_46.0/.1 (CPU2-local,
 ; distinct from CPU1's own var_flags_46) in this context, and whether
@@ -3859,7 +4161,23 @@ loc_CE86:							; CE6A↑j
 ;
 ; loc_D037 (right after drive_DOUT2_tvsv) is a different, unrelated
 ; calculation - battery-voltage/PIM-gated, drives PORTA.2 not DOUT.2.
+;
+; Reads: dmarx_limiter_flags, var_cnt32ms_tvsv_limiter, dmarx_pim2,
+;   dmatx_unk_16A, var_flags_46, dmarx_ect, dmarx_tha, var_cnt4ms_A7,
+;   dmarx_var_flags_46, dmarx_unk_4B, var_rpm_x_5p12, var_spd,
+;   dmarx_tps, var_rpm_div_spd, dmarx_knock_info, var_max_retard_unk,
+;   var_rpm_div_25, var_cnt4ms_A8, var_tvsv_117, unk_11E
+; Writes: var_tvsv_scale_limiter, var_cnt4ms_A7, var_flags_46,
+;   var_cnt32ms_tvsv_limiter, unk_11E, var_tvsv_scale_tps_rpm,
+;   var_tvsv_scale_tps_x_gear, var_knock_info, var_tvsv_scale_knock,
+;   var_tvsv_scale_tha, var_tvsv_scale_total, var_map_temp_x,
+;   var_tvsv_unk_120, var_tvsv_117
 ; ---------------------------------------------------------------------------
+
+; 1) var_tvsv_scale_limiter: 0x66 (reduced) while var_cnt32ms_tvsv_limiter
+;    <= 0x1F (~1s cooldown after a CPU1 boost/rev-limiter event, per
+;    dmarx_limiter_flags bits 2/3), else 0x80 (full/no reduction).
+
 				ld	a, #80h
 				tbbs	bit3, dmarx_limiter_flags, loc_CE8E
 				tbbc	bit2, dmarx_limiter_flags, loc_CE90
@@ -3880,6 +4198,21 @@ loc_CE97:							; CE93↑j
 				clr	var_cnt4ms_A7
 
 loc_CEA3:							; CE9F↑j
+
+; 2) An elaborate ECT/THA/RPM/speed diagnostic-override gate, but only
+;    entered when dmatx_unk_16A == 0x0F. dmatx_unk_16A is written only as
+;    0 anywhere in this ROM (one explicit write in update_odb_flags, plus
+;    the startup clear_variables_high sweep which covers its address
+;    0x016A), so this gate is dead code, never entered. (The same
+;    dmatx_unk_16A==0x0F check gates a +6 ECT adjustment in the
+;    enrichment chain documented above main_continue_2 - that check is
+;    likewise always false there, so that +6 always applies.)
+;
+;    In normal operation this whole block just falls through to CEFA:
+;    clears var_flags_46 bits 0/1 and jumps to loc_D009 with a near-zero
+;    scale - i.e. TVSV defaults toward off/minimum unless the (dead)
+;    override path would have been taken.
+
 				ld	a, dmatx_unk_16A
 				cmpb	a, #0Fh
 				bne	loc_CEFA
@@ -3932,6 +4265,17 @@ loc_CEFA:							; CEA8↑j ...
 				jmp	loc_D009
 
 loc_CF02:							; CEF8↑j
+
+; 3) Main scale calculation, only reached via the dead path above -
+;    table_C4AA_rpm(RPM) as a base (unk_11E), then, unless a
+;    low-throttle/low-RPM bypass applies (var_flags_46.0 + TPS<0x29 +
+;    RPM_div_25<0x40), multiplies together four independent correction
+;    factors (each 8-bit saturating): map_C403_tvsv_tps_rpm(TPS,RPM),
+;    table_C4B4_knock_tvsv(remaining knock-retard margin - i.e. less
+;    margin before hitting var_max_retard_unk means more reduction),
+;    map_C490_tvsv_tps_gear(TPS,gear), table_tha_tvsv(intake air temp) -
+;    into var_tvsv_scale_total.
+
 				ld	b, var_rpm_x_5p12
 				ld	y, #table_C4AA_rpm
 				jsr	table_rB_fixed_16_interpolate
@@ -4021,6 +4365,16 @@ loc_CF8F:							; CF8B↑j
 				ld	a, #0FFh
 
 loc_CF97:							; CF93↑j
+
+; 4) Rate-limits the new candidate against var_tvsv_117 (the previous
+;    cycle's output - a feedback/integrator term, via table_tvsv_C4C2 and
+;    a 0x3C threshold), applies mode-latch hysteresis on var_flags_46.1
+;    (comparing against unk_11E +/- a boost-mode adjustment and
+;    var_tvsv_scale_total vs 0xA6), then all paths (gated-out/bypass/
+;    full-calc) converge here: a final ceiling clamp via table_C4F2(RPM),
+;    min'd against whatever value the taken path produced, stored to
+;    var_tvsv_117.
+
 				st	a, var_tvsv_scale_total
 				ld	y, #table_C4FD_rpm_div_25
 				ld	a, var_rpm_div_spd
@@ -4143,6 +4497,7 @@ locret_D036:							; D032↑j
 ; START	OF FUNCTION CHUNK FOR check_startup
 
 loc_D037:							; loc_D01C↑j
+
 ; ---------------------------------------------------------------------------
 ; loc_D037 - loc_D0B0: periodic warning/diagnostic-output debounce phase
 ;
@@ -4152,37 +4507,37 @@ loc_D037:							; loc_D01C↑j
 ; main_continue_2). Different from - and unrelated to - the TVSV
 ; boost-control block immediately above (which drives DOUT.2, not PORTA).
 ;
-; 1) (D037-D084) PORTA.2 warning, gated on dmarx_battery >= 11.4V (skips
-;    entirely below that) and dmarx_unk_D4 > 0x0F:
-;    Computes (var_rpm_x_5p12's high byte * dmarx_word_CB) * 0x038A / 256
-;    (via mult_rArX then mult_rDrX) and compares it against a MAP-indexed
-;    2-point table lookup (table_C515, or table_C51A - a systematically
-;    LOWER curve - when dmarx_battery >= 0xA3, a higher voltage
-;    threshold), shifted right 3 (/8). If the computed value is BELOW
-;    that MAP-scaled threshold, var_cnt32ms_B4 is left running; once it's
-;    accumulated ~2.9s (0x5C * 32ms) continuously, an additional ~32ms
-;    debounce (var_cnt4ms_A9 >= 8) gates setting PORTA.2. Any pass of the
-;    condition (computed >= threshold) or the initial gate failing resets
-;    both counters and clears PORTA.2 immediately.
+; Both blocks share the same "clear a debounce counter unless condition X
+; holds, set the output once the counter crosses a threshold" idiom used
+; elsewhere in this ROM (e.g. the TVSV limiter-cooldown scale above).
+;
+; Reads: var_flags_40, var_input_bits, dmarx_var_flags_46, dmarx_battery,
+;   dmarx_unk_D4, dmarx_pim2, dmarx_word_CB, var_rpm_x_5p12,
+;   var_cnt32ms_B4, var_cnt4ms_A9, dmarx_ect, var_spd, dmarx_pim2,
+;   dmarx_tham, var_cnt32ms_B5
+; Writes: var_cnt32ms_B4, PORTA, var_cnt4ms_A9, var_map_temp_x, PORTB,
+;   DOUT, var_cnt32ms_B5
+; ---------------------------------------------------------------------------
+
+; 1) PORTA.2 warning, gated on dmarx_battery >= 11.4V (skips entirely
+;    below that) and dmarx_unk_D4 > 0x0F: computes (var_rpm_x_5p12's high
+;    byte * dmarx_word_CB) * 0x038A / 256 (via mult_rArX then mult_rDrX)
+;    and compares it against a MAP-indexed 2-point table lookup
+;    (table_C515, or table_C51A - a systematically LOWER curve - when
+;    dmarx_battery >= 0xA3, a higher voltage threshold), shifted right 3
+;    (/8). If the computed value is BELOW that MAP-scaled threshold,
+;    var_cnt32ms_B4 is left running; once it's accumulated ~2.9s (0x5C *
+;    32ms) continuously, an additional ~32ms debounce (var_cnt4ms_A9 >=
+;    8) gates setting PORTA.2. Any pass of the condition (computed >=
+;    threshold) or the initial gate failing resets both counters and
+;    clears PORTA.2 immediately.
 ;
 ;    NOT CONFIRMED: dmarx_word_CB's physical meaning (used nowhere else in
 ;    this file) or what PORTA.2 physically drives. The RPM/MAP/battery
 ;    shape (decreasing-with-MAP threshold curves, stricter at higher
 ;    battery voltage) is suggestive of a charging-system or load
 ;    rationality check, but that's a hypothesis, not a confirmed reading.
-;
-; 2) (D084-D0B0) PORTA.3 warning, gated on var_flags_40.0 clear: resets
-;    var_cnt32ms_B5 unless ECT/speed/RPM/PIM/THAM ALL simultaneously
-;    exceed their own fixed thresholds (0xE4/0x32/0x28/0x5A/0x9E
-;    respectively - i.e. a combined high-load condition). Once
-;    var_cnt32ms_B5 has accumulated ~4.9s (0x99 * 32ms) under that
-;    combined condition, sets PORTA.3; otherwise clears it. Suggestive of
-;    an overheat/high-load warning, not independently confirmed.
-;
-; Both blocks share the same "clear a debounce counter unless condition X
-; holds, set the output once the counter crosses a threshold" idiom used
-; elsewhere in this ROM (e.g. the TVSV limiter-cooldown scale above).
-; ---------------------------------------------------------------------------
+
 				tbbs	bit0, var_flags_40, loc_D077
 				tbbs	bit2, var_input_bits, loc_D070
 				tbbs	bit0, dmarx_var_flags_46, loc_D070
@@ -4228,6 +4583,19 @@ loc_D07D:							; D075↑j
 				setb	bit2, PORTA
 
 loc_D084:							; D07B↑j ...
+
+; The three port writes just below (PORTB.4 clear, PORTB.1 set, DOUT.3
+; clear) are unrelated one-off pin inits, not part of either warning
+; block - probably just sharing this tick since it's a convenient place.
+;
+; 2) PORTA.3 warning (from the tbbs below), gated on var_flags_40.0
+;    clear: resets var_cnt32ms_B5 unless ECT/speed/RPM/PIM/THAM ALL
+;    simultaneously exceed their own fixed thresholds (0xE4/0x32/0x28/
+;    0x5A/0x9E respectively - i.e. a combined high-load condition). Once
+;    var_cnt32ms_B5 has accumulated ~4.9s (0x99 * 32ms) under that
+;    combined condition, sets PORTA.3; otherwise clears it. Suggestive of
+;    an overheat/high-load warning, not independently confirmed.
+
 				clrb	bit4, PORTB
 				setb	bit1, PORTB
 				clrb	bit3, DOUT
@@ -4557,33 +4925,25 @@ factory_selfcheck:							; D388↓p
 ; FUNCTION CHUNK AT D316 SIZE 00000001 BYTES
 
 ; ---------------------------------------------------------------------------
-; factory_selfcheck: manufacturing/dealer diagnostic self-test entry point
+; factory_selfcheck: manufacturing/dealer diagnostic self-test entry point.
+; Dispatches on dmarx_flags2 (a CPU1-supplied command byte over DMA) to
+; one of three sections marked inline below. All paths funnel through
+; check_startup's shared reset-detection check (IRQLL.0 / PORTB.6 ->
+; loc_D2E9, a full soft-reset - see its own comment) to abort back to
+; normal operation if a reset/interrupt condition appears while parked in
+; self-test.
 ;
-; Gated on a specific combination of digital inputs (var_input_bits bits
-; 0/2, dmarx_flags_1 bits 5/2), var_spd < ~0xB4, and var_rpm_x_5p12 == 0
-; (engine stopped) - i.e. a diagnostic-connector-shorted-at-standstill
-; condition. If not met, clears var_flags_40.0 or exits immediately
-; (loc_D204/loc_D206 -> locret_D316).
-;
-; Once entered, dispatches on dmarx_flags2 (a CPU1-supplied command byte
-; over DMA):
-; - 0x40: runs selfcheck_run - a full RAM check (write/verify every byte
-;   from var_flags_40 to ram_end) followed by a ROM checksum (summing
-;   words from rom_start until wraparound, compared against 0xAA55) - then
-;   blinks a pass/fail pattern on PORTA.0.
-; - 0x20 (when the 0x40 check falls through): forces PORTA/PORTB/DOUT to a
-;   fixed pattern derived from dmarx_flags1/dmarx_flags2 - an
-;   output-forcing test mode, presumably for dealer tool verification of
-;   the DOUT/PORTA/PORTB-driven actuators.
-; - Otherwise (loc_D24B/loc_D210 loop): calls selfcheck_io_pump repeatedly
-;   while parked here, to keep I/O reads and the CPU1 DMA link alive
-;   during whichever test is running.
-;
-; All paths funnel through check_startup's shared reset-detection check
-; (IRQLL.0 / PORTB.6 -> loc_D2E9, a full soft-reset - see its own comment)
-; to abort back to normal operation if a reset/interrupt condition
-; appears while parked in self-test.
+; Reads: var_input_bits, dmarx_flags_1, var_spd, var_rpm_x_5p12,
+;   dmarx_flags2, dmarx_flags1, PORTA, PORTB
+; Writes: dmatx_unk_16C, var_flags_40, IMASK, DOM, PORTA, PORTB, DOUT
 ; ---------------------------------------------------------------------------
+
+; Entry gate: a specific combination of digital inputs (var_input_bits
+; bits 0/2, dmarx_flags_1 bits 5/2), var_spd < ~0xB4, and var_rpm_x_5p12
+; == 0 (engine stopped) - i.e. a diagnostic-connector-shorted-at-
+; standstill condition. If not met, clears var_flags_40.0 or exits
+; immediately (loc_D204/loc_D206 -> locret_D316).
+
 				ld	b, #0C0h
 				st	b, dmatx_unk_16C
 				tbbc	bit0, var_input_bits, loc_D204
@@ -4617,6 +4977,20 @@ loc_D209:							; D200↑j
 				clr	DOM			; DOUT Control Register
 
 loc_D210:							; D25A↓j
+
+; Dispatch on dmarx_flags2:
+; - 0x40: jump to selfcheck_run below - a full RAM check (write/verify
+;   every byte from var_flags_40 to ram_end) followed by a ROM checksum
+;   (summing words from rom_start until wraparound, compared against
+;   0xAA55) - then blinks a pass/fail pattern on PORTA.0.
+; - 0x20 (when the 0x40 check falls through, at loc_D21E below): forces
+;   PORTA/PORTB/DOUT to a fixed pattern derived from dmarx_flags1/
+;   dmarx_flags2 - an output-forcing test mode, presumably for dealer
+;   tool verification of the DOUT/PORTA/PORTB-driven actuators.
+; - Otherwise (loc_D24B below): calls selfcheck_io_pump repeatedly while
+;   parked here, to keep I/O reads and the CPU1 DMA link alive during
+;   whichever test is running.
+
 				ld	b, dmarx_flags2
 				cmpb	b, #40h
 				bne	loc_D21E
@@ -5272,70 +5646,41 @@ update_4ms_return:						; D4A6↑j ...
 
 
 serial_dma_start:						; D2D7↑p ...
+
 ; serial_dma_start / int_vector_0: re-arm/timeout logic for the ASR2/ASR3
 ; hardware serial DMA engine (see toshiba-8x-technical-reference.md's
 ; "Serial DMA Protocol" section for the general ASR2/ASR3 background).
+;
 ; int_vector_0 is confirmed to be IV0 itself (its `clrb bit2, IRQLL`
-; matches the technical reference's "IV0 - Enable: set IMASKL bit 2",
-; the same bit position convention IMASKL/IRQLL share for every other
-; vector) - a periodic interrupt (~353Hz/1416us per that doc's own timing
+; matches the technical reference's "IV0 - Enable: set IMASKL bit 2", the
+; same bit position convention IMASKL/IRQLL share for every other vector)
+; - a periodic interrupt (~353Hz/1416us per that doc's own timing
 ; measurement on other ROMs), not something triggered by serial activity
 ; itself. So this whole subsystem is a software poll/re-arm loop running
 ; on a fixed periodic tick, not an edge- or byte-received-triggered ISR.
 ;
-; CONFIRMED (by direct arithmetic against main_loop's own initial ASR2/
-; ASR3 programming, which uses named symbols instead of these functions'
-; hard-coded constants):
-; - ASR2 (RX engine) is a 16-bit register written as 0x9000 | target_addr.
-;   main_loop arms it with `ld d, #9000h + var_serbus_rx; st d, ASR2`
-;   (var_serbus_rx = 0x127, giving exactly 0x9127) - the raw incoming-
-;   frame scratch buffer copy_serbus_rx later unpacks into named dmarx_*
-;   variables. Both this function (loc_D516) and int_vector_0 re-arm ASR2
-;   with the literal constant 0x9127 - i.e. always the same RX target,
-;   never a different buffer.
-; - ASR3 (TX engine) is a 16-bit register written as 0x8000 | source_addr.
-;   main_loop arms it with `ld d, #8000h + 14Dh; st d, ASR3`, giving
-;   0x814D - address 0x14D is dmatx_ve_corr_map, the very first named
-;   dmatx_* variable in memory. So, unlike RX, TX has no separate packing
-;   buffer: the hardware engine streams CPU2's live dmatx_* variables
-;   straight from their real addresses. This function re-arms ASR3 with
-;   the same 0x814D constant.
-; - TIMER3 is written here with full-byte values (0x01/0x4F/0xB7/0x8C-
-;   masked) that don't fit the technical reference's base-variant
-;   description ("Timer LSB bits [2:0]", i.e. only values 0-7) - on this
-;   enhanced variant TIMER3 is being used as a full 8-bit register, most
-;   likely a mode/timeout-phase byte for the DMA engine rather than a
-;   plain timer readout. Worth folding back into the general technical
-;   reference doc as a variant-specific correction.
+; Reads: var_cnt4ms_AE, TIMER3, unk_126, unk_55, unk_56, var_cnt4ms_AD
+; Writes: unk_126, ASR0N, var_cnt4ms_AE, TIMER3, ASR3, IMASKL, ASR2,
+;   unk_56, unk_47, var_cnt4ms_AD
 ;
-; NOT confirmed - the exact per-state meaning, still genuinely unknown
-; without hardware probing (pins/baud rate are also still TBD per the
-; technical reference's own "Known Unknowns"):
-; - unk_55: a saturating byte counter (int_vector_0 increments it unless
-;   TIMER3==0x30 with RAMST.2 clear, which resets it to 0 and sets
-;   unk_47.5 - "frame ready"). serial_dma_start's `cmp #28h, unk_55`
-;   (0x28 = 40 IV0 ticks, i.e. ~56ms at the ~353Hz rate above) reads as a
-;   "how long since the last successful frame sync" timeout check.
-; - unk_56: a smaller saturating counter, incremented once per
-;   serial_dma_start call along one specific path (loc_D516) and compared
-;   against 1 to decide whether to set unk_47.6 - reads as a "first re-arm
-;   attempt vs a repeat" distinction, not confirmed.
-; - unk_126 (shadowed into the real ASR0N hardware register on every
-;   write): bits 6/7 are toggled here in ways that don't obviously fit
-;   ASR0N's documented "ASR0 falling edge counter" role - whether ASR0 is
-;   itself partly repurposed on this variant (the way ASR2/ASR3 are) or
-;   these bits are pure software flags piggy-backing on a shadowed
-;   register isn't established.
-;
-; Correction: unk_47.7 is NOT written anywhere in this function (or
-; anywhere else in this file, by any bit or full-byte instruction) -
-; check_starter_running's "one-shot latch" only ever clears it, never
-; sets it, which is itself an open question (see check_starter_running's
-; own header) but not one this subsystem answers. The previous version of
-; this header's claim that this function relates to unk_47.7 was
-; incorrect and has been removed.
+; Correction: unk_47.7 is not touched by this function at all - that bit
+; is entirely check_starter_running's own one-shot latch (self-re-armed
+; via `tbs`'s destructive test-and-set - see toshiba-8x-technical-
+; reference.md - not an open question, see that function's own header).
+; An earlier version of this header's claim that this function relates to
+; unk_47.7 was incorrect and has been removed.
+
 				cmp	#04h, var_cnt4ms_AE
 				ble	loc_D4DF
+
+; unk_126 is shadowed into the real ASR0N hardware register on every
+; write (every store to unk_126 here is immediately followed by the same
+; value going to ASR0N). Bits 6/7 are toggled in ways that don't
+; obviously fit ASR0N's documented "ASR0 falling edge counter" role -
+; whether ASR0 is itself partly repurposed on this variant (the way
+; ASR2/ASR3 are) or these are pure software flags piggy-backing on a
+; shadowed register isn't established. This first occurrence clears bit6.
+
 				ld	a, unk_126
 				and	a, #0BFh
 				st	a, unk_126
@@ -5353,6 +5698,26 @@ loc_D4E9:							; D4DD↑j
 				clr	var_cnt4ms_AE
 
 loc_D4EB:							; D4E7↑j
+
+; unk_126 bit6 set here (see the note above). Also CONFIRMED (by direct
+; arithmetic against main_loop's own initial ASR2/ASR3 programming, which
+; uses named symbols instead of these functions' hard-coded constants):
+; ASR3 (TX engine) is a 16-bit register written as 0x8000 | source_addr.
+; main_loop arms it with `ld d, #8000h + 14Dh; st d, ASR3`, giving 0x814D
+; - address 0x14D is dmatx_ve_corr_map, the very first named dmatx_*
+; variable in memory. So, unlike RX below, TX has no separate packing
+; buffer: the hardware engine streams CPU2's live dmatx_* variables
+; straight from their real addresses. This function re-arms ASR3 with
+; the same 0x814D constant.
+;
+; TIMER3 is written here (and elsewhere in this function) with full-byte
+; values (0x01/0x4F/0xB7/0x8C-masked) that don't fit the technical
+; reference's base-variant description ("Timer LSB bits [2:0]", i.e. only
+; values 0-7) - on this enhanced variant TIMER3 is being used as a full
+; 8-bit register, most likely a mode/timeout-phase byte for the DMA
+; engine rather than a plain timer readout. Worth folding back into the
+; general technical reference doc as a variant-specific correction.
+
 				ld	a, unk_126
 				or	a, #40h
 				st	a, unk_126
@@ -5362,6 +5727,14 @@ loc_D4EB:							; D4E7↑j
 				ld	#0B7h, TIMER3		; Timer	LSB (bit0~bit2)
 
 loc_D4FD:							; D4E3↑j
+
+; unk_55: a saturating byte counter (int_vector_0 increments it unless
+; TIMER3==0x30 with RAMST.2 clear, which resets it to 0 and sets
+; unk_47.5 - "frame ready"). This `cmp #28h, unk_55` (0x28 = 40 IV0
+; ticks, i.e. ~56ms at the ~353Hz rate above) reads as a "how long since
+; the last successful frame sync" timeout check - not confirmed without
+; hardware probing.
+
 				cmp	#28h, unk_55
 				bcs	loc_D516
 				clrb	bit2, IMASKL
@@ -5384,9 +5757,24 @@ loc_D516:							; D500↑j
 				or	a, #80h
 				st	a, unk_126
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
+
+; ASR2 (RX engine) is a 16-bit register written as 0x9000 | target_addr.
+; main_loop arms it with `ld d, #9000h + var_serbus_rx; st d, ASR2`
+; (var_serbus_rx = 0x127, giving exactly 0x9127) - the raw incoming-frame
+; scratch buffer copy_serbus_rx later unpacks into named dmarx_*
+; variables. Both this path and int_vector_0 re-arm ASR2 with the
+; literal constant 0x9127 - i.e. always the same RX target, never a
+; different buffer.
+
 				ld	d, #9127h
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
+
+; unk_56: a smaller saturating counter, incremented once per
+; serial_dma_start call along this specific path and compared against 1
+; to decide whether to set unk_47.6 below - reads as a "first re-arm
+; attempt vs a repeat" distinction, not confirmed.
+
 				ld	b, unk_56
 				inc	b
 				bne	loc_D539
@@ -5414,12 +5802,23 @@ locret_D543:							; D51B↑j
 ; See serial_dma_start's header above for the full write-up - this is the
 ; periodic (~353Hz) IV0 tick that drives the same RX re-arm/timeout state
 ; (unk_55, unk_47.5, ASR2, TIMER3).
+;
+; Reads: unk_55, TIMER3, RAMST, UNK1C
+; Writes: unk_55, var_cnt4ms_AD, unk_56, unk_47, ASR2, TIMER3
+
 				; public int_vector_0
 int_vector_0:							; FFDE↓o
 				push	x
 				push	y
 				clrb	bit2, IRQLL
 				ld	b, unk_55
+
+; TIMER3==0x30 with RAMST.2 clear reads as "frame sync detected": resets
+; var_cnt4ms_AD/unk_56 and the unk_55 counter (b) to 0, sets unk_47.5
+; ("frame ready" - see copy_serbus_rx's header), clears unk_47.6.
+; Otherwise (loc_D55E, still waiting): clears unk_47.5 and saturating-
+; increments the unk_55 counter (b) instead.
+
 				ld	a, TIMER3		; Timer	LSB (bit0~bit2)
 				cmpb	a, #30h
 				bne	loc_D55E
@@ -5438,6 +5837,11 @@ loc_D55E:							; D54E↑j ...
 				dec	b
 
 loc_D564:							; D55C↑j ...
+
+; Unconditionally re-arms ASR2 (RX) with the same 0x9127 constant
+; serial_dma_start uses (see its header above) and reprograms TIMER3 -
+; this happens every IV0 tick regardless of which branch above was taken.
+
 				st	b, unk_55
 				ld	d, #9127h
 				st	d, ASR2			; ASR2 edge counter value MSB

@@ -1395,14 +1395,19 @@ The MIL (Malfunction Indicator Lamp) flash timing is derived from IVC events.
 
 ### `tbs` instruction
 
-`tbs bitX, varX` tests the specified bit and sets the Z flag: Z=1 if bit is **clear**, Z=0 if bit is **set**.
+**CORRECTED** (confirmed against real Denso 8X test code, `Test8.asm`/"Denso 8X Test Code v8.0" - a prior version of this doc, and this repo's own earlier analysis, wrongly described `tbs` as a pure non-destructive test; it is not):
 
-Commonly used idiom:
+`tbs bitX, varX` tests the specified bit (Z=1 if bit was **clear**, Z=0 if bit was **set**, reflecting the value *before* this instruction), **then unconditionally sets the bit to 1** as a side effect - a destructive test-and-set, regardless of which way Z came out.
+
+By contrast, **`tbbs`/`tbbc` are pure test-and-branch: they leave the tested bit untouched.** This is the actual, load-bearing distinction between the two forms (not a stylistic/space choice) - anywhere `tbs`+`beq`/`bne` appears instead of the equivalent single `tbbs`/`tbbc`, the code depends on `tbs`'s set side effect.
+
+Because `tbs` always sets the bit, the common idiom is a **toggle**, not a plain test:
 ```asm
-tbs bit0, Status06     ; Z=1 if bit0 cleared
-beq loc_E855           ; branch if cleared
-clrb bit0, Status06    ; otherwise clear it
+tbs  bit0, Status06     ; Z=1 if bit0 WAS clear; bit0 is now set either way
+beq  loc_E855           ; branch if it was clear (net effect: bit0 0->1)
+clrb bit0, Status06     ; it was already set - clear it back (net effect: bit0 1->0)
 ```
+Net effect across the whole idiom: bit0 flips every time this code runs, and the branch tells you which direction it just flipped. This also means `tbs` is commonly used as a **self-re-arming one-shot gate**: something else clears a bit periodically (e.g. an ISR, once per N ms), and the *first* `tbs` test after that clear both detects "time's up" (via Z) and immediately re-arms the bit (via the set side effect) so the next test - before the following periodic clear - correctly sees it as already-handled and skips. See `var_flags_41`/`var_schedule_flag_41`'s declaration comments for a worked example this session initially got wrong by assuming `tbs` was non-destructive.
 
 ---
 

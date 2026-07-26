@@ -7,6 +7,81 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### CRITICAL CORRECTION: `tbs` is a destructive test-and-set, not a pure test
+This session spent significant effort concluding that `var_flags_41` (CPU2)
+and `var_schedule_flag_41` (CPU1, same address 0x41) were "dead" - flag
+bytes that get cleared periodically by an ISR but, per an exhaustive
+search (bit instructions, 16-bit spillover, indexed X/Y writes, side
+effects inside every called sub-function, every `increment_counters`
+range), never get set again anywhere in either ROM. That entire
+conclusion was **wrong**, traced to a wrong assumption about one
+instruction.
+
+**The bug in my own reasoning:** `toshiba-8x-technical-reference.md`
+described `tbs bitX, varX` as testing a bit and setting only the Z flag -
+a pure, non-destructive test, like `tbbs`/`tbbc` but without the branch
+built in. Under that assumption, `tbs bitN,var; bne target` looks
+functionally identical to `tbbs bitN,var,target`, just longer - so a
+`tbs`-tested bit that's only ever cleared really would stay clear forever
+once cleared, explaining the "no setter found" mystery as dead code.
+
+**The user pushed back twice, correctly:** first pointing out that if
+`tbs`+`bne` and `tbbs` were truly equivalent, there'd be no reason for
+this ROM to use the longer two-instruction form extensively instead of
+the shorter combined one - a real design/space cost with no payoff under
+the "pure test" reading. Then the user located and shared a real Denso 8X
+test-code slide (`Test8.asm`, "Denso 8X Test Code v8.0", "BRANCH
+OPERATIONS - TBS") with actual recorded test results:
+```
+tbs  bit0, Status06   ; test bit status AND SET IT
+beq  loc_E855         ; branch if Status06.0 was clear
+clrb bit0, Status06
+```
+"'tbs' tests the specified bit for whether it is clr or set, and *then
+sets it*." "The tbbc and tbbs operands just do the test and branch, they
+leave the bit untouched." Confirmed empirically: `[0041]=01` before,
+`[0041]=01` after a `tbs` that read it as still-set (no branch), then
+`[0041]=00`/`[0041]=01` again showing the toggle idiom's two halves.
+
+**Corrected understanding:** `tbs` reads the bit's prior value into Z,
+then unconditionally sets the bit to 1. The common `tbs`+`beq`+`clrb`
+idiom is therefore a **toggle**: branch away (net 0->1) if it was clear,
+otherwise explicitly clear it back (net 1->0) if it was set. Used as a
+gate (`tbs`+`bne`/`beq` with no following `clrb`), it becomes a
+**self-re-arming one-shot latch**: an ISR clears the bit periodically
+("unlocking" it); the *first* subsequent `tbs` test both detects the
+unlock (via Z) and immediately re-locks it (via the set side effect), so
+further tests before the next periodic clear correctly see it as
+already-handled and skip. This is exactly what the ROM's own pre-existing
+comments already said ("Cleared every 16ms to trigger 16ms process",
+"Unlock 64ms-gated injection schedule") - they were right all along; my
+"SUSPECT DEAD" conclusion was the error, introduced by trusting a
+technical-reference description that was itself never verified against
+real hardware/test documentation.
+
+**Fixed:** `toshiba-8x-technical-reference.md` and its `-part1.md`
+duplicate (corrected `tbs` section, with the toggle/self-re-arming idiom
+explained); `var_flags_41`'s and `var_schedule_flag_41`'s declaration
+comments (both fully rewritten - the periodic gates they describe are
+real, working mechanisms); `sub_E865`'s header (CPU1); `calc_ignition_
+timing`'s periodic-counters comment (CPU2); `var_flags_40.1`'s note
+(CPU2); `unk_47.7`/`check_starter_running`'s one-shot-latch description
+and `serial_dma_start`'s correction note (CPU2 - the original pre-
+session `check_starter_running` header comment turns out to have been
+correct the whole time); `var_flags_46.0`'s TVSV note (re-verified: still
+inert, but because ALL its touch points - including its one `tbs` - sit
+inside an already-dead diagnostic gate, not because of a missing setter).
+Cross-checked every remaining plain `tbs` site in both files against this
+corrected model before moving on. Verified via verify_assembly_match.py
+throughout (comments/renames only, 0 real edit regions at every step).
+
+**Lesson for future sessions:** a "no setter found anywhere, therefore
+dead" conclusion about a flag that's tested via `tbs` should be treated
+with suspicion by default now - re-derive from `tbs`'s destructive
+semantics before concluding a gate is vestigial.
+
+---
+
 ### Claude/ working copies converted to UTF-8 (recovering earlier silent corruption)
 Both `Claude/D151803-9651.asm` and `Claude/D151803-9661.asm` were CP437-
 encoded (the old IBM PC/DOS codepage IDA exported them in), not Latin-1/
@@ -1163,8 +1238,14 @@ ROM.
   for the alias, but not characterized - looks like yet another distinct
   lambda-trim mechanism, see fuel_calculation_system.md Open Questions)
 - **sub_E865 (~E865-E9E9, partially traced this session)** - an ignition
-  timing blend gated on `var_schedule_flag_41.3` (runs only on ticks where
-  that bit is clear; otherwise returns immediately). Two confirmed parts:
+  timing blend gated on `var_schedule_flag_41.3` via `tbs`+`beq` (runs on
+  ticks where that bit tests clear; otherwise returns immediately). `tbs`
+  is a destructive test-and-set (this session initially got that wrong,
+  treating the gate as dead/always-true - see `var_schedule_flag_41`'s own
+  ASM declaration comment for the correction), so this is a genuine
+  self-re-arming one-shot gate: only the first call after each periodic
+  unlock (iv6_4ms_process's 32ms sub-slot) runs the blend below. Two
+  confirmed parts:
   1. **Init/reset path** (`unk_44.5` set): seeds `var_unk_knock_12B`/
      `unk_12D`/`unk_12F` to `table_pim_unk_C154(dmatx_pim)/2` and zeroes
      `unk_129`/`unk_127`/sets `unk_AA=0xFF` - a first-run/reset baseline.
@@ -1219,26 +1300,21 @@ documentation and a few specific loose ends, not "find the function" work.
   shadowed register, isn't established. Electrical-level protocol details
   (pins/baud rate/clock master) remain unknown without hardware probing -
   out of scope for static analysis.
-- **Broad prose-documentation gap**: ~52% of labels have meaningful
-  pre-existing names and all functions are resolved (see above), but most
-  of the 284 remaining loc_ labels' surrounding code lacks the
-  gold-standard header-comment treatment. Subsystems with real write-ups
-  so far (see Completed subsystems above for each): fuel VE,
-  calc_ignition_timing (base timing, knock-retard ceiling, drive_DOUT0),
-  the enrichment-decay chain, TVSV boost control, the warning-debounce
-  phase, factory_selfcheck, the RPM-smoothing helpers, the boot
-  sequence/main control-flow backbone, the NE interrupt architecture, I/O
-  input reading and DMA receive unpacking (including the ASR2/ASR3/TIMER3
-  serial DMA re-arm protocol), vehicle speed/VF diagnostics, the OBD
-  datastream, and the shared utilities
-  (increment_counters/check_starter_running/check_startup). Now that the
-  whole main_continue_2 -> calc_params -> calc_ignition_timing -> TVSV ->
-  warning-debounce chain is documented, what's left is mostly outside that
-  chain: any remaining loc_ labels not reachable from that chain or from
-  the already-documented boot/NE/I/O/OBD/vehicle-speed subsystems.
-  Leverage existing renames (dmarx_pim2/dmarx_tps/dmarx_ect/var_map_ve/
-  etc.) rather than re-deriving. See "CPU1<->CPU2 DMA cross-reference"
-  below for the targeted (not full-pass) DMA lookup work done earlier.
+
+**Resolved - broad prose-documentation gap:** every real (non-math-library)
+function in CPU2 now has gold-standard header prose, confirmed by a
+systematic pass this session (every call-target label checked for a header
+either preceding or immediately following its label - a few earlier
+"missing" hits from a divider-only heuristic turned out to already be
+documented with the header written right after the label instead of
+before it, e.g. `generate_vf_PORTA_4`, `calc_rpm`, `drive_DOUT2_tvsv`,
+`check_io_inputs`). The generic math/interpolation library
+(`divide_rD_*`/`mult_*`/`table_*`/`map_*`/`clamp_rD`) remains intentionally
+undocumented beyond its existing per-line comments and self-explanatory
+names, per this project's established convention (see "Previously
+completed" above). Zero `sub_`-prefixed labels remain in the file. What's
+left for CPU2 is only the two items below - no more "sweep the whole file
+for gaps" work needed.
 
 ---
 

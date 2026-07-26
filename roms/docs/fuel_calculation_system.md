@@ -202,8 +202,10 @@ formula (no padding discrepancy for these, unlike the three words above):
 
 `sub_E865`, CPU1's consumer of all five (plus the primary `dmarx_ign_timing`
 and `dmarx_ign_timing_unk_166`), has since been partially traced (see
-session_journal.md): a per-tick PIM-table-baseline-vs-clamp update
-involving `unk_129`/`12B`/`12D`/`12F` state, gated by `var_schedule_flag_41.3`.
+session_journal.md): a PIM-table-baseline-vs-clamp update involving
+`unk_129`/`12B`/`12D`/`12F` state, self-re-armed to run once per ~32ms via
+`var_schedule_flag_41.3`'s `tbs`-based one-shot gate (see that variable's
+ASM declaration comment for the mechanism).
 **Correction:** the fallback-vs-primary selection is **not** knock-sensor
 fault handling despite `var_diag_errors_5.0`'s name and the function's
 proximity to real knock code - `set_knock_sensor_err_flag`/

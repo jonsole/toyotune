@@ -202,6 +202,86 @@ unk_40:				.block 1			; DATA XREF: divide_d_by_x+CD↓o
 var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								; divide_d_by_x+2DB↓r ...
 								; Flags	to control scheduling of various processes
+								;
+								; CORRECTION (this session initially got
+								; this whole variable wrong, treating it
+								; as dead): every bit below is tested via
+								; plain `tbs`, not `tbbs`/`tbbc`. `tbs` is
+								; a destructive test-and-set - it reads
+								; the bit's PRIOR value into Z, then
+								; unconditionally sets it to 1 (see
+								; toshiba-8x-technical-reference.md's
+								; `tbs` section, corrected against real
+								; Denso 8X test documentation). So each
+								; `tbs` test here ALSO re-arms ("locks")
+								; the bit it just read - making this a
+								; working set of self-re-arming one-shot
+								; gates, exactly matching the pre-existing
+								; "unlock N-ms-gated injection schedule"
+								; comments in iv6_4ms_process: that
+								; function periodically CLEARS
+								; ("unlocks") a bit; the next `tbs` test
+								; of it elsewhere reads "unlocked" (do the
+								; scheduled work) and re-locks it in the
+								; same instruction, so further tests
+								; before the next periodic clear read
+								; "locked" and skip. bit5 is the one
+								; exception - see its own note.
+								;
+								; 40.0 - Tested (loc_C873, via `tbs`) to
+								;   decide whether to OR a status bit into
+								;   a flag byte derived from unk_1DC -
+								;   self-re-armed. Cleared somewhere in
+								;   the periodic sub-slot dispatch. Not
+								;   deep-dived further.
+								; 40.1 - "Injection already done this
+								;   cycle" lock in calc_4ms_corrections
+								;   (section 3, via `tbs`): the first test
+								;   after each clear runs the section and
+								;   re-locks it; later tests before the
+								;   next clear skip it.
+								; 40.2 - "Injection already scheduled this
+								;   cycle" lock at loc_D20C (divide_d_by_x
+								;   chunk @ D1DD, part 2 - see that
+								;   header, via `tbs`): same self-
+								;   re-arming shape as bit1.
+								; 40.3 - Gates sub_E865 (ignition timing
+								;   blend) via `tbs` - see that function's
+								;   own header for the corrected,
+								;   self-re-arming mechanism.
+								; 40.4 - Cleared by iv6_4ms_process's 32ms
+								;   sub-slot (alongside bit5); no tester
+								;   found in this file - possibly read by
+								;   CPU2, or vestigial.
+								; 40.5 - Cleared by iv6_4ms_process's 32ms
+								;   sub-slot; also SET at loc_D04F as a
+								;   side effect of a lambda-integrator
+								;   reset (var_lambda_integrator forced to
+								;   0x8000) - unrelated to the scheduling
+								;   role, a coincidental bit reuse (same
+								;   pattern as var_diag_errors_5.0). No
+								;   `tbs`/`tbbs`/`tbbc` tester found for
+								;   this bit either, so this one may
+								;   genuinely be inert for scheduling
+								;   purposes despite the "unlock" comment.
+								; 40.6 - "Already ran this period's
+								;   background calculations" lock at
+								;   loc_D1DD (divide_d_by_x chunk @ D1DD,
+								;   part 1, via `tbs`): first test after
+								;   each 32ms clear runs periodic counters
+								;   + sub_C91A/sub_CB00/
+								;   ramp_misfire_correction/sub_DE71 and
+								;   re-locks; later tests skip.
+								; 40.7 - Tested via `tbs` at loc_E363 (the
+								;   still-unexplored loc_E112/DC77
+								;   diagnostic phase - see
+								;   session_journal.md CPU1 pending work)
+								;   to gate a block calling
+								;   sub_E435/calc_ect_unk_148/
+								;   calc_ect_unk_160, self-re-arming.
+								;   Cleared by iv6_4ms_process's 64ms
+								;   sub-slot ("unlock 64ms-gated injection
+								;   schedule").
 var_flags_42:			.block 1			; DATA XREF: divide_d_by_x:loc_C718↓r
 								; divide_d_by_x+651↓r ...
 								; 42.0 - Trim valid flag, set when valid
@@ -2678,6 +2758,12 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 ; trick, unrelated to actual knock sensor state.
 ; ---------------------------------------------------------------------------
 
+;Inputs
+;    D - Value to negate (as a side effect of setting the flag below).
+;Outputs
+;    D - Negated.
+;    var_diag_errors_5.0 - Set (see combined header above).
+
 set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 								; ramp_limit_inj_pw_simple+A↓p ...
 				setb	bit0, var_diag_errors_5
@@ -2686,6 +2772,13 @@ set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
+
+;Inputs
+;    D - Value to conditionally negate.
+;    var_diag_errors_5.0 - Set by an earlier set_knock_sensor_err_flag
+;        call in this same computation.
+;Outputs
+;    D - Negated if var_diag_errors_5.0 was set, else unchanged.
 
 check_knock_sensor_err_flag:					; CODE XREF: calc_iscv+F6↓p
 								; divide_d_by_x+1F85↓p ...
@@ -2696,6 +2789,11 @@ check_knock_sensor_err_flag:					; CODE XREF: calc_iscv+F6↓p
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
+
+;Inputs
+;    D - Value to negate.
+;Outputs
+;    D - Negated (two's complement).
 
 negate_rD:							; CODE XREF: divide_d_by_x+BAF↓p
 								; divide_d_by_x:loc_D409↓p ...
@@ -11529,28 +11627,19 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 
 
 ; ---------------------------------------------------------------------------
-; sub_E865: ignition timing blend, gated on var_schedule_flag_41.3 (returns
-; immediately when that bit is set - only runs on ticks where it's clear).
-;
-; 1) (E86C-E890) Init/reset path, when unk_44.5 is set: seeds
-;    var_unk_knock_12B/unk_12D/unk_12F to table_pim_unk_C154(dmatx_pim)/2
-;    (a PIM-indexed baseline), zeroes unk_129/unk_127, sets unk_AA=0xFF -
-;    a first-run/reset baseline, not the normal per-tick path.
-;
-; 2) (E890-EA05) Normal path (unk_44.5 clear, every other qualifying
-;    tick): clamps var_unk_knock_12B between unk_12F and the PIM-table
-;    baseline above (whichever's larger/smaller each becomes the clamp
-;    bound), using var_diag_errors_5.0 purely as this function's OWN local
-;    "did the clamped value drop since last tick" flag - NOT knock-sensor
-;    fault handling despite the flag's name (see
-;    set_knock_sensor_err_flag's own header comment above: it's a
-;    repo-wide reused negate/abs() remember-bit, unrelated to real knock
-;    sensor state outside the actual knock subsystem). That flag then
-;    selects dmarx_ign_timing_fallback1/2 vs the primary
-;    dmarx_ign_timing/dmarx_ign_timing_unk_166 for a multiply/table_C163
-;    blend feeding the unk_129 accumulator, then a table_pair_interpolate
-;    lookup (selected by unk_13F/unk_141) feeding unk_127, before calling
-;    sub_E832.
+; sub_E865: ignition timing blend, gated on var_schedule_flag_41.3 via
+; `tbs`+`beq` (returns immediately when that bit tests set; runs when it
+; tests clear). `tbs` is a destructive test-and-set (see toshiba-8x-
+; technical-reference.md), so this test also re-arms ("locks") the bit -
+; making this a self-re-arming one-shot gate, not a dead/always-true one
+; as this session first concluded (see var_schedule_flag_41's own
+; declaration comment for the full correction): only the first call after
+; each periodic unlock (iv6_4ms_process's 32ms sub-slot - see that
+; function's header) actually runs the blend below; calls before the next
+; unlock return immediately.
+; Not a real jsr/ret subroutine with a register calling convention (it's
+; entered via jsr but takes/returns nothing in registers) - reads/writes
+; the named variables below and documented inline at each section.
 ;
 ; NOT fully confirmed: the exact arithmetic of the middle blend (the
 ; mul/mult_rDrX/mov sequence around table_C163, roughly E8C4-E948) -
@@ -11559,6 +11648,14 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 ; more careful re-derivation. sub_E832's own body and table_C163's
 ; real-world meaning also aren't traced. Worth a dedicated follow-up
 ; session - see session_journal.md's CPU1 pending work.
+;
+; Reads: var_schedule_flag_41, dmatx_pim, unk_44, unk_12F,
+;   var_unk_knock_12B, dmarx_ign_timing_unk_166, dmarx_ign_timing_fallback2,
+;   unk_129, var_limiter_flags, unk_AA, var_flags_46, dmarx_ign_timing,
+;   dmarx_ign_timing_fallback1, unk_13C, unk_13F, unk_141
+; Writes: var_unk_knock_12B, unk_12D, unk_12F, unk_129, unk_127, unk_AA,
+;   var_diag_errors_5, var_temp_w, var_temp_7A, var_temp_b, var_temp_7B,
+;   var_temp_7C
 ; ---------------------------------------------------------------------------
 sub_E865:							; CODE XREF: divide_d_by_x+D3A↑p
 								; divide_d_by_x+20BC↑p ...
@@ -11570,6 +11667,13 @@ sub_E865:							; CODE XREF: divide_d_by_x+D3A↑p
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_E86C:							; CODE XREF: sub_E865+2↑j
+
+; Init/reset path, when unk_44.5 is set: seeds var_unk_knock_12B/unk_12D/
+; unk_12F to table_pim_unk_C154(dmatx_pim)/2 (a PIM-indexed baseline),
+; zeroes unk_129/unk_127, sets unk_AA=0xFF - a first-run/reset baseline,
+; not the normal per-tick path (that's loc_E890 below, when unk_44.5 is
+; clear instead).
+
 				ld	d, dmatx_pim
 				ld	y, #table_pim_unk_C154
 				jsr	table_rD_fixed64_interpolate
@@ -11590,6 +11694,21 @@ loc_E86C:							; CODE XREF: sub_E865+2↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_E890:							; CODE XREF: sub_E865+11↑j
+
+; Normal path (unk_44.5 clear, every other qualifying tick): clamps
+; var_unk_knock_12B between unk_12F and the PIM-table baseline above
+; (whichever's larger/smaller each becomes the clamp bound), using
+; var_diag_errors_5.0 purely as this function's OWN local "did the
+; clamped value drop since last tick" flag - NOT knock-sensor fault
+; handling despite the flag's name (see set_knock_sensor_err_flag's own
+; header comment above: it's a repo-wide reused negate/abs() remember-
+; bit, unrelated to real knock sensor state outside the actual knock
+; subsystem). That flag then selects dmarx_ign_timing_fallback1/2 vs the
+; primary dmarx_ign_timing/dmarx_ign_timing_unk_166 for a multiply/
+; table_C163 blend feeding the unk_129 accumulator, then a
+; table_pair_interpolate lookup (selected by unk_13F/unk_141) feeding
+; unk_127, before calling sub_E832.
+
 				push	d
 				ld	x, unk_12F
 				cmp	d, unk_12F
