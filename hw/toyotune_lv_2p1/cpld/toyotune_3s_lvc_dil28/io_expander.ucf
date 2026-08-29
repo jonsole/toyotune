@@ -1,0 +1,81 @@
+#
+#NET "d_al<0>"     LOC =  "S:PIN55";
+#NET "d_al<1>"     LOC =  "S:PIN54";
+#NET "d_al<2>"     LOC =  "S:PIN53";
+#NET "d_al<3>"     LOC =  "S:PIN52";
+#NET "d_al<4>"     LOC =  "S:PIN47";
+#NET "d_al<5>"     LOC =  "S:PIN48";
+#NET "d_al<6>"     LOC =  "S:PIN49";
+#NET "d_al<7>"     LOC =  "S:PIN50";
+#NET "d_a<8>"     	LOC =  "S:PIN27";
+#NET "d_a<9>"     	LOC =  "S:PIN28";
+#NET "d_a<10>"    	LOC =  "S:PIN29";
+#NET "d_a<11>"    	LOC =  "S:PIN30";
+#NET "d_a<12>"    	LOC =  "S:PIN83";
+#NET "d_a<13>"    	LOC =  "S:PIN85";
+#NET "d_a<14>"    	LOC =  "S:PIN63";
+#NET "d_a<15>"    	LOC =  "S:PIN80";
+#NET "d_da<0>"    	LOC =  "S:PIN72";
+#NET "d_da<1>"    	LOC =  "S:PIN71";
+#NET "d_da<2>"    	LOC =  "S:PIN70";
+#NET "d_da<3>"    	LOC =  "S:PIN69";
+#NET "d_da<4>"    	LOC =  "S:PIN68";
+#NET "d_da<5>"    	LOC =  "S:PIN67";
+#NET "d_da<6>"    	LOC =  "S:PIN65";
+#NET "d_da<7>"    	LOC =  "S:PIN64";
+#
+#NET "e_n_init"    LOC =  "S:PIN76";
+#NET "e_n_is"     	LOC =  "S:PIN57";
+#NET "e_n_os"     	LOC =  "S:PIN58";
+#
+#NET "d_n_init"		LOC =  "S:PIN75";
+#NET "d_n_rd"     	LOC =  "S:PIN88";
+#NET "d_n_wr"     	LOC =  "S:PIN89";
+#NET "d_adr"   	  	LOC =  "S:PIN87";
+#NET "d_n_irp"   	LOC =  "S:PIN61";
+#
+#
+#NET "m_a<14>"    	LOC =  "S:PIN37";
+#NET "m_a<15>"    	LOC =  "S:PIN44";
+#NET "m_a<16>"    	LOC =  "S:PIN45";
+#NET "m_a<17>"    	LOC =  "S:PIN46";
+#NET "m_n_cs"     	LOC =  "S:PIN77";
+#
+
+
+
+#NET "c_pa<0>"        LOC =  "S:PIN29"; 
+#NET "c_dra<0>"       LOC =  "S:PIN30"; 
+#NET "c_pa<1>"        LOC =  "S:PIN31";
+#NET "c_dra<1>"       LOC =  "S:PIN32";
+#NET "c_pa<2>"        LOC =  "S:PIN33";
+#NET "c_dra<2>"       LOC =  "S:PIN35";
+#NET "c_pa<3>"        LOC =  "S:PIN40";
+#NET "c_dra<3>"       LOC =  "S:PIN41";
+#NET "c_pa<4>"        LOC =  "S:PIN84";
+#NET "c_dra<4>"       LOC =  "S:PIN85";
+#NET "c_pa<5>"        LOC =  "S:PIN92";
+#NET "c_dra<5>"       LOC =  "S:PIN93";
+#NET "c_pa<6>"        LOC =  "S:PIN94";
+#NET "c_dra<6>"       LOC =  "S:PIN96";
+#NET "c_pa<7>"        LOC =  "S:PIN99";
+#NET "c_dra<7>"       LOC =  "S:PIN100";
+#
+#NET "c_pb<0>"        LOC =  "S:PIN27";
+#NET "c_drb<0>"       LOC =  "S:PIN28";
+#NET "c_pb<1>"        LOC =  "S:PIN25";
+#NET "c_drb<1>"       LOC =  "S:PIN24";
+#NET "c_pb<2>"        LOC =  "S:PIN21";
+#NET "c_drb<2>"       LOC =  "S:PIN20";
+#NET "c_pb<3>"        LOC =  "S:PIN17";
+#NET "c_drb<3>"       LOC =  "S:PIN16";
+#NET "c_pb<4>"        LOC =  "S:PIN12";
+#NET "c_drb<4>"       LOC =  "S:PIN10";
+#NET "c_pb<5>"        LOC =  "S:PIN7";
+#NET "c_drb<5>"       LOC =  "S:PIN8";
+#NET "c_pb<6>"        LOC =  "S:PIN5";
+#NET "c_drb<6>"       LOC =  "S:PIN6";
+#NET "c_pb<7>"        LOC =  "S:PIN1";
+#NET "c_drb<7>"       LOC =  "S:PIN2";
+#
+#

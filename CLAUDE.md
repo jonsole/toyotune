@@ -10,7 +10,7 @@ This is a git repo (`origin` = `github.com/jonsole/toyotune.git`, also serving a
 
 ## Repository layout
 
-The repo has three top-level areas: **`roms/`** (disassembly/ROM-tuning workspace — the vast majority of the content and of this guide), **`hw/`** (Toyotune interface hardware), and **`sw/`** (IDA Pro installs).
+The repo has three top-level areas: **`roms/`** (disassembly/ROM-tuning workspace — the vast majority of the content and of this guide), **`hw/`** (Toyotune interface hardware — PCB, CPLD and host-MCU firmware), and **`sw/`** (IDA Pro installs).
 
 ### `roms/`
 
@@ -31,7 +31,33 @@ The repo has three top-level areas: **`roms/`** (disassembly/ROM-tuning workspac
 
 ### `hw/`
 
-- **`hw/toyotune_lv_2p0/`** — hardware design for the Toyotune interface board, v2.0: `pcb/` (Eagle `.sch`/`.brd`, OSH Park fab files, BOM) and `cpld/` (`toyotune_3s_lvc_dil28`, `toyotune_3s_lvc_plcc32` VHDL projects for the two package variants).
+- **`hw/toyotune_lv_2p0/`** — hardware design for the Toyotune interface board, v2.0: `pcb/` (Eagle `.sch`/`.brd`, OSH Park fab files, BOM) and `cpld/` (`toyotune_3s_lvc_dil28`, `toyotune_3s_lvc_plcc32` VHDL projects for the two package variants). Design files only — no firmware in this directory.
+- **`hw/toyotune_lv_2p1/`** — Toyotune interface board v2.1, the current revision, built around an **Atmel/Microchip ATSAMC21J18A** (Cortex-M0+) host MCU. Unlike v2.0 this tree also carries the firmware and bring-up sources. Four subdirectories:
+  - `pcb/` — Eagle design. `toyotune_3s.sch`/`.brd` (Dec 2020) is the live board; `toyotune_3s_coolrunner`, `toyotune_3s_lvc*`, `toyotune_3s_tsop`, `toyotune_usb*` and `can.sch` are older/experimental variants kept alongside it. Also fab configs for several houses (`elecrow*.cam`/`.dru`, `PCBWay_4_layer.cam`, `laen-*`, `gold-phoenix.dru`, `pcb-pool.dru`), `gerbers/` (the as-fabbed `jlcpcb_02062020.zip`). Loose gerber exports are deliberately **not** kept in the repo — regenerate them from the `.cam` jobs against the current `.brd`. Part libraries are `toyotune.lbr`, `jst-ph.lbr`, `con-jst*.lbr`, `SRG.lbr` and `usb_con-update.lbr`; `documents/` holds the AT29C256 flash datasheet.
+  - `cpld/` — Xilinx ISE VHDL for the CPLD that sits between the board and the ECU. Four project variants (`toyotune_3s`, `toyotune_3s_lvc_dil28`, `toyotune_3s_lvc_dil28_romtune`, `toyotune_3s_lvc_plcc32`), each with `io_expander.vhd`, testbenches (`mem_read_tb`, `ext_mem_read_tb`, `io_write_tb`) and a built `io_expander.jed`. `cpld/roms/D151803-9651.BIN` plus `cpld/tools/gen_rom.bat` (wrapping `hex2rom.exe`) generate each project's `d151803-9651_rom.vhd`, which is a **simulation-only** ROM model — regenerate it rather than hand-editing.
+  - `sw/` — host-MCU firmware, one directory per MCU generation plus shared code:
+    - `sw/samc2x/toyotune_denso/` — **the current firmware.** Atmel Studio 7 project (`toyotune_denso.atsln`/`.cproj`, ARM GCC toolchain, device `ATSAMC21J18A`, linker scripts `Device_Startup/samc21j18a_flash.ld`/`_sram.ld`).
+
+      **Core idea of the v2.1 board:** it carries a real SRAM that the Denso MCU executes from, and the SAMC21 loads that SRAM. The boot sequence in `main.c` is the thing to read first — `DMCU_Init()` holds the Denso MCU in reset, `XMEM_Init()` sets up the bus pins, the CPLD version register is read back over the same bus as a sanity check (`PanicFalse(CpldVersion == 4)`), `XMEM_BlockWrite(0x8000, DMCU_Image, 32768)` copies the 32K ROM image into SRAM at `0x8000`, then `DMCU_ResetDisable()` releases the Denso MCU, which now runs that code. So the "ROM" the ECU executes is ordinary RAM contents written by the SAMC21, not a flash/EPROM part — the image can be swapped without reprogramming anything, and it can in principle be read back (`XMEM_BlockRead`) or modified while the Denso MCU is held in reset.
+
+      Key modules: `xmem.c` (bit-banged multiplexed bus to the SRAM — `DA0:7` + `A8:15` on PORTB, `X_ADR` latch on PB30, `!X_RD`/`!X_WR` strobes on PB16/PB17; the port direction is flipped to inputs when idle so the Denso MCU can drive the bus), `dmcu.c` (reset/halt control of the Denso MCU, plus the `DMCU_Image[32768]` declaration — the image bytes themselves are the giant array in `image.c`), `os.c`/`os_pendsv.s` (small task kernel — PendSV context switch, signal/message waits), `sdl.c` (SERCOM USART + DMA serial data logger that captures the ECU's DMA stream), `diag.c` (live read/write link to the running Denso MCU — see below), `can.c`, `dmac.c`, `evsys.c`, `sercom.c`, `clk.c`, `mode.c`, `debug*.c`. (`sram.c`/`sram.h` are empty stubs — `xmem.c` is the real implementation.)
+
+      **`diag.c` — realtime read/write of the running Denso MCU.** Where `xmem.c` only works while the Denso MCU is held in reset, `diag.c` reads and writes its memory *while the engine code is executing*, over a **1 MHz synchronous serial link on SERCOM0**. The SAMC21 is the clock **slave**: `Diag_Task` configures the USART with `CMODE` (synchronous), `CHSIZE(1)` (9-bit frames), `DORD`, `CPOL`, and a **baud register of 0** — the 1 MHz bit clock is generated by the Denso MCU and arrives on XCK, so the SAMC21 has no say in the rate. Pins are SERCOM0's `PA04` (PAD0, TX), `PA05` (PAD1, XCK) and `PA06` (PAD2, RX).
+
+      The Denso MCU is the master and the SAMC21 answers it: the whole protocol runs out of `SERCOM0_Handler` as a chain of one-shot handlers assigned to `Diag->RxHandler` (`Diag_RxHandler` → `Diag_RxReadDataMsbHandler` → `…LsbHandler` → back to `Diag_RxHandler`), with the task body only woken afterwards by `DIAG_SIGNAL_READ`/`DIAG_SIGNAL_WRITE` to move bytes in and out of buffers. On each received frame `DIAG_IsCommand()` tests bit 8 (the 9th data bit); if the SAMC21 has work pending it answers with the command byte for the mode it wants — `0xDA` read-16, `0xDB`/`0xDC` write-16 address/data, `0xDD`/`0xDE` write-8 address/data — and only sends the address or data once the ECU has echoed back that it is in that mode. Writes are acknowledged by the ECU echoing the address and the data, which the handlers compare against what was sent (`WriteAddressAck`/`WriteDataAck`).
+
+      Reads are scheduled, not one-shot: `Diag_ReadEntry_t` items (address, size, period) live on a time-ordered linked list, and each completed read is re-inserted with its time advanced by `Period`, giving periodic sampling of ECU variables.
+
+      A separate branch of `Diag_RxHandler` snoops the ECU's **ADC** traffic: a non-command frame other than `0x102` is taken as an ADC channel request, the channel is decoded as `(RxData >> 1) & 0x1F`, the USART's RX pad is retargeted from PAD2 to PAD0 (`SERCOM_UsartSetRxPad`) to capture the converter's two reply frames into `Diag->AdcData[channel]`, then switched back.
+
+      **Current state — read before extending it.** The module is working but unfinished: `Diag_Init()` registers two hard-coded test reads (address `0x55` every 5 s, `0x04` every 1 s) and results only go to `Debug()`; the message API that would let other tasks add/remove reads (`Diag_HandleAddRequest` and friends) is `#if 0`'d out and does not currently compile (`Entry.Period` should be `Entry->Period`); `Diag_StartTimer`/`Diag_CancelTimer` are empty stubs, so both "TODO: Retry" branches are unreachable and a mismatched ack will silently stall that transfer; and `Diag_ReadEntry_t.Repeat`/`ReadRepeat` are declared but unimplemented.
+
+      `main.c` also declares the ECU DMA packet layouts for **D151804-0461** (`ECU_DmaData1_t` etc.) with field names that mirror the `dmatx_*`/`dmarx_*` variables in the `roms/` disassembly — when a DMA field's meaning is unclear on one side, cross-check the other.
+    - `sw/atmega128a/toyotune_2p0_lv/` — the older AVR firmware for the v2.0 board (LUFA USB stack, `hal_*` portability layer, `diag_*` per-ECU diagnostics).
+    - `sw/sam3x/toyotune_hid/` — a SAM3X USB-HID variant.
+    - `sw/common/` — MCU-independent code shared by the ports: the `esp*` link protocol (packetized, sequence-numbered serial link — the wire format is documented in the header comment of `esp.h`), `mem.c`, `buffer.h`.
+    - `sw/python/` — host-side scripts (`esp.py`, `terminal.py`, `test.py`) speaking the same link protocol.
+  - `test code/` — D8X assembly programs run *on the ECU* through the board for bring-up (`monitor.asm`, `port_input_test_1.asm`, `port_output_test_*.asm`, `production_test.asm`/`.bin`), with their own copies of `TASM8x.TAB`/`tasm8x.bat`. These predate the Python assembler in `roms/d8x_assembler/` and are not wired into any Makefile.
 
 ### `sw/`
 
