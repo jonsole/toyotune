@@ -102,10 +102,54 @@ Each low-priority channel is sampled once every 8 interrupt cycles (one slot 2 p
 
 **Scaling:**
 ```
-mPIM = raw_adc - 10560          ; subtract 1-bar atmospheric baseline (0x2940 = ~0.8V)
+mPIM = max(0, raw_adc - 10560)  ; subtract the sensor's ZERO-PRESSURE offset (0x2940 = ~0.806V)
 var_pim2 = mPIM * 1.285156      ; scale by 329/256 (converts sensor units to pressure)
 ```
-`var_pim2 = 0` at atmospheric pressure. Increases linearly with boost.
+
+**`var_pim2` is an ABSOLUTE pressure scale whose zero is hard vacuum, not
+atmospheric.** (An earlier revision of this file claimed "`var_pim2 = 0` at
+atmospheric pressure. Increases linearly with boost." That was wrong, and it
+is worth stating the correction loudly because it invites the conclusion that
+the ECU cannot represent vacuum at all - which it plainly can.)
+
+Derivation, from the conversion TunerPro uses for the Boost Limit table in
+`D151803-9651_32K.XDF`:
+
+```
+psi_gauge = ((((x*256/1.285156) + 10560)/65536*5) - 2.3293) / 0.1025
+             |___ rebuild ADC ___|   |ADC->volts|   |offset|   |V/psi|
+```
+
+So the subtraction of 10560 removes the MAP sensor's ~0.806 V output at zero
+absolute pressure - standard practice, so the full ADC range is usable. That
+puts the clamp at:
+
+| `var_pim2` | volts | psi gauge | meaning |
+|---|---|---|---|
+| `0` (clamp) | 0.806 | **-14.9** | ~0 kPa absolute - hard vacuum |
+| `~0x2E4D` | 1.51 | -8 | typical hot idle |
+| `~0x6443` | 2.33 | 0 | atmospheric |
+| `0x6666` | 2.36 | +0.26 | the sensor-fault limp default |
+| `0xDA00` | 4.12 | **+17.5** | boost-cut threshold |
+
+Two independent cross-checks on that equation: the boost-limit byte `0xDA`
+comes out at 17.5 psi against the ROM's own "17.6 psi" comment, and the
+out-of-range default `0x6666` lands at atmospheric, which is exactly what a
+sensible limp value should be.
+
+At idle `var_pim2` sits around `0x2E4D`, with roughly 11,800 counts of
+resolution between hard vacuum and atmospheric - so vacuum is reported with
+plenty of precision. The clamp only trips on a reading below the sensor's own
+zero-pressure voltage, i.e. a fault: note the valid input range below starts
+at 0.51 V, which is *lower* than the 0.806 V zero point, so an underflow is
+electrically reachable but not physically meaningful. Guarding it is the
+clamp's entire purpose.
+
+There is also a structural reason it could not work the other way:
+`var_pim2` is this ECU's primary load signal - it indexes the LTFT table in
+`read_nv_afr_trim` and feeds `calc_dmatx_pim`. Were it pinned to zero
+throughout vacuum, the engine would have no load resolution at idle or cruise
+and would not run.
 
 **Sensor limits:** `pim_adc_limits = [0x1A, 0xE6]` → valid range 0.51V..4.51V
 

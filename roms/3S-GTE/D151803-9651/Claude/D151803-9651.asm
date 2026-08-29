@@ -1041,7 +1041,21 @@ var_flags_4F:			.block 1			; DATA XREF: divide_d_by_x+95D↓w
 								;   independent compare near loc_DE08.
 var_pim2:			.block 1			; DATA XREF: divide_d_by_x+61E↓r
 								; check_boost_limit:loc_CCE3↓r ...
-								; (ADC - 10560)	* 1.285156
+								; max(0, ADC - 10560) * 1.285156
+								;
+								; ABSOLUTE manifold pressure, zero at hard
+								; vacuum - NOT zero at atmospheric. The
+								; 10560 removes the sensor's zero-pressure
+								; output offset (0.806V), it is not an
+								; atmospheric baseline.
+								;   0x0000 = -14.9 psi gauge (~0 kPa abs)
+								;   0x2E4D = -8 psi (typical hot idle)
+								;   0x6443 =  0 psi (atmospheric)
+								;   0xDA00 = +17.5 psi (boost-cut point)
+								; Derivation and cross-checks in
+								; docs/adc_system.md. The clamp at 0 is a
+								; sensor-fault guard; normal vacuum never
+								; reaches it.
 				.block 1
 var_tps:			.block 1			; DATA XREF: async_throttle_inject+F↓r
 								; divide_d_by_x+845↓r ...
@@ -18875,9 +18889,22 @@ deglitch_io_input:						; CODE XREF: check_io_inputs+2F↑p
 ; Input: X = raw 16-bit ADC result from MAP sensor
 ;
 ; Scaling:
-;   mPIM = raw_adc - 10560    (subtract atmospheric baseline, 0x2940)
-;   var_pim2 = mPIM * 1.285156  (scale by 329/256, converts to pressure units)
-;   var_pim2 = 0 at atmospheric pressure (1 bar), increases with boost
+;   mPIM = max(0, raw_adc - 10560)   (remove the sensor's ZERO-PRESSURE
+;                                     output offset, 0x2940 = 0.806V)
+;   var_pim2 = mPIM * 1.285156       (scale by 329/256)
+;
+;   var_pim2 is ABSOLUTE pressure with zero at HARD VACUUM. It is NOT zero
+;   at atmospheric - an earlier version of this header and of
+;   docs/adc_system.md both said it was, which wrongly implies the ECU
+;   cannot represent vacuum. Reference points:
+;     0x0000 = -14.9 psi gauge (~0 kPa absolute)
+;     0x2E4D =  -8 psi  (typical hot idle)
+;     0x6443 =   0 psi  (atmospheric)
+;     0x6666 =  +0.3 psi (the out-of-range default below - i.e. limp to
+;                         roughly atmospheric, which is why 0x6666)
+;     0xDA00 = +17.5 psi (table_boost_limit's cut point, ROM-annotated
+;                         "17.6 psi" - an independent check on all of this)
+;   Derivation from the sensor transfer function is in docs/adc_system.md.
 ;
 ; On out-of-range:
 ;   Uses default value 0x6666 for up to 15 consecutive errors.
@@ -18942,9 +18969,19 @@ loc_FBBF:							; CODE XREF: adc_handler_pim+1C↑j
 								; adc_handler_pim+2A↑j
 				st	a, var_flags_18C	; Store	flags
 				mov	x, d			; Copy PIM value in rX to rD
-				sub	d, #10560		; mPIM = PIM - 7.86psi
+; Remove the MAP sensor's zero-pressure output offset (10560 counts = 0.806V),
+; so var_pim2 becomes an ABSOLUTE pressure with zero at hard vacuum - NOT at
+; atmospheric. Atmospheric lands near 0x6443; the boost-cut threshold 0xDA00
+; is +17.5 psi gauge. (An older comment here read "PIM - 7.86psi", and
+; adc_system.md claimed this was a "1-bar atmospheric baseline" - both wrong;
+; see that doc for the derivation from the XDF's sensor transfer function.)
+				sub	d, #10560		; mPIM = PIM - zero-pressure offset (0.806V)
 				bcc	loc_FBCC		; Jump if no underflow
 
+; Underflow means the sensor read BELOW its own zero-pressure voltage - the
+; valid input range starts at 0.51V, under the 0.806V zero point, so this is
+; electrically reachable but not physically meaningful. A fault guard, not a
+; limit that normal vacuum ever reaches.
 				clr	a			; Underflow, so	clamp at 0
 				clr	b
 				bra	loc_FBE0
