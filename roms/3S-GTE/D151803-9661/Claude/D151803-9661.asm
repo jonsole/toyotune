@@ -620,12 +620,26 @@ dmarx_nv_trim_pim:		.block 1
 								; 0x13B). CPU1 substitutes a 0x50 fallback
 								; when its trims are not valid.
 								;
-								; Still not referenced anywhere in THIS file -
-								; so CPU1 goes to the trouble of sending its
-								; barometric trim and CPU2 simply ignores it.
+								; DELIVERED but never CONSUMED. It does get
+								; written - it sits at 0x0D2, inside the
+								; 0x0C5..0x0E2 span that copy_serbus_rx
+								; bulk-copies out of var_serbus_rx - but no
+								; code in this file ever READS it, and it is
+								; not among the addresses table_odb serializes
+								; onto the diagnostic stream.
+								;
+								; (An earlier note here said "not referenced
+								; anywhere in this file", which overstated it:
+								; the bulk copy is a reference, just not a use.
+								; The conclusion stands - CPU1 sends its
+								; barometric trim and CPU2 does nothing with
+								; it - but the reason is "no reader", not
+								; "untouched memory".)
+								;
 								; Either vestigial, or reserved for a variant
-								; that does use it. Worth knowing before
-								; assuming the DMA layout is fully live.
+								; that does use it - the DMA layout is shared
+								; across the family, so a dead field here does
+								; not mean a dead field everywhere.
 dmarx_cnt_startup:		.block 1			; CCA8↓r ...
 								; DMARX0E:
 								; RESOLVED via the DMA address mapping: this
@@ -5966,10 +5980,21 @@ copy_serbus_rx:							; C927↑p
 ;
 ; Two parts:
 ;
-; - A loop copying 33 words verbatim from var_serbus_rx[0..] to
+; - A loop copying 15 words (30 bytes) verbatim from var_serbus_rx[0..] to
 ;   dmarx_pim2 onward - dmarx_pim2 is therefore the first word-sized
 ;   dmarx_* variable, at the same relative offset as var_serbus_rx's own
-;   start.
+;   start. (An earlier revision of this comment said "33 words"; the loop
+;   runs while X < var_spd_edge_count, i.e. 0x0C5..0x0E2, which is 15
+;   words. The source span that implies, var_serbus_rx+0x00..+0x1D, is
+;   exactly contiguous with the tail byte copies at +0x1E below - an
+;   independent check that 15 is right and 33 is not.)
+;
+; NOTE ON THE ARCHITECTURE: this means the dmarx_* variables are NOT
+; written by the DMA hardware directly. The link fills var_serbus_rx, and
+; this routine then copies it into the named variables. Any search for
+; "what writes dmarx_X" therefore finds nothing at the symbol level - the
+; write is this bulk copy. Worth remembering before concluding a dmarx_*
+; field is unwritten.
 ;
 ; - Four explicit single-byte copies for tail flag variables that don't
 ;   fit the uniform word stride: dmarx_unk_4B, dmarx_var_flags_46,
@@ -5979,7 +6004,7 @@ copy_serbus_rx:							; C927↑p
 				ld	y, #var_serbus_rx
 
 loc_D57B:							; D583↓j
-				ld	d, [y]			; Copy 33 words
+				ld	d, [y]			; Copy 15 words (30 bytes): 0x0C5..0x0E2
 				st	d, x + 00h
 				inc	x
 				inc	x

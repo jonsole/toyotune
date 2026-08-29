@@ -1652,6 +1652,34 @@ entry gate is still unestablished (see that bit's declaration comment).
     `var_cnt_EA`, whose meaning is unestablished on that side too, so
     resolving either resolves both.
 
+  **Follow-up on the dead `dmarx_nv_trim_pim` field - and a correction.**
+  Chasing why CPU2 ignores CPU1's barometric trim turned up something more
+  generally useful: **CPU2's `dmarx_*` variables are not written by the DMA
+  hardware at all.** The link fills `var_serbus_rx`, and `copy_serbus_rx`
+  then bulk-copies that buffer into the named variables. So a symbol-level
+  search for "what writes `dmarx_X`" finds nothing for every field in the
+  block - the write is always that one loop.
+
+  That means the earlier note was overstated: `dmarx_nv_trim_pim` (0x0D2)
+  *is* written, because it sits inside the 0x0C5-0x0E2 span the loop copies.
+  What it lacks is a READER - nothing consumes it, and it is not among the
+  addresses `table_odb` serializes onto the diagnostic stream. The
+  conclusion holds (CPU1 sends its barometric trim, CPU2 does nothing with
+  it) but the reason is "no reader", not "untouched memory".
+
+  This is the third time in this effort that a search blind to one write
+  mechanism produced a wrong "dead" claim - after `tbs`'s set side effect
+  and `increment_counters`' range writes. The pattern is worth naming: on
+  this target, **writes frequently happen through a mechanism that does not
+  mention the symbol**, so "no writer found" is weak evidence and needs a
+  positive explanation before it becomes a conclusion.
+
+  **Also corrected while there:** `copy_serbus_rx`'s own comment claimed the
+  loop copies "33 words". It copies **15 words (30 bytes)** - it runs while
+  X < `var_spd_edge_count`, i.e. 0x0C5..0x0E2. The implied source span,
+  `var_serbus_rx+0x00..+0x1D`, is exactly contiguous with the tail byte
+  copies at +0x1E, which is an independent check that 15 is right.
+
   CPU1-side renames: `dmatx_trim_unk_20D` -> `dmatx_nv_trim_pim`,
   `dmatx_trim_unk_210` -> `dmatx_nv_trim_o2`.
 
