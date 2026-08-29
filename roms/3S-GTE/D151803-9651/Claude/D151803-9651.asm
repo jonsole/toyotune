@@ -270,7 +270,7 @@ var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								;   diagnostic phase - see
 								;   session_journal.md CPU1 pending work)
 								;   to gate a block calling
-								;   sub_E435/calc_ect_unk_148/
+								;   update_crank_cnt/calc_ect_unk_148/
 								;   calc_ect_unk_160, self-re-arming.
 								;   Cleared by iv6_4ms_process's 64ms
 								;   sub-slot ("unlock 64ms-gated injection
@@ -358,15 +358,15 @@ var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								;   loc_D1DD (divide_d_by_x chunk @ D1DD,
 								;   part 1, via `tbs`): first test after
 								;   each 32ms clear runs periodic counters
-								;   + sub_C91A/sub_CB00/
-								;   ramp_misfire_correction/sub_DE71 and
+								;   + calc_rpm_delta/decay_lambda_state/
+								;   ramp_misfire_correction/inc_cnt_187 and
 								;   re-locks; later tests skip.
 								; 41.7 - Tested via `tbs` at bg_64ms_dispatch (the
 								;   still-unexplored loc_E112/DC77
 								;   diagnostic phase - see
 								;   session_journal.md CPU1 pending work)
 								;   to gate a block calling
-								;   sub_E435/calc_ect_unk_148/
+								;   update_crank_cnt/calc_ect_unk_148/
 								;   calc_ect_unk_160, self-re-arming.
 								;   Cleared by iv6_4ms_process's 64ms
 								;   sub-slot ("unlock 64ms-gated injection
@@ -725,7 +725,7 @@ var_flags_47:			.block 1			; DATA XREF: update_tps_closed_ref+3↓r
 								;   deceleration enrichment logic
 								;   downstream, not yet traced that far.
 var_diag_errors_5:		.block 1			; DATA XREF: check_knock_sensor_err_flag↓r
-								; sub_C91A+12↓r	...
+								; calc_rpm_delta+12↓r	...
 								; 48.0 - NOT knock/RPM-specific despite
 								;   its name or the old "RPM rising or
 								;   falling" label here (stale - fixed):
@@ -845,7 +845,7 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								;   dmarx_iscv_duty (CPU2's commanded ISC
 								;   duty) doesn't equal an expected test
 								;   value of 0x10 during a startup/self-
-								;   check comparison sequence (loc_DD69);
+								;   check comparison sequence (update_diag_obd);
 								;   cleared when it matches. Companion to
 								;   bit7 (same check, other test value).
 								; 4C.3 - TRAC TPS error
@@ -865,7 +865,7 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								;   dmarx_iscv_duty doesn't equal an
 								;   expected test value of 0x08 during the
 								;   same startup/self-check sequence as
-								;   bit2 (loc_DD69); cleared when it
+								;   bit2 (update_diag_obd); cleared when it
 								;   matches.
 								;
 var_flags_4D:			.block 1			; DATA XREF: divide_d_by_x+84A↓r
@@ -1004,7 +1004,7 @@ var_flags_4E:			.block 1			; DATA XREF: divide_d_by_x+456↓w
 ;
 ; Applied so far: calc_inj_pw_base's own body, reset_pw_ramp_limiter/
 ; ramp_limit_inj_pw/ramp_limit_inj_pw_simple, and update_lambda_stft's full body
-; (through locret_DB74, including sub_DB75/sub_DB77).
+; (through locret_DB74, including clear_trim_state_bit2/clear_trim_state_bit0).
 ;
 ; NOT yet applied: loc_DC77's body past its entry commit, and everything
 ; through chunks DD38/DD59/E112/start-of-E363 up to the restore at
@@ -1042,7 +1042,7 @@ var_flags_4F:			.block 1			; DATA XREF: divide_d_by_x+95D↓w
 								;   4F.4): a PIM comparison in
 								;   divide_d_by_x (~loc_D42A-D434), a
 								;   distinct threshold check against
-								;   unk_187 in sub_DE5A, and another
+								;   unk_187 in check_cnt_187_window, and another
 								;   independent compare near loc_DE08.
 var_pim2:			.block 1			; DATA XREF: divide_d_by_x+61E↓r
 								; check_boost_limit:loc_CCE3↓r ...
@@ -1080,7 +1080,7 @@ var_rpm_x_5p12:			.block 2			; DATA XREF: table_rA_pair_interpolate:table_rpm_pa
 var_rpm_div_25:			.block 1			; DATA XREF: divide_d_by_x+321↓w
 								; divide_d_by_x:loc_C93D↓r ...
 								; Engine speed / 25
-var_rpm_delta:			.block 1			; DATA XREF: sub_C91A+18↓w
+var_rpm_delta:			.block 1			; DATA XREF: calc_rpm_delta+18↓w
 								; divide_d_by_x+531↓r ...
 var_speed_kph:			.block 1			; DATA XREF: divide_d_by_x+4B7↓r
 								; divide_d_by_x+4CF↓r ...
@@ -1104,7 +1104,7 @@ var_lambda_integrator:			.block 2			; DATA XREF: divide_d_by_x:loc_D026↓r
 								; is forced back to its 0x8000 neutral on
 								; reset events such as loc_D04F.
 								;
-								; Applied in sub_E454 at loc_E47B, where
+								; Applied in apply_enrich_and_trims at loc_E47B, where
 								; the whole fuel correction multiplier is
 								; assembled as:
 								;     0x0100 (unity)
@@ -1252,7 +1252,7 @@ nv_afr_trim_base:			.block 0Ch			; DATA XREF: clear_nv_ram+22↓o
 								; valid.
 								;
 								; Both trims are summed into a single
-								; multiplier in sub_E454 - see
+								; multiplier in apply_enrich_and_trims - see
 								; var_lambda_integrator's declaration for
 								; that expression. Validated on startup
 								; against nv_afr_trim_top/_end, and a
@@ -1268,7 +1268,7 @@ var_nv_trim_unk_96:		.block 1			; DATA XREF: clear_nv_ram+2E↓w
 								; A THIRD learned NV correction, separate
 								; from both STFT (var_lambda_integrator)
 								; and LTFT (nv_afr_trim_base) - it does
-								; NOT appear in sub_E454's fuel
+								; NOT appear in apply_enrich_and_trims's fuel
 								; multiplier.
 								;
 								; Learned by closed_loop_control from O2
@@ -1293,7 +1293,7 @@ var_nv_trim_unk_96:		.block 1			; DATA XREF: clear_nv_ram+2E↓w
 								; wipes ALL NV RAM via clear_nv_ram on
 								; failure.
 								;
-								; Consumers: sub_E843 (an ignition-timing
+								; Consumers: scale_by_nv_trim_o2 (an ignition-timing
 								; -adjacent calculation near update_ign_timing_blend),
 								; and CPU2 via copy_dma_tx's
 								; dmatx_nv_trim_o2.
@@ -1316,7 +1316,7 @@ var_nv_trim_unk_96:		.block 1			; DATA XREF: clear_nv_ram+2E↓w
 								; from the O2 sensor but SPENDS mostly
 								; through CPU2's enrichment path, which is
 								; why it never appears in CPU1's own
-								; sub_E454 multiplier alongside STFT/LTFT.
+								; apply_enrich_and_trims multiplier alongside STFT/LTFT.
 								;
 								; NOTE ON THE DMA OFFSET: the CPU1->CPU2
 								; direction uses CPU1 = CPU2 + 0x13B, NOT
@@ -1349,10 +1349,10 @@ unk_9E:				.block 1			; DATA XREF: divide_d_by_x:loc_C7E9↓o
 								; loc_D7BF. Purpose not established - left named
 								; unk_ deliberately per CLAUDE.md (rename only
 								; on confirmed understanding).
-unk_9F:				.block 1			; DATA XREF: clear_nv_ram+4A↓w
+var_crank_cnt:				.block 1			; DATA XREF: clear_nv_ram+4A↓w
 								; divide_d_by_x+1E36↓r ...
 								; Written by loc_C841, loc_E44F; read by
-								; loc_E3CE, sub_E435. Purpose not established -
+								; loc_E3CE, update_crank_cnt. Purpose not established -
 								; left named unk_ deliberately per CLAUDE.md
 								; (rename only on confirmed understanding).
 var_diag_errors_4:		.block 1			; DATA XREF: divide_d_by_x+D6↓o
@@ -1370,7 +1370,7 @@ var_ne_count:			.block 1			; DATA XREF: calc_4ms_corrections+37E↓r
 								; NE counter
 								; Bits 0-3: Counter 0->5, corresponds crank position
 								; Bits 4-7: Counter 0->3, corresponds to cylinder
-va_ne_count_2:			.block 1			; DATA XREF: sub_DD2A:loc_DD2F↓r
+va_ne_count_2:			.block 1			; DATA XREF: clear_ne_sync_errors:loc_DD2F↓r
 								; ROM:EDD3↓r ...
 								; Copy of var_ne_count
 var_overrun_advance:				.block 1			; DATA XREF: calc_4ms_corrections+4A↓w
@@ -1657,7 +1657,7 @@ var_ne_sum3:			.block 1			; DATA XREF: calc_rpm↓r
 								; divide_d_by_x+1FFB↓o ...
 var_ign_ne_frac:				.block 1			; DATA XREF: ignition_timing_to_cpr+5↓r
 var_rpm_avg:			.block 1			; DATA XREF: divide_d_by_x+2F2↓w
-								; sub_C91A+2↓r ...
+								; calc_rpm_delta+2↓r ...
 				.block 1
 var_pim_baseline:		.block 1			; DATA XREF: adc_handler_pim+63↓w
 								; adc_handler_pim+79↓r ...
@@ -1839,10 +1839,10 @@ var_pim_est_slow:		.block 1			; DATA XREF: divide_d_by_x+2059↓r
 				.block 1
 var_unk_tps_inj_137:		.block 1			; DATA XREF: calc_dmatx_pim+3↓w
 								; update_pim_est_fast+C↓r
-var_enrich_unk_138:		.block 1			; DATA XREF: sub_E454+61↓w
+var_enrich_unk_138:		.block 1			; DATA XREF: apply_enrich_and_trims+61↓w
 								; divide_d_by_x+2111↓r
 				.block 1
-var_scaled_ve_tham:		.block 1			; DATA XREF: sub_E454↓r
+var_scaled_ve_tham:		.block 1			; DATA XREF: apply_enrich_and_trims↓r
 								; divide_d_by_x+1F65↓w
 				.block 1
 unk_13C:			.block 1			; DATA XREF: divide_d_by_x+2242↓w
@@ -1855,7 +1855,7 @@ var_ign_ect_term:			.block 1			; DATA XREF: divide_d_by_x:loc_E7FA↓w
 								; Warm-up ignition correction term, ECT-derived.
 								; Seeded only on update_ign_timing_blend's init
 								; pass (var_flags_44.5 CLEAR) as
-								; table_ect_C185 (scaled through sub_E843, which
+								; table_ect_C185 (scaled through scale_by_nv_trim_o2, which
 								; folds in the O2-learned NV trim) plus
 								; table_ect_C17C, saturated at 0xFFFF.
 								;
@@ -2029,16 +2029,16 @@ var_ign_advance_raw:		.block 1			; DATA XREF: iv6_ne_process+5E↓r
 								; iv6_ne_process:loc_F1A1↓w ...
 				.block 1
 				.block 1
-var_cyl_proc_idx:			.block 1			; DATA XREF: sub_ED12+2↓w
+var_cyl_proc_idx:			.block 1			; DATA XREF: reset_cyl_proc_idx+2↓w
 								; calc_4ms_corrections:loc_ED23↓r ...
 var_ne_sum3_prev:			.block 1			; DATA XREF: ROM:EDE3↓r
 								; ROM:EE12↓w
 				.block 1
-var_cyl_rpm_dev:			.block 1			; DATA XREF: sub_ED19+3↓w
+var_cyl_rpm_dev:			.block 1			; DATA XREF: reset_cyl_rpm_dev+3↓w
 								; calc_4ms_corrections+30A↓o ...
 				.block 1
-unk_17D:			.block 1			; DATA XREF: sub_ED19+6↓w
-								; WRITE-ONLY in this file: written by sub_ED19,
+unk_17D:			.block 1			; DATA XREF: reset_cyl_rpm_dev+6↓w
+								; WRITE-ONLY in this file: written by reset_cyl_rpm_dev,
 								; but no read site exists anywhere here. Either
 								; consumed by CPU2 over the DMA buffer, or
 								; vestigial.
@@ -2071,8 +2071,8 @@ var_adc_o2_heater:		.block 1			; DATA XREF: ROM:DDFD↓r
 								; Value	indicating O2 sensor heater current
 unk_187:			.block 1			; DATA XREF: divide_d_by_x+151↓w
 								; ROM:DDF5↓r ...
-								; Written by loc_C67A, loc_DE6B, sub_DE71; read
-								; by loc_DDB8, sub_DE5A, sub_DE71. Purpose not
+								; Written by loc_C67A, loc_DE6B, inc_cnt_187; read
+								; by loc_DDB8, check_cnt_187_window, inc_cnt_187. Purpose not
 								; established - left named unk_ deliberately per
 								; CLAUDE.md (rename only on confirmed
 								; understanding).
@@ -2120,7 +2120,7 @@ var_iscv_pim_flare:		.block 1			; DATA XREF: calc_iscv+54↓w
 								; calc_iscv+5E↓r ...
 				.block 1
 var_ect_unk_194:		.block 1			; DATA XREF: divide_d_by_x+156↓w
-								; sub_D4A1+A↓r ...
+								; clamp_min_ect_194+A↓r ...
 var_iscv_target_rpm:		.block 1			; DATA XREF: calc_iscv+126↓r
 								; calc_iscv:loc_D5F6↓w ...
 				.block 1
@@ -2284,7 +2284,7 @@ unk_1C8:			.block 1			; DATA XREF: divide_d_by_x+124↓w
 								; table (same cluster as var_pw_loop_mode/1C0/1C4/
 								; 1C6 above).
 				.block 1
-unk_1CA:			.block 1			; DATA XREF: sub_E454+3E↓w
+unk_1CA:			.block 1			; DATA XREF: apply_enrich_and_trims+3E↓w
 								; divide_d_by_x+20F4↓r
 								; Written by loc_E47B; read by loc_E688. Purpose
 								; not established - left named unk_ deliberately
@@ -2502,7 +2502,7 @@ dmarx_tham_enrich_unk:		.block 1			; DATA XREF: divide_d_by_x:loc_E4FA↓r
 dmarx_idle_enrich:		.block 1			; DATA XREF: divide_d_by_x+B45↓r
 								; divide_d_by_x+CB8↓r ...
 dmarx_fuel_enrich:		.block 1			; DATA XREF: divide_d_by_x+866↓r
-								; sub_E454+3↓r
+								; apply_enrich_and_trims+3↓r
 				.block 1
 dmarx_fuel_ign_corr:		.block 1			; DATA XREF: calc_4ms_corrections+533↓r
 dmarx_knock_retard_cpu2:	.block 1			; DATA XREF: ROM:F554↓r
@@ -2515,14 +2515,14 @@ dmarx_ign_timing_fallback2:	.block 1			; DATA XREF: update_ign_timing_blend+5C�
 								; update_ign_timing_blend+D3↓r
 dmarx_ign_timing_unk_166:	.block 1			; DATA XREF: update_ign_timing_blend+56↓r
 								; update_ign_timing_blend+D9↓r
-dmarx_unk_241_167:		.block 1			; DATA XREF: sub_E84F+8↓r
+dmarx_unk_241_167:		.block 1			; DATA XREF: scale_by_dmarx_167+8↓r
 								; = CPU2's dmatx_unk_167 (0xDA offset,
 								; still unresolved on both sides): CPU2
 								; computes it as
 								; (table_C360_rpm(RPM)*table_C370_ect(ECT))
 								; /64, saturated - see that ROM's own
 								; comment. Consumed here via mult_rArX in
-								; sub_E84F, not traced further.
+								; scale_by_dmarx_167, not traced further.
 dmarx_iscv_duty:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
 								; divide_d_by_x+C86↓r ...
 								; 242.0	-
@@ -3196,7 +3196,7 @@ byte_C372:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
 byte_C374:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
 
 
-table_ect_C376:			.db 0Ch				; DATA XREF: sub_D4BC↓o
+table_ect_C376:			.db 0Ch				; DATA XREF: calc_ect_unk_194↓o
 				.db 26h, 0F3h
 				.db 51h, 0F1h
 				.db 6Bh, 0E8h
@@ -3968,7 +3968,7 @@ loc_C4C4:							; CODE XREF: increment_counters+7↑j
 ;        written, so these are safe to call from anywhere including ISRs.
 ; ---------------------------------------------------------------------------
 
-divide_rD_128:							; CODE XREF: sub_E454+51↓p
+divide_rD_128:							; CODE XREF: apply_enrich_and_trims+51↓p
 				shr	d			; D >>= 1 (fall through)
 ; End of function divide_rD_128
 
@@ -4106,7 +4106,7 @@ divide_rD_64_saturate:						; CODE XREF: update_tps_closed_ref+C↓p
 
 
 divide_rD_32_saturate:						; CODE XREF: ROM:DDA9↓p
-								; sub_E454+3B↓p	...
+								; apply_enrich_and_trims+3B↓p	...
 				shr	d			; D >>= 1 (fall through)
 ; End of function divide_rD_32_saturate
 
@@ -4114,7 +4114,7 @@ divide_rD_32_saturate:						; CODE XREF: ROM:DDA9↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-divide_rD_16_saturate:						; CODE XREF: sub_C91A:loc_C928↓p
+divide_rD_16_saturate:						; CODE XREF: calc_rpm_delta:loc_C928↓p
 								; calc_iscv+C5↓p ...
 				shr	d			; D >>= 1 (fall through)
 ; End of function divide_rD_16_saturate
@@ -4325,8 +4325,8 @@ add_d_base_offset:							; CODE XREF: divide_d_by_x+1F4C↓p
 ; Writes: (none)
 ; Calls: mult_rDrX
 ; ---------------------------------------------------------------------------
-mult_rDrX_saturate:							; CODE XREF: sub_E454+38↓p
-								; sub_E454+5E↓p
+mult_rDrX_saturate:							; CODE XREF: apply_enrich_and_trims+38↓p
+								; apply_enrich_and_trims+5E↓p
 ; Saturating 16x16 multiply. Calls mult_rDrX then checks for overflow.
 				bsr	mult_rDrX		; D = D*X/256, X = MSW (non-zero = overflow)
 
@@ -5173,7 +5173,7 @@ loc_C806:							; CODE XREF: divide_d_by_x:loc_C801↑j
 ; Writes: var_nv_valid, var_nv_tps, var_nv_trac_tps, var_nv_idle_trim,
 ;   var_nv_trim_unk_96, var_nv_trim_unk_98, var_idle_trim, var_diag_errors_4,
 ;   var_diag_errors_5, var_error_flags1, var_error_flags2, var_flags_42,
-;   var_flags_4D, nv_diag_errors_1/2/3, nv_table_knock_info, unk_9E, unk_9F
+;   var_flags_4D, nv_diag_errors_1/2/3, nv_table_knock_info, unk_9E, var_crank_cnt
 ; ---------------------------------------------------------------------------
 
 clear_nv_ram:							; CODE XREF: divide_d_by_x:loc_C7FF↑p
@@ -5218,7 +5218,7 @@ loc_C841:							; CODE XREF: clear_nv_ram+33↑j
 				or	a, #01h
 				st	a, unk_9E
 				clr	a
-				st	a, unk_9F
+				st	a, var_crank_cnt
 				ld	d, #0AE51h
 				st	d, var_nv_tps
 				ld	d, #0AE51h
@@ -5443,7 +5443,7 @@ loc_C918:							; CODE XREF: divide_d_by_x+35A↑j
 ; Reads: var_rpm_x_5p12
 ; Writes: var_diag_errors_5, var_rpm_avg, var_rpm_delta
 ; ---------------------------------------------------------------------------
-sub_C91A:							; CODE XREF: divide_d_by_x+C56↓p
+calc_rpm_delta:							; CODE XREF: divide_d_by_x+C56↓p
 				clrb	bit0, var_diag_errors_5
 				ld	d, var_rpm_avg
 				sub	d, var_rpm_x_5p12
@@ -5454,7 +5454,7 @@ sub_C91A:							; CODE XREF: divide_d_by_x+C56↓p
 				neg	b
 				subc	a, #00h
 
-loc_C928:							; CODE XREF: sub_C91A+6↑j
+loc_C928:							; CODE XREF: calc_rpm_delta+6↑j
 				jsr	divide_rD_16_saturate
 
 				shr	b
@@ -5462,7 +5462,7 @@ loc_C928:							; CODE XREF: sub_C91A+6↑j
 
 				neg	b
 
-loc_C930:							; CODE XREF: sub_C91A+12↑j
+loc_C930:							; CODE XREF: calc_rpm_delta+12↑j
 				add	b, #80h
 				st	b, var_rpm_delta
 				ld	d, var_rpm_x_5p12
@@ -5472,7 +5472,7 @@ loc_C930:							; CODE XREF: sub_C91A+12↑j
 				st	d, var_rpm_avg
 				ret
 
-; End of function sub_C91A
+; End of function calc_rpm_delta
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -5673,7 +5673,7 @@ locret_C9D9:							; CODE XREF: update_tps_closed_ref+3C↑j
 ;     elsewhere as "boost limit exceeded" - not clear if this is the same
 ;     condition or bit reuse).
 ;
-;     Then calls sub_E454 (fuel enrichment scaling), calc_dmatx_pim, validate_nv_trim_pim
+;     Then calls apply_enrich_and_trims (fuel enrichment scaling), calc_dmatx_pim, validate_nv_trim_pim
 ;     and validate_nv_trim_o2 (NV trim validation, see below) - only validate_nv_trim_o2 has
 ;     been deep-dived.
 ;  2) (CA3D-CAE2) Overrun/deceleration fuel-cut decision feeding
@@ -5754,7 +5754,7 @@ loc_CA1B:							; CODE XREF: divide_d_by_x:loc_C9FF↑j
 				clrb	bit1, var_flags_4E
 				ld	a, var_flags_4E
 				st	a, var_flags_4E_copy2
-				jsr	sub_E454
+				jsr	apply_enrich_and_trims
 
 				jsr	calc_dmatx_pim
 
@@ -5943,18 +5943,18 @@ loc_CAFE:							; CODE XREF: divide_d_by_x+55B↑j
 ; Reads: (none)
 ; Writes: var_lambda_state
 ; ---------------------------------------------------------------------------
-sub_CB00:							; CODE XREF: divide_d_by_x+C59↓p
+decay_lambda_state:							; CODE XREF: divide_d_by_x+C59↓p
 				ld	a, var_lambda_state
 				add	a, #02h
 				bpz	loc_CB08
 
 				ld	a, #80h
 
-loc_CB08:							; CODE XREF: sub_CB00+4↑j
+loc_CB08:							; CODE XREF: decay_lambda_state+4↑j
 				st	a, var_lambda_state
 				ret
 
-; End of function sub_CB00
+; End of function decay_lambda_state
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -6906,7 +6906,7 @@ loc_CE27:							; CODE XREF: divide_d_by_x+884↑j
 ; Reads: (none)
 ; Writes: var_cnt_D4, var_fuel_enrich_rpm
 ; ---------------------------------------------------------------------------
-sub_CE29:							; CODE XREF: iv6_ne_process+370↓p
+ramp_fuel_enrich_rpm:							; CODE XREF: iv6_ne_process+370↓p
 				ld	a, var_fuel_enrich_rpm
 				bmi	locret_CE3B
 
@@ -6917,13 +6917,13 @@ sub_CE29:							; CODE XREF: iv6_ne_process+370↓p
 				ld	a, #80h
 				clr	var_cnt_D4
 
-loc_CE38:							; CODE XREF: sub_CE29+9↑j
+loc_CE38:							; CODE XREF: ramp_fuel_enrich_rpm+9↑j
 				st	a, var_fuel_enrich_rpm
 
-locret_CE3B:							; CODE XREF: sub_CE29+3↑j
+locret_CE3B:							; CODE XREF: ramp_fuel_enrich_rpm+3↑j
 				ret
 
-; End of function sub_CE29
+; End of function ramp_fuel_enrich_rpm
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -7290,7 +7290,7 @@ loc_CFC9:							; CODE XREF: divide_d_by_x+A2B↑j
 				cmpb	a, var_temp_b
 				beq	loc_D020
 
-				jsr	sub_DE5A
+				jsr	check_cnt_187_window
 
 				jsr	update_lambda_avg
 
@@ -7725,7 +7725,7 @@ write_rB_nv_ram:						; CODE XREF: divide_d_by_x+B8A↑p
 ; Writes: (none)
 ; Calls: interp_y_pair, table_rD_clamp
 ; ---------------------------------------------------------------------------
-read_nv_afr_trim:							; CODE XREF: sub_E454+28↓p
+read_nv_afr_trim:							; CODE XREF: apply_enrich_and_trims+28↓p
 				ld	b, #80h				; Default: neutral (0x80 = no trim)
 				tbbc	bit0, var_flags_42, locret_D1DC	; Trims not valid: return neutral
 
@@ -7789,9 +7789,9 @@ locret_D1DC:							; CODE XREF: read_nv_afr_trim+2↑j
 ;
 ; Parts:
 ;  1) (D1DD-D20C) Snapshots var_flags_4E/4F, then (if var_schedule_flag_41.6
-;     clear) runs periodic counter increments plus sub_C91A, sub_CB00
+;     clear) runs periodic counter increments plus calc_rpm_delta, decay_lambda_state
 ;     (lambda_state decay), ramp_misfire_correction (documented in
-;     calc_4ms_corrections' write-up) and sub_DE71 (not deep-dived).
+;     calc_4ms_corrections' write-up) and inc_cnt_187 (not deep-dived).
 ;  2) (D20C-D23E) If var_schedule_flag_41.2 is set, skip straight to
 ;     loc_D2D2 (injection already scheduled this cycle - same guard pattern
 ;     as calc_4ms_corrections). Otherwise a var_cnt_D5 readiness gate is
@@ -7822,13 +7822,13 @@ loc_D1DD:							; CODE XREF: divide_d_by_x+BE9↑j
 				ld	d, #COUNTER_ARG(var_cnt_CD, 14h) ; Increment	counters at 0CDh - 0E0h
 				jsr	increment_counters
 
-				jsr	sub_C91A
+				jsr	calc_rpm_delta
 
-				jsr	sub_CB00
+				jsr	decay_lambda_state
 
 				jsr	ramp_misfire_correction
 
-				jsr	sub_DE71
+				jsr	inc_cnt_187
 
 
 loc_D1FD:							; CODE XREF: divide_d_by_x+C4E↑j
@@ -8439,7 +8439,7 @@ loc_D46B:							; CODE XREF: divide_d_by_x+EC3↑j
 loc_D46F:							; CODE XREF: divide_d_by_x+EC0↑j
 								; divide_d_by_x+ECE↑j
 				ld	d, var_iscv_19D
-				bsr	sub_D4A1
+				bsr	clamp_min_ect_194
 
 				pull	x
 
@@ -8455,7 +8455,7 @@ loc_D475:							; CODE XREF: divide_d_by_x+E1F↑j
 
 loc_D47D:							; CODE XREF: divide_d_by_x+ECC↑j
 								; divide_d_by_x+ED2↑j
-				bsr	sub_D4A1
+				bsr	clamp_min_ect_194
 
 				pull	x
 
@@ -8522,7 +8522,7 @@ calc_idle_batt2:						; CODE XREF: divide_d_by_x+E64↑p
 ; Reads: var_ect_unk_194
 ; Writes: (none)
 ; ---------------------------------------------------------------------------
-sub_D4A1:							; CODE XREF: divide_d_by_x+ED7↑p
+clamp_min_ect_194:							; CODE XREF: divide_d_by_x+ED7↑p
 								; divide_d_by_x:loc_D47D↑p
 				cmp	d, x + 00h
 				bcs	loc_D4B9
@@ -8537,7 +8537,7 @@ sub_D4A1:							; CODE XREF: divide_d_by_x+ED7↑p
 				bcs	loc_D4B7
 
 
-loc_D4B0:							; CODE XREF: sub_D4A1+8↑j
+loc_D4B0:							; CODE XREF: clamp_min_ect_194+8↑j
 				ld	b, var_ect_unk_194
 				clr	a
 				shl	d
@@ -8546,17 +8546,17 @@ loc_D4B0:							; CODE XREF: sub_D4A1+8↑j
 				.db  41h ; A
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_D4B7:							; CODE XREF: sub_D4A1+D↑j
+loc_D4B7:							; CODE XREF: clamp_min_ect_194+D↑j
 				mov	x, d
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_D4B9:							; CODE XREF: sub_D4A1+2↑j
+loc_D4B9:							; CODE XREF: clamp_min_ect_194+2↑j
 				ld	d, x + 00h
 				ret
 
-; End of function sub_D4A1
+; End of function clamp_min_ect_194
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -8567,14 +8567,14 @@ loc_D4B9:							; CODE XREF: sub_D4A1+2↑j
 ; Writes: var_ect_unk_194
 ; Calls: table_ect_pair_interpolate
 ; ---------------------------------------------------------------------------
-sub_D4BC:							; CODE XREF: divide_d_by_x+1DF5↓p
+calc_ect_unk_194:							; CODE XREF: divide_d_by_x+1DF5↓p
 				ld	y, #table_ect_C376
 				jsr	table_ect_pair_interpolate
 
 				st	a, var_ect_unk_194
 				ret
 
-; End of function sub_D4BC
+; End of function calc_ect_unk_194
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -9982,14 +9982,14 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; var_inj_pw_base, var_pim2, var_rpm_x_5p12
 ; Writes: unk_1C4, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
 ;    var_trim_state_alias
-; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, sub_DB75,
-;    sub_DB77
+; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, clear_trim_state_bit2,
+;    clear_trim_state_bit0
 ; ---------------------------------------------------------------------------
 ; ---------------------------------------------------------------------------
 ; update_lambda_stft (was update_lambda_stft): the O2 closed-loop controller - i.e.
 ; the thing that actually drives the SHORT-TERM fuel trim.
 ;
-; This completes the fuel-trim picture: sub_E454 is where STFT and LTFT are
+; This completes the fuel-trim picture: apply_enrich_and_trims is where STFT and LTFT are
 ; summed and applied, closed_loop_control learns the separate cruise-only NV
 ; trim, and THIS is the controller that moves var_lambda_integrator (the
 ; STFT) in response to the O2 sensor.
@@ -10034,7 +10034,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ;   var_stft_dwell_cnt
 ; Writes: var_lambda_integrator, var_lambda_avg, unk_1C4,
 ;   var_trim_state_alias, var_stft_dwell_cnt
-; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, sub_DB75, sub_DB77
+; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, clear_trim_state_bit2, clear_trim_state_bit0
 ; ---------------------------------------------------------------------------
 
 update_lambda_stft:						; CODE XREF: divide_d_by_x+1DFD↓p
@@ -10110,7 +10110,7 @@ loc_DAAD:							; CODE XREF: ROM:DA9A↑j
 				cmp	d, #(loc_C7AD+1)
 				ble	loc_DABA
 
-				jsr	sub_DB77
+				jsr	clear_trim_state_bit0
 
 
 loc_DABA:							; CODE XREF: ROM:DA9F↑j
@@ -10215,7 +10215,7 @@ loc_DB21:							; CODE XREF: ROM:DB05↑j
 				cmp	d, #0C7AEh
 				ble	loc_DB31
 
-				jsr	sub_DB77
+				jsr	clear_trim_state_bit0
 
 
 loc_DB31:							; CODE XREF: ROM:DB26↑j
@@ -10227,7 +10227,7 @@ loc_DB31:							; CODE XREF: ROM:DB26↑j
 loc_DB34:							; CODE XREF: ROM:DA91↑j
 				tbbs	bit5, var_trim_state_alias, loc_DB41
 
-				jsr	sub_DB75
+				jsr	clear_trim_state_bit2
 
 				cmp	#03h, var_cnt_6A
 				bcs	locret_DB74
@@ -10284,9 +10284,9 @@ locret_DB74:							; CODE XREF: ROM:DABC↑j
 ; Reads: (none)
 ; Writes: var_trim_state_alias
 ; ---------------------------------------------------------------------------
-sub_DB75:							; CODE XREF: ROM:DB37↑p
+clear_trim_state_bit2:							; CODE XREF: ROM:DB37↑p
 				clrb	bit2, var_trim_state_alias
-; End of function sub_DB75
+; End of function clear_trim_state_bit2
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -10296,10 +10296,10 @@ sub_DB75:							; CODE XREF: ROM:DB37↑p
 ; Reads: (none)
 ; Writes: var_trim_state_alias
 ; ---------------------------------------------------------------------------
-sub_DB77:							; CODE XREF: ROM:DAB7↑p
+clear_trim_state_bit0:							; CODE XREF: ROM:DAB7↑p
 								; ROM:DB2E↑p
 				clrb	bit0, var_trim_state_alias
-; End of function sub_DB77
+; End of function clear_trim_state_bit0
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -10463,7 +10463,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ; Calls: mult_rDrX, set_knock_sensor_err_flag
 ; ---------------------------------------------------------------------------
 ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+146F↑p
-								; sub_E454+46↓p
+								; apply_enrich_and_trims+46↓p
 				clrb	bit0, var_diag_errors_5
 				ld	x, unk_1C0
 				tbbs	bit4, var_trim_state_alias, loc_DBB5
@@ -10717,13 +10717,13 @@ loc_DC74:							; CODE XREF: ramp_limit_inj_pw_simple+32↑j
 ;  - (DD59-DD66) PORTA.1 (STP?) edge-triggered flag (var_flags_4D.6) with a
 ;    counter reset, then jumps to loc_E112 (not traced).
 ;
-; loc_DD69 (below, physically adjacent but reached via jsr from a
+; update_diag_obd (below, physically adjacent but reached via jsr from a
 ; different, later point in the main loop - the short second
 ; var_trim_state alias instance right after update_lambda_stft) has its own,
 ; separate instance of the unk_1CF alias (established loc_DDB8, committed
 ; loc_DE7B) wrapping a long run of O2-heater/lambda/coolant-sensor
-; diagnostic checks. Within it: sub_DE5A (resets unk_187, sets
-; var_flags_4F.7 if out of [3,0x131) range) and sub_DE71 (saturating
+; diagnostic checks. Within it: check_cnt_187_window (resets unk_187, sets
+; var_flags_4F.7 if out of [3,0x131) range) and inc_cnt_187 (saturating
 ; increment of unk_187) - a simple counter-with-error-flag pair.
 ;
 ; var_flags_4E_copy_2 (note the underscore - distinct from
@@ -10890,22 +10890,22 @@ loc_DD28:							; CODE XREF: divide_d_by_x+1786↑j
 ; Reads: va_ne_count_2, var_flags_40
 ; Writes: unk_E5, var_error_flags1
 ; ---------------------------------------------------------------------------
-sub_DD2A:							; CODE XREF: iv6_ne_process+3↓p
+clear_ne_sync_errors:							; CODE XREF: iv6_ne_process+3↓p
 				tbbs	bit2, var_flags_40, loc_DD2F
 
 				clrb	bit1, var_error_flags1
 
-loc_DD2F:							; CODE XREF: sub_DD2A↑j
+loc_DD2F:							; CODE XREF: clear_ne_sync_errors↑j
 				ld	b, va_ne_count_2
 				bmi	locret_DD37
 
 				clr	unk_E5
 				clrb	bit0, var_error_flags1	; Clear	STA signal error flag
 
-locret_DD37:							; CODE XREF: sub_DD2A+7↑j
+locret_DD37:							; CODE XREF: clear_ne_sync_errors+7↑j
 				ret
 
-; End of function sub_DD2A
+; End of function clear_ne_sync_errors
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -10982,9 +10982,25 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; unk_1CF_alias, var_cnt_ED, var_diag_errors_4, var_diag_errors_5,
 ; var_error_flags1, var_error_flags2, var_flags_40, var_flags_4D,
 ; var_flags_4F, var_o2_heater_current_error_cnt
-; Calls: sub_DFAA
+; Calls: clear_diag_error_bits
 ; ---------------------------------------------------------------------------
-loc_DD69:							; CODE XREF: divide_d_by_x+1E05↓p
+; update_diag_obd (was update_diag_obd): diagnostic / OBD snapshot update.
+;
+; Opens with the ISC self-check documented on var_error_flags2 bits 2 and 7:
+; dmarx_iscv_duty is compared against 0x08 and 0x10, each mismatch setting
+; its own error bit and each match clearing it.
+;
+; It then goes on to populate the OBD snapshot bytes CPU2 serializes
+; (dmatx_obd_inj, dmatx_obd_iscv) and to maintain a group of diagnostic
+; error state - var_diag_errors_4/5, var_error_flags1/2, var_flags_4D/4F -
+; alongside the o2-heater error counter.
+;
+; PARTIALLY TRACED: the ISC self-check at the head is confirmed (see
+; var_error_flags2's bit table); the rest is characterised only by its
+; variable footprint, not by a line-by-line read. Named for its evident
+; role; do not assume the details.
+; ---------------------------------------------------------------------------
+update_diag_obd:							; CODE XREF: divide_d_by_x+1E05↓p
 				ld	a, dmarx_iscv_duty
 				cmpb	a, #08h
 				beq	loc_DD73
@@ -11149,7 +11165,7 @@ loc_DE42:							; CODE XREF: ROM:DE25↑j
 				tbbs	bit2, var_flags_40, loc_DE50
 
 				ld	a, #0DFh
-				jsr	sub_DFAA
+				jsr	clear_diag_error_bits
 
 				clrb	bit5, var_error_flags2
 
@@ -11172,7 +11188,7 @@ loc_DE58:							; CODE XREF: ROM:DE32↑j
 ; Reads: (none)
 ; Writes: unk_187, var_flags_4F
 ; ---------------------------------------------------------------------------
-sub_DE5A:							; CODE XREF: divide_d_by_x+A38↑p
+check_cnt_187_window:							; CODE XREF: divide_d_by_x+A38↑p
 				clrb	bit7, var_flags_4F
 				ld	x, unk_187
 				cmp	x, #0003h
@@ -11183,14 +11199,14 @@ sub_DE5A:							; CODE XREF: divide_d_by_x+A38↑p
 
 				setb	bit7, var_flags_4F
 
-loc_DE6B:							; CODE XREF: sub_DE5A+8↑j
-								; sub_DE5A+D↑j
+loc_DE6B:							; CODE XREF: check_cnt_187_window+8↑j
+								; check_cnt_187_window+D↑j
 				clr	a
 				clr	b
 				st	d, unk_187
 				ret
 
-; End of function sub_DE5A
+; End of function check_cnt_187_window
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -11200,17 +11216,17 @@ loc_DE6B:							; CODE XREF: sub_DE5A+8↑j
 ; Reads: (none)
 ; Writes: unk_187
 ; ---------------------------------------------------------------------------
-sub_DE71:							; CODE XREF: divide_d_by_x+C5F↑p
+inc_cnt_187:							; CODE XREF: divide_d_by_x+C5F↑p
 				ld	x, unk_187
 				inc	x
 				beq	locret_DE7A
 
 				st	x, unk_187
 
-locret_DE7A:							; CODE XREF: sub_DE71+4↑j
+locret_DE7A:							; CODE XREF: inc_cnt_187+4↑j
 				ret
 
-; End of function sub_DE71
+; End of function inc_cnt_187
 
 ; ───────────────────────────────────────────────────────────────────────────
 
@@ -11319,7 +11335,7 @@ loc_DEF7:							; CODE XREF: ROM:DEE8↑j
 
 				clrb	bit6, var_error_flags2
 				ld	a, #0BFh
-				jsr	sub_DFAA
+				jsr	clear_diag_error_bits
 
 
 loc_DF05:							; CODE XREF: ROM:DEF9↑j
@@ -11471,7 +11487,7 @@ copy_diag_errors_3_to_4:					; CODE XREF: divide_d_by_x+196↑p
 ; Writes: var_diag_errors_4
 ; Calls: write_rB_nv_ram
 ; ---------------------------------------------------------------------------
-sub_DFAA:							; CODE XREF: ROM:DE4B↑p
+clear_diag_error_bits:							; CODE XREF: ROM:DE4B↑p
 								; ROM:DF02↑p
 				mov	a, b
 				and	a, var_diag_errors_4
@@ -11482,7 +11498,7 @@ sub_DFAA:							; CODE XREF: ROM:DE4B↑p
 
 				ret
 
-; End of function sub_DFAA
+; End of function clear_diag_error_bits
 
 ; ───────────────────────────────────────────────────────────────────────────
 
@@ -11894,7 +11910,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ; service interval.
 ;
 ; NOT traced: the exact test sequence and its pass/fail reporting protocol -
-; the PORTB bit patterns at loc_E1DF, sub_E254's body, and what the
+; the PORTB bit patterns at loc_E1DF, selftest_io_cycle's body, and what the
 ; unk_223/word_224 scratch pair accumulates. Only the entry interlock, the
 ; RAM-test loop and the var_flags_40.0 interaction are established here; that
 ; was enough to resolve why var_flags_40.0 is read so widely, which is what
@@ -11905,7 +11921,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ;   dmarx_status2_16B, damrx_unk_244
 ; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, unk_223,
 ;   word_224
-; Calls: sub_E254, watchdog_kick
+; Calls: selftest_io_cycle, watchdog_kick
 ; ---------------------------------------------------------------------------
 
 factory_self_test:							; CODE XREF: divide_d_by_x+1E08↓p
@@ -12012,7 +12028,7 @@ loc_E18F:							; CODE XREF: factory_self_test+7B↓j
 				inc	x
 				bne	loc_E18F
 
-				jsr	sub_E254
+				jsr	selftest_io_cycle
 
 				ld	x, #0F9C0h
 
@@ -12037,7 +12053,7 @@ loc_E1AA:							; CODE XREF: factory_self_test+96↓j
 				inc	x
 				bne	loc_E1AA
 
-				jsr	sub_E254
+				jsr	selftest_io_cycle
 
 				ld	x, #0F9C0h		; Delay	loop
 
@@ -12203,7 +12219,7 @@ loc_E245:							; CODE XREF: factory_self_test+131↓j
 ; Writes: PORTA
 ; Calls: check_io_inputs, start_dma
 ; ---------------------------------------------------------------------------
-sub_E254:							; CODE XREF: factory_self_test+7D↑p
+selftest_io_cycle:							; CODE XREF: factory_self_test+7D↑p
 								; factory_self_test+98↑p
 				push	d
 				tbs	bit0, PORTA		; Port A Data Register
@@ -12211,7 +12227,7 @@ sub_E254:							; CODE XREF: factory_self_test+7D↑p
 
 				clrb	bit0, PORTA
 
-loc_E25B:							; CODE XREF: sub_E254+3↑j
+loc_E25B:							; CODE XREF: selftest_io_cycle+3↑j
 				jsr	check_io_inputs		; Read inputs
 
 				jsr	start_dma
@@ -12227,7 +12243,7 @@ loc_E25B:							; CODE XREF: sub_E254+3↑j
 				pull	d
 				ret
 
-; End of function sub_E254
+; End of function selftest_io_cycle
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -12257,8 +12273,8 @@ loc_E275:							; CODE XREF: watchdog_kick+2↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E282:							; CODE XREF: sub_E254+D↑j
-								; sub_E254+10↑j	...
+loc_E282:							; CODE XREF: selftest_io_cycle+D↑j
+								; selftest_io_cycle+10↑j	...
 				ld	x, #0F9C0h
 
 loc_E285:							; CODE XREF: watchdog_kick+17↓j
@@ -12472,15 +12488,15 @@ locret_E362:							; CODE XREF: factory_self_test+1A3↑j
 ;     0x17/0x26/0x99 in the ISCV code work out to roughly 6, 10 and 42
 ;     minutes rather than seconds.
 ;
-;   loc_E37F - the actual 64ms work list: sub_E435, calc_ect_unk_148,
-;     calc_ect_unk_160, calc_ect_iscv, then sub_D4BC, update_lambda_stft,
-;     loc_DD69 and factory_self_test. Note the var_flags_4E restore just
-;     before sub_D4BC: that CLOSES the long var_trim_state alias opened back
+;   loc_E37F - the actual 64ms work list: update_crank_cnt, calc_ect_unk_148,
+;     calc_ect_unk_160, calc_ect_iscv, then calc_ect_unk_194, update_lambda_stft,
+;     update_diag_obd and factory_self_test. Note the var_flags_4E restore just
+;     before calc_ect_unk_194: that CLOSES the long var_trim_state alias opened back
 ;     in calc_inj_pw_base, and update_lambda_stft is then wrapped in its own
 ;     short second alias instance - see var_trim_state_alias's declaration.
 ;
 ;   loc_E3A6 - the tail, which runs on EVERY pass regardless of the gate:
-;     sub_E454 (fuel enrichment scaling) then calc_dmatx_pim. So the fuel
+;     apply_enrich_and_trims (fuel enrichment scaling) then calc_dmatx_pim. So the fuel
 ;     path is per-tick while the ECT/ISCV/trim housekeeping above is 64ms.
 ; ---------------------------------------------------------------------------
 bg_64ms_dispatch:							; CODE XREF: divide_d_by_x:loc_E112↑j
@@ -12506,7 +12522,7 @@ loc_E36A:							; CODE XREF: divide_d_by_x+1DCA↑j
 
 
 loc_E37F:							; CODE XREF: divide_d_by_x+1DDC↑j
-				jsr	sub_E435
+				jsr	update_crank_cnt
 
 				jsr	calc_ect_unk_148
 
@@ -12516,7 +12532,7 @@ loc_E37F:							; CODE XREF: divide_d_by_x+1DDC↑j
 
 				ld	a, var_flags_4E_copy2	; Restore the REAL var_flags_4E (see calc_inj_pw_base's
 				st	a, var_flags_4E		; aliasing note - this closes that long alias)
-				jsr	sub_D4BC
+				jsr	calc_ect_unk_194
 
 ; Short second instance of the same trim_state-aliasing trick, scoped to
 ; just this one call (see var_trim_state_alias's declaration comment)
@@ -12526,13 +12542,13 @@ loc_E37F:							; CODE XREF: divide_d_by_x+1DDC↑j
 
 				ld	a, var_trim_state_alias
 				st	a, var_trim_state
-				jsr	loc_DD69
+				jsr	update_diag_obd
 
 				jsr	factory_self_test
 
 
 loc_E3A6:							; CODE XREF: divide_d_by_x+1DCC↑j
-				jsr	sub_E454
+				jsr	apply_enrich_and_trims
 
 				jsr	calc_dmatx_pim
 
@@ -12564,7 +12580,7 @@ loc_E3B2:							; CODE XREF: divide_d_by_x+1E11↑j
 loc_E3CE:							; CODE XREF: divide_d_by_x+1E30↑j
 				tbbs	bit0, var_flags_40, loc_E3D9
 
-				ld	a, unk_9F
+				ld	a, var_crank_cnt
 				cmp	a, #7Ah
 				bcs	loc_E3D9
 
@@ -12643,10 +12659,10 @@ loc_E423:							; CODE XREF: divide_d_by_x+1E5C↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_cnt_startup, var_flags_46, var_io_input1, var_rpm_div_25
-; Writes: unk_9F
+; Writes: var_crank_cnt
 ; ---------------------------------------------------------------------------
-sub_E435:							; CODE XREF: divide_d_by_x:loc_E37F↑p
-				ld	a, unk_9F
+update_crank_cnt:							; CODE XREF: divide_d_by_x:loc_E37F↑p
+				ld	a, var_crank_cnt
 				tbbc	bit0, var_flags_46, loc_E440
 
 				tbbc	bit0, var_io_input1, loc_E440 ;	Jump if	STA low	(starter not running)
@@ -12655,8 +12671,8 @@ sub_E435:							; CODE XREF: divide_d_by_x:loc_E37F↑p
 				beq	loc_E44E
 
 
-loc_E440:							; CODE XREF: sub_E435+2↑j
-								; sub_E435+5↑j
+loc_E440:							; CODE XREF: update_crank_cnt+2↑j
+								; update_crank_cnt+5↑j
 				cmp	#20h, var_rpm_div_25
 				bcc	loc_E44E
 
@@ -12667,15 +12683,15 @@ loc_E440:							; CODE XREF: sub_E435+2↑j
 				bcs	loc_E44F
 
 
-loc_E44E:							; CODE XREF: sub_E435+9↑j
-								; sub_E435+E↑j ...
+loc_E44E:							; CODE XREF: update_crank_cnt+9↑j
+								; update_crank_cnt+E↑j ...
 				clr	a
 
-loc_E44F:							; CODE XREF: sub_E435+17↑j
-				st	a, unk_9F
+loc_E44F:							; CODE XREF: update_crank_cnt+17↑j
+				st	a, var_crank_cnt
 				ret
 
-; End of function sub_E435
+; End of function update_crank_cnt
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -12697,7 +12713,7 @@ loc_E452:							; CODE XREF: divide_d_by_x+1E14↑j
 ; Calls: mult_rBrX2, mult_rDrX_saturate, ramp_limit_inj_pw,
 ;    read_nv_afr_trim
 ; ---------------------------------------------------------------------------
-sub_E454:							; CODE XREF: divide_d_by_x+48B↑p
+apply_enrich_and_trims:							; CODE XREF: divide_d_by_x+48B↑p
 								; divide_d_by_x:loc_E3A6↑p
 				ld	x, var_scaled_ve_tham
 				ld	a, dmarx_fuel_enrich
@@ -12713,26 +12729,26 @@ sub_E454:							; CODE XREF: divide_d_by_x+48B↑p
 
 				ld	a, #0FFh		; Set rA to maximum
 
-loc_E469:							; CODE XREF: sub_E454+8↑j
-								; sub_E454+B↑j ...
+loc_E469:							; CODE XREF: apply_enrich_and_trims+8↑j
+								; apply_enrich_and_trims+B↑j ...
 				mov	a, b			; rB = rA
 				add	b, #80h			; rB = rB + 128
 				bcc	loc_E470		; Jump if no overflow
 
 				ld	b, #0FFh		; Set to maximum
 
-loc_E470:							; CODE XREF: sub_E454+18↑j
+loc_E470:							; CODE XREF: apply_enrich_and_trims+18↑j
 				jsr	mult_rBrX2		; rX = rB * rX * 2
 
 
-no_enrichment:							; CODE XREF: sub_E454+6↑j
+no_enrichment:							; CODE XREF: apply_enrich_and_trims+6↑j
 				ld	b, var_fuel_enrich_rpm
 				bmi	loc_E47B
 
 				jsr	mult_rBrX2
 
 
-loc_E47B:							; CODE XREF: sub_E454+22↑j
+loc_E47B:							; CODE XREF: apply_enrich_and_trims+22↑j
 				push	x
 				jsr	read_nv_afr_trim
 
@@ -12764,14 +12780,14 @@ loc_E47B:							; CODE XREF: sub_E454+22↑j
 				clr	a
 				clr	b
 
-loc_E4B1:							; CODE XREF: sub_E454+59↑j
+loc_E4B1:							; CODE XREF: apply_enrich_and_trims+59↑j
 				pull	x
 				jsr	mult_rDrX_saturate
 
 				st	d, var_enrich_unk_138
 				ret
 
-; End of function sub_E454
+; End of function apply_enrich_and_trims
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -12891,7 +12907,7 @@ loc_E534:							; CODE XREF: divide_d_by_x+1F93↑j
 ; Writes: var_temp_w
 ; ---------------------------------------------------------------------------
 get_tps_unk:							; CODE XREF: divide_d_by_x+2018↓p
-								; sub_E767↓p
+								; get_tps_load_div8↓p
 				ld	d, var_tps
 				cmpz	a
 				bne	loc_E53F
@@ -12927,7 +12943,7 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ; Reads: var_pim_trim_scale, var_flags_40, var_flags_46, var_flags_47,
 ; var_inj_pw_inj1, var_inj_pw_trim, var_pim2
 ; Writes: var_pim_tps_est, unk_145, var_temp_w, var_unk_tps_inj_137
-; Calls: mult_rBrX2, sub_E767
+; Calls: mult_rBrX2, get_tps_load_div8
 ; ---------------------------------------------------------------------------
 ; ---------------------------------------------------------------------------
 ; calc_dmatx_pim (was sub_E551): produce dmatx_pim - the manifold-pressure
@@ -12954,8 +12970,8 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ; THE ESTIMATE CHAIN (built across three functions, one per 4ms tick):
 ;   get_tps_unk       var_tps + var_unk_tps_143 * 0x40  - a throttle-derived
 ;                     load figure
-;   sub_E767          the above >> 3
-;   var_pim_tps_est   sub_E767's result * var_pim_trim_scale * 2, computed
+;   get_tps_load_div8          the above >> 3
+;   var_pim_tps_est   get_tps_load_div8's result * var_pim_trim_scale * 2, computed
 ;                     at the top of this function. var_pim_trim_scale carries
 ;                     the learned PIM/barometric NV trim (adc_handler_pim
 ;                     derives it from var_nv_trim_unk_98), which is what puts
@@ -13007,14 +13023,14 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ; Writes: dmatx_pim, var_pim_tps_est, var_pim_trans_est, var_pim_trans_fast,
 ;   var_unk_tps_inj_137, unk_145, var_diag_errors_5, var_temp_w,
 ;   var_temp_7A, var_temp_7B
-; Calls: sub_E767, get_tps_unk, calc_transient_terms, mult_rBrX2, mult_rArX, mult_rDrX,
+; Calls: get_tps_load_div8, get_tps_unk, calc_transient_terms, mult_rBrX2, mult_rArX, mult_rDrX,
 ;   divide_rD_32_saturate, divide_rD_64, signed_proportional_update,
 ;   set_knock_sensor_err_flag, check_knock_sensor_err_flag
 ; ---------------------------------------------------------------------------
 
 calc_dmatx_pim:							; CODE XREF: divide_d_by_x+48E↑p
 								; divide_d_by_x+1E0E↑p
-				jsr	sub_E767
+				jsr	get_tps_load_div8
 
 				st	a, var_unk_tps_inj_137
 				mov	x, d
@@ -13468,13 +13484,13 @@ loc_E75E:							; CODE XREF: divide_d_by_x+20C7↑j
 ; Writes: (none)
 ; Calls: get_tps_unk
 ; ---------------------------------------------------------------------------
-sub_E767:							; CODE XREF: calc_dmatx_pim↑p
+get_tps_load_div8:							; CODE XREF: calc_dmatx_pim↑p
 				jsr	get_tps_unk
 
 				shr	d
 				shr	d
 				shr	d
-; End of function sub_E767
+; End of function get_tps_load_div8
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -13665,7 +13681,7 @@ loc_E7D8:							; CODE XREF: divide_d_by_x+2238↑j
 				ld	y, #table_ect_C185
 				jsr	table_ect_fixed_32_interpolate
 
-				bsr	sub_E843
+				bsr	scale_by_nv_trim_o2
 
 				st	d, var_temp_w
 				ld	y, #table_ect_C17C
@@ -13687,7 +13703,7 @@ loc_E7FD:							; CODE XREF: divide_d_by_x+2245↑j
 				ld	y, #table_ect_C1B0
 				jsr	table_ect_pair_interpolate
 
-				bsr	sub_E843
+				bsr	scale_by_nv_trim_o2
 
 				add	d, var_ign_ect_term
 				bcc	loc_E815
@@ -13695,7 +13711,7 @@ loc_E7FD:							; CODE XREF: divide_d_by_x+2245↑j
 				ld	d, #0FFFFh
 
 loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
-				bsr	sub_E84F
+				bsr	scale_by_dmarx_167
 
 				st	d, unk_13F
 				ld	y, #table_ect_C19F
@@ -13705,9 +13721,9 @@ loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
 				ld	y, #table_ect_C1C1
 				jsr	table_ect_pair_interpolate
 
-				bsr	sub_E843
+				bsr	scale_by_nv_trim_o2
 
-				bsr	sub_E84F
+				bsr	scale_by_dmarx_167
 
 				st	d, unk_141
 				jmp	loc_EA17
@@ -13761,7 +13777,7 @@ locret_E842:							; CODE XREF: decay_ign_ect_term↑j
 ; Writes: (none)
 ; Calls: mult_rArX
 ; ---------------------------------------------------------------------------
-sub_E843:							; CODE XREF: divide_d_by_x+224E↑p
+scale_by_nv_trim_o2:							; CODE XREF: divide_d_by_x+224E↑p
 								; divide_d_by_x+2270↑p ...
 				mov	d, x
 				ld	a, var_nv_trim_unk_96
@@ -13769,12 +13785,12 @@ sub_E843:							; CODE XREF: divide_d_by_x+224E↑p
 
 				ld	a, #00h
 
-loc_E84B:							; CODE XREF: sub_E843+3↑j
+loc_E84B:							; CODE XREF: scale_by_nv_trim_o2+3↑j
 				jsr	mult_rArX
 
 				ret
 
-; End of function sub_E843
+; End of function scale_by_nv_trim_o2
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -13785,14 +13801,14 @@ loc_E84B:							; CODE XREF: sub_E843+3↑j
 ; Writes: (none)
 ; Calls: mult_rArX
 ; ---------------------------------------------------------------------------
-sub_E84F:							; CODE XREF: divide_d_by_x:loc_E815↑p
+scale_by_dmarx_167:							; CODE XREF: divide_d_by_x:loc_E815↑p
 								; divide_d_by_x+228F↑p
 				add	d, var_temp_w
 				bcc	loc_E856
 
 				ld	d, #0FFFFh
 
-loc_E856:							; CODE XREF: sub_E84F+2↑j
+loc_E856:							; CODE XREF: scale_by_dmarx_167+2↑j
 				mov	d, x
 				ld	a, dmarx_unk_241_167
 				jsr	mult_rArX
@@ -13802,10 +13818,10 @@ loc_E856:							; CODE XREF: sub_E84F+2↑j
 
 				ld	d, #0FFFFh
 
-locret_E864:							; CODE XREF: sub_E84F+10↑j
+locret_E864:							; CODE XREF: scale_by_dmarx_167+10↑j
 				ret
 
-; End of function sub_E84F
+; End of function scale_by_dmarx_167
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -14145,7 +14161,7 @@ loc_E98D:							; CODE XREF: update_ign_timing_blend+124↑j
 
 loc_E9A0:							; CODE XREF: update_ign_timing_blend+131↑j
 								; update_ign_timing_blend+136↑j
-				jsr	sub_EA0C
+				jsr	clamp_neg_early_startup
 
 				st	d, unk_129
 				pull	a
@@ -14167,7 +14183,7 @@ loc_E9A0:							; CODE XREF: update_ign_timing_blend+131↑j
 
 loc_E9BC:							; CODE XREF: update_ign_timing_blend+14D↑j
 								; update_ign_timing_blend+152↑j
-				jsr	sub_EA0C
+				jsr	clamp_neg_early_startup
 
 				mov	d, x
 				clrb	bit0, var_diag_errors_5
@@ -14238,7 +14254,7 @@ locret_EA0B:							; CODE XREF: update_ign_timing_blend+4↑j
 ; Reads: var_cnt_startup
 ; Writes: (none)
 ; ---------------------------------------------------------------------------
-sub_EA0C:							; CODE XREF: update_ign_timing_blend:loc_E9A0↑p
+clamp_neg_early_startup:							; CODE XREF: update_ign_timing_blend:loc_E9A0↑p
 								; update_ign_timing_blend:loc_E9BC↑p
 				cmpz	a
 				bpz	locret_EA16
@@ -14249,11 +14265,11 @@ sub_EA0C:							; CODE XREF: update_ign_timing_blend:loc_E9A0↑p
 				clr	a
 				clr	b
 
-locret_EA16:							; CODE XREF: sub_EA0C+1↑j
-								; sub_EA0C+6↑j
+locret_EA16:							; CODE XREF: clamp_neg_early_startup+1↑j
+								; clamp_neg_early_startup+6↑j
 				ret
 
-; End of function sub_EA0C
+; End of function clamp_neg_early_startup
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -15015,9 +15031,9 @@ loc_ED01:							; CODE XREF: calc_4ms_corrections:loc_ECE2↑j
 loc_ED09:							; CODE XREF: calc_4ms_corrections+2C3↑j
 								; calc_4ms_corrections+2C9↑j ...
 				clr	var_cnt_D8
-				bsr	sub_ED19
+				bsr	reset_cyl_rpm_dev
 
-				bsr	sub_ED12
+				bsr	reset_cyl_proc_idx
 
 				jmp	loc_ED6E
 
@@ -15030,7 +15046,7 @@ loc_ED09:							; CODE XREF: calc_4ms_corrections+2C3↑j
 ; Reads: (none)
 ; Writes: var_cyl_proc_idx
 ; ---------------------------------------------------------------------------
-sub_ED12:							; CODE XREF: calc_4ms_corrections+2EB↑p
+reset_cyl_proc_idx:							; CODE XREF: calc_4ms_corrections+2EB↑p
 								; calc_4ms_corrections+308↓p ...
 				di
 				clr	a
@@ -15038,7 +15054,7 @@ sub_ED12:							; CODE XREF: calc_4ms_corrections+2EB↑p
 				ei
 				ret
 
-; End of function sub_ED12
+; End of function reset_cyl_proc_idx
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -15048,14 +15064,14 @@ sub_ED12:							; CODE XREF: calc_4ms_corrections+2EB↑p
 ; Reads: (none)
 ; Writes: unk_17D, var_cyl_rpm_dev
 ; ---------------------------------------------------------------------------
-sub_ED19:							; CODE XREF: calc_4ms_corrections+2E9↑p
+reset_cyl_rpm_dev:							; CODE XREF: calc_4ms_corrections+2E9↑p
 								; calc_4ms_corrections+32F↓p ...
 				ld	d, #8080h
 				st	d, var_cyl_rpm_dev
 				st	d, unk_17D
 				ret
 
-; End of function sub_ED19
+; End of function reset_cyl_rpm_dev
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR calc_4ms_corrections
@@ -15065,7 +15081,7 @@ loc_ED23:							; CODE XREF: calc_4ms_corrections+2DD↑j
 				cmp	a, #20h
 				bcs	loc_ED6E
 
-				bsr	sub_ED12
+				bsr	reset_cyl_proc_idx
 
 				ld	y, #var_cyl_rpm_dev
 
@@ -15100,7 +15116,7 @@ loc_ED3F:							; CODE XREF: calc_4ms_corrections+313↑j
 
 loc_ED4F:							; CODE XREF: calc_4ms_corrections+329↑j
 				st	a, x + 04h
-				bsr	sub_ED19
+				bsr	reset_cyl_rpm_dev
 
 
 loc_ED53:							; CODE XREF: calc_4ms_corrections+321↑j
@@ -15215,9 +15231,26 @@ loc_EDC1:							; CODE XREF: calc_4ms_corrections+368↑j
 ; var_limiter_flags, var_ne_sum3, var_rpm_div_25
 ; Writes: var_cyl_proc_idx, var_flags_4E_temp, var_ign_corr_combined,
 ; var_lambda_ign_corr, var_limiter_ign_ramp, var_ne_sum3_prev, var_temp_w
-; Calls: sub_ED12, sub_ED19, table_rB_fixed_16_interpolate
+; Calls: reset_cyl_proc_idx, reset_cyl_rpm_dev, table_rB_fixed_16_interpolate
 ; ---------------------------------------------------------------------------
-loc_EDCB:							; CODE XREF: iv6_ne_process+36D↓p
+; update_cyl_rpm_dev (was update_cyl_rpm_dev): per-cylinder crank-speed deviation,
+; called once per NE event from iv6_ne_process.
+;
+; Gated on var_cnt_D8 >= 0x5C. Indexes var_cyl_rpm_dev by cylinder - the
+; index is va_ne_count_2 >> 4 masked to 2 bits, i.e. the cylinder field of
+; the NE counter - scales the stored deviation by 7, and differences
+; var_ne_sum3 against var_ne_sum3_prev, which is the change in the
+; 45-degree crank period. That difference is how fast the crank sped up or
+; slowed down over this cylinder's firing interval: a roughness measure.
+;
+; PARTIALLY TRACED. The measurement above is confirmed. The tail - which
+; also writes var_ign_corr_combined, var_lambda_ign_corr and
+; var_limiter_ign_ramp, and calls reset_cyl_rpm_dev/reset_cyl_proc_idx -
+; combines that roughness figure into an ignition correction, but the exact
+; combination is not traced. Named for what it measures, which is solid;
+; treat the ignition-correction half as still open.
+; ---------------------------------------------------------------------------
+update_cyl_rpm_dev:							; CODE XREF: iv6_ne_process+36D↓p
 				cmp	#5Ch, var_cnt_D8
 				bcs	loc_EE03
 
@@ -15259,7 +15292,7 @@ loc_EDFE:							; CODE XREF: ROM:EDFB↑j
 				st	a, x + 04h
 
 loc_EE00:							; CODE XREF: ROM:EDF7↑j
-				jsr	sub_ED19
+				jsr	reset_cyl_rpm_dev
 
 
 loc_EE03:							; CODE XREF: ROM:EDCE↑j
@@ -15332,7 +15365,7 @@ loc_EE56:							; CODE XREF: calc_4ms_corrections+430↑j
 				cmp	a, var_temp_w
 				ble	loc_EE5F
 
-				jsr	sub_ED12
+				jsr	reset_cyl_proc_idx
 
 				ld	a, var_temp_w
 
@@ -15941,7 +15974,7 @@ int_vector_e_ne_F04F:						; CODE XREF: ROM:F01E↑j
 ;   var_ign_advance_raw, var_ign_nr_pulses, var_ign_temp,
 ;   var_ign_timing_div_2, var_ignition_flags, var_schedule_flag_41,
 ;   dmatx_ign_obd
-; Calls: injector_cold_start, sub_DD2A, mult_rBrX, ignition_timing_to_cpr,
+; Calls: injector_cold_start, clear_ne_sync_errors, mult_rBrX, ignition_timing_to_cpr,
 ;   ignition_schedule_on, ignition_schedule_off, ignition_set_immediate,
 ;   ignition_update_off_time
 ; ---------------------------------------------------------------------------
@@ -15953,7 +15986,7 @@ iv6_ne_process:							; CODE XREF: int_vector_6_sw_int+8↓p
 
 				jsr	injector_cold_start
 
-				jsr	sub_DD2A
+				jsr	clear_ne_sync_errors
 
 ; ---------------------------------------------------------------------------
 ; NE period measurement and ring buffer update
@@ -16855,9 +16888,9 @@ bg_ne_process_F3BE:						; CODE XREF: iv6_ne_process+361↑j
 
 				clrb	bit0, var_schedule_flag_41
 				clrb	bit1, var_flags_44
-				jsr	loc_EDCB
+				jsr	update_cyl_rpm_dev
 
-				jsr	sub_CE29
+				jsr	ramp_fuel_enrich_rpm
 
 
 bg_ne_process_F3CC:						; CODE XREF: iv6_ne_process+367↑j
@@ -18263,7 +18296,7 @@ loc_F879:							; CODE XREF: iv6_4ms_process:loc_F84D↑j
 ; var_4ms_cnt_C4, var_4ms_cnt_C5, var_cnt_unk_77, var_flags_46
 ; ---------------------------------------------------------------------------
 start_dma:							; CODE XREF: divide_d_by_x+193↑p
-								; sub_E254+A↑p ...
+								; selftest_io_cycle+A↑p ...
 				cmp	#04h, var_4ms_cnt_C5
 				ble	loc_F88D
 

@@ -32,7 +32,7 @@ each correction. Read it first.
                               └───────────┬───────────────┘
                                           ▼  var_inj_pw_base
                               ┌───────────────────────────┐
-                    (2)       │ sub_E454                  │
+                    (2)       │ apply_enrich_and_trims                  │
                               │  x (0x100 + LTFT + STFT)  │
                               │  ramp_limit_inj_pw        │
                               └───────────┬───────────────┘
@@ -63,7 +63,7 @@ Combines CPU2's VE output with the lambda state, selects the open-loop or
 closed-loop path, and rate-limits the result into `var_inj_pw_base`. Fully
 dissected in "Structure (chunk `D931`)" below.
 
-### (2) Fuel trims — `sub_E454` at `loc_E47B`
+### (2) Fuel trims — `apply_enrich_and_trims` at `loc_E47B`
 
 The one place both trims are applied, as a single multiplier:
 
@@ -234,7 +234,7 @@ var_flags_4E`, same address, zero bytes changed) declared next to
 `var_flags_4E`'s own declaration. It's been applied to every reference this
 session actually traced and confirmed: `calc_inj_pw_base`'s own body, `reset_pw_ramp_limiter`,
 `ramp_limit_inj_pw`, `ramp_limit_inj_pw_simple`, and the full body of `update_lambda_stft` (through
-`locret_DB74`, including `sub_DB75`/`sub_DB77` - a short-lived instance of
+`locret_DB74`, including `clear_trim_state_bit2`/`clear_trim_state_bit0` - a short-lived instance of
 the same trick called from a separate point later in the main loop, not
 `D931`'s direct continuation). **Not yet applied:** `loc_DC77`'s body past
 its entry commit, and chunks `DD38`/`DD59`/`E112`/start-of-`E363` - these
@@ -423,12 +423,12 @@ header comment above `loc_DC77` in the ASM; summary:
   aliasing `var_flags_4E` to `unk_1CF` (not `var_trim_state`) - see
   "Other aliasing instances found" below.
 - `loc_DD59` jumps to `loc_E112`, not yet traced.
-- `loc_DD69` (reached via `jsr` from a *different*, later point in the main
+- `update_diag_obd` (reached via `jsr` from a *different*, later point in the main
   loop - the short second `var_trim_state`-alias instance that also calls
   `update_lambda_stft`) wraps a long run of O2-heater/lambda/coolant-sensor
   diagnostic checks in its own `unk_1CF` alias instance, and resolves two
-  previously-unexamined helpers: `sub_DE5A` (resets `unk_187`, sets
-  `var_flags_4F.7` if outside `[3, 0x131)`) and `sub_DE71` (saturating
+  previously-unexamined helpers: `check_cnt_187_window` (resets `unk_187`, sets
+  `var_flags_4F.7` if outside `[3, 0x131)`) and `inc_cnt_187` (saturating
   increment of `unk_187`).
 
 ---
@@ -605,7 +605,7 @@ split should start from there.
 
 ## Short-term vs long-term fuel trim
 
-Both exist, and both are applied at one place: `sub_E454`'s `loc_E47B`
+Both exist, and both are applied at one place: `apply_enrich_and_trims`'s `loc_E47B`
 assembles a single multiplier and applies it to the injector pulse width.
 
 ```
@@ -668,7 +668,7 @@ correction. It is stored as a value/complement pair (the halves stepped in
 opposite directions), and `validate_nv_trim_o2` wipes all NV RAM if it fails validation
 against `nv_96_limits`.
 
-**Where it is spent - resolved.** Its consumers are `sub_E843` on CPU1 and
+**Where it is spent - resolved.** Its consumers are `scale_by_nv_trim_o2` on CPU1 and
 CPU2 via `copy_dma_tx`'s `dmatx_nv_trim_o2`. CPU2 receives it as
 `dmarx_nv_trim_o2` and, in `check_startup`'s `loc_CB6D` chunk, multiplies an
 ECT-indexed `table_C393` lookup by it; the product becomes

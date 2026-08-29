@@ -307,7 +307,7 @@ CPU2_addr + 0x13B**, confirmed via four independent already-named pairs
   no intermediate computation). On CPU1, `var_lambda_state` is a
   fuel-cut/overrun-recovery timer (0x80/negative = idle, 0x66 = a decel
   fuel-cut recovery window just started, counts up by 2/call via
-  `sub_CB00` until it overflows back to negative) - CPU2's two consumers
+  `decay_lambda_state` until it overflows back to negative) - CPU2's two consumers
   (`loc_C9BC`'s `unk_E8` filter, and the fuel VE section's `dmatx_unk_162`
   clamp) both key off its sign to detect "CPU1 is currently in that
   recovery window."
@@ -317,7 +317,7 @@ CPU2_addr + 0x13B**, confirmed via four independent already-named pairs
   existing "likely deceleration/overrun-related" guess in the fuel VE
   section header.
 
-CPU1's `var_lambda_state`/`sub_CB00`/`calc_4ms_corrections` weren't
+CPU1's `var_lambda_state`/`decay_lambda_state`/`calc_4ms_corrections` weren't
 deep-dived beyond what was needed to resolve these two DMA cross-
 references - not added as new CPU1 pending work since `var_lambda_state`
 already has inline comments from an earlier session (see
@@ -896,14 +896,14 @@ Key findings:
   this time for `unk_1CF` (not `var_trim_state`) - two confirmed
   short-lived windows: one wrapping a battery/starter (STA) diagnostic
   latch (loc_DD02-DD38), one wrapping a long O2-heater/lambda/coolant
-  diagnostic check run (loc_DDB8-DE7B, reached via loc_DD69, itself called
+  diagnostic check run (loc_DDB8-DE7B, reached via update_diag_obd, itself called
   from a *different, later* point in the main loop - the same short second
   var_trim_state-alias instance that calls update_lambda_stft). Added a matching
   `unk_1CF_alias` .equ (same technique as var_trim_state_alias) and applied
   it to both confirmed windows.
-- Resolved two previously-flagged "not deep-dived" helpers: `sub_DE5A`
+- Resolved two previously-flagged "not deep-dived" helpers: `check_cnt_187_window`
   (resets unk_187, sets var_flags_4F.7 if outside [3,0x131)) and
-  `sub_DE71` (saturating increment of unk_187) - a simple counter/error-flag
+  `inc_cnt_187` (saturating increment of unk_187) - a simple counter/error-flag
   pair.
 
 **`var_flags_4E_copy_2` investigated and resolved** (was left open at the
@@ -972,8 +972,8 @@ pinned down with confidence.
 another label - zero bytes changed, verified via verify_assembly_match.py)
 next to var_flags_4E's declaration, and applied it to every reference
 confirmed this session: calc_inj_pw_base's own body, reset_pw_ramp_limiter/ramp_limit_inj_pw/ramp_limit_inj_pw_simple,
-and update_lambda_stft's full body (through locret_DB74, including sub_DB75/
-sub_DB77 - discovered this session to be a SEPARATE short-lived instance of
+and update_lambda_stft's full body (through locret_DB74, including clear_trim_state_bit2/
+clear_trim_state_bit0 - discovered this session to be a SEPARATE short-lived instance of
 the same trick, called from much later in the main loop, not part of
 D931's direct continuation). Also found var_cnt_6A's consumer while
 tracing update_lambda_stft: loc_DB34 gates trim_state.5 on "var_cnt_6A >= 3 ticks".
@@ -1000,7 +1000,7 @@ chunk's entry point in the ASM; this is the narrative summary.
   see chunk D3A5 below. Also sets `var_flags_4E.7` in this path, though
   that bit is documented elsewhere as "boost limit exceeded" - not
   confirmed whether that's the same condition or bit reuse.
-- Calls sub_E454 (fuel enrichment scaling, confirmed), calc_dmatx_pim, validate_nv_trim_pim,
+- Calls apply_enrich_and_trims (fuel enrichment scaling, confirmed), calc_dmatx_pim, validate_nv_trim_pim,
   validate_nv_trim_o2 (NV trim validation, see D1DD below) - only validate_nv_trim_o2 was
   traced.
 - The overrun/deceleration fuel-cut decision feeding `injector_warmup`
@@ -1023,8 +1023,8 @@ chunk's entry point in the ASM; this is the narrative summary.
   directly in the disassembly, not just in the separate ECU folders.
 
 **D1DD (232 bytes) -> falls into loc_D2D2 (calc_4ms_corrections call site):**
-- Periodic counter increments plus sub_C91A, sub_CB00 (lambda_state
-  decay), ramp_misfire_correction, sub_DE71 (not deep-dived).
+- Periodic counter increments plus calc_rpm_delta, decay_lambda_state (lambda_state
+  decay), ramp_misfire_correction, inc_cnt_187 (not deep-dived).
 - A **second closed-loop lambda trim system** (`closed_loop_control`
   label), distinct from the RPM/MAP-zone `nv_afr_trim_base` system in
   calc_4ms_corrections' chunk CE6C. Gated on ECT 83-104C, off-idle,
@@ -1466,6 +1466,41 @@ Key renames:
 
 ---
 
+## Naming status (both MR2 ROMs)
+
+**Every callable in both ROMs is now properly named.** Measured, not asserted:
+
+| ROM | call targets | still `sub_`/`loc_` |
+|---|---|---|
+| CPU1 D151803-9651 | 150 | **0** |
+| CPU2 D151803-9661 | 56 | **0** |
+
+The last 22 on CPU1 were cleared in one pass. Most were small helpers whose
+behaviour was obvious once read - `sub_CB00` -> `decay_lambda_state`,
+`sub_C91A` -> `calc_rpm_delta`, `sub_E843` -> `scale_by_nv_trim_o2`,
+`sub_E435` -> `update_crank_cnt` (plus `unk_9F` -> `var_crank_cnt`),
+`sub_E454` -> `apply_enrich_and_trims`, and so on.
+
+Two are named but only PARTIALLY traced, and their headers say so plainly
+rather than implying more than was established:
+- `update_cyl_rpm_dev` (was `loc_EDCB`) - the per-cylinder crank-speed
+  deviation measurement at its head is confirmed; the tail that folds that
+  roughness figure into an ignition correction is not.
+- `update_diag_obd` (was `loc_DD69`) - the ISC self-check at its head is
+  confirmed; the rest is characterised by variable footprint only.
+
+Note on scope: the ~1,400 remaining `loc_XXXX` labels are ordinary
+in-function BRANCH targets, not callables. Even the gold-standard
+`knock_mcu_update.ASM` has those, and renaming them is not a goal - the
+metric that matters is call targets.
+
+Still named `unk_`: 60 variables on CPU1, 13 on CPU2. Every one carries
+either a full explanation or a factual "written by X, read by Y" note; they
+are unnamed because their purpose is genuinely unestablished, not because
+nobody looked.
+
+---
+
 ## Pending work (next targets)
 
 Split by which CPU/ROM each item belongs to - CPU1 (D151803-9651) and
@@ -1503,7 +1538,7 @@ entry gate is still unestablished (see that bit's declaration comment).
   filters as a "how fast is load changing" signal - a lead/lag pair:
 
       get_tps_unk        var_tps + var_unk_tps_143*0x40
-      sub_E767           the above >> 3
+      get_tps_load_div8           the above >> 3
       var_pim_tps_est    * var_pim_trim_scale * 2   (in calc_dmatx_pim)
       var_pim_est_fast   tracks var_pim_tps_est     (update_pim_est_fast)
       var_pim_est_slow   tracks fast at 1/4 rate    (update_pim_est_slow)
@@ -1556,22 +1591,22 @@ entry gate is still unestablished (see that bit's declaration comment).
     prescaler is what makes `var_cnt_E9`'s thresholds in the ISCV code
     (0x17/0x26/0x99) mean roughly 6, 10 and 42 minutes rather than
     seconds** - previously those constants had no explanation.
-  - `loc_E37F` - the 64ms work list: `sub_E435`, `calc_ect_unk_148`,
-    `calc_ect_unk_160`, `calc_ect_iscv`, `sub_D4BC`, `update_lambda_stft`,
-    `loc_DD69`, `factory_self_test`. The `var_flags_4E` restore just before
-    `sub_D4BC` is "the restore point around E37F" this entry referred to:
+  - `loc_E37F` - the 64ms work list: `update_crank_cnt`, `calc_ect_unk_148`,
+    `calc_ect_unk_160`, `calc_ect_iscv`, `calc_ect_unk_194`, `update_lambda_stft`,
+    `update_diag_obd`, `factory_self_test`. The `var_flags_4E` restore just before
+    `calc_ect_unk_194` is "the restore point around E37F" this entry referred to:
     it CLOSES the long `var_trim_state` alias opened in `calc_inj_pw_base`,
     and `update_lambda_stft` is then wrapped in its own short second alias
     instance.
   - `loc_E3A6` - the tail, run on EVERY pass regardless of the gate:
-    `sub_E454` then `calc_dmatx_pim`. So fuelling is per-tick while the
+    `apply_enrich_and_trims` then `calc_dmatx_pim`. So fuelling is per-tick while the
     ECT/ISCV/trim housekeeping above it is 64ms.
 
   Renames: `loc_E363` -> `bg_64ms_dispatch`, `unk_E8` -> `var_64ms_prescale`.
 - **RESOLVED: which trim is short-term and which is long-term.** Jon
   confirmed the ECU runs both; the code says exactly where each lives.
 
-  The decisive site is `sub_E454` at `loc_E47B`, which assembles the whole
+  The decisive site is `apply_enrich_and_trims` at `loc_E47B`, which assembles the whole
   fuel correction as a single multiplier applied to injector pulse width:
 
       multiplier = 0x0100 (unity)
@@ -1609,7 +1644,7 @@ entry gate is still unestablished (see that bit's declaration comment).
   validation against `nv_96_limits`.
 
   **RESOLVED - the third trim is a FUEL correction, spent on CPU2.** Its
-  consumers are `sub_E843` on CPU1 and, more importantly, CPU2 via
+  consumers are `scale_by_nv_trim_o2` on CPU1 and, more importantly, CPU2 via
   `copy_dma_tx`'s `dmatx_nv_trim_o2`. CPU2 receives it as
   `dmarx_nv_trim_o2` and uses it in `check_startup`'s `loc_CB6D` chunk as
   a multiplier on an ECT-indexed `table_C393` lookup; the product becomes
@@ -1619,7 +1654,7 @@ entry gate is still unestablished (see that bit's declaration comment).
 
   So CPU1 learns this correction slowly from the O2 sensor but mostly
   SPENDS it through CPU2's enrichment path - which is exactly why it never
-  appears in CPU1's own `sub_E454` STFT+LTFT multiplier.
+  appears in CPU1's own `apply_enrich_and_trims` STFT+LTFT multiplier.
 
   **CORRECTION - DMA offset direction.** Finding this exposed an error
   made earlier in this same session: the `CPU1 = CPU2 + 0xDA` formula
@@ -1765,7 +1800,7 @@ generically must not assume every slot is live on every ROM.
   |---|---|
   | `update_lambda_stft` | the O2 control law - moves `var_lambda_integrator` |
   | `nv_afr_trim` table | LTFT, learned per load cell, NV-backed |
-  | `sub_E454` @ `loc_E47B` | sums STFT + LTFT into one multiplier |
+  | `apply_enrich_and_trims` @ `loc_E47B` | sums STFT + LTFT into one multiplier |
   | `closed_loop_control` | learns the separate cruise-only NV trim spent by CPU2 |
 
   It implements a textbook **jump-and-ramp** (proportional + integral) law:
@@ -1881,7 +1916,7 @@ generically must not assume every slot is live on every ROM.
 
   With the polarity right, the mechanism reads cleanly: `var_ign_ect_term`
   is seeded ONCE on the init pass from `table_ect_C185` (scaled through
-  `sub_E843`, which folds in the O2-learned NV trim) plus `table_ect_C17C`,
+  `scale_by_nv_trim_o2`, which folds in the O2-learned NV trim) plus `table_ect_C17C`,
   then bleeds down at 12 per tick while running, feeding an `add` into the
   timing sum. A warm-up ignition correction that fades out - the
   ignition-side counterpart of CPU2's enrichment decay.
