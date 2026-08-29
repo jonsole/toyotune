@@ -444,6 +444,63 @@ split should start from there.
 
 ---
 
+## Short-term vs long-term fuel trim
+
+Both exist, and both are applied at one place: `sub_E454`'s `loc_E47B`
+assembles a single multiplier and applies it to the injector pulse width.
+
+```
+multiplier = 0x0100 (unity)
+           + read_nv_afr_trim(load)   <- LONG-term  (LTFT)
+           + var_lambda_integrator    <- SHORT-term (STFT)
+```
+
+**STFT - `var_lambda_integrator`.** The fast O2 feedback integrator. Plain
+RAM, never written to NV, forced back to its `0x8000` neutral on reset
+events (`loc_D04F`). This is what swings cycle to cycle as the sensor
+crosses rich/lean.
+
+**LTFT - the `nv_afr_trim_base` table.** Twelve bytes in battery-backed NV
+RAM, so it survives power cycles. `read_nv_afr_trim` indexes it by
+`var_pim2` (manifold pressure, i.e. load) and interpolates between cells,
+with two special cases: it returns the first/idle cell directly whenever
+`var_flags_46.2` says the throttle is closed, and a neutral `0x80` when
+`var_flags_42.0` says the trims are not valid. Validated at startup against
+`nv_afr_trim_top`/`nv_afr_trim_end`; a failure wipes all of NV RAM through
+`clear_nv_ram`.
+
+### A third, separate learned correction
+
+`var_nv_trim_unk_96` is **not** part of the multiplier above, despite being
+learned from the same O2 sensor. `closed_loop_control` accumulates polarity
+votes into `var_o2_vote_accum` (+/-1 per sample from a `0x80` neutral) over a
+17-sample window counted by `var_o2_vote_cnt`, discarding the first seven
+samples as settling, then applies a majority verdict with a `0x7D`-`0x83`
+deadband to move the stored value by exactly one step.
+
+Its gating is much tighter than the LTFT table's - ECT 82.9-103.8 C,
+off-idle, RPM < 3200, battery >= 11.4 V, no transient
+(`var_pim_trans_fast`), no CPU2 fuel-trim or idle-enrich request, and
+`var_trim_state == 4` - which reads as a slow, cruise-only global
+correction. It is stored as a value/complement pair (the halves stepped in
+opposite directions), and `sub_D2C5` wipes all NV RAM if it fails validation
+against `nv_96_limits`.
+
+**Open:** its consumers are `sub_E843` (ignition-timing-adjacent, near
+`sub_E865`) and CPU2 via `copy_dma_tx`'s `dmatx_trim_unk_210`. The CPU2
+receive-side name at `0x136` (= `0x210 - 0xDA`) has not been located, so
+whether CPU2 treats it as a fuel or a timing correction is unresolved.
+
+### Trim learning is frozen through transients
+
+`closed_loop_control` refuses to learn while `var_pim_trans_fast` indicates
+load is changing (`cmp a,#0FEh` / `blta`). That value comes from
+`calc_dmatx_pim`'s lead/lag filter pair - see the manifold-pressure section
+above. It is the standard "freeze fuel trim through a transient" rule: trims
+only adapt once the fast and slow pressure estimates reconverge.
+
+---
+
 ## Variable Reference
 
 | Variable | Description |

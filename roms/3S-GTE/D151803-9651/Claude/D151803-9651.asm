@@ -1077,6 +1077,27 @@ var_lambda_byte:				.block 1			; DATA XREF: divide_d_by_x+BE0↓w
 								; update_lambda_avg↓r ...
 var_lambda_integrator:			.block 2			; DATA XREF: divide_d_by_x:loc_D026↓r
 								; divide_d_by_x+AB0↓w ...
+								; ***THIS IS THE SHORT-TERM FUEL TRIM
+								; (STFT).*** The fast O2 feedback
+								; integrator: swings continuously as the
+								; sensor crosses rich/lean, lives in
+								; ordinary RAM (never written to NV), and
+								; is forced back to its 0x8000 neutral on
+								; reset events such as loc_D04F.
+								;
+								; Applied in sub_E454 at loc_E47B, where
+								; the whole fuel correction multiplier is
+								; assembled as:
+								;     0x0100 (unity)
+								;   + read_nv_afr_trim(load)  <- LTFT
+								;   + var_lambda_integrator   <- STFT
+								; and then multiplied into the injector
+								; pulse width. So both trims are summed
+								; into ONE multiplicative correction -
+								; the textbook short-term-plus-long-term
+								; arrangement. See the LTFT table at
+								; nv_afr_trim_base and read_nv_afr_trim's
+								; own header.
 var_lambda_avg:				.block 1			; DATA XREF: divide_d_by_x+B73↓r
 								; divide_d_by_x+B79↓r ...
 				.block 1
@@ -1087,8 +1108,8 @@ unk_68:				.block 1			; DATA XREF: divide_d_by_x+655↓w
 								; divide_d_by_x+65E↓r ...
 								; Part of the second, distinct closed-
 								; loop lambda trim system in chunk D1DD
-								; (alongside var_nv_trim_unk_96/unk_6B/
-								; var_lambda_count_unk_6C) - not yet
+								; (alongside var_nv_trim_unk_96/var_o2_vote_cnt/
+								; var_o2_vote_accum) - not yet
 								; distinguished from the zone-based
 								; nv_afr_trim system; see
 								; session_journal.md's CPU1 pending work.
@@ -1096,12 +1117,37 @@ var_trim_stable_cnt:		.block 1			; DATA XREF: divide_d_by_x+B29↓w
 								; divide_d_by_x:loc_D108↓r ...
 var_cnt_6A:			.block 1			; DATA XREF: divide_d_by_x:loc_D954↓w
 								; ROM:DB3A↓r
-unk_6B:				.block 1			; DATA XREF: divide_d_by_x+10E↓w
+var_o2_vote_cnt:		.block 1			; DATA XREF: divide_d_by_x+10E↓w
 								; divide_d_by_x:loc_D22A↓r ...
-								; Same second closed-loop lambda trim
-								; system as unk_68 above - see that note.
-var_lambda_count_unk_6C:	.block 1			; DATA XREF: divide_d_by_x:loc_D28F↓r
+								; Sample counter for closed_loop_control's
+								; O2 voting window (the THIRD trim mechanism -
+								; distinct from STFT/LTFT, see
+								; var_nv_trim_unk_96). Incremented once per
+								; qualifying 4ms pass at loc_D23C.
+								;
+								; Samples 0-6 are discarded (settling); votes
+								; accumulate into var_o2_vote_accum from
+								; sample 7; at 0x11 (17) the window closes,
+								; the verdict is applied, and BOTH this
+								; counter and the accumulator are reset by a
+								; single `ld d,#0080h / st d` word store at
+								; loc_D2BC - which is why the two must stay
+								; adjacent in this order.
+var_o2_vote_accum:		.block 1			; DATA XREF: divide_d_by_x:loc_D28F↓r
 								; divide_d_by_x+CF6↓w ...
+								; Running O2 vote tally for
+								; closed_loop_control: +1 per sample while
+								; var_adc_lambda reads one way, -1 the other,
+								; starting from a 0x80 neutral.
+								;
+								; At the end of the 17-sample window the tally
+								; is read as a majority verdict with a
+								; deadband: >= 0x84 nudges var_nv_trim_unk_96
+								; one way, <= 0x7C the other, and 0x7D-0x83
+								; leaves it alone. So the trim only moves when
+								; the sensor has leaned consistently one way
+								; across the whole window - and only ever by 1
+								; step per window.
 var_error_flags_6D:		.block 1			; DATA XREF: ROM:DF59↓r
 								; ROM:DF5D↓w ...
 var_speed_limiter_cnt:		.block 1			; DATA XREF: check_set_speed_limiter+6↓r
@@ -1169,6 +1215,30 @@ nv_diag_errors_3:		.block 2			; DATA XREF: ROM:DDD4↓r
 								; 84.7 -
 nv_afr_trim_base:			.block 0Ch			; DATA XREF: clear_nv_ram+22↓o
 								; divide_d_by_x:check_nv_trims↓t ...
+								; ***THIS IS THE LONG-TERM FUEL TRIM
+								; (LTFT).*** A 12-byte load-indexed table
+								; of learned corrections held in
+								; battery-backed NV RAM, so it survives
+								; power cycles - the counterpart to
+								; var_lambda_integrator's volatile STFT.
+								;
+								; read_nv_afr_trim is the accessor: it
+								; indexes this table by var_pim2 (manifold
+								; pressure, i.e. load) with interpolation
+								; between cells, returns nv_afr_trim_base
+								; (the first/idle cell) directly whenever
+								; var_flags_46.2 says the throttle is
+								; closed, and returns a neutral 0x80 when
+								; var_flags_42.0 says the trims are not
+								; valid.
+								;
+								; Both trims are summed into a single
+								; multiplier in sub_E454 - see
+								; var_lambda_integrator's declaration for
+								; that expression. Validated on startup
+								; against nv_afr_trim_top/_end, and a
+								; failure wipes all of NV RAM via
+								; clear_nv_ram.
 				.block 1
 				.block 1
 nv_afr_trim_top:			.block 1			; DATA XREF: clear_nv_ram+26↓o
@@ -1176,6 +1246,43 @@ nv_afr_trim_top:			.block 1			; DATA XREF: clear_nv_ram+26↓o
 nv_afr_trim_end:			.block 1			; DATA XREF: divide_d_by_x+AD9↓o
 var_nv_trim_unk_96:		.block 1			; DATA XREF: clear_nv_ram+2E↓w
 								; divide_d_by_x+D00↓r ...
+								; A THIRD learned NV correction, separate
+								; from both STFT (var_lambda_integrator)
+								; and LTFT (nv_afr_trim_base) - it does
+								; NOT appear in sub_E454's fuel
+								; multiplier.
+								;
+								; Learned by closed_loop_control from O2
+								; polarity votes (var_o2_vote_accum) under
+								; much tighter conditions than the LTFT
+								; table: ECT 82.9-103.8C, off-idle,
+								; RPM < 3200, battery >= 11.4V, no
+								; transient (var_pim_trans_fast), no
+								; CPU2 fuel-trim/idle-enrich request,
+								; var_trim_state == 4. One +/-1 step per
+								; closed 17-sample window, saturating at
+								; 0x00 and 0x80 - i.e. a very slow,
+								; cruise-only global correction.
+								;
+								; Stored as a value/complement PAIR:
+								; loc_D2BA writes the full word, and the
+								; two halves are stepped in opposite
+								; directions (`dec a`/`inc b` or
+								; `inc a`/`dec b`), the same integrity
+								; scheme write_rB_nv_ram uses. sub_D2C5
+								; validates it against nv_96_limits and
+								; wipes ALL NV RAM via clear_nv_ram on
+								; failure.
+								;
+								; Consumers: sub_E843 (an ignition-timing
+								; -adjacent calculation near sub_E865),
+								; and CPU2 via copy_dma_tx's
+								; dmatx_trim_unk_210. NOT yet established:
+								; what CPU2 does with it - the receive-side
+								; name at CPU2 0x136 (= 0x210 - 0xDA) has
+								; not been located, so whether this is a
+								; fuel or a timing correction from CPU2's
+								; point of view is still open.
 				.block 1
 var_nv_trim_unk_98:		.block 1			; DATA XREF: clear_nv_ram:loc_C841↓w
 								; divide_d_by_x+1E6E↓r ...
@@ -4625,7 +4732,7 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				ld	a, #78h
 				st	a, var_ect_unk_148	; Default ECT intermediate value
 				ld	d, #0080h
-				st	d, unk_6B
+				st	d, var_o2_vote_cnt
 				ld	#80h, var_lambda_state
 				ld	#0FFh, unk_AA
 				ld	a, #80h
@@ -7502,7 +7609,7 @@ locret_D1DC:							; CODE XREF: read_nv_afr_trim+2↑j
 ;     calc_4ms_corrections' chunk CE6C. Gated on ECT 83-104C, off-idle,
 ;     RPM<3200, battery >=11.4V, var_cnt_D5 readiness, and
 ;     var_trim_state == 4. Accumulates O2 sensor polarity into
-;     var_lambda_count_unk_6C over 17 samples (unk_6B), then nudges
+;     var_o2_vote_accum over 17 samples (var_o2_vote_cnt), then nudges
 ;     var_nv_trim_unk_96 by +/-1 based on a majority-style threshold
 ;     (0x7C/0x84). Persisted/validated by sub_D2C5 (clamps against
 ;     nv_96_limits, wipes all NV RAM via clear_nv_ram if out of range - same
@@ -7568,7 +7675,7 @@ loc_D228:							; CODE XREF: divide_d_by_x+C7C↑j
 				clr	var_cnt_D5
 
 loc_D22A:							; CODE XREF: divide_d_by_x+C8B↑j
-				ld	a, unk_6B
+				ld	a, var_o2_vote_cnt
 				bne	loc_D23C
 
 				ld	d, #0F0Ch
@@ -7583,7 +7690,7 @@ loc_D237:							; CODE XREF: divide_d_by_x+C99↑j
 
 
 loc_D23C:							; CODE XREF: divide_d_by_x+C91↑j
-				inc	unk_6B
+				inc	var_o2_vote_cnt
 
 loc_D23E:							; CODE XREF: divide_d_by_x+C9F↑j
 				tbbs	bit1, var_flags_46, closed_loop_control	; Jump if closed loop mode
@@ -7633,7 +7740,7 @@ closed_loop_control:						; CODE XREF: divide_d_by_x:loc_D23E↑j
 
 
 loc_D283:							; CODE XREF: divide_d_by_x+CE2↑j
-				cmp	#06h, unk_6B
+				cmp	#06h, var_o2_vote_cnt
 				ble	loc_D2D2
 
 				ld	a, #01h			; Set rA to 1
@@ -7643,9 +7750,9 @@ loc_D283:							; CODE XREF: divide_d_by_x+CE2↑j
 				neg	a			; Negate rA to make it -1
 
 loc_D28F:							; CODE XREF: divide_d_by_x+CF1↑j
-				add	a, var_lambda_count_unk_6C
-				st	a, var_lambda_count_unk_6C
-				cmp	#11h, unk_6B
+				add	a, var_o2_vote_accum
+				st	a, var_o2_vote_accum
+				cmp	#11h, var_o2_vote_cnt
 				bcs	loc_D2D2
 
 				tbbs	bit5, var_limiter_flags, loc_D2BC
@@ -7656,10 +7763,10 @@ loc_D28F:							; CODE XREF: divide_d_by_x+CF1↑j
 				ld	d, #00FFh
 
 loc_D2A3:							; CODE XREF: divide_d_by_x+D02↑j
-				cmp	#84h, var_lambda_count_unk_6C
+				cmp	#84h, var_o2_vote_accum
 				bcc	loc_D2B4
 
-				cmp	#7Ch, var_lambda_count_unk_6C
+				cmp	#7Ch, var_o2_vote_accum
 				bgt	loc_D2BC
 
 				cmpz	a
@@ -7684,7 +7791,7 @@ loc_D2BA:							; CODE XREF: divide_d_by_x+D17↑j
 loc_D2BC:							; CODE XREF: divide_d_by_x+CA6↑j
 								; divide_d_by_x+CAE↑j ...
 				ld	d, #0080h
-				st	d, unk_6B
+				st	d, var_o2_vote_cnt
 				clrb	bit5, var_limiter_flags
 				bra	loc_D2D2
 

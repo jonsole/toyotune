@@ -1029,8 +1029,8 @@ chunk's entry point in the ASM; this is the narrative summary.
   label), distinct from the RPM/MAP-zone `nv_afr_trim_base` system in
   calc_4ms_corrections' chunk CE6C. Gated on ECT 83-104C, off-idle,
   RPM<3200, battery>=11.4V, and `var_trim_state==4`. Accumulates O2
-  sensor polarity into `var_lambda_count_unk_6C` over 17 samples
-  (`unk_6B`), then nudges `var_nv_trim_unk_96` by +/-1 via a
+  sensor polarity into `var_o2_vote_accum` over 17 samples
+  (`var_o2_vote_cnt`), then nudges `var_nv_trim_unk_96` by +/-1 via a
   majority-style threshold. Not renamed - didn't confirm what
   specifically distinguishes this from the zone-based AFR trim (e.g.
   "cruise" vs "part-throttle"), worth a follow-up.
@@ -1542,22 +1542,58 @@ entry gate is still unestablished (see that bit's declaration comment).
 - loc_E112 onward, and the start of chunk E363 up to the restore point
   around address E37F - continuation of the DC77/DD38/DD59 diagnostic
   phase; loc_DD59 jumps directly to loc_E112.
-- The second closed-loop lambda trim system in chunk D1DD
-  (var_nv_trim_unk_96/unk_6B/var_lambda_count_unk_6C) - distinguish its
-  purpose from the zone-based nv_afr_trim system.
-  **KEY CONTEXT (from Jon, the ECU's owner/tuner - not derived from the
-  disassembly): this ECU runs BOTH a short-term and a long-term fuel
-  trim**, which is almost certainly what the "multiple trim systems"
-  confusion in these entries actually is. Expect the fast-moving,
-  volatile, non-NV loop (var_lambda_integrator / lambda_avg, reset on
-  various events) to be SHORT-term, and the slow, NV-backed,
-  zone/cell-indexed one written through write_rB_nv_ram
-  (nv_afr_trim/var_nv_trim_unk_96/98, var_trim_cell_idx) to be
-  LONG-term - short-term trim is what the O2 loop swings cycle to cycle,
-  long-term is where its average is learned and stored across power
-  cycles. Verify against the code rather than assuming the mapping, but
-  this reframes the question from "how many trim systems are there" to
-  "which of these is short-term and which is long-term".
+- **RESOLVED: which trim is short-term and which is long-term.** Jon
+  confirmed the ECU runs both; the code says exactly where each lives.
+
+  The decisive site is `sub_E454` at `loc_E47B`, which assembles the whole
+  fuel correction as a single multiplier applied to injector pulse width:
+
+      multiplier = 0x0100 (unity)
+                 + read_nv_afr_trim(load)   <- LONG-term
+                 + var_lambda_integrator    <- SHORT-term
+
+  - **STFT = `var_lambda_integrator`.** Fast O2 feedback integrator, plain
+    RAM, never written to NV, forced back to its 0x8000 neutral on reset
+    events (loc_D04F). Swings continuously as the sensor crosses.
+  - **LTFT = the `nv_afr_trim_base` table.** 12 bytes in battery-backed NV,
+    indexed by `var_pim2` (manifold pressure = load) with interpolation
+    between cells via `read_nv_afr_trim`. Returns the first/idle cell
+    directly when the throttle is closed (`var_flags_46.2`), and a neutral
+    0x80 when `var_flags_42.0` says trims are invalid. Validated at startup
+    against `nv_afr_trim_top`/`_end`; failure wipes all NV via
+    `clear_nv_ram`.
+
+  So the earlier "how many trim systems are there" confusion was really
+  just STFT and LTFT summed into one correction, exactly as expected.
+
+  **But there IS a genuine third mechanism**, and it is not part of that
+  multiplier: `var_nv_trim_unk_96`, learned by `closed_loop_control`. It
+  votes on O2 polarity into `var_o2_vote_accum` (+/-1 per sample from a
+  0x80 neutral) across a 17-sample window counted by `var_o2_vote_cnt`
+  (samples 0-6 discarded as settling), then applies a majority verdict with
+  a 0x7D-0x83 deadband to nudge the stored value by ONE step. Its gating is
+  far tighter than the LTFT table's: ECT 82.9-103.8C, off-idle, RPM < 3200,
+  battery >= 11.4V, no transient (`var_pim_trans_fast`), no CPU2
+  fuel-trim/idle-enrich request, and `var_trim_state == 4`. That reads as a
+  slow cruise-only global correction.
+
+  It is stored as a value/complement pair (the two halves stepped in
+  opposite directions by `dec a`/`inc b`), the same integrity scheme
+  `write_rB_nv_ram` uses, and `sub_D2C5` wipes all NV RAM if it fails
+  validation against `nv_96_limits`.
+
+  **Still open on that third one:** its consumers are `sub_E843` (an
+  ignition-timing-adjacent calculation near `sub_E865`) and CPU2 via
+  `copy_dma_tx`'s `dmatx_trim_unk_210`. The CPU2 receive-side name at
+  0x136 (= 0x210 - 0xDA) was not located, so whether CPU2 treats it as a
+  fuel or a timing correction is unresolved - that is the next question
+  for this cluster.
+
+  Renames: `unk_6B`->`var_o2_vote_cnt`,
+  `var_lambda_count_unk_6C`->`var_o2_vote_accum`. `var_lambda_integrator`
+  and `nv_afr_trim_base` keep their established names (they are already
+  meaningful and widely cross-referenced) but their declarations now state
+  the STFT/LTFT identity outright.
 - loc_DA63's lambda_avg/lambda_integrator adjustment logic (traced/renamed
   for the alias, but not characterized - looks like yet another distinct
   lambda-trim mechanism, see fuel_calculation_system.md Open Questions)
