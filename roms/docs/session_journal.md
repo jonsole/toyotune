@@ -1494,10 +1494,37 @@ in-function BRANCH targets, not callables. Even the gold-standard
 `knock_mcu_update.ASM` has those, and renaming them is not a goal - the
 metric that matters is call targets.
 
-Still named `unk_`: 60 variables on CPU1, 13 on CPU2. Every one carries
+Still named `unk_`: 52 on CPU1, 13 on CPU2 (down from 60 after a pass over
+the most-referenced ones). Every one carries
 either a full explanation or a factual "written by X, read by Y" note; they
 are unnamed because their purpose is genuinely unestablished, not because
 nobody looked.
+
+### `unk_` pass: the eight most-referenced on CPU1
+
+| was | now | basis |
+|---|---|---|
+| `unk_127` | `var_ign_blend_out` | update_ign_timing_blend's signed output; feeds PW stage 3 and an ISC gate |
+| `unk_129` | `var_ign_blend_accum` | the signed accumulator in that blend; its sign selects table_rpm_C168/C172 |
+| `unk_AA` | `var_fuelcut_recovery_cnt` | 0..2 counter; reset while fuel cut active, gates a +0x01F4 bump for ~2 ticks after it releases |
+| `unk_187` | `var_cnt_187` | 16-bit saturating counter with an accept-window of [3, 0x131); what it counts is still unknown |
+| `unk_1DD` | `var_asr0n_shadow_1DD` | **CPU1's ASR0N write-shadow** - see below |
+| `unk_1D8` | `var_flags_4F_copy2` | save/restore slot for var_flags_4F, parallel to var_flags_4E_copy2 |
+| `unk_1CA` | `var_inj_pw_unk_1CA` | intermediate on the injector-PW path; domain certain, quantity not |
+| `unk_E5` | `var_cnt_sta_active` | starter-engaged tick counter; >0x1F (~124ms) debounces the STA fault |
+
+**`var_asr0n_shadow_1DD` is the notable one.** CPU1 maintains an ASR0N write
+shadow using the identical idiom to CPU2's `var_asr0n_shadow_126`, for the
+identical reason: ASR0 write configures DMA while ASR0 read returns the
+latched I/O-transition timer value, so the register cannot be
+read-modify-written. Nobody had connected this CPU1 variable to that
+mechanism - it was found by recognising the shadow idiom once the hardware
+asymmetry was known. Worth remembering that a fact learned about one CPU is
+worth re-scanning the other for.
+
+`var_cnt_sta_active` is also a reminder of the `increment_counters` blind
+spot: it appears only ever CLEARED in this file, because its increments come
+from the `COUNTER_ARG(var_cnt_E1, 7)` range write.
 
 ---
 
