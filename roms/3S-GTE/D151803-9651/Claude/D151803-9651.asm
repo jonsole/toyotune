@@ -1891,7 +1891,10 @@ var_pim_trim_scale:			.block 1			; DATA XREF: divide_d_by_x+E83↓r
 								; calc_dmatx_pim+A↓r ...
 								; Learned PIM/barometric trim expressed as a
 								; multiplier: (var_nv_trim_unk_98 / 2) / 0x61,
-								; saturated to 0xFF, computed in adc_handler_pim
+								; saturated to 0xFF, computed in
+								; validate_nv_trim_pim - which merely SITS in
+								; adc_handler_pim'''s address range; an earlier
+								; note here credited that handler by mistake
 								; (0x50 substituted when var_flags_42.0 says the
 								; trims are not valid). This is what converts the
 								; throttle-derived estimate into real PIM units.
@@ -3205,7 +3208,7 @@ nv_96_limits:			.db 80h, 00h			; DATA XREF: validate_nv_trim_o2+2↓o
 								; validate_nv_trim_o2+5↓t
 inj_pw_limits:			.dw 7530h, 00AFh		; DATA XREF: divide_d_by_x:loc_E719↓o
 								; divide_d_by_x+2181↓t
-byte_C3BD:			.db 64h, 37h			; DATA XREF: adc_handler_pim+98↓o
+nv_98_limits:			.db 64h, 37h			; DATA XREF: adc_handler_pim+98↓o
 								; adc_handler_pim+9B↓t ...
 byte_C3BF:			.db 88h, 2Ah			; DATA XREF: calc_4ms_corrections:loc_EDC1↓o
 								; calc_4ms_corrections+3A2↓t
@@ -5638,7 +5641,7 @@ locret_C9D9:							; CODE XREF: update_tps_closed_ref+3C↑j
 ;     elsewhere as "boost limit exceeded" - not clear if this is the same
 ;     condition or bit reuse).
 ;
-;     Then calls sub_E454 (fuel enrichment scaling), calc_dmatx_pim, loc_FC38
+;     Then calls sub_E454 (fuel enrichment scaling), calc_dmatx_pim, validate_nv_trim_pim
 ;     and validate_nv_trim_o2 (NV trim validation, see below) - only validate_nv_trim_o2 has
 ;     been deep-dived.
 ;  2) (CA3D-CAE2) Overrun/deceleration fuel-cut decision feeding
@@ -5723,7 +5726,7 @@ loc_CA1B:							; CODE XREF: divide_d_by_x:loc_C9FF↑j
 
 				jsr	calc_dmatx_pim
 
-				jsr	loc_FC38
+				jsr	validate_nv_trim_pim
 
 				jsr	validate_nv_trim_o2
 
@@ -19247,8 +19250,8 @@ loc_FC19:							; CODE XREF: adc_handler_pim+76↑j
 
 				push	d
 				ld	b, var_pim_baseline
-				ld	y, #byte_C3BD
-				jsr	y + (clamp_rB -	byte_C3BD) ; C3D7
+				ld	y, #nv_98_limits
+				jsr	y + (clamp_rB -	nv_98_limits) ; C3D7
 
 				ld	x, #var_nv_trim_unk_98
 				jsr	write_rB_nv_ram
@@ -19269,10 +19272,37 @@ loc_FC30:							; CODE XREF: adc_handler_pim:loc_FBE0↑j
 ; Writes: var_pim_trim_scale
 ; Calls: check_boost_limit, clear_nv_ram
 ; ---------------------------------------------------------------------------
-loc_FC38:							; CODE XREF: divide_d_by_x+491↑p
+; ---------------------------------------------------------------------------
+; validate_nv_trim_pim (was validate_nv_trim_pim): sanity-check the PIM/barometric NV
+; trim and recompute the scale factor derived from it.
+;
+; Called from divide_d_by_x immediately after calc_dmatx_pim, and immediately
+; BEFORE validate_nv_trim_o2 - the two form a matched pair of NV-trim
+; validators, one per learned trim:
+;   validate_nv_trim_pim  var_nv_trim_unk_98  vs nv_98_limits (0x64/0x37)
+;   validate_nv_trim_o2   var_nv_trim_unk_96  vs nv_96_limits (0x80/0x00)
+; Both wipe ALL of NV RAM via clear_nv_ram when their value fails its bounds
+; check - the same deliberate trade documented on validate_nv_trim_o2.
+;
+; This one then does a second job the other does not: it derives
+; var_pim_trim_scale = ((trim or 0x50) / 2) / 0x61, saturated to 0xFF, where
+; the 0x50 substitutes for the real trim while var_flags_42.0 says the trims
+; are not yet valid. That scale is what puts calc_dmatx_pim's
+; throttle-derived pressure estimate into real PIM units.
+;
+; NOTE ON LAYOUT: this routine sits inside adc_handler_pim's address range,
+; which is why IDA labels its internal branches "adc_handler_pim+NN". It is
+; NOT reached by fall-through from that handler - adc_handler_pim jumps over
+; it to loc_FC57. Its only entry is the jsr from divide_d_by_x.
+;
+; Reads: var_nv_trim_unk_98, var_flags_42
+; Writes: var_pim_trim_scale (and all of NV RAM, indirectly, on failure)
+; Calls: clamp_rB (via the y+offset trick), clear_nv_ram
+; ---------------------------------------------------------------------------
+validate_nv_trim_pim:							; CODE XREF: divide_d_by_x+491↑p
 				ld	b, var_nv_trim_unk_98
-				ld	y, #byte_C3BD
-				jsr	y + (clamp_rB -	byte_C3BD)
+				ld	y, #nv_98_limits
+				jsr	y + (clamp_rB -	nv_98_limits)
 
 				bcc	loc_FC44
 

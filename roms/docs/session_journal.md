@@ -1000,7 +1000,7 @@ chunk's entry point in the ASM; this is the narrative summary.
   see chunk D3A5 below. Also sets `var_flags_4E.7` in this path, though
   that bit is documented elsewhere as "boost limit exceeded" - not
   confirmed whether that's the same condition or bit reuse.
-- Calls sub_E454 (fuel enrichment scaling, confirmed), calc_dmatx_pim, loc_FC38,
+- Calls sub_E454 (fuel enrichment scaling, confirmed), calc_dmatx_pim, validate_nv_trim_pim,
   validate_nv_trim_o2 (NV trim validation, see D1DD below) - only validate_nv_trim_o2 was
   traced.
 - The overrun/deceleration fuel-cut decision feeding `injector_warmup`
@@ -1538,7 +1538,7 @@ entry gate is still unestablished (see that bit's declaration comment).
   **Still open here:** sub_E76D's two maps (map_c006, map_c0c7) are indexed
   by var_rpm_x_5p12 but their units are not established, and
   var_unk_tps_143's own producer is untraced. **Related and still not
-  deep-dived:** loc_FC38 (called from chunk C9DA alongside this function).
+  deep-dived:** validate_nv_trim_pim (called from chunk C9DA alongside this function).
 - **RESOLVED: `loc_E112` is a one-instruction trampoline**, and `E363` is
   the 64ms dispatch slot. This entry was larger in the imagination than in
   the ROM.
@@ -1888,6 +1888,32 @@ generically must not assume every slot is live on every ROM.
 
   **Still not traced:** `table_C163`'s real-world meaning (the second lookup
   at loc_E92B feeding `unk_127`).
+
+### `loc_FC38` resolved: `validate_nv_trim_pim`
+
+The other long-standing "not deep-dived" item on the CPU1 list, and it turns
+out to be the missing half of a symmetric pair. `divide_d_by_x` calls the two
+back to back, right after `calc_dmatx_pim`:
+
+| Routine | Validates | Against |
+|---|---|---|
+| `validate_nv_trim_pim` (was `loc_FC38`) | `var_nv_trim_unk_98` (PIM/baro) | `nv_98_limits` = 0x64/0x37 |
+| `validate_nv_trim_o2` (was `sub_D2C5`) | `var_nv_trim_unk_96` (O2-learned) | `nv_96_limits` = 0x80/0x00 |
+
+Both wipe ALL of NV RAM through `clear_nv_ram` when their value fails its
+bounds check. `byte_C3BD` renamed `nv_98_limits` to match - it is the same
+limits pair used when *writing* that trim in `adc_handler_pim`, so it belongs
+to the variable rather than to either call site.
+
+`validate_nv_trim_pim` also does a second job its twin does not: it derives
+`var_pim_trim_scale = ((trim or 0x50) / 2) / 0x61`, saturated - the factor
+that puts `calc_dmatx_pim`'s throttle-derived pressure estimate into real PIM
+units. **Correction:** `var_pim_trim_scale`'s declaration credited that
+computation to `adc_handler_pim`. It is `validate_nv_trim_pim` that computes
+it; the routine merely *sits inside* `adc_handler_pim`'s address range, which
+is why IDA labels its internal branches `adc_handler_pim+NN`. It is not
+reached by fall-through - that handler jumps over it to `loc_FC57` - and its
+only entry is the `jsr` from `divide_d_by_x`.
 
   **Related sweep done at the same time:** CLAUDE.md flagged that the shared
   math library's `mov s, x` comments carried the reversed-notation error and
