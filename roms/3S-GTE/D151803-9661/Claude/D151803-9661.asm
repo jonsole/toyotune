@@ -600,7 +600,10 @@ dmarx_tps:			.block 2			; CA83↓r ...
 								; DMARX02: TPS
 dmarx_ect:			.block 2			; C611↓r ...
 								; DMARX04: ECT
-dmarx_word_CB:			.block 2			; D05F↓r
+dmarx_inj_pw_inj1:		.block 2			; D05F↓r
+								; = CPU1's var_inj_pw_inj1 (injector 1 pulse
+								; width), sent as dmatx_inj_pw_inj1 (CPU1
+								; 0x206, offset 0x13B).
 								; DMARX06:
 dmarx_pim:			.block 2			; CC56↓r ...
 								; DMARX08:
@@ -610,17 +613,43 @@ dmarx_tham:			.block 1			; CD8C↓r ...
 								; DMARX0B:
 dmarx_battery:			.block 1			; D040↓r ...
 								; DMARX0C:
-dmarx_unk_D2:			.block 1
-								; Not referenced anywhere in this file -
-								; unused padding/reserved DMA slot.
-dmarx_unk_D3:			.block 1			; CCA8↓r ...
+dmarx_nv_trim_pim:		.block 1
+								; = CPU1's var_nv_trim_unk_98, its learned
+								; PIM/barometric NV trim, sent as
+								; dmatx_nv_trim_pim (CPU1 0x20D, offset
+								; 0x13B). CPU1 substitutes a 0x50 fallback
+								; when its trims are not valid.
+								;
+								; Still not referenced anywhere in THIS file -
+								; so CPU1 goes to the trouble of sending its
+								; barometric trim and CPU2 simply ignores it.
+								; Either vestigial, or reserved for a variant
+								; that does use it. Worth knowing before
+								; assuming the DMA layout is fully live.
+dmarx_cnt_startup:		.block 1			; CCA8↓r ...
 								; DMARX0E:
-								; Read as a threshold in
-								; decay_enrichment_unk_100 (cmp #5Ch) and
-								; the warning-debounce phase (cmp #3Dh) -
-								; physical meaning not confirmed.
+								; RESOLVED via the DMA address mapping: this
+								; is CPU1's var_cnt_startup, sent as
+								; dmatx_cmd_startup_20E (CPU1 0x20E, offset
+								; 0x13B) - a since-startup counter.
+								;
+								; That explains both readers, which had been
+								; noted as "physical meaning not confirmed":
+								; decay_enrichment_unk_100's cmp #5Ch and the
+								; warning-debounce phase's cmp #3Dh are both
+								; "has the engine been running long enough"
+								; gates - hold off decaying start enrichment,
+								; and suppress warnings, until startup is
+								; sufficiently past.
 dmarx_unk_D4:			.block 1			; CBB9↓r ...
 								; DMARX0F:
+								; = CPU1's var_cnt_EA, sent as
+								; dmatx_cnt_unk_20F (CPU1 0x20F, offset
+								; 0x13B). Left named unk_ because
+								; var_cnt_EA's own meaning is not
+								; established on the CPU1 side either - but
+								; the two are the same counter, so resolving
+								; either resolves both.
 								; Read as a threshold/limit in
 								; decay_enrichment_unk_100 (an ECT-table
 								; lookup must not exceed it),
@@ -628,12 +657,36 @@ dmarx_unk_D4:			.block 1			; CBB9↓r ...
 								; (>0x0A check), and the PORTA.2 warning
 								; (>0x0F check) - physical meaning not
 								; confirmed.
-dmarx_unk_D5:			.block 1			; CB94↓r
+dmarx_nv_trim_o2:		.block 1			; CB94↓r
 								; DMARX10:
-								; Read once, as a multiplier in
-								; decay_enrichment_unk_100's neighboring
-								; chunk (loc_CB6D area) - physical
-								; meaning not confirmed.
+								; = CPU1's var_nv_trim_unk_96, sent as
+								; dmatx_nv_trim_o2 (CPU1 0x210; the
+								; CPU1->CPU2 direction uses
+								; CPU1 = CPU2 + 0x13B, not the 0xDA of the
+								; return direction).
+								;
+								; RESOLVED (was "physical meaning not
+								; confirmed"): CPU1 learns this value very
+								; slowly from the O2 sensor under
+								; cruise-only conditions - a majority vote
+								; over 17 samples, +/-1 step per window,
+								; gated on ECT 82.9-103.8C, off-idle,
+								; RPM < 3200, battery >= 11.4V and no load
+								; transient - and stores it in NV RAM. See
+								; CPU1's var_nv_trim_unk_96 declaration
+								; and closed_loop_control for the learning
+								; side.
+								;
+								; CPU2 spends it here: at loc_CB6D it
+								; multiplies an ECT-indexed table_C393
+								; lookup, and the product becomes
+								; var_enrichment_unk_100 - the warm-up
+								; enrichment that decay_enrichment_unk_100
+								; then bleeds away. So it is a learned
+								; global FUEL correction on the enrichment
+								; path, which is why it never appears in
+								; CPU1's own short-term/long-term fuel
+								; multiplier.
 								;
 dmarx_lambda_state:			.block 1			; C9BE↓r ...
 dmarx_adc_lambda:		.block 1			; loc_D0E2↓r ...
@@ -3219,7 +3272,7 @@ main_continue_2:						; loc_C9E0↑j
 ; 4) (loc_CB6D-CBCE) dmatx_unk_enrich (PIM-scaled product of
 ;    var_enrichment_unk_FE and a fixed-point PIM division, always
 ;    recomputed) falls into var_enrichment_unk_100/dmatx_enrichment_unk_15A (ECT
-;    table x dmarx_unk_D5 product, same gate pattern) - decayed (by
+;    table x dmarx_nv_trim_o2 product, same gate pattern) - decayed (by
 ;    subtraction, not scaling) by decay_enrichment_unk_100.
 ; 5) (loc_CBCE-CBE9) var_enrichment_unk_103/dmatx_enrichment_unk_15D (THA-table lookup, same gate
 ;    pattern) - decayed by decay_var_enrichment_unk_103. Falls into calc_params.
@@ -3517,7 +3570,7 @@ loc_CB75:							; CB71↑j
 				ld	y, #table_C393
 				jsr	table_rb_fixed_32_ect_interp
 				mov	d, x
-				ld	a, dmarx_unk_D5
+				ld	a, dmarx_nv_trim_o2
 				clr	b
 				jsr	divide_rD_64
 				jsr	mult_rDrX
@@ -3617,7 +3670,7 @@ locret_CBFB:							; CBEE↑j
 ; named variables below/documented inline at each computation.
 ;
 ; Reads: var_rpm_x_5p12, dmarx_pim, dmarx_pim2, dmarx_lambda_state,
-;   var_spd, dmarx_flags_1, dmarx_unk_D3, dmarx_unk_D6 (via
+;   var_spd, dmarx_flags_1, dmarx_cnt_startup, dmarx_unk_D6 (via
 ;   dmarx_lambda_state), var_ne_sum, var_rpm_smooth_ea
 ; Writes: dmatx_ign_timing_fallback1, dmatx_ign_timing_fallback2,
 ;   dmatx_iscv_duty, dmatx_ign_timing_unk_166, dmatx_unk_167, var_map_ve,
@@ -3781,7 +3834,7 @@ loc_CCA0:							; CC9B↑j
 				st	d, dmatx_ve_x_pim_x_rpm
 				ld	b, #80h
 				tbbc	bit2, dmarx_var_flags_46, loc_CCDA
-				cmp	#5Ch, dmarx_unk_D3
+				cmp	#5Ch, dmarx_cnt_startup
 				bcs	loc_CCDA
 				ld	x, dmarx_lambda_state
 				bpz	loc_CCDA
@@ -4558,7 +4611,7 @@ loc_D037:							; loc_D01C↑j
 ; elsewhere in this ROM (e.g. the TVSV limiter-cooldown scale above).
 ;
 ; Reads: var_flags_40, var_input_bits, dmarx_var_flags_46, dmarx_battery,
-;   dmarx_unk_D4, dmarx_pim2, dmarx_word_CB, var_rpm_x_5p12,
+;   dmarx_unk_D4, dmarx_pim2, dmarx_inj_pw_inj1, var_rpm_x_5p12,
 ;   var_cnt32ms_B4, var_cnt4ms_A9, dmarx_ect, var_spd, dmarx_pim2,
 ;   dmarx_tham, var_cnt32ms_B5
 ; Writes: var_cnt32ms_B4, PORTA, var_cnt4ms_A9, var_map_temp_x, PORTB,
@@ -4567,7 +4620,7 @@ loc_D037:							; loc_D01C↑j
 
 ; 1) PORTA.2 warning, gated on dmarx_battery >= 11.4V (skips entirely
 ;    below that) and dmarx_unk_D4 > 0x0F: computes (var_rpm_x_5p12's high
-;    byte * dmarx_word_CB) * 0x038A / 256 (via mult_rArX then mult_rDrX)
+;    byte * dmarx_inj_pw_inj1) * 0x038A / 256 (via mult_rArX then mult_rDrX)
 ;    and compares it against a MAP-indexed 2-point table lookup
 ;    (table_C515, or table_C51A - a systematically LOWER curve - when
 ;    dmarx_battery >= 0xA3, a higher voltage threshold), shifted right 3
@@ -4578,7 +4631,7 @@ loc_D037:							; loc_D01C↑j
 ;    threshold) or the initial gate failing resets both counters and
 ;    clears PORTA.2 immediately.
 ;
-;    NOT CONFIRMED: dmarx_word_CB's physical meaning (used nowhere else in
+;    NOT CONFIRMED: dmarx_inj_pw_inj1's physical meaning (used nowhere else in
 ;    this file) or what PORTA.2 physically drives. The RPM/MAP/battery
 ;    shape (decreasing-with-MAP threshold curves, stricter at higher
 ;    battery voltage) is suggestive of a charging-system or load
@@ -4603,7 +4656,7 @@ loc_D055:							; D050↑j
 				shr	d
 				shr	d
 				st	d, var_map_temp_x
-				ld	x, dmarx_word_CB
+				ld	x, dmarx_inj_pw_inj1
 				ld	a, var_rpm_x_5p12
 				jsr	mult_rArX
 				ld	x, #038Ah
@@ -5329,7 +5382,7 @@ loc_D364:							; D360↑j
 loc_D367:							; D34E↑j ...
 				cmp	#51h, dmarx_ect
 				bcs	loc_D371
-				cmp	#3Dh, dmarx_unk_D3
+				cmp	#3Dh, dmarx_cnt_startup
 				bcc	loc_D373
 
 loc_D371:							; D339↑j ...

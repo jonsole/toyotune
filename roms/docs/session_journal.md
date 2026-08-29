@@ -1582,12 +1582,52 @@ entry gate is still unestablished (see that bit's declaration comment).
   `write_rB_nv_ram` uses, and `sub_D2C5` wipes all NV RAM if it fails
   validation against `nv_96_limits`.
 
-  **Still open on that third one:** its consumers are `sub_E843` (an
-  ignition-timing-adjacent calculation near `sub_E865`) and CPU2 via
-  `copy_dma_tx`'s `dmatx_trim_unk_210`. The CPU2 receive-side name at
-  0x136 (= 0x210 - 0xDA) was not located, so whether CPU2 treats it as a
-  fuel or a timing correction is unresolved - that is the next question
-  for this cluster.
+  **RESOLVED - the third trim is a FUEL correction, spent on CPU2.** Its
+  consumers are `sub_E843` on CPU1 and, more importantly, CPU2 via
+  `copy_dma_tx`'s `dmatx_nv_trim_o2`. CPU2 receives it as
+  `dmarx_nv_trim_o2` and uses it in `check_startup`'s `loc_CB6D` chunk as
+  a multiplier on an ECT-indexed `table_C393` lookup; the product becomes
+  `var_enrichment_unk_100`, the warm-up enrichment that
+  `decay_enrichment_unk_100` then bleeds away (gated on `dmarx_ect`
+  0x0F-0xC4 and `dmarx_var_flags_46.0`).
+
+  So CPU1 learns this correction slowly from the O2 sensor but mostly
+  SPENDS it through CPU2's enrichment path - which is exactly why it never
+  appears in CPU1's own `sub_E454` STFT+LTFT multiplier.
+
+  **CORRECTION - DMA offset direction.** Finding this exposed an error
+  made earlier in this same session: the `CPU1 = CPU2 + 0xDA` formula
+  applies to the CPU2->CPU1 direction only. **The CPU1->CPU2 (dmatx)
+  direction uses `CPU1 = CPU2 + 0x13B`.** Using 0xDA on a dmatx address
+  lands inside CPU2's `var_serbus_rx` buffer, which is what flagged the
+  mistake. The correct offset is confirmed by the many name pairs that
+  already matched independently across the buffer: `dmatx_pim2`/
+  `dmarx_pim2`, `dmatx_tps`/`dmarx_tps`, `dmatx_ect`/`dmarx_ect`,
+  `dmatx_lambda_state`/`dmarx_lambda_state`,
+  `dmatx_knock_retard_info`/`dmarx_knock_info`. Both offsets are now
+  stated explicitly wherever they are used.
+
+  **Bonus resolutions from walking that mapping** - four CPU2 receive
+  slots that were marked "physical meaning not confirmed" are now named
+  from their CPU1 sources:
+  - `dmarx_unk_D5` -> `dmarx_nv_trim_o2` (this trim)
+  - `dmarx_unk_D3` -> `dmarx_cnt_startup` (= CPU1 `var_cnt_startup`).
+    This explains its two readers, which had been unexplained: the
+    `cmp #5Ch` in `decay_enrichment_unk_100` and the `cmp #3Dh` in the
+    warning-debounce phase are both "has the engine been running long
+    enough" gates.
+  - `dmarx_word_CB` -> `dmarx_inj_pw_inj1` (= CPU1 `var_inj_pw_inj1`)
+  - `dmarx_unk_D2` -> `dmarx_nv_trim_pim` (= CPU1's PIM/barometric NV
+    trim `var_nv_trim_unk_98`). Notable: it is still referenced NOWHERE in
+    CPU2 - CPU1 sends its barometric trim and CPU2 ignores it entirely.
+    Either vestigial or reserved for a variant; worth knowing before
+    assuming the DMA layout is fully live.
+  - `dmarx_unk_D4` left named unk_ but cross-referenced: it is CPU1's
+    `var_cnt_EA`, whose meaning is unestablished on that side too, so
+    resolving either resolves both.
+
+  CPU1-side renames: `dmatx_trim_unk_20D` -> `dmatx_nv_trim_pim`,
+  `dmatx_trim_unk_210` -> `dmatx_nv_trim_o2`.
 
   Renames: `unk_6B`->`var_o2_vote_cnt`,
   `var_lambda_count_unk_6C`->`var_o2_vote_accum`. `var_lambda_integrator`

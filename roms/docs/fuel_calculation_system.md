@@ -486,10 +486,27 @@ correction. It is stored as a value/complement pair (the halves stepped in
 opposite directions), and `sub_D2C5` wipes all NV RAM if it fails validation
 against `nv_96_limits`.
 
-**Open:** its consumers are `sub_E843` (ignition-timing-adjacent, near
-`sub_E865`) and CPU2 via `copy_dma_tx`'s `dmatx_trim_unk_210`. The CPU2
-receive-side name at `0x136` (= `0x210 - 0xDA`) has not been located, so
-whether CPU2 treats it as a fuel or a timing correction is unresolved.
+**Where it is spent - resolved.** Its consumers are `sub_E843` on CPU1 and
+CPU2 via `copy_dma_tx`'s `dmatx_nv_trim_o2`. CPU2 receives it as
+`dmarx_nv_trim_o2` and, in `check_startup`'s `loc_CB6D` chunk, multiplies an
+ECT-indexed `table_C393` lookup by it; the product becomes
+`var_enrichment_unk_100`, the warm-up enrichment term that
+`decay_enrichment_unk_100` subsequently bleeds away. Gated there on
+`dmarx_ect` between `0x0F` and `0xC4`.
+
+So it is a **fuel** correction, not a timing one: CPU1 learns it slowly from
+the O2 sensor under cruise, and mostly spends it through CPU2's enrichment
+path - which is why it never appears in CPU1's own STFT+LTFT multiplier
+above.
+
+> **DMA offset, for anyone following this across the two ROMs.** The
+> `CPU1 = CPU2 + 0xDA` relation applies to the **CPU2 -> CPU1** direction.
+> The **CPU1 -> CPU2** (`dmatx`) direction uses **`CPU1 = CPU2 + 0x13B`**.
+> Applying 0xDA to a `dmatx` address lands inside CPU2's `var_serbus_rx`
+> buffer. The 0x13B figure is confirmed by the name pairs that already
+> matched independently across the buffer (`dmatx_pim2`/`dmarx_pim2`,
+> `dmatx_tps`/`dmarx_tps`, `dmatx_ect`/`dmarx_ect`,
+> `dmatx_lambda_state`/`dmarx_lambda_state`).
 
 ### Trim learning is frozen through transients
 

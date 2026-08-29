@@ -1277,12 +1277,40 @@ var_nv_trim_unk_96:		.block 1			; DATA XREF: clear_nv_ram+2E↓w
 								; Consumers: sub_E843 (an ignition-timing
 								; -adjacent calculation near sub_E865),
 								; and CPU2 via copy_dma_tx's
-								; dmatx_trim_unk_210. NOT yet established:
-								; what CPU2 does with it - the receive-side
-								; name at CPU2 0x136 (= 0x210 - 0xDA) has
-								; not been located, so whether this is a
-								; fuel or a timing correction from CPU2's
-								; point of view is still open.
+								; dmatx_nv_trim_o2.
+								;
+								; RESOLVED - it is a FUEL correction on
+								; CPU2's side, not a timing one. CPU2
+								; receives it as dmarx_nv_trim_o2 and uses
+								; it in check_startup's loc_CB6D chunk as
+								; a multiplier on an ECT-indexed table
+								; (table_C393) lookup, the product
+								; becoming var_enrichment_unk_100 - the
+								; warm-up/startup enrichment term that
+								; decay_enrichment_unk_100 then bleeds
+								; away. Gated there on dmarx_ect between
+								; 0x0F and 0xC4 and on
+								; dmarx_var_flags_46.0.
+								;
+								; So this trim is a slow, cruise-learned
+								; global fuel correction that CPU1 learns
+								; from the O2 sensor but SPENDS mostly
+								; through CPU2's enrichment path, which is
+								; why it never appears in CPU1's own
+								; sub_E454 multiplier alongside STFT/LTFT.
+								;
+								; NOTE ON THE DMA OFFSET: the CPU1->CPU2
+								; direction uses CPU1 = CPU2 + 0x13B, NOT
+								; the 0xDA that applies to the CPU2->CPU1
+								; direction. (An earlier revision of this
+								; comment used 0xDA here and landed inside
+								; CPU2's var_serbus_rx buffer, which is
+								; what flagged the error.) Confirmed by the
+								; many already-matching name pairs across
+								; the buffer: dmatx_pim2/dmarx_pim2,
+								; dmatx_tps/dmarx_tps, dmatx_ect/dmarx_ect,
+								; dmatx_lambda_state/dmarx_lambda_state,
+								; dmatx_knock_retard_info/dmarx_knock_info.
 				.block 1
 var_nv_trim_unk_98:		.block 1			; DATA XREF: clear_nv_ram:loc_C841↓w
 								; divide_d_by_x+1E6E↓r ...
@@ -2316,10 +2344,10 @@ dmatx_pim:			.block 2			; DATA XREF: divide_d_by_x+91D↓r
 dmatx_tha:			.block 1			; DATA XREF: ROM:FF1B↓w
 dmatx_tham:			.block 1			; DATA XREF: ROM:FF52↓w
 dmatx_battery:			.block 1			; DATA XREF: adc_handler_battery+2↓w
-dmatx_trim_unk_20D:		.block 1			; DATA XREF: copy_dma_tx:loc_F929↓w
+dmatx_nv_trim_pim:		.block 1			; DATA XREF: copy_dma_tx:loc_F929↓w
 dmatx_cmd_startup_20E:		.block 1			; DATA XREF: copy_dma_tx+16↓w
 dmatx_cnt_unk_20F:		.block 1			; DATA XREF: copy_dma_tx+1B↓w
-dmatx_trim_unk_210:		.block 1			; DATA XREF: copy_dma_tx:loc_F933↓w
+dmatx_nv_trim_o2:		.block 1			; DATA XREF: copy_dma_tx:loc_F933↓w
 dmatx_lambda_state:		.block 1			; DATA XREF: copy_dma_tx+20↓w
 								; Verbatim copy of var_lambda_state (see
 								; copy_dma_tx).
@@ -18033,7 +18061,7 @@ loc_F911:							; CODE XREF: IV0+17↑j
 ;   var_flags_4F_saved, var_cnt_startup, var_cnt_EA, var_error_flags1,
 ;   var_inj_pw_inj1, var_io_input1, var_lambda_state, var_limiter_flags,
 ;   var_pw_loop_mode
-; Writes: dmatx_trim_unk_20D, dmatx_trim_unk_210, dmatx_cmd_startup_20E,
+; Writes: dmatx_nv_trim_pim, dmatx_nv_trim_o2, dmatx_cmd_startup_20E,
 ;   dmatx_cnt_unk_20F, dmatx_lambda_state, dmatx_inj_pw_inj1,
 ;   dmatx_knock_retard_info, dmatx_pw_loop_mode, dmatx_error_flags1,
 ;   dmatx_flags_46, dmatx_flags_1, dmatx_limiter_flags
@@ -18047,14 +18075,14 @@ copy_dma_tx:							; CODE XREF: divide_d_by_x+186↑p
 				ld	a, #50h
 
 loc_F929:							; CODE XREF: copy_dma_tx+2↑j
-				st	a, dmatx_trim_unk_20D
+				st	a, dmatx_nv_trim_pim
 				ld	a, var_nv_trim_unk_96
 				tbbs	bit0, var_flags_42, loc_F933 ; Jump if trims valid
 
 				ld	a, #00h
 
 loc_F933:							; CODE XREF: copy_dma_tx+C↑j
-				st	a, dmatx_trim_unk_210
+				st	a, dmatx_nv_trim_o2
 				ld	a, var_cnt_startup
 				st	a, dmatx_cmd_startup_20E
 				ld	a, var_cnt_EA
