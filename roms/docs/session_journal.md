@@ -898,7 +898,7 @@ Key findings:
   latch (loc_DD02-DD38), one wrapping a long O2-heater/lambda/coolant
   diagnostic check run (loc_DDB8-DE7B, reached via loc_DD69, itself called
   from a *different, later* point in the main loop - the same short second
-  var_trim_state-alias instance that calls loc_DA63). Added a matching
+  var_trim_state-alias instance that calls update_lambda_stft). Added a matching
   `unk_1CF_alias` .equ (same technique as var_trim_state_alias) and applied
   it to both confirmed windows.
 - Resolved two previously-flagged "not deep-dived" helpers: `sub_DE5A`
@@ -953,7 +953,7 @@ existing tbbc/tbbs/setb/clrb-on-var_flags_4E instruction encodings against
 var_trim_state's bits instead of compiling separate code. Confirmed by the
 snapshot-at-entry (var_flags_4E_copy2/unk_1D8), the commit-without-restore
 at loc_DC77, and an identical short-lived instance later
-(var_trim_state -> var_flags_4E -> jsr loc_DA63 -> var_flags_4E ->
+(var_trim_state -> var_flags_4E -> jsr update_lambda_stft -> var_flags_4E ->
 var_trim_state) right before the real var_flags_4E is finally restored
 around address E37F (chunk E363). **Any "var_flags_4E" bit-test in this
 address range means var_trim_state, not flags_4E's documented bits** - see
@@ -972,11 +972,11 @@ pinned down with confidence.
 another label - zero bytes changed, verified via verify_assembly_match.py)
 next to var_flags_4E's declaration, and applied it to every reference
 confirmed this session: calc_inj_pw_base's own body, reset_pw_ramp_limiter/ramp_limit_inj_pw/ramp_limit_inj_pw_simple,
-and loc_DA63's full body (through locret_DB74, including sub_DB75/
+and update_lambda_stft's full body (through locret_DB74, including sub_DB75/
 sub_DB77 - discovered this session to be a SEPARATE short-lived instance of
 the same trick, called from much later in the main loop, not part of
 D931's direct continuation). Also found var_cnt_6A's consumer while
-tracing loc_DA63: loc_DB34 gates trim_state.5 on "var_cnt_6A >= 3 ticks".
+tracing update_lambda_stft: loc_DB34 gates trim_state.5 on "var_cnt_6A >= 3 ticks".
 NOT yet renamed: loc_DC77's body past its entry commit, and chunks
 DD38/DD59/E112/start-of-E363 - confirmed to be the same alias (no
 var_flags_4E_copy2 restore happens before ~E37F) but not read/traced, so
@@ -1634,9 +1634,58 @@ entry gate is still unestablished (see that bit's declaration comment).
   and `nv_afr_trim_base` keep their established names (they are already
   meaningful and widely cross-referenced) but their declarations now state
   the STFT/LTFT identity outright.
-- loc_DA63's lambda_avg/lambda_integrator adjustment logic (traced/renamed
-  for the alias, but not characterized - looks like yet another distinct
-  lambda-trim mechanism, see fuel_calculation_system.md Open Questions)
+- **RESOLVED: `loc_DA63` is `update_lambda_stft`** - the O2 closed-loop
+  controller, i.e. the thing that actually drives the short-term fuel trim.
+  It was NOT "yet another distinct lambda-trim mechanism" as this entry
+  guessed; it is the controller for the STFT already identified above, so
+  the fuel-trim picture is now closed:
+
+  | Piece | Role |
+  |---|---|
+  | `update_lambda_stft` | the O2 control law - moves `var_lambda_integrator` |
+  | `nv_afr_trim` table | LTFT, learned per load cell, NV-backed |
+  | `sub_E454` @ `loc_E47B` | sums STFT + LTFT into one multiplier |
+  | `closed_loop_control` | learns the separate cruise-only NV trim spent by CPU2 |
+
+  It implements a textbook **jump-and-ramp** (proportional + integral) law:
+  - **Jump** (`loc_DABF`): `var_lambda_avg >= 0xB3` (rich) adds `0x07AE` to
+    `unk_1C4`, `<= 0x4D` (lean) subtracts it. `0x4E`-`0xB2` is a deadband
+    that simply exits - that is what stops the loop chattering at stoich.
+  - **Ramp** (`loc_DB41`): +/-`0x0010` per tick following
+    `var_adc_lambda`'s sign, each gated on the integrator not already
+    being at its `0x85`/`0x76` rail.
+
+  Alongside the jump it steps `var_lambda_integrator` by `0x0F5C` (clamped
+  `0x1A00`/`0xE600`) and `var_lambda_avg` by `0x0F` (clamped `0x1A`/`0xE6`).
+  Those clamp pairs are the same numbers scaled by 256, so `var_lambda_avg`
+  is deliberately kept tracking the integrator's high byte rather than being
+  an independent quantity - worth knowing before treating them as separate.
+
+  **CORRECTION - `increment_counters` writes are invisible to symbol
+  searches.** Tracing this function's `unk_E4` gate exposed a systematic
+  flaw in the automated reference notes added earlier this session: that
+  helper increments a whole ADDRESS RANGE from a packed `COUNTER_ARG`
+  argument, so none of its writes appear in a per-symbol grep. Five
+  variables were mis-described as a result and are now fixed:
+  - `unk_E0` was called "UNREFERENCED - a genuinely unused RAM byte". Wrong:
+    it is the last byte of `COUNTER_ARG(var_cnt_CD, 0x14)` and is
+    incremented every tick. Renamed `var_cnt_E0`. (Still effectively dead,
+    but as spare counter capacity, not untouched memory.)
+  - `unk_E3` was called "write-only". Wrong for the same reason - its
+    explicit write is a counter RESET.
+  - `unk_E2`, `unk_E5` similarly: their explicit writes are resets and their
+    reads are elapsed-time tests, not value loads.
+  - `unk_E4` -> **`var_stft_dwell_cnt`**, now understood: a free-running
+    counter that `update_lambda_stft` clears whenever its entry conditions
+    fail, and which must reach `0x40` before the controller is allowed to
+    change closed-loop mode. A hold-off that stops the loop flipping state
+    on a brief disturbance.
+
+  **Lesson for future automated passes:** any "no writer found, therefore
+  dead" conclusion about an address in `0x69-0x6A`, `0xAD-0xC5`, `0xC7-0xE7`
+  or `0xE9-0xEE` must be checked against the `COUNTER_ARG` call sites first.
+  This is the same class of mistake as the `tbs` error - a tool or
+  assumption that cannot see one particular write mechanism.
 - **sub_E865 (~E865-E9E9, partially traced this session)** - an ignition
   timing blend gated on `var_schedule_flag_41.3` via `tbs`+`beq` (runs on
   ticks where that bit tests clear; otherwise returns immediately). `tbs`

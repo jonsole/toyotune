@@ -990,7 +990,7 @@ var_flags_4E:			.block 1			; DATA XREF: divide_d_by_x+456↓w
 
 ; Same address as var_flags_4E, purely a readability alias. For roughly
 ; 0xD931-0xE380 (divide_d_by_x chunks D931/DC77/DD38/DD59/E112/start-of-
-; E363, plus a short second instance around loc_DA63 - see below), and
+; E363, plus a short second instance around update_lambda_stft - see below), and
 ; var_flags_4E is deliberately overwritten with var_trim_state's value and
 ; used as a scratch register so the existing tbbc/tbbs/setb/clrb encodings
 ; can be reused against var_trim_state's bits instead of compiling separate
@@ -998,7 +998,7 @@ var_flags_4E:			.block 1			; DATA XREF: divide_d_by_x+456↓w
 ; docs/fuel_calculation_system.md).
 ;
 ; Applied so far: calc_inj_pw_base's own body, reset_pw_ramp_limiter/
-; ramp_limit_inj_pw/ramp_limit_inj_pw_simple, and loc_DA63's full body
+; ramp_limit_inj_pw/ramp_limit_inj_pw_simple, and update_lambda_stft's full body
 ; (through locret_DB74, including sub_DB75/sub_DB77).
 ;
 ; NOT yet applied: loc_DC77's body past its entry commit, and everything
@@ -1508,35 +1508,76 @@ var_cnt_DE:			.block 1			; DATA XREF: calc_iscv+12B↓w
 								; calc_iscv:loc_D637↓w ...
 var_cnt_sensor_error:		.block 1			; DATA XREF: adc_handler_pim+1A↓w
 								; adc_handler_pim:loc_FBA8↓r ...
-unk_E0:				.block 1
-								; UNREFERENCED: no read or write site exists
-								; anywhere in this file - a genuinely unused RAM
-								; byte, not merely an undocumented one.
+var_cnt_E0:			.block 1
+								; A periodic counter: it is the LAST byte of the
+								; COUNTER_ARG(var_cnt_CD, 0x14) range, so
+								; increment_counters saturating-increments it
+								; every tick even though no code in this file
+								; ever reads or explicitly writes it.
+								;
+								; (An earlier automated sweep called this
+								; "UNREFERENCED - a genuinely unused RAM byte".
+								; That was wrong: increment_counters writes a
+								; whole ADDRESS RANGE from a packed argument, so
+								; its writes are invisible to any per-symbol
+								; search. Same correction applies to unk_E2/E3/
+								; E4/E5 below, all inside
+								; COUNTER_ARG(var_cnt_E1, 7).)
+								;
+								; Being counted but never read still makes it
+								; effectively dead - but as spare counter
+								; capacity, not as untouched memory.
 var_cnt_E1:			.block 1			; DATA XREF: divide_d_by_x+70C↓r
 								; divide_d_by_x:loc_CCB3↓w ...
 unk_E2:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
 								; calc_iscv:loc_D791↓r
-								; Written by loc_D784; read by loc_D791. Purpose
-								; not established - left named unk_ deliberately
-								; per CLAUDE.md (rename only on confirmed
-								; understanding).
+								; ALSO auto-incremented every tick by
+								; increment_counters via COUNTER_ARG(var_cnt_E1,
+								; 7), which covers 0xE1-0xE7 - not visible to a
+								; per-symbol search. So calc_iscv's explicit
+								; write at loc_D784 is a RESET of a free-running
+								; counter, and the read at loc_D791 is an
+								; elapsed-time test, not a plain value load.
+								; Purpose still not established.
 unk_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
-								; WRITE-ONLY in this file: written by loc_F577,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
-unk_E4:				.block 1			; DATA XREF: ROM:loc_DA70↓w
+								; Explicitly written only at loc_F577 (in the
+								; knock area) with no read site in this file, BUT
+								; also auto-incremented every tick by
+								; increment_counters via COUNTER_ARG(var_cnt_E1,
+								; 7) - so loc_F577 is resetting a free-running
+								; counter rather than storing a value. Not a
+								; write-only dead byte as an earlier automated
+								; note claimed; its consumer just is not in this
+								; file (CPU2, or an elapsed-time test not yet
+								; traced).
+var_stft_dwell_cnt:		.block 1			; DATA XREF: ROM:loc_DA70↓w
 								; ROM:DA75↓r
-								; Written by loc_DA70; read by loc_DA72. Purpose
-								; not established - left named unk_ deliberately
-								; per CLAUDE.md (rename only on confirmed
-								; understanding).
+								; "Closed-loop conditions have held steady" dwell
+								; timer for update_lambda_stft.
+								;
+								; Free-running: increment_counters bumps it every
+								; tick via COUNTER_ARG(var_cnt_E1, 7), which
+								; covers 0xE1-0xE7. update_lambda_stft CLEARS it
+								; (loc_DA70) whenever the entry conditions fail -
+								; RPM below 0x14, PIM below 0x16, or the throttle
+								; not closed long enough (var_flags_46.2) - so it
+								; only accumulates while conditions hold.
+								;
+								; Tested at loc_DA72: once it reaches 0x40 the
+								; code is allowed to clear var_trim_state.0 and
+								; drop out of the active closed-loop branch. A
+								; hold-off, in other words: the controller will
+								; not change mode until conditions have been
+								; stable for 0x40 ticks.
 unk_E5:				.block 1			; DATA XREF: divide_d_by_x+1781↓w
 								; divide_d_by_x:loc_DD1E↓r ...
-								; Written by loc_DD17, loc_DD2F; read by
-								; loc_DD1E. Purpose not established - left named
-								; unk_ deliberately per CLAUDE.md (rename only
-								; on confirmed understanding).
+								; ALSO auto-incremented every tick by
+								; increment_counters via COUNTER_ARG(var_cnt_E1,
+								; 7) - so the explicit writes at loc_DD17/loc_DD2F
+								; are counter RESETS and the loc_DD1E read is an
+								; elapsed-time test. Sits in the still-untraced
+								; DC77/DD38/DD59 diagnostic phase; purpose not
+								; established.
 var_spd_cnt:			.block 1			; DATA XREF: ROM:loc_DEAD↓w
 								; ROM:loc_DEAF↓r
 								; Number of cycles with	no speed sensor	reading
@@ -9487,7 +9528,7 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ; *** var_trim_state, NOT flags_4E's usual "operating mode flags" meaning -
 ; *** confirmed by the write-back (loc_DC77: "ld a,var_flags_4E; st a,
 ; *** var_trim_state") and by an identical short-lived alias pattern later
-; *** (ld a,var_trim_state / st a,var_flags_4E / jsr loc_DA63 / ld a,
+; *** (ld a,var_trim_state / st a,var_flags_4E / jsr update_lambda_stft / ld a,
 ; *** var_flags_4E / st a,var_trim_state). var_flags_46 (a different
 ; *** variable) is NOT aliased and keeps its normal meaning throughout.
 ;
@@ -9808,12 +9849,64 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; ---------------------------------------------------------------------------
 ; Reads: dmarx_iscv_duty, var_adc_lambda, var_cnt_6A, var_flags_46,
 ; var_inj_pw_base, var_pim2, var_rpm_x_5p12
-; Writes: unk_1C4, unk_E4, var_lambda_avg, var_lambda_integrator,
+; Writes: unk_1C4, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
 ;    var_trim_state_alias
 ; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, sub_DB75,
 ;    sub_DB77
 ; ---------------------------------------------------------------------------
-loc_DA63:							; CODE XREF: divide_d_by_x+1DFD↓p
+; ---------------------------------------------------------------------------
+; update_lambda_stft (was update_lambda_stft): the O2 closed-loop controller - i.e.
+; the thing that actually drives the SHORT-TERM fuel trim.
+;
+; This completes the fuel-trim picture: sub_E454 is where STFT and LTFT are
+; summed and applied, closed_loop_control learns the separate cruise-only NV
+; trim, and THIS is the controller that moves var_lambda_integrator (the
+; STFT) in response to the O2 sensor.
+;
+; It is the classic **jump-and-ramp** (proportional + integral) O2 control
+; law, and both halves are visible here:
+;
+;   JUMP (proportional, large, on a rich/lean transition) - loc_DABF:
+;     var_lambda_avg >= 0xB3  -> rich  -> unk_1C4 += 0x07AE (saturating)
+;     var_lambda_avg <= 0x4D  -> lean  -> unk_1C4 -= 0x07AE (to 0)
+;     0x4E..0xB2 is a deadband: no jump, the routine simply exits. That
+;     deadband is what stops the loop chattering around stoich.
+;
+;   RAMP (integral, small, every tick while held on one side) - loc_DB41:
+;     var_adc_lambda positive -> unk_1C4 += 0x0010
+;     var_adc_lambda negative -> unk_1C4 -= 0x0010
+;     each further gated on var_lambda_integrator not already being past
+;     its 0x85 / 0x76 limit, so the ramp stops at the rails.
+;
+; Alongside the jump it steps the integrator itself in the corresponding
+; direction by 0x0F5C, clamped to 0x1A00 (rich rail) / 0xE600 (lean rail),
+; and steps var_lambda_avg by 0x0F with clamps 0x1A / 0xE6. Note those
+; clamp pairs are the same numbers scaled by 256, so var_lambda_avg tracks
+; the integrator's high byte - the two are deliberately kept in step rather
+; than being independent quantities.
+;
+; Entry conditions (checked at the top, and again at loc_DA7C): RPM above
+; 0x14, PIM above 0x16, and var_flags_46.2 (throttle closed long enough).
+; When any of those fail, var_stft_dwell_cnt is cleared; only once that
+; free-running counter reaches 0x40 with conditions holding is the code
+; allowed to clear var_trim_state.0 and change mode. That hold-off is why
+; the loop does not flip in and out of closed loop on a brief disturbance.
+;
+; NOTE ON var_trim_state: this whole body runs against
+; var_trim_state_alias, the deliberate aliasing of var_flags_4E onto
+; var_trim_state - see that alias's declaration and the header above
+; calc_inj_pw_base. Bits 0/1/2/3/5/6/7 read here are var_trim_state's, not
+; var_flags_4E's.
+;
+; Reads: var_rpm_x_5p12, var_pim2, var_flags_46, var_adc_lambda,
+;   var_lambda_avg, var_inj_pw_base, var_cnt_6A, dmarx_iscv_duty,
+;   var_stft_dwell_cnt
+; Writes: var_lambda_integrator, var_lambda_avg, unk_1C4,
+;   var_trim_state_alias, var_stft_dwell_cnt
+; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, sub_DB75, sub_DB77
+; ---------------------------------------------------------------------------
+
+update_lambda_stft:						; CODE XREF: divide_d_by_x+1DFD↓p
 				cmp	#14h, var_rpm_x_5p12
 				bcc	loc_DA70
 
@@ -9825,12 +9918,12 @@ loc_DA63:							; CODE XREF: divide_d_by_x+1DFD↓p
 
 loc_DA70:							; CODE XREF: ROM:DA66↑j
 								; ROM:DA6B↑j
-				clr	unk_E4
+				clr	var_stft_dwell_cnt
 
 loc_DA72:							; CODE XREF: ROM:DA6D↑j
 				tbbc	bit2, var_trim_state_alias, loc_DA7C
 
-				cmp	#40h, unk_E4
+				cmp	#40h, var_stft_dwell_cnt
 				bcs	loc_DA7C
 
 				clrb	bit0, var_trim_state_alias
@@ -10495,7 +10588,7 @@ loc_DC74:							; CODE XREF: ramp_limit_inj_pw_simple+32↑j
 ;
 ; loc_DD69 (below, physically adjacent but reached via jsr from a
 ; different, later point in the main loop - the short second
-; var_trim_state alias instance right after loc_DA63) has its own,
+; var_trim_state alias instance right after update_lambda_stft) has its own,
 ; separate instance of the unk_1CF alias (established loc_DDB8, committed
 ; loc_DE7B) wrapping a long run of O2-heater/lambda/coolant-sensor
 ; diagnostic checks. Within it: sub_DE5A (resets unk_187, sets
@@ -12259,7 +12352,7 @@ loc_E37F:							; CODE XREF: divide_d_by_x+1DDC↑j
 ; just this one call (see var_trim_state_alias's declaration comment)
 				ld	a, var_trim_state
 				st	a, var_trim_state_alias
-				jsr	loc_DA63
+				jsr	update_lambda_stft
 
 				ld	a, var_trim_state_alias
 				st	a, var_trim_state

@@ -61,7 +61,7 @@ emitting separate code for each. Confirmed by:
   happens much later, around address `E37F` (inside chunk `E363`).
 - A second, short-lived instance of the identical pattern appears right
   after that restore: `var_flags_4E` is re-aliased to `var_trim_state` just
-  to call `loc_DA63`, then immediately committed back and left alone.
+  to call `update_lambda_stft`, then immediately committed back and left alone.
 
 **Practical effect:** every `var_flags_4E` bit reference between `D931` and
 the `E37F`-ish restore point means `var_trim_state`, not flags_4E's usual
@@ -74,7 +74,7 @@ its normal meaning throughout.
 var_flags_4E`, same address, zero bytes changed) declared next to
 `var_flags_4E`'s own declaration. It's been applied to every reference this
 session actually traced and confirmed: `calc_inj_pw_base`'s own body, `reset_pw_ramp_limiter`,
-`ramp_limit_inj_pw`, `ramp_limit_inj_pw_simple`, and the full body of `loc_DA63` (through
+`ramp_limit_inj_pw`, `ramp_limit_inj_pw_simple`, and the full body of `update_lambda_stft` (through
 `locret_DB74`, including `sub_DB75`/`sub_DB77` - a short-lived instance of
 the same trick called from a separate point later in the main loop, not
 `D931`'s direct continuation). **Not yet applied:** `loc_DC77`'s body past
@@ -99,7 +99,7 @@ below.
 
 Using the trim_state alias: resets `var_cnt_6A` unless trim_state bits 6/5
 and `var_lambda_avg` (0x76-0x8A window) indicate a specific stable-trim
-condition. Consumer found (in `loc_DA63`'s body, called from the second,
+condition. Consumer found (in `update_lambda_stft`'s body, called from the second,
 short-lived alias instance much later in the main loop): `loc_DB34` checks
 `cmp #03h, var_cnt_6A` before deciding whether to set trim_state.5, i.e.
 `var_cnt_6A` gates a "this stable-trim condition has held for at least 3
@@ -266,7 +266,7 @@ header comment above `loc_DC77` in the ASM; summary:
 - `loc_DD59` jumps to `loc_E112`, not yet traced.
 - `loc_DD69` (reached via `jsr` from a *different*, later point in the main
   loop - the short second `var_trim_state`-alias instance that also calls
-  `loc_DA63`) wraps a long run of O2-heater/lambda/coolant-sensor
+  `update_lambda_stft`) wraps a long run of O2-heater/lambda/coolant-sensor
   diagnostic checks in its own `unk_1CF` alias instance, and resolves two
   previously-unexamined helpers: `sub_DE5A` (resets `unk_187`, sets
   `var_flags_4F.7` if outside `[3, 0x131)`) and `sub_DE71` (saturating
@@ -460,6 +460,29 @@ RAM, never written to NV, forced back to its `0x8000` neutral on reset
 events (`loc_D04F`). This is what swings cycle to cycle as the sensor
 crosses rich/lean.
 
+Its controller is **`update_lambda_stft`** (was `loc_DA63`), a textbook
+**jump-and-ramp** (proportional + integral) O2 control law:
+
+- **Jump** - proportional, large, on a rich/lean transition (`loc_DABF`):
+  `var_lambda_avg >= 0xB3` (rich) adds `0x07AE` to `unk_1C4`; `<= 0x4D`
+  (lean) subtracts it. `0x4E`-`0xB2` is a **deadband** that exits without
+  acting - that is what keeps the loop from chattering around stoich.
+- **Ramp** - integral, small, every tick while held on one side
+  (`loc_DB41`): +/-`0x0010` following `var_adc_lambda`'s sign, each gated on
+  the integrator not already sitting at its `0x85` / `0x76` rail.
+
+Alongside the jump it steps the integrator itself by `0x0F5C` (clamped to
+`0x1A00` rich / `0xE600` lean) and `var_lambda_avg` by `0x0F` (clamped `0x1A`
+/ `0xE6`). Those clamp pairs are the same numbers scaled by 256, so
+`var_lambda_avg` deliberately tracks the integrator's high byte - do not
+treat the two as independent quantities.
+
+Entry requires RPM above `0x14`, PIM above `0x16`, and `var_flags_46.2`
+(throttle closed long enough). When any fails, `var_stft_dwell_cnt` is
+cleared; the controller may only change closed-loop mode once that
+free-running counter has reached `0x40` with conditions holding - a hold-off
+against brief disturbances.
+
 **LTFT - the `nv_afr_trim_base` table.** Twelve bytes in battery-backed NV
 RAM, so it survives power cycles. `read_nv_afr_trim` indexes it by
 `var_pim2` (manifold pressure, i.e. load) and interpolates between cells,
@@ -550,7 +573,7 @@ only adapt once the fast and slow pressure estimates reconverge.
 - `loc_DC77`'s body past its entry commit, and chunks `DD38`/`DD59`/`E112`/
   start-of-`E363` - all still under the `var_flags_4E`-is-`var_trim_state`
   alias (confirmed), not yet read/traced or renamed.
-- `loc_DA63`'s body (traced and renamed this session, called from a short
+- `update_lambda_stft`'s body (traced and renamed this session, called from a short
   second alias instance later in the main loop) touches
   `var_lambda_avg`/`var_lambda_integrator` in ways that look like another,
   separate lambda-trim adjustment mechanism (distinct from both the
