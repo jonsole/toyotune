@@ -71,8 +71,18 @@ ASR3:				.block 1			; DATA XREF: ROM:C61E↓w
 								; ASR3 edge counter value MSB
 ASR3L:				.block 1			; ASR3 edge counter value LSB
 unk_1C:				.block 1			; DATA XREF: IV0+29↓r
+								; docs/toshiba-8x-technical-reference.md
+								; lists $1C-$1E as "Unused/reserved" in
+								; the hardware register map, yet this
+								; address is read from IV0 (the NE
+								; interrupt vector) - undocumented/shadow
+								; register behavior, not a RAM variable.
+								; Not renamed pending further hardware
+								; investigation.
 unk_1D:				.block 1			; DATA XREF: ROM:C60A↓r
 								; divide_d_by_x+1F6↓r
+								; Same "Unused/reserved" register range
+								; as unk_1C above - see that note.
 				.block 1
 OMODE:				.block 1			; DATA XREF: ROM:reset_vector↓r
 								; Mode control Register
@@ -189,16 +199,88 @@ CPR7L:				.block 1			; Timer	comparison #3 LSB
 ; Segment type:	Pure data
 				;.segment RAM
 				.org 40h
-unk_40:				.block 1			; DATA XREF: divide_d_by_x+CD↓o
+var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								; divide_d_by_x+206↓r ...
-								; 40.0 -
-								; 40.1 - Startup injection pulse done
-								; 40.2 -
+								; 40.0 - "Factory self-test active" flag:
+								;   the ONLY writers are inside sub_E115
+								;   (the factory self-check routine, RAM-
+								;   test etc. - see its own header) -
+								;   cleared on the "not eligible for self-
+								;   test" exit path (loc_E13D), set once
+								;   the self-test sequence actually
+								;   proceeds. Explains why it's read
+								;   (`tbbs`/`tbbc`) all over the rest of
+								;   the ROM (dozens of sites, e.g.
+								;   loc_C7AA/C841/CBEF/open_loop_mode_D0A9/
+								;   D3AB/E3D9/E6CE/E70E/EF95/F142/FA66/
+								;   FD67): normal computations skip or
+								;   alter themselves while self-test is
+								;   scribbling test patterns across all
+								;   of RAM (sub_E115 writes 0-255 across
+								;   0x40-0x300), since their own state
+								;   variables would otherwise be garbage.
+								; 40.1 - "Startup injection pulse done"
+								;   lock - see injector_cold_start's own
+								;   header for the full mechanism (paired
+								;   with var_flags_42.4). Also read at
+								;   loc_FA66 to help select the ADC
+								;   channel table variant.
+								; 40.2 - "OBD stream mode active" flag -
+								;   set once (loc_C971-adjacent, "OBD
+								;   stream mode: set var_flags_40.2 and mark OBD
+								;   errors in diag register", tied to
+								;   var_io_input1.6/TE2). Tested
+								;   pervasively (DD8C-E067, FB9E-FF12 and
+								;   more) to skip/alter diagnostic-error-
+								;   recording behavior while OBD stream
+								;   mode is active.
 								; 40.3 - Transient throttle injection
-								; 40.4 -
+								; 40.4 - "TPS settled below threshold"
+								;   debounce latch, local to sub_C996's
+								;   TPS-averaging logic: `tbs`+`beq`
+								;   arms on the first call where the
+								;   smoothed TPS value (b) is at or below
+								;   var_tps_unk_150's threshold, and only
+								;   the SECOND such consecutive call
+								;   actually resets var_4ms_cnt_B1;
+								;   cleared (loc_C9D7) whenever b exceeds
+								;   the threshold (still moving/settling).
 								; 40.5 - Set when RPM <	300, cleared when RPM >	500rpm
-								; 40.6 -
-								; 40.7 -
+								; 40.6 - No `setb` exists anywhere in this
+								;   file for this bit - only `clrb`
+								;   (loc_CA1B's periodic dispatch) and
+								;   non-destructive `tbbs`/`tbbc` reads
+								;   (loc_D8D5/DEC1/EAE0/EF25, including
+								;   check_set_overrun_flag's own "Init
+								;   guard active: skip" gate). Since it
+								;   starts clear (clear_variables) and is
+								;   only ever re-clear'd, never set, this
+								;   reads as a genuinely permanently-clear/
+								;   dead bit: every `tbbs` "jump if set"
+								;   site never jumps, and the `tbbc`
+								;   "skip if clear" site at loc_D8D5
+								;   always skips. Flagging this as a
+								;   likely-dead condition rather than
+								;   asserting certainty - a full-byte
+								;   write (`st`/`or`) that isn't a plain
+								;   bit op could still be hiding
+								;   elsewhere, but none was found.
+								; 40.7 - Tested via `tbs` at loc_E363 (the
+								;   still-unexplored loc_E112/DC77
+								;   diagnostic phase - see
+								;   session_journal.md CPU1 pending work)
+								;   to gate a block calling
+								;   sub_E435/calc_ect_unk_148/
+								;   calc_ect_unk_160, self-re-arming.
+								;   Cleared by iv6_4ms_process's 64ms
+								;   sub-slot ("unlock 64ms-gated injection
+								;   schedule"). ALSO read non-destructively
+								;   (`tbbs`/`tbbc`, no side effect) at
+								;   several unrelated sites - sub_C996
+								;   (loc_C9BA), and the TPS-delta-tracking
+								;   block at loc_FD9E - reusing the same
+								;   bit as a plain state check rather than
+								;   going through the self-re-arming gate.
 var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								; divide_d_by_x+2DB↓r ...
 								; Flags	to control scheduling of various processes
@@ -228,32 +310,39 @@ var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								; "locked" and skip. bit5 is the one
 								; exception - see its own note.
 								;
-								; 40.0 - Tested (loc_C873, via `tbs`) to
+								; NOTE: these were mislabeled "40.X" in an
+								; earlier pass (copy/paste from the var_flags_40
+								; declaration above) despite documenting
+								; var_schedule_flag_41 (0x41)'s own bits -
+								; content was already correct, only the
+								; prefix was wrong. Fixed to "41.X" here.
+								;
+								; 41.0 - Tested (loc_C873, via `tbs`) to
 								;   decide whether to OR a status bit into
-								;   a flag byte derived from unk_1DC -
+								;   a flag byte derived from var_flags_1DC -
 								;   self-re-armed. Cleared somewhere in
 								;   the periodic sub-slot dispatch. Not
 								;   deep-dived further.
-								; 40.1 - "Injection already done this
+								; 41.1 - "Injection already done this
 								;   cycle" lock in calc_4ms_corrections
 								;   (section 3, via `tbs`): the first test
 								;   after each clear runs the section and
 								;   re-locks it; later tests before the
 								;   next clear skip it.
-								; 40.2 - "Injection already scheduled this
+								; 41.2 - "Injection already scheduled this
 								;   cycle" lock at loc_D20C (divide_d_by_x
 								;   chunk @ D1DD, part 2 - see that
 								;   header, via `tbs`): same self-
 								;   re-arming shape as bit1.
-								; 40.3 - Gates sub_E865 (ignition timing
+								; 41.3 - Gates sub_E865 (ignition timing
 								;   blend) via `tbs` - see that function's
 								;   own header for the corrected,
 								;   self-re-arming mechanism.
-								; 40.4 - Cleared by iv6_4ms_process's 32ms
+								; 41.4 - Cleared by iv6_4ms_process's 32ms
 								;   sub-slot (alongside bit5); no tester
 								;   found in this file - possibly read by
 								;   CPU2, or vestigial.
-								; 40.5 - Cleared by iv6_4ms_process's 32ms
+								; 41.5 - Cleared by iv6_4ms_process's 32ms
 								;   sub-slot; also SET at loc_D04F as a
 								;   side effect of a lambda-integrator
 								;   reset (var_lambda_integrator forced to
@@ -264,7 +353,7 @@ var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								;   this bit either, so this one may
 								;   genuinely be inert for scheduling
 								;   purposes despite the "unlock" comment.
-								; 40.6 - "Already ran this period's
+								; 41.6 - "Already ran this period's
 								;   background calculations" lock at
 								;   loc_D1DD (divide_d_by_x chunk @ D1DD,
 								;   part 1, via `tbs`): first test after
@@ -272,7 +361,7 @@ var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								;   + sub_C91A/sub_CB00/
 								;   ramp_misfire_correction/sub_DE71 and
 								;   re-locks; later tests skip.
-								; 40.7 - Tested via `tbs` at loc_E363 (the
+								; 41.7 - Tested via `tbs` at loc_E363 (the
 								;   still-unexplored loc_E112/DC77
 								;   diagnostic phase - see
 								;   session_journal.md CPU1 pending work)
@@ -288,22 +377,255 @@ var_flags_42:			.block 1			; DATA XREF: divide_d_by_x:loc_C718↓r
 								; 42.1 - ADC flag, set when using ADC table, cleared when scanning sequentially.
 								; 42.2 - Cleared in 4ms	watchdog interrupt to schedule 4ms background code
 								; 42.3 - Cleared in NE interrupt to schedule NE	triggered background code.
-								; 42.4 -
-								; 42.5 -
-								; 42.6 -
+								; 42.4 - Private one-shot self-lock for
+								;   injector_cold_start, via `tbs`+`bne`:
+								;   only the first NE-pulse call after a
+								;   reset falls through (and self-arms the
+								;   lock); every later call this power
+								;   cycle skips. No clear site exists in
+								;   this file, so - like var_flags_40.1's
+								;   "already injected this startup" gate
+								;   right beside it - it relies on
+								;   clear_variables/loc_C67A zeroing this
+								;   byte on reset/watchdog-kick, not on an
+								;   explicit re-arm. (The pre-existing
+								;   "ADC phase 1 complete"/"bit4 set =
+								;   phase 2" comments at its one use site
+								;   were a guess made before the `tbs`
+								;   correction and are wrong - bit4 isn't
+								;   shared with the real ADC-phase flag,
+								;   which is bit1; corrected in place.)
+								; 42.5 - Settling/one-shot latch in the
+								;   NV-TPS closed-throttle self-calibration
+								;   routine (~loc_FD3A-FD6A): `tbs`+`beq`
+								;   skips the decrement-and-clamp step on
+								;   the first pass after each `clrb`
+								;   (avoids applying a correction from a
+								;   not-yet-settled delta); later passes
+								;   before the next `clrb` take the
+								;   decrement path. `clrb` fires when the
+								;   sample count is still low (<2) or the
+								;   delta didn't exceed its threshold.
+								; 42.6 - "Post-init" latch: set once during
+								;   cold-boot/watchdog-reset init
+								;   (clear_variables/loc_C67A) and
+								;   re-asserted (redundantly) on every
+								;   ~32ms periodic dispatch tick
+								;   (loc_CA1B); no clear site exists, so
+								;   once set it stays set for the rest of
+								;   the power cycle. Tested via non-
+								;   destructive `tbbs` (jump-if-set) at
+								;   several background-calc sites (near
+								;   loc_D712/D8D5/DF1F/ECDC/EE50) as a
+								;   defensive guard against running before
+								;   init completes - since it's set very
+								;   early in boot, this reads as
+								;   effectively always-true in practice.
 								; 42.7 - Set at	end of 4ms process, cleared in ADC code
 var_limiter_flags:		.block 1			; DATA XREF: divide_d_by_x+49C↓r
 								; divide_d_by_x:loc_CA5C↓r ...
+								; 43.0 - Master fuel-cut-active flag: set
+								;   when the ECU engages fuel-cut
+								;   (loc_CADD, alongside forcing
+								;   var_lambda_state=0x80 neutral),
+								;   cleared on fuel-cut release
+								;   (loc_CAE2-adjacent, injector_warmup
+								;   path). Widely tested as the master
+								;   fuel-cut gate, e.g.
+								;   check_set_overrun_flag's "Fuel cut
+								;   active: skip" and the overrun-cut-
+								;   recovery check at loc_CD7E.
 								; 43.1 - ** related to var_cnt_EB **
+								; 43.2 - Rev-limit precursor/companion
+								;   flag: set/cleared alongside
+								;   var_flags_4E.2 in the RPM-vs-
+								;   var_rev_limit_rpm comparison at
+								;   loc_CC2D-CC42. Tested by
+								;   check_clear_speed_limiter_rev and near
+								;   loc_EE8E; relationship to bit6's
+								;   separate "rev limit active" flag not
+								;   fully distinguished - likely an
+								;   earlier-stage indicator in the same
+								;   rev-limit state machine rather than
+								;   the same condition.
 								; 43.3 - Set if	speed limiter active
 								; 43.4 - Set if	4 IGF pulses missing
 								; 43.5 - Set if	throttle shut
 								; 43.6 - Set if	rev limit active
 								; 43.7 - Set if	boost limit exceeded
-unk_44:				.block 1			; DATA XREF: divide_d_by_x+3C5↓r
+var_flags_44:			.block 1			; DATA XREF: divide_d_by_x+3C5↓r
 								; divide_d_by_x+4C4↓r ...
+								; 44.0 - Idle-debounce latch: mirrors
+								;   var_flags_46.2 ("closed for certain
+								;   period") from one tick behind - set
+								;   when the throttle has been closed long
+								;   enough (loc_C971's fallthrough path),
+								;   cleared the instant the throttle
+								;   reopens (loc_C971 itself, reached via
+								;   `tbbc bit2,var_flags_46`). See its own
+								;   use site at loc_CD8A for the "idle-
+								;   debounce latch not set: skip" gate.
+								; 44.1 - Self-re-arming one-shot gate for
+								;   calc_iscv, via `tbs`+`bne` at loc_D380
+								;   (see that function's own header - this
+								;   resolves the "gate not yet confirmed"
+								;   note there). Unlocked every 8th NE
+								;   tooth by bg_ne_process_F3BE, the same
+								;   periodic point that clears
+								;   var_schedule_flag_41.0 right beside it
+								;   - so ISC duty is only recalculated
+								;   once per that fixed-angle window, not
+								;   on every 4ms tick.
+								; 44.2 - Deceleration / fast-throttle-
+								;   closing latch with hysteresis, set/
+								;   cleared by sub_CE3C from var_tps_delta
+								;   (signed): set when delta < -16 (0xF0),
+								;   cleared when delta >= -12 (0xF4),
+								;   holds its previous state in the -16..
+								;   -12 dead band. Tested to skip a
+								;   computation at loc_CDDB when set, and
+								;   gates fuel-enrichment logic near
+								;   loc_E469.
+								; 44.3 - "Fuel cut was active last tick"
+								;   latch, refreshed every ~32ms periodic
+								;   tick (loc_CA1B/CA3D) from
+								;   var_limiter_flags.0 (real-time fuel-
+								;   cut-active flag): mirrors it with one
+								;   tick of lag. Used by
+								;   check_set_overrun_flag (`tbbc
+								;   ...,locret_EF47`) to detect the
+								;   overrun/fuel-cut-recovery condition.
+								; 44.4 - Written in two unrelated contexts
+								;   with no bit-test reader found anywhere
+								;   in this file: (1) closed_loop_CF56
+								;   combines it into a word with
+								;   var_adc_lambda (`ld a,var_adc_lambda /
+								;   ld b,var_flags_44` forming D) before
+								;   clearing it - possibly consumed as a
+								;   scratch/fractional byte rather than a
+								;   flag there; (2) a saturation corner in
+								;   adc_handler_o2_heater's duty-cycle
+								;   ramp sets it. Also cleared as a side
+								;   effect of the lambda-integrator reset
+								;   at loc_D04F (same coincidental-reuse
+								;   pattern as var_diag_errors_5.0/
+								;   var_schedule_flag_41.5). Purpose not
+								;   established - may be CPU2-read only.
+								; 44.5 - Dual, unrelated roles (coincidental
+								;   bit reuse): (1) in sub_E865's ignition-
+								;   timing/knock blend, selects its init/
+								;   reset path (set) vs normal per-tick
+								;   path (clear) - see that function's own
+								;   header for the full writeup; (2) in
+								;   iv6_ne_process's bg_ne_process_F2D2/
+								;   F29D/F365 area (~F2D0-F370), selects
+								;   between two injector-control-table
+								;   variants for the current NE event.
+								;   Cleared once early at reset-path setup
+								;   (line ~3781, alongside DOUT/
+								;   var_limiter_flags.4 port init).
+								; 44.6 - One-tick startup-delay gate,
+								;   distinct from var_flags_40.5's more general
+								;   "init guard": self-armed via `tbs`+
+								;   `beq` at loc_FF6A ("knock MCU release"
+								;   - see that code's own "Init flag set?"
+								;   comment). Starts clear (explicit
+								;   `clrb` at line ~3594 plus
+								;   clear_variables' bulk zero), so the
+								;   very first call this power cycle skips
+								;   the actual knock-MCU-release code and
+								;   self-arms; every call after that
+								;   proceeds. No clear site found, so the
+								;   release only happens once armed and
+								;   then stays enabled for the rest of the
+								;   power cycle.
+								; 44.7 - Starter-episode one-shot latch in
+								;   init_ne_on_start, gated by
+								;   var_io_input1.0 (STA/starter signal).
+								;   Set via `tbs`+`bne` on the first 4ms
+								;   tick after STA goes high (self-locks
+								;   immediately); cleared at loc_F047 once
+								;   STA goes low again. NOTE: because the
+								;   `tbs` self-lock fires on that very
+								;   first tick, the "force NE-counter
+								;   resync after var_4ms_cnt_sta reaches
+								;   0x0C (48ms)" code guarded behind it
+								;   only ever runs on that same first tick
+								;   (when var_4ms_cnt_sta is always 0, so
+								;   the 0x0C threshold check always fails)
+								;   - as written this resync path reads as
+								;   unreachable. Flagging rather than
+								;   asserting it's intentional; would need
+								;   to confirm nothing else advances
+								;   var_4ms_cnt_sta while bit7 is held set
+								;   to rule this out for certain.
 var_ignition_flags:		.block 1			; DATA XREF: divide_d_by_x+44E↓r
 								; iv6_ne_process+52↓r ...
+								; Ignition coil dwell/fire scheduling state
+								; machine (see ignition_schedule_on/off,
+								; ignition_set_on_time, int_vector_9_
+								; ignition, iv6_ne_process's per-NE-
+								; position handler). All bits below except
+								; 45.6/45.7 are part of this one state
+								; machine - see the inline comments at
+								; each call site for the exact sequencing.
+								;
+								; 45.0 - "Fire event scheduled"/"on-time
+								;   scheduled" flag: set once
+								;   ignition_update_off_time commits a
+								;   coil-on time, cleared when the coil
+								;   fire event actually completes
+								;   (int_vector_9_ignition) or when a
+								;   reschedule is needed (bg_ne_process_
+								;   F0DE/F0DF).
+								; 45.1 - "On-time scheduled" flag,
+								;   specifically for the fixed-dwell path:
+								;   set when ignition_schedule_on defers
+								;   arming CPR0 (sequence not yet active),
+								;   cleared once ignition_set_on_time
+								;   consumes it.
+								; 45.2 - Limp/fault mode flag: forced set
+								;   at reset (safe/default timing) and on
+								;   the starter-running/fault path in
+								;   int_vector_9_ignition; cleared on
+								;   normal-operation entry. Selects fixed
+								;   0-degree timing vs the normal NE-
+								;   position timing table in
+								;   bg_ne_process_F0DF.
+								; 45.3 - "Sequence active" / prior-state
+								;   transition tracker for
+								;   ignition_schedule_on and the limp-mode
+								;   entry path (int_vector_9_ignition):
+								;   when set, ignition_schedule_on arms
+								;   CPR0 immediately instead of pending;
+								;   cleared as part of the limp-mode
+								;   transition, which also arms bit4.
+								; 45.4 - "Fixed dwell active" flag:
+								;   set on the limp-mode transition
+								;   (alongside clearing bit3), cleared at
+								;   NE position 3 and at loc_F121; gates
+								;   bg_ne_process_F0E9's fixed-dwell skip.
+								; 45.5 - "Pending on-time" flag: set when
+								;   ignition_schedule_on can't arm CPR0
+								;   immediately, or when the fixed-dwell
+								;   emergency path schedules one; cleared
+								;   at NE position 1 and once the pending
+								;   on-time is consumed
+								;   (ignition_off/loc_F770 area).
+								; 45.6 - Single-writer flag, set/cleared
+								;   only in divide_d_by_x's early startup
+								;   dispatch (loc_C9E0 area) once
+								;   var_4ms_cnt_B8 exceeds 0x31 (49 ticks
+								;   = ~196ms) - reads as a "post-startup-
+								;   grace-period elapsed" latch. Tested
+								;   (read-only) both there and,
+								;   apparently unrelatedly, by
+								;   adc_handler_trac_tps/loc_FE9B to gate
+								;   TRAC TPS ADC handling - consistent
+								;   with a single "not still in the
+								;   startup grace window" meaning shared
+								;   by both, rather than a coincidental
+								;   reuse.
 								; 45.7 - Set to	halve injector pulse widths
 var_flags_46:			.block 1			; DATA XREF: divide_d_by_x+203↓r
 								; divide_d_by_x:loc_C957↓r ...
@@ -317,39 +639,181 @@ var_flags_46:			.block 1			; DATA XREF: divide_d_by_x+203↓r
 								;   closed-loop); see divide_d_by_x chunks C9DA/D3A5
 								; 46.7 - Set on	sub-CPU	error
 								;
-unk_47:				.block 1			; DATA XREF: sub_C996+3↓r
+var_flags_47:			.block 1			; DATA XREF: sub_C996+3↓r
 								; sub_E551+1B↓r	...
+								; 47.0 - "PIM NV-trim write eligible"
+								;   one-shot in adc_handler_pim: set
+								;   (loc_FC13-ish, after 47.2 above) once
+								;   a large-and-sustained PIM delta is
+								;   detected (bit2 set AND var_cnt_C7 has
+								;   reached 0xFF); tested (`tbbc`, skip if
+								;   clear) to gate the clamp_rB +
+								;   write_rB_nv_ram call that updates
+								;   var_nv_trim_unk_98, then cleared
+								;   immediately after that write commits.
+								; 47.1 - Sampling-window latch in
+								;   adc_handler_pim (loc_FBE0): `tbbs`
+								;   skips the mPIM averaging/smoothing
+								;   step (loc_FBF6) once it's already run
+								;   this TIMER window (>=0x0C ticks since
+								;   last run); set right after entering
+								;   that averaging block, so it only
+								;   executes once per window.
+								; 47.2 - "Large PIM delta" flag in
+								;   adc_handler_pim: set when the
+								;   smoothed-vs-raw PIM delta magnitude
+								;   exceeds 1 (or via the alternate STA-
+								;   gated branch), tested (`tbbs`) to skip
+								;   straight past the fine-grained
+								;   averaging step once flagged.
+								; 47.3 - ISC relay/CPU2-command mismatch
+								;   flag in iv6_4ms_process's ISC relay
+								;   health check (loc_F7E4/F7FD area - see
+								;   the inline comments there): set on the
+								;   first tick CPU2's commanded ISC duty
+								;   disagrees with DOUT.3, cleared on
+								;   recovery or once the mismatch streak
+								;   trips var_iscv_error_cnt's threshold
+								;   and cuts the relay.
+								; 47.4 - "Throttle-closed averaging
+								;   computed" latch for sub_C996's IIR-
+								;   style smoothing of var_tps_closed_ref (a TPS-
+								;   derived value): set once the
+								;   averaging step has run while the
+								;   throttle is closed (loc_C9BA), so a
+								;   repeat call while still closed skips
+								;   straight to the decay/shr step
+								;   (loc_C9BF); cleared the instant the
+								;   throttle reopens (loc_C9BD).
+								; 47.5 - One-shot latch in the NV-TPS
+								;   closed-throttle self-calibration
+								;   routine (same function as
+								;   var_flags_42.5, ~loc_FD08-FD22): `tbs`
+								;   +`bne` makes the first call this power
+								;   cycle take the +8 saturating-nudge
+								;   path; every later call takes the
+								;   other path instead. No clear site
+								;   found - self-locks for the rest of
+								;   the power cycle once armed.
+								; 47.6 - "Large positive TPS delta"
+								;   indicator in the TPS rate-of-change
+								;   block (~loc_FD9E-FE05, companion to
+								;   var_tps_delta/var_tps_2): cleared on
+								;   the very first sample after a
+								;   var_flags_40.7-gated reset, otherwise set/
+								;   cleared per-call from a magnitude/RPM-
+								;   gated threshold comparison against
+								;   unk_146. Not fully characterized in
+								;   physical terms - see bit7 (same
+								;   block) and var_flags_44.2's related
+								;   deceleration flag.
+								; 47.7 - "Large negative TPS delta"
+								;   indicator, same block as bit6: set on
+								;   the very first sample after a
+								;   var_flags_40.7-gated reset (initial-value
+								;   placeholder) and again whenever the
+								;   negative-direction delta exceeds a
+								;   0x3D71 threshold; cleared once the
+								;   recomputed magnitude (unk_146) drops
+								;   below 1. Companion pair with bit6;
+								;   both likely feed acceleration/
+								;   deceleration enrichment logic
+								;   downstream, not yet traced that far.
 var_diag_errors_5:		.block 1			; DATA XREF: check_knock_sensor_err_flag↓r
 								; sub_C91A+12↓r	...
-								; 48.0 - RPM rising or falling
-								; 48.1 -
-								; 48.2 -
+								; 48.0 - NOT knock/RPM-specific despite
+								;   its name or the old "RPM rising or
+								;   falling" label here (stale - fixed):
+								;   generic "did we negate D for an abs()"
+								;   remember-bit shared across unrelated
+								;   computations via set_knock_sensor_err_
+								;   flag/check_knock_sensor_err_flag's
+								;   fall-through trick - see the full
+								;   writeup on those functions' own header
+								;   above (confirmed reused at
+								;   ramp_limit_inj_pw's loc_DBB5,
+								;   sub_E865, and calc_iscv's threshold
+								;   check). Only genuinely knock-sensor-
+								;   related at actual knock-subsystem call
+								;   sites (e.g. knock_mcu_update).
+								; 48.1 - ISC PWM duty step-direction latch
+								;   in the calc_idle_batt1/batt2 ISC
+								;   computation (~loc_D44B-D483): set when
+								;   the duty adjustment took the
+								;   "increase" branch (loc_D47D), cleared
+								;   on the "decrease/converged" branch
+								;   (loc_D475), also gated by
+								;   var_flags_4F.6. Also tested directly
+								;   in a second ISC-PWM-adjacent
+								;   computation (~loc_E51A); not
+								;   confirmed whether that's the same
+								;   logical state or a coincidental reuse.
+								; 48.2 - "PIM-trim result clamped to zero"
+								;   flag: set when a PIM-trim-derived
+								;   delta (var_nv_trim_unk_98 combined
+								;   with dmatx_pim) underflows below 0 and
+								;   gets clamped, cleared otherwise
+								;   (loc_E67D-E688). Tested at
+								;   open_loop_CF51 to force open-loop
+								;   mode when this clamp condition holds.
 								; 48.3 - Sensor	error
 								; 48.4 - Knock management error
 								; 48.5 - Air-con switch	signal
-								; 48.6 -
-								; 48.7 -
+								; 48.6 - No write or test site found
+								;   anywhere in this file - genuinely
+								;   unused/dead bit, not just undocumented.
+								; 48.7 - Set when a persistent-knock
+								;   condition (count >= 3, knock_mcu_update
+								;   area) also has a G1/G2 sync error
+								;   present (loc_F4C7/F573); gates a
+								;   further knock-error-escalation path
+								;   near loc_F54B-F57C alongside
+								;   var_flags_46.5. Cleared once that
+								;   escalation path resolves (loc_F573).
 								;
 var_io_input1:			.block 1			; DATA XREF: divide_d_by_x+199↓r
 								; divide_d_by_x+19C↓r ...
 								; 49.0 - Set if	STA signal high	(starter running)
 								; 49.1 - Set if	IDL signal low (throttle closed)
-								; 49.2 -
-								; 49.3 -
+								; 49.2 - Set if PORTA.3 LOW (no signal
+								;   name given at check_io_inputs' own
+								;   comment - raw pin only)
+								; 49.3 - Set if PORTA.4 LOW (no signal
+								;   name given - raw pin only)
 								; 49.4 - Set if	STP signal high
 								; 49.5 - Set if	TE1 signal low (diagnostic check)
 								; 49.6 - Set if	TE2 signal low (OBD stream enabled)
 								; 49.7 - Set if	ELS signal high
 var_io_input2:			.block 1			; DATA XREF: divide_d_by_x+D47↓r
 								; divide_d_by_x+D57↓r ...
-								; 4A.0 - Set if	ECO signal high
-								; 4A.1 -
-								; 4A.2 -
-								; 4A.3 - PS/IDUP
-								; 4A.4 -
-								; 4A.5 -
-								; 4A.6 -
-								; 4A.7 -
+								; 4A.0 - Set if	ECO signal high (PORTD_ASRIN.3)
+								; 4A.1 - Set if PORTC.0 high (no signal
+								;   name given at check_io_inputs' own
+								;   comment - raw pin only)
+								; 4A.2 - Set if PORTC.1 LOW (no signal name
+								;   given - raw pin only)
+								; 4A.3 - PS/IDUP (set if PORTC.2 LOW)
+								; 4A.4 - Set if PORTC.6 LOW (no signal name
+								;   given - raw pin only)
+								; 4A.5 - Set if PORTC.7 LOW (no signal name
+								;   given - raw pin only)
+								; 4A.6 - NOT a physical sensor pin: set if
+								;   IRQLL.0 (Interrupt Request Flag LSB,
+								;   bit0) is LOW at poll time - an
+								;   internal interrupt-flag snapshot
+								;   folded into this input-bits byte.
+								; 4A.7 - NOT a physical sensor pin: set if
+								;   PBCS.4 (Port B Control Register,
+								;   bit4) is HIGH at poll time - an
+								;   internal register-state snapshot
+								;   folded into this input-bits byte.
+								;
+								; All bits populated (and de-bounced via
+								; deglitch_io_input) exclusively by
+								; check_io_inputs - no other writer in
+								; this file; see that function's own body
+								; for the exact PORTx/register-bit-to-
+								; var_io_input2-bit mapping and polarity.
 var_error_flags1:		.block 1			; DATA XREF: clear_nv_ram+B↓w
 								; divide_d_by_x+60B↓r ...
 								; 4B.0 - STA signal error?
@@ -359,37 +823,169 @@ var_error_flags1:		.block 1			; DATA XREF: clear_nv_ram+B↓w
 								; 4B.4 - THA sensor error
 								; 4B.5 - PIM sensor error
 								; 4B.6 - SPD sensor error
-								; 4B.7 -
+								; 4B.7 - Second G1/G2 signal error flag
+								;   (companion to bit1): set once a
+								;   separate NE-sync-loss counter reaches
+								;   6 (int_vector_e_ne area), cleared when
+								;   it's back below threshold. Not
+								;   confirmed whether this tracks a
+								;   distinct condition from bit1 or is a
+								;   second counter/threshold for the same
+								;   underlying fault.
 var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								; divide_d_by_x+968↓r ...
 								; 4C.0 - Knock sensor error
 								; 4C.1 - TPS error
-								; 4C.2 -
+								; 4C.2 - ISC self-check mismatch: set when
+								;   dmarx_iscv_duty (CPU2's commanded ISC
+								;   duty) doesn't equal an expected test
+								;   value of 0x10 during a startup/self-
+								;   check comparison sequence (loc_DD69);
+								;   cleared when it matches. Companion to
+								;   bit7 (same check, other test value).
 								; 4C.3 - TRAC TPS error
 								; 4C.4 - THAM sensor error
 								; 4C.5 - O2 sensor heater error
-								; 4C.6 -
-								; 4C.7 -
+								; 4C.6 - Lambda/O2 sensor "stuck" error:
+								;   set when var_adc_lambda has read
+								;   persistently rich (positive) for
+								;   var_cnt_EE >= 0x5A (90 ticks) under
+								;   qualifying ECT/nv_diag_errors_1
+								;   conditions (~loc_DEC1-DEF7) - also
+								;   raises var_diag_errors_4.6 and
+								;   var_diag_errors_5.3 alongside it;
+								;   cleared once var_adc_lambda reads lean
+								;   (negative) again.
+								; 4C.7 - ISC self-check mismatch: set when
+								;   dmarx_iscv_duty doesn't equal an
+								;   expected test value of 0x08 during the
+								;   same startup/self-check sequence as
+								;   bit2 (loc_DD69); cleared when it
+								;   matches.
 								;
 var_flags_4D:			.block 1			; DATA XREF: divide_d_by_x+84A↓r
 								; divide_d_by_x+9AE↓r ...
-								; 4D.0 -
-								; 4D.1 -
-								; 4D.2 -
+								; 4D.0 - Diagnostic-check-mode active
+								;   latch (paired with var_io_input1.5/
+								;   TE1): set when diagnostic code output
+								;   starts (diag_code_index initialized,
+								;   loc_E05D area), tested to gate the
+								;   diagnostic-code output state machine,
+								;   cleared when the code index resets to
+								;   0xFF (loc_E092).
+								; 4D.1 - "Sensor error queued for
+								;   diagnostic output" companion of
+								;   var_diag_errors_5.3: set the instant
+								;   that bit is found set (loc_DF66),
+								;   tested/cleared in the diagnostic
+								;   dispatch code (loc_DD59/DD8C,
+								;   loc_E05D/E092) to sequence diag-code
+								;   output.
+								; 4D.2 - "Throttle closing at an
+								;   increasing rate" flag (CORRECTION: an
+								;   earlier pass here called this
+								;   "acceleration enrichment... opposite
+								;   direction" to var_flags_44.2 - wrong
+								;   on both counts). Set/cleared by
+								;   sub_CE3C from var_tps_delta_rate, the
+								;   SECOND derivative of throttle
+								;   position: rate < 0xF4 (-12) sets,
+								;   rate >= 0xF8 (-8) clears, hysteresis
+								;   band between. var_flags_44.2 is the
+								;   FIRST derivative in the same closing
+								;   direction, so the pair distinguishes
+								;   "closing fast" from "closing ever
+								;   faster". Tested together with
+								;   var_flags_44.2 to gate fuel-enrichment
+								;   logic near loc_E469, and read by
+								;   copy_dma_tx (loc_F988) - so this state
+								;   is also sent to CPU2.
 								; 4D.3 - Using default PIM value
 								; 4D.4 - Set on	too many IGF missing error
-								; 4D.5 -
-								; 4D.6 -
+								; 4D.5 - One-shot latch for the TRAC TPS
+								;   closed-throttle self-calibration
+								;   (~loc_FEB3-FED7): `tbs`+`bne` makes
+								;   the first pass this power cycle take
+								;   the +1 nudge path before clamping and
+								;   committing var_nv_trac_tps to NV RAM;
+								;   `clrb` at loc_FED2 re-arms it on the
+								;   ineligible path. Exactly parallel to
+								;   var_flags_42.5/var_flags_47.5's role
+								;   for the PRIMARY TPS's own
+								;   self-calibration.
+								; 4D.6 - Sits inside the still-unexplored
+								;   DC77/DD38/DD59/E112 diagnostic phase
+								;   (see session_journal.md CPU1 pending
+								;   work): `tbbs`-tested at loc_DD59 to
+								;   choose between setting it (+ clearing
+								;   var_4ms_cnt_ne_C2) at loc_DD59 itself
+								;   vs clearing it at loc_DD64, gated by
+								;   PORTA.1. Full purpose not established
+								;   pending that section's own pass.
 								; 4D.7 - Starter running during	ignition
 var_flags_4E:			.block 1			; DATA XREF: divide_d_by_x+456↓w
 								; divide_d_by_x+486↓r ...
-								; 4E.0 -
+								; NOTE: reused as var_trim_state_alias
+								;   (a wholly different variable) for
+								;   most of divide_d_by_x's D931-E380
+								;   range - see that alias's own comment
+								;   below. All bit meanings on this line
+								;   are for the address's use as
+								;   var_flags_4E outside that range (all
+								;   evidence sites here sit before D931
+								;   or after E380/in calc_4ms_corrections/
+								;   calc_iscv).
+								; 4E.0 - Reused extremely widely as local/
+								;   scratch state across many unrelated
+								;   subsections rather than one coherent
+								;   flag (same pattern as var_diag_
+								;   errors_5.0): divide_d_by_x's cranking/
+								;   injector setup (~loc_CA1B-CA93), the
+								;   fuel-enrich-rpm calc (~loc_CE18),
+								;   calc_iscv's per-injector adjustment
+								;   (~loc_E6F4-E70F), and several
+								;   independent subsections inside
+								;   calc_4ms_corrections (~loc_EA6A-ED09)
+								;   each set/test/clear it within their
+								;   own scope before the next reuses it.
 								; 4E.1 - Set when closed loop mode
 								; 4E.2 - ECT greater than 75c
-								; 4E.3 -
-								; 4E.4 -
-								; 4E.5 -
-								; 4E.6 -
+								; 4E.3 - Also reused across separate
+								;   contexts: a toggle (`tbs`+`bne`) in
+								;   divide_d_by_x's fuel-enrich-adjacent
+								;   code (loc_CE8A/CECD), independent
+								;   scratch use in calc_iscv (loc_D908/
+								;   D929), and calc_ign_timing_min's own
+								;   entry gate (`tbbc`, loc_EB37/EB66) -
+								;   that function is still on the
+								;   "renamed but not commented" pending
+								;   list, so the exact condition it gates
+								;   on isn't traced yet.
+								; 4E.4 - Set/cleared together with bit3 in
+								;   two of those same contexts
+								;   (loc_CB95/CBCA in divide_d_by_x,
+								;   loc_D522/D524 in calc_iscv - both
+								;   ECT-threshold-gated), tested
+								;   separately via `tbbs` at loc_CBEF/
+								;   D536.
+								; 4E.5 - "Overrun fuel-cut candidate"
+								;   flag: set in divide_d_by_x's fuel-cut-
+								;   engage evaluation (loc_CAAA, once
+								;   var_flags_46.2/debounce timers pass
+								;   and RPM exceeds var_rpm_div_25),
+								;   alongside forcing var_lambda_state to
+								;   0x66; consumed as a precondition by
+								;   check_set_overrun_flag
+								;   ("flags_4E.5 not set: skip") and
+								;   cleared in the periodic reset at
+								;   loc_CA3D.
+								; 4E.6 - Overrun-fuel-cut "commit" flag:
+								;   set by check_set_overrun_flag itself
+								;   once every one of its gates passes
+								;   ("All conditions met: enable overrun
+								;   fuel cut") - the actual output of
+								;   that function's decision. Cleared at
+								;   loc_EEED/EEFE.
 								; 4E.7 - Boost limit exceeded error
 
 ; Same address as var_flags_4E, purely a readability alias. For roughly
@@ -420,10 +1016,29 @@ var_flags_4F:			.block 1			; DATA XREF: divide_d_by_x+95D↓w
 								; 4F.1 - Set if	ECO high
 								; 4F.2 - Set if	PSUP?
 								; 4F.3 - Set if	ELS high
-								; 4F.4 -
+								; 4F.4 - Reused across at least three
+								;   contexts, not one coherent flag:
+								;   closed_loop_CF56's own lambda-table
+								;   selection/in-progress state
+								;   (set loc_CF86, tested loc_D026), a
+								;   separate starter-check block
+								;   (set loc_D308), and read-only tests
+								;   in calc_iscv (loc_D586/D8C4).
 								; 4F.5 - Set if	diagnostic mode
-								; 4F.6 -
-								; 4F.7
+								; 4F.6 - "RPM above 2800" gate within
+								;   calc_iscv: set when var_rpm_div_25 >=
+								;   0x70 (2800rpm, loc_D919), cleared
+								;   below that threshold and at loc_D929;
+								;   feeds the ISC PWM step-direction
+								;   decision at loc_D475-D483 (see
+								;   var_diag_errors_5.1).
+								; 4F.7 - Reused across at least three
+								;   unrelated contexts (same pattern as
+								;   4F.4): a PIM comparison in
+								;   divide_d_by_x (~loc_D42A-D434), a
+								;   distinct threshold check against
+								;   unk_187 in sub_DE5A, and another
+								;   independent compare near loc_DE08.
 var_pim2:			.block 1			; DATA XREF: divide_d_by_x+61E↓r
 								; check_boost_limit:loc_CCE3↓r ...
 								; (ADC - 10560)	* 1.285156
@@ -470,12 +1085,21 @@ var_trim_cell_idx:		.block 1			; DATA XREF: divide_d_by_x+B25↓r
 								; divide_d_by_x:loc_D16D↓r
 unk_68:				.block 1			; DATA XREF: divide_d_by_x+655↓w
 								; divide_d_by_x+65E↓r ...
+								; Part of the second, distinct closed-
+								; loop lambda trim system in chunk D1DD
+								; (alongside var_nv_trim_unk_96/unk_6B/
+								; var_lambda_count_unk_6C) - not yet
+								; distinguished from the zone-based
+								; nv_afr_trim system; see
+								; session_journal.md's CPU1 pending work.
 var_trim_stable_cnt:		.block 1			; DATA XREF: divide_d_by_x+B29↓w
 								; divide_d_by_x:loc_D108↓r ...
 var_cnt_6A:			.block 1			; DATA XREF: divide_d_by_x:loc_D954↓w
 								; ROM:DB3A↓r
 unk_6B:				.block 1			; DATA XREF: divide_d_by_x+10E↓w
 								; divide_d_by_x:loc_D22A↓r ...
+								; Same second closed-loop lambda trim
+								; system as unk_68 above - see that note.
 var_lambda_count_unk_6C:	.block 1			; DATA XREF: divide_d_by_x:loc_D28F↓r
 								; divide_d_by_x+CF6↓w ...
 var_error_flags_6D:		.block 1			; DATA XREF: ROM:DF59↓r
@@ -506,6 +1130,11 @@ var_temp_7C:			.block 1			; DATA XREF: sub_E865+178↓w
 								; calc_4ms_corrections+248↓w
 				.block 2
 unk_7F:				.block 1			; DATA XREF: divide_d_by_x+D1↓o
+								; READ-ONLY in this file: read by loc_C66B, with
+								; no bit- or byte-level write site found here -
+								; so it holds whatever clear_variables left (0)
+								; unless something writes it by a path this
+								; sweep missed.
 nv_diag_errors_1:		.block 2			; DATA XREF: divide_d_by_x:loc_C7E6↓o
 								; clear_nv_ram+5↓o ...
 								; 80.0 - RPM G1	or G2 signal
@@ -560,8 +1189,18 @@ var_nv_valid:			.block 2			; DATA XREF: divide_d_by_x+237↓r
 								; 5AA5 if data storage block valid
 unk_9E:				.block 1			; DATA XREF: divide_d_by_x:loc_C7E9↓o
 								; clear_nv_ram+43↓r ...
+								; Written by loc_C841, loc_D718, loc_D786,
+								; loc_D791; read by loc_C7E9, loc_C841,
+								; loc_D718, loc_D786, loc_D791, loc_D79C,
+								; loc_D7BF. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 unk_9F:				.block 1			; DATA XREF: clear_nv_ram+4A↓w
 								; divide_d_by_x+1E36↓r ...
+								; Written by loc_C841, loc_E44F; read by
+								; loc_E3CE, sub_E435. Purpose not established -
+								; left named unk_ deliberately per CLAUDE.md
+								; (rename only on confirmed understanding).
 var_diag_errors_4:		.block 1			; DATA XREF: divide_d_by_x+D6↓o
 								; divide_d_by_x+1A1↓r ...
 								; A0.0 -
@@ -585,8 +1224,29 @@ var_overrun_advance:				.block 1			; DATA XREF: calc_4ms_corrections+4A↓w
 var_ign_temp:		.block 1			; DATA XREF: iv6_ne_process+62↓w
 								; iv6_ne_process+69↓r ...
 				.block 1
-unk_A6:				.block 1			; DATA XREF: divide_d_by_x+13B↓w
+var_limiter_ign_ramp:		.block 1			; DATA XREF: divide_d_by_x+13B↓w
 								; calc_4ms_corrections+443↓r ...
+								; Ramp state for the speed/rev limiter's
+								; ignition-torque cut and recovery. Three
+								; distinct regimes, all consumed at
+								; calc_4ms_corrections' loc_EE5F:
+								;   0xFF - limiter engaged and the car is
+								;     still moving (speed >= 0x0A or TPS >=
+								;     0x29), set by check_clear_speed_limiter_
+								;     tps/rev. Forces var_ign_corr_combined to
+								;     0 and holds the value at 0xFF.
+								;   0x00 - limiter active but the release
+								;     condition is met (speed < 0x0A AND TPS <
+								;     0x29), cleared by those same two
+								;     functions. Seeds the recovery at 0x2B
+								;     (43) and starts the ramp at 1.
+								;   0x01..0xFE - recovery in progress,
+								;     incremented once per 4ms pass: while
+								;     below 0x0C it backs the correction off
+								;     steeply (-9 per tick), then gently (-1
+								;     per tick) - so torque is restored on a
+								;     two-slope ramp instead of stepping back
+								;     in at once.
 var_cnt_knock_signal:		.block 1			; DATA XREF: knock_mcu_update+4F↓r
 								; knock_mcu_update+54↓w	...
 diag_code_digit:		.block 1			; DATA XREF: ROM:DFDF↓r
@@ -595,6 +1255,13 @@ diag_code_index:		.block 1			; DATA XREF: divide_d_by_x+14D↓w
 								; ROM:loc_DFD4↓r ...
 unk_AA:				.block 1			; DATA XREF: divide_d_by_x+113↓r
 								; sub_E865+25↓r	...
+								; Read/written by sub_E865's ignition-
+								; timing/knock blend (init path sets it
+								; to 0xFF) - see that function's own
+								; Reads/Writes header. Not renamed: role
+								; not confirmed with full instruction-
+								; level confidence (see that header's
+								; "NOT fully confirmed" note).
 var_iscv_relay_cnt:				.block 1			; DATA XREF: iv6_4ms_process+9↓r
 								; iv6_4ms_process:loc_F81B↓w
 var_iscv_error_cnt:				.block 1			; DATA XREF: iv6_4ms_process:loc_F7E9↓w
@@ -707,15 +1374,34 @@ var_cnt_DE:			.block 1			; DATA XREF: calc_iscv+12B↓w
 var_cnt_sensor_error:		.block 1			; DATA XREF: adc_handler_pim+1A↓w
 								; adc_handler_pim:loc_FBA8↓r ...
 unk_E0:				.block 1
+								; UNREFERENCED: no read or write site exists
+								; anywhere in this file - a genuinely unused RAM
+								; byte, not merely an undocumented one.
 var_cnt_E1:			.block 1			; DATA XREF: divide_d_by_x+70C↓r
 								; divide_d_by_x:loc_CCB3↓w ...
 unk_E2:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
 								; calc_iscv:loc_D791↓r
+								; Written by loc_D784; read by loc_D791. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 unk_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
+								; WRITE-ONLY in this file: written by loc_F577,
+								; but no read site exists anywhere here. Either
+								; consumed by CPU2 over the DMA buffer, or
+								; vestigial.
 unk_E4:				.block 1			; DATA XREF: ROM:loc_DA70↓w
 								; ROM:DA75↓r
+								; Written by loc_DA70; read by loc_DA72. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 unk_E5:				.block 1			; DATA XREF: divide_d_by_x+1781↓w
 								; divide_d_by_x:loc_DD1E↓r ...
+								; Written by loc_DD17, loc_DD2F; read by
+								; loc_DD1E. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 var_spd_cnt:			.block 1			; DATA XREF: ROM:loc_DEAD↓w
 								; ROM:loc_DEAF↓r
 								; Number of cycles with	no speed sensor	reading
@@ -724,6 +1410,10 @@ var_igt_timer:			.block 1			; DATA XREF: check_IGF_error+3↓w
 								; Number of ticks since	last IGT/IGF
 unk_E8:				.block 1			; DATA XREF: divide_d_by_x+1DD5↓r
 								; divide_d_by_x+1DD8↓w
+								; Written by loc_E36A; read by loc_E36A. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 var_cnt_E9:			.block 1			; DATA XREF: divide_d_by_x:loc_D3B1↓w
 								; divide_d_by_x+E3F↓r ...
 var_cnt_EA:			.block 1			; DATA XREF: divide_d_by_x+3CE↓w
@@ -736,8 +1426,25 @@ var_cnt_ED:			.block 1			; DATA XREF: ROM:DE22↓r
 								; ROM:DE56↓w
 var_cnt_EE:			.block 1			; DATA XREF: ROM:loc_DEE3↓w
 								; ROM:loc_DEE5↓r
-unk_EF:				.block 1			; DATA XREF: divide_d_by_x+C6F↓w
+var_tps_closed_cnt:		.block 1			; DATA XREF: divide_d_by_x+C6F↓w
 								; ROM:FCF6↓w ...
+								; Consecutive-closed-throttle sample
+								; counter driving the primary TPS's
+								; NV self-calibration (~loc_FD08-FD57).
+								; Cleared whenever the throttle opens
+								; (loc_FD03) or on the var_flags_40.7
+								; reset path, so it only ever measures an
+								; unbroken closed-throttle dwell.
+								;
+								; Read modulo 0x40 (via a subtract loop):
+								; when the residue hits exactly 0x0A the
+								; code nudges var_nv_tps up by 1 and
+								; increments this counter, so the learn
+								; ticks once every 0x40 closed samples
+								; rather than continuously. Below a count
+								; of 2 the downward-correction path is
+								; skipped entirely (too few samples to
+								; trust).
 var_ne_0:			.block 2			; DATA XREF: init_ne_counters+3↓o
 								; iv6_ne_process+21↓o ...
 var_ne_1:			.block 2			; DATA XREF: iv6_ne_process+3A↓r
@@ -749,11 +1456,32 @@ var_ign_ne_frac:				.block 1			; DATA XREF: ignition_timing_to_cpr+5↓r
 var_rpm_avg:			.block 1			; DATA XREF: divide_d_by_x+2F2↓w
 								; sub_C91A+2↓r ...
 				.block 1
-unk_FA:				.block 1			; DATA XREF: adc_handler_pim+63↓w
+var_pim_baseline:		.block 1			; DATA XREF: adc_handler_pim+63↓w
 								; adc_handler_pim+79↓r ...
+								; Baseline (atmospheric-reference) PIM MSB
+								; for the PIM NV-trim learn in
+								; adc_handler_pim. Captured ONCE per
+								; power cycle, on the first ADC pass after
+								; TIMER reaches 0x0C, at the same instant
+								; var_flags_47.1 latches the sampling
+								; window open (loc_FBE0).
+								;
+								; Afterwards the smoothed PIM is
+								; differenced against it (loc_FBF6): a
+								; magnitude above 1 sets var_flags_47.2
+								; ("large PIM delta"), which combined with
+								; var_cnt_C7 saturating at 0xFF arms
+								; var_flags_47.0 - and that finally clamps
+								; this baseline value through clamp_rB and
+								; commits it to var_nv_trim_unk_98 via
+								; write_rB_nv_ram.
 var_gearing:			.block 1			; DATA XREF: calc_4ms_corrections+9C↓r
 								; calc_4ms_corrections+EC↓r	...
 unk_FC:				.block 1			; DATA XREF: divide_d_by_x+20D7↓w
+								; WRITE-ONLY in this file: written by loc_E66C,
+								; but no read site exists anywhere here. Either
+								; consumed by CPU2 over the DMA buffer, or
+								; vestigial.
 var_adc_cmd:		.block 1			; DATA XREF: divide_d_by_x+175↓w
 								; int_4ms_watchdog+12↓w	...
 var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
@@ -761,8 +1489,35 @@ var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
 var_tps_2:			.block 1			; DATA XREF: ROM:loc_FDAA↓r
 								; ROM:FE07↓w
 unk_100:			.block 1			; DATA XREF: sub_E115:loc_E208↓o
-unk_101:			.block 1			; DATA XREF: divide_d_by_x+FA↓w
+								; READ-ONLY in this file: read by loc_E208, with
+								; no bit- or byte-level write site found here -
+								; so it holds whatever clear_variables left (0)
+								; unless something writes it by a path this
+								; sweep missed.
+var_tps_closed_ref:		.block 1			; DATA XREF: divide_d_by_x+FA↓w
 								; sub_C996+10↓r	...
+								; Slew-limited "throttle has settled
+								; closed" reference level, maintained by
+								; sub_C996 (its only updater):
+								;   new = old + (var_tps_unk_150/64 - old)/2
+								; i.e. an IIR low-pass that halves the
+								; error each call, clamped to a 0x10
+								; maximum. Only updated while the throttle
+								; is closed (var_io_input1.1/IDL) and only
+								; once per closed episode (gated by
+								; var_flags_47.4); force-reset to its 0x10
+								; maximum the moment the throttle opens
+								; (adc_handler_tps_high).
+								;
+								; Consumed at loc_C9BF as a settling
+								; threshold: max(ref/2, 4)/4 compared
+								; against var_tps_unk_150 - so the test
+								; tightens as the value converges
+								; downward, which is what makes
+								; var_flags_40.4's "TPS settled below
+								; threshold" debounce require the reading
+								; to hold steady rather than just dip
+								; once.
 var_adc_o2_sensor:		.block 1			; DATA XREF: sub_E115+231↓r
 								; adc_handler_o2_heater+15↓r ...
 var_io_input1_tmp:		.block 1			; DATA XREF: check_io_inputs+2C↓o
@@ -790,9 +1545,33 @@ var_inj_battery_adjust:		.block 2			; DATA XREF: ROM:DDA6↓r
 								; Calculated injector dead-time	for battery voltage. In	4uS units.
 var_fuel_enrich_rpm:		.block 1			; DATA XREF: divide_d_by_x+118↓w
 								; divide_d_by_x+83B↓w ...
-unk_11D:			.block 1			; DATA XREF: sub_CE3C+10↓r
+var_tps_delta_prev:		.block 1			; DATA XREF: sub_CE3C+10↓r
 								; sub_CE3C+1F↓w
-unk_11E:			.block 1			; DATA XREF: sub_CE3C:loc_CE58↓w
+								; Previous call's var_tps_delta, kept by
+								; sub_CE3C purely so it can difference
+								; against the current one - see
+								; var_tps_delta_rate below.
+var_tps_delta_rate:		.block 1			; DATA XREF: sub_CE3C:loc_CE58↓w
+								; Rate of change of var_tps_delta between
+								; consecutive sub_CE3C calls (i.e. the
+								; second derivative of throttle position -
+								; "throttle jerk"), computed as
+								; var_tps_delta - var_tps_delta_prev and
+								; saturated to 0x7F/0x80 on signed
+								; overflow.
+								;
+								; Thresholded immediately afterwards to
+								; drive var_flags_4D.2: rate < 0xF4 (-12)
+								; sets it, rate >= 0xF8 (-8) clears it,
+								; with the band between holding the
+								; previous state (hysteresis). Note this
+								; is the SAME (closing) direction as
+								; var_flags_44.2, which sub_CE3C sets from
+								; the first derivative a few instructions
+								; earlier - the two flags distinguish
+								; "closing fast" from "closing ever
+								; faster", they are not opposite
+								; directions.
 var_overrun_fuel_mult:			.block 1			; DATA XREF: divide_d_by_x:loc_CECA↓w
 								; divide_d_by_x+93A↓r ...
 var_accel_enrich:			.block 1			; DATA XREF: divide_d_by_x+93D↓w
@@ -807,20 +1586,36 @@ word_125:			.block 2			; DATA XREF: adc_handler_pim+46↓w
 								; adc_handler_pim+4E↓r
 unk_127:			.block 1			; DATA XREF: divide_d_by_x+C7E↓r
 								; divide_d_by_x+211F↓r ...
+								; Written by sub_E865's ignition-timing/
+								; knock blend (its final output register,
+								; per that function's own header) - not
+								; renamed pending the middle-blend
+								; arithmetic's own confirmation.
 				.block 1
 unk_129:			.block 1			; DATA XREF: divide_d_by_x+2235↓r
 								; sub_E865+1F↓w	...
+								; Read/written by sub_E865 - see that
+								; function's Reads/Writes header.
 				.block 1
 var_unk_knock_12B:		.block 1			; DATA XREF: sub_E865+14↓w
 								; sub_E865+3F↓r	...
 				.block 1
 unk_12D:			.block 1			; DATA XREF: sub_E865+17↓w
 								; sub_E865+85↓r	...
+								; Read/written by sub_E865 - see that
+								; function's Reads/Writes header.
 				.block 1
 unk_12F:			.block 1			; DATA XREF: sub_E865+1A↓w
 								; sub_E865+2C↓r	...
+								; Read/written by sub_E865 - see that
+								; function's Reads/Writes header.
 				.block 1
 unk_131:			.block 1			; DATA XREF: sub_E551+10↓w
+								; Written by sub_E551, the ~350-byte
+								; entirely-uncharacterized function that
+								; needs its own dedicated session - see
+								; session_journal.md's CPU1 pending work.
+								; Not renamed/traced further here.
 								; divide_d_by_x+208F↓r ...
 				.block 1
 var_unk_knk_133:		.block 1			; DATA XREF: divide_d_by_x+2044↓r
@@ -839,29 +1634,77 @@ var_scaled_ve_tham:		.block 1			; DATA XREF: sub_E454↓r
 				.block 1
 unk_13C:			.block 1			; DATA XREF: divide_d_by_x+2242↓w
 								; sub_E865+115↓r
+								; Written by loc_E7D8; read by loc_E978. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 unk_13D:			.block 1			; DATA XREF: divide_d_by_x:loc_E7FA↓w
 								; divide_d_by_x+2272↓r ...
+								; Written by loc_E7FA, loc_E83F; read by
+								; loc_E7FD, sub_E832. Purpose not established -
+								; left named unk_ deliberately per CLAUDE.md
+								; (rename only on confirmed understanding).
 				.block 1
 unk_13F:			.block 1			; DATA XREF: divide_d_by_x+227C↓w
 								; sub_E865+175↓r ...
+								; Written by loc_E815; read by loc_E9C8,
+								; loc_E9F0. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 				.block 1
 unk_141:			.block 1			; DATA XREF: divide_d_by_x+2291↓w
 								; sub_E865+170↓r ...
+								; Written by loc_E815; read by loc_E9C8,
+								; loc_E9F0. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 				.block 1
 var_unk_tps_143:		.block 1			; DATA XREF: divide_d_by_x:loc_E534↓w
 								; get_tps_unk+8↓r
 unk_144:			.block 1			; DATA XREF: divide_d_by_x+E83↓r
 								; sub_E551+A↓r ...
+								; Written by loc_FC53; read by loc_D40E,
+								; loc_E5D0, sub_E551. Purpose not established -
+								; left named unk_ deliberately per CLAUDE.md
+								; (rename only on confirmed understanding).
 unk_145:			.block 1			; DATA XREF: sub_E551+7↓w
+								; WRITE-ONLY in this file: written by sub_E551,
+								; but no read site exists anywhere here. Either
+								; consumed by CPU2 over the DMA buffer, or
+								; vestigial.
 unk_146:			.block 1			; DATA XREF: divide_d_by_x:loc_E63C↓w
 								; ROM:loc_FDDB↓r
+								; Written by loc_E63C; read by loc_FDDB. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 unk_147:			.block 1			; DATA XREF: divide_d_by_x:loc_D237↓r
 								; divide_d_by_x+CC5↓r ...
+								; Written by loc_E651; read by
+								; closed_loop_control, loc_D237, loc_EA7A,
+								; loc_EAE0. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 var_ect_unk_148:		.block 1			; DATA XREF: divide_d_by_x+108↓w
 								; divide_d_by_x:loc_CA64↓r ...
 var_rev_limit_rpm:		.block 1			; DATA XREF: divide_d_by_x:loc_CC1B↓r
 								; divide_d_by_x:loc_CC2A↓w ...
 unk_14A:			.block 1			; DATA XREF: divide_d_by_x+695↓r
+								; READ-ONLY, and therefore permanently 0:
+								; the file contains exactly ONE reference to
+								; this byte - `sub a, unk_14A` at loc_CC2D in
+								; the rev-limiter hysteresis check - and no
+								; write site at all, so clear_variables' reset
+								; to 0 is the only value it ever holds. That
+								; makes the subtract a no-op and reduces the
+								; check to a bare `cmp a, #1Eh`.
+								;
+								; Reads like a rev-limiter hysteresis offset
+								; that was zeroed out (a tunable disabled by
+								; setting it to a constant 0) rather than a
+								; live variable. Left named unk_ because the
+								; intended quantity isn't confirmed - but note
+								; it cannot currently affect behavior.
 var_inj_active:			.block 1			; DATA XREF: iv6_ne_process+26F↓w
 								; iv6_ne_process+28B↓r ...
 var_inj_pw_next:		.block 1			; DATA XREF: iv6_ne_process+2A7↓r
@@ -901,6 +1744,10 @@ var_idle_timing_ramp:			.block 1			; DATA XREF: divide_d_by_x+142↓w
 								; calc_4ms_corrections+112↓w ...
 unk_15F:			.block 1			; DATA XREF: divide_d_by_x+145↓w
 								; calc_ign_timing_min+80↓w
+								; WRITE-ONLY in this file: written by loc_C67A,
+								; loc_EBD6, but no read site exists anywhere
+								; here. Either consumed by CPU2 over the DMA
+								; buffer, or vestigial.
 var_ect_unk_160:		.block 1			; DATA XREF: calc_ign_timing_min:loc_EBE2↓r
 								; calc_ect_unk_160+6↓w
 var_cyl_rpm_delta:			.block 1			; DATA XREF: calc_ign_timing_min:loc_EB84↓w
@@ -916,6 +1763,10 @@ var_rpm_div25_prev:			.block 1			; DATA XREF: calc_4ms_corrections+12F↓w
 								; calc_ign_timing_min+2A↓w	...
 unk_168:			.block 1			; DATA XREF: divide_d_by_x+314↓w
 								; divide_d_by_x+176D↓w ...
+								; Written by loc_C880, loc_DD02; read by
+								; loc_F5F4. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 var_ign_next_cpr:		.block 1			; DATA XREF: ignition_schedule_off↓w
 								; ignition_schedule_on↓w ...
 				.block 1
@@ -947,25 +1798,51 @@ var_cyl_rpm_dev:			.block 1			; DATA XREF: sub_ED19+3↓w
 								; calc_4ms_corrections+30A↓o ...
 				.block 1
 unk_17D:			.block 1			; DATA XREF: sub_ED19+6↓w
+								; WRITE-ONLY in this file: written by sub_ED19,
+								; but no read site exists anywhere here. Either
+								; consumed by CPU2 over the DMA buffer, or
+								; vestigial.
 				.block 1
 unk_17F:			.block 1			; DATA XREF: calc_4ms_corrections+2E1↓w
 								; calc_4ms_corrections+310↓o ...
+								; Written by loc_ED01; read by loc_ED31,
+								; loc_ED53, loc_ED56, loc_ED6E, loc_ED85,
+								; loc_ED91. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 				.block 1
 unk_181:			.block 1			; DATA XREF: calc_4ms_corrections+2E4↓w
+								; WRITE-ONLY in this file: written by loc_ED01,
+								; but no read site exists anywhere here. Either
+								; consumed by CPU2 over the DMA buffer, or
+								; vestigial.
 				.block 1
 diag_code_delay:		.block 1			; DATA XREF: ROM:DFD9↓r
 								; ROM:E016↓w ...
 				.block 1
 unk_185:			.block 1			; DATA XREF: ROM:DE1F↓r
 								; ROM:loc_DE3B↓w ...
+								; Written by loc_DE3B, loc_DE50; read by
+								; loc_DE1C. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 var_adc_o2_heater:		.block 1			; DATA XREF: ROM:DDFD↓r
 								; ROM:DE27↓r ...
 								; Value	indicating O2 sensor heater current
 unk_187:			.block 1			; DATA XREF: divide_d_by_x+151↓w
 								; ROM:DDF5↓r ...
+								; Written by loc_C67A, loc_DE6B, sub_DE71; read
+								; by loc_DDB8, sub_DE5A, sub_DE71. Purpose not
+								; established - left named unk_ deliberately per
+								; CLAUDE.md (rename only on confirmed
+								; understanding).
 				.block 1
 unk_189:			.block 1			; DATA XREF: ROM:EFBE↓r
 								; ROM:int_vector_e_ne_EFD9↓w
+								; Written by int_vector_e_ne_EFD9; read by
+								; int_vector_e_ne. Purpose not established -
+								; left named unk_ deliberately per CLAUDE.md
+								; (rename only on confirmed understanding).
 var_igf_miss_count:		.block 2			; DATA XREF: int_vector_9_ignition+28↓r
 								; int_vector_9_ignition:igf_store_counter↓w
 								; MSB is number	of IGF signals missing
@@ -1013,6 +1890,10 @@ var_iscv_pwm:			.block 2			; DATA XREF: drive_dout1_iscv+3↓r
 								; divide_d_by_x:loc_D483↓w ...
 unk_19A:			.block 1			; DATA XREF: calc_iscv+22C↓r
 								; calc_iscv+230↓w ...
+								; Written by loc_D6F2; read by loc_D6F2,
+								; loc_D7BF. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 var_iscv_target_base:		.block 1			; DATA XREF: divide_d_by_x+DC3↓w
 								; calc_iscv+162↓r ...
 				.block 1
@@ -1023,17 +1904,39 @@ var_iscv_unk_19F:		.block 1			; DATA XREF: calc_iscv:loc_D891↓w
 								; calc_iscv+422↓r
 unk_1A0:			.block 1			; DATA XREF: calc_iscv:loc_D6A2↓w
 								; calc_iscv+206↓r ...
+								; Written by loc_D6A2; read by loc_D6C9,
+								; loc_D89E. Purpose not established - left named
+								; unk_ deliberately per CLAUDE.md (rename only
+								; on confirmed understanding).
 unk_1A1:			.block 1			; DATA XREF: divide_d_by_x+15C↓w
 								; divide_d_by_x+DD6↓w ...
+								; Written by loc_C67A, loc_D36E, loc_D6F2; read
+								; by loc_D6A5, loc_D6B6, loc_D6C6, loc_D89E.
+								; Purpose not established - left named unk_
+								; deliberately per CLAUDE.md (rename only on
+								; confirmed understanding).
 				.block 1
 unk_1A3:			.block 1			; DATA XREF: calc_iscv+38A↓r
 								; calc_iscv:loc_D863↓w
+								; Written by loc_D863; read by loc_D84F. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 				.block 1
 unk_1A5:			.block 1			; DATA XREF: divide_d_by_x+2F4↓w
 								; calc_iscv+34E↓r ...
+								; Written by loc_C880, loc_D827; read by
+								; loc_D815, loc_D827, loc_D82D. Purpose not
+								; established - left named unk_ deliberately per
+								; CLAUDE.md (rename only on confirmed
+								; understanding).
 				.block 1
 unk_1A7:			.block 1			; DATA XREF: calc_iscv:loc_D5C9↓w
 								; calc_iscv+1C6↓r
+								; Written by loc_D5C9; read by loc_D67F. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 				.block 1
 var_iscv_unk_1A9:		.block 1			; DATA XREF: calc_iscv:loc_D540↓r
 								; calc_iscv:loc_D54A↓w ...
@@ -1045,6 +1948,10 @@ var_iscv_unk_1AD:		.block 1			; DATA XREF: calc_iscv+B0↓r
 								; calc_iscv:loc_D59B↓w ...
 				.block 1
 unk_1AF:			.block 1			; DATA XREF: divide_d_by_x+162↓w
+								; WRITE-ONLY in this file: written by loc_C67A,
+								; but no read site exists anywhere here. Either
+								; consumed by CPU2 over the DMA buffer, or
+								; vestigial.
 				.block 1
 				.block 1
 				.block 1
@@ -1053,6 +1960,10 @@ var_knock_retard:		.block 1			; DATA XREF: ROM:F56D↓r
 				.block 1
 unk_1B5:			.block 1			; DATA XREF: ROM:F570↓w
 								; ROM:F629↓r
+								; Written by loc_F56A; read by loc_F61E. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 				.block 1
 var_knock_info:			.block 1			; DATA XREF: knock_mcu_update+2↓r
 								; knock_mcu_update:loc_F526↓w ...
@@ -1066,28 +1977,79 @@ var_knock_retard_prev2:		.block 1			; DATA XREF: ROM:F5C1↓r
 								; ROM:F60B↓w
 var_knock_cyl_idx:		.block 1			; DATA XREF: ROM:F67A↓r
 								; ROM:F69D↓r ...
-unk_1BD:			.block 1			; DATA XREF: divide_d_by_x+1460↓w
+var_pw_loop_mode:		.block 1			; DATA XREF: divide_d_by_x+1460↓w
 								; divide_d_by_x+1491↓r ...
+								; Open-loop (0) vs closed-loop (0xC8) path
+								; selector, set by init_pw_open_loop/
+								; init_pw_closed_loop - a confirmed stable
+								; role, unlike the rest of the
+								; ramp_limit_inj_pw scratch-register
+								; cluster it lives beside (unk_1C0/1C2/
+								; 1C4/1C6/1C8 - see docs/
+								; fuel_calculation_system.md's "Injector
+								; PW ramp limiter" section). Also sent to
+								; CPU2 verbatim (see dmatx_pw_loop_mode).
 var_inj_pw_base:			.block 1			; DATA XREF: divide_d_by_x+1409↓r
 								; divide_d_by_x+1443↓r ...
 				.block 1
 unk_1C0:			.block 1			; DATA XREF: divide_d_by_x+1412↓r
 								; divide_d_by_x:loc_D9F6↓w ...
+								; The VE-map candidate, but reused as
+								; scratch throughout ramp_limit_inj_pw -
+								; no single fixed identity confirmed. See
+								; docs/fuel_calculation_system.md's
+								; ramp-limiter cluster table/trace (same
+								; as var_pw_loop_mode/1C2/1C4/1C6/1C8).
 				.block 1
 unk_1C2:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; ramp_limit_inj_pw:loc_DBB5↓r ...
+								; The one variable in this cluster WITH a
+								; confirmed stable role: ratio value
+								; nominally 0xCCCD (~0.8 in Q16),
+								; ramp_limit_inj_pw_simple's output and
+								; ramp_limit_inj_pw's deviation input -
+								; see docs/fuel_calculation_system.md.
+								; Not renamed further than this comment
+								; since no natural short name captures
+								; "ramp-limiter ratio" better than the
+								; existing docs already do.
 				.block 1
 unk_1C4:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
 								; ROM:DAC1↓r ...
+								; Carried-forward PW-scale value at
+								; ramp_limit_inj_pw's entry, but
+								; overwritten with the unk_1C8 ceiling or
+								; the ratio-deviation result depending on
+								; path - no single fixed identity. Same
+								; cluster/doc reference as unk_1C0 above.
 				.block 1
 unk_1C6:			.block 1			; DATA XREF: divide_d_by_x+11E↓w
 								; init_pw_closed_loop+D↓w ...
+								; ramp_limit_inj_pw's final per-call
+								; output register - holds the unk_1C8
+								; ceiling or the candidate/blend value
+								; depending on path. Same cluster/doc
+								; reference as unk_1C0 above.
 				.block 1
 unk_1C8:			.block 1			; DATA XREF: divide_d_by_x+124↓w
 								; ramp_limit_inj_pw:loc_DBDE↓r ...
+								; A PIM/MAP-pressure-linked bound compared
+								; against PW-scale values in
+								; ramp_limit_inj_pw. Producer partially
+								; traced to loc_E665 (~E620-E6B0, folds
+								; var_pim2-derived dmatx_pim into it) but
+								; not fully resolved - see docs/
+								; fuel_calculation_system.md's Open
+								; Questions and the ramp-limiter cluster
+								; table (same cluster as var_pw_loop_mode/1C0/1C4/
+								; 1C6 above).
 				.block 1
 unk_1CA:			.block 1			; DATA XREF: sub_E454+3E↓w
 								; divide_d_by_x+20F4↓r
+								; Written by loc_E47B; read by loc_E688. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 var_adc_iscv_pos:		.block 1			; DATA XREF: sub_E115+204↓r
 								; adc_handler_iscv_pos↓w
 var_adc_iscv_fb:		.block 1			; DATA XREF: sub_E115+1FE↓r
@@ -1108,6 +2070,19 @@ unk_1CF_alias:			.equ var_flags_4E
 
 unk_1CF:			.block 1			; DATA XREF: divide_d_by_x+1770↓r
 								; divide_d_by_x+179F↓w ...
+								; Aliased (unk_1CF_alias .equ, declared
+								; near its own use sites) and reused for
+								; at least two other, short-lived
+								; purposes in two separate windows (a
+								; diagnostic-check latch, and an O2-
+								; heater/lambda latch) - see docs/
+								; fuel_calculation_system.md's "Other
+								; aliasing instances found" section. Not
+								; renamed to something more meaningful,
+								; unlike var_trim_state_alias, because
+								; unlike that alias this one never
+								; represents one single coherent variable
+								; long enough to name.
 var_flags_4E_copy_D0:		.block 1			; DATA XREF: divide_d_by_x:main_CDCA↓r
 								; divide_d_by_x+C44↓w
 var_trim_state:			.block 1			; DATA XREF: divide_d_by_x+B52↓r
@@ -1142,23 +2117,72 @@ var_flags_4E_copy2:		.block 1			; DATA XREF: divide_d_by_x:loc_C9EE↓r
 								; divide_d_by_x+488↓w ...
 unk_1D8:			.block 1			; DATA XREF: divide_d_by_x+D42↓r
 								; divide_d_by_x+13A1↓w
+								; Written by calc_inj_pw_base; read by loc_D2D2.
+								; Purpose not established - left named unk_
+								; deliberately per CLAUDE.md (rename only on
+								; confirmed understanding).
 var_flags_4F_saved:			.block 1			; DATA XREF: divide_d_by_x:loc_CEF5↓r
 								; divide_d_by_x+C49↓w ...
 unk_1DA:			.block 1			; DATA XREF: divide_d_by_x+16E1↓r
 								; divide_d_by_x+171C↓w
+								; Written by loc_DCB5; read by loc_DC77. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
 unk_1DB:			.block 1			; DATA XREF: divide_d_by_x+171F↓r
 								; divide_d_by_x+1769↓w
-unk_1DC:			.block 1			; DATA XREF: divide_d_by_x:loc_C873↓r
+								; Written by loc_DD02; read by loc_DCB5. Purpose
+								; not established - left named unk_ deliberately
+								; per CLAUDE.md (rename only on confirmed
+								; understanding).
+var_flags_1DC:			.block 1			; DATA XREF: divide_d_by_x:loc_C873↓r
 								; divide_d_by_x:loc_C880↓w ...
+								; General-purpose status-flags byte,
+								; manipulated via whole-byte AND/OR masks
+								; rather than setb/clrb bit instructions
+								; (why it wasn't caught by earlier bit-op
+								; sweeps). Confirmed bits:
+								;   Bit 0 - Mirrors the OPPOSITE of
+								;     var_schedule_flag_41.0's `tbs`-tested
+								;     state, set/cleared at loc_C873/C880
+								;     each time that gate is tested.
+								;   Bit 1 - "Injector update ran" one-shot:
+								;     unconditionally set by
+								;     injector_update; consumed (always
+								;     cleared) once per call in the
+								;     accel-enrichment calc at loc_CECD,
+								;     which first checks whether it was
+								;     the ONLY bit set (value == 2)
+								;     beforehand to detect "injector
+								;     update ran since I last checked,
+								;     and nothing else touched this byte
+								;     in between".
+								;   Bit 2 - "TRAC TPS active" flag - see
+								;     adc_handler_trac_tps's own header
+								;     (sets/clears it based on TRAC TPS
+								;     eligibility); read back via exact-
+								;     value compare (`cmpb b,#04h`) at
+								;     loc_DCDF.
+								; Other bits (byte read/written as a whole
+								; at loc_CECD/DCDF/injector_update) not
+								; individually traced.
 unk_1DD:			.block 1			; DATA XREF: divide_d_by_x+12F↓w
 								; divide_d_by_x+1D5↓r ...
+								; Written by loc_C67A, loc_C749, loc_F899,
+								; loc_F8AB, loc_F8C4, start_dma; read by
+								; loc_C749, loc_F899, loc_F8AB, loc_F8C4,
+								; start_dma. Purpose not established - left
+								; named unk_ deliberately per CLAUDE.md (rename
+								; only on confirmed understanding).
 var_dma_rx_buffer:		.block 22h			; DATA XREF: copy_dma_rx+3↓o
 ;Start of serial bux transmit buffer
 dmatx_pim2:			.block 2			; DATA XREF: adc_handler_pim+A8↓w
 dmatx_tps:			.block 2			; DATA XREF: ROM:FCFD↓w
 								; ROM:FD8C↓w
 dmatx_ect:			.block 2			; DATA XREF: ROM:FFB2↓w
-dmatx_unk_206:			.block 2			; DATA XREF: copy_dma_tx+26↓w
+dmatx_inj_pw_inj1:		.block 2			; DATA XREF: copy_dma_tx+26↓w
+								; Verbatim copy of var_inj_pw_inj1 (see
+								; copy_dma_tx).
 dmatx_pim:			.block 2			; DATA XREF: divide_d_by_x+91D↓r
 								; divide_d_by_x:loc_E627↓w ...
 dmatx_tha:			.block 1			; DATA XREF: ROM:FF1B↓w
@@ -1168,7 +2192,9 @@ dmatx_trim_unk_20D:		.block 1			; DATA XREF: copy_dma_tx:loc_F929↓w
 dmatx_cmd_startup_20E:		.block 1			; DATA XREF: copy_dma_tx+16↓w
 dmatx_cnt_unk_20F:		.block 1			; DATA XREF: copy_dma_tx+1B↓w
 dmatx_trim_unk_210:		.block 1			; DATA XREF: copy_dma_tx:loc_F933↓w
-dmatx_unk_211:			.block 1			; DATA XREF: copy_dma_tx+20↓w
+dmatx_lambda_state:		.block 1			; DATA XREF: copy_dma_tx+20↓w
+								; Verbatim copy of var_lambda_state (see
+								; copy_dma_tx).
 dmatx_adc_lambda:		.block 1			; DATA XREF: adc_handler_o2_heater+38↓w
 dmatx_knock_retard_info:		.block 3			; DATA XREF: copy_dma_tx+2C↓w
 								; copy_dma_tx+32↓w
@@ -1181,7 +2207,12 @@ dmatx_obd_iscv:			.block 1			; DATA XREF: ROM:DDB5↓w
 dmatx_obd_o2_sensor:		.block 1			; DATA XREF: divide_d_by_x:loc_D17F↓w
 dmatx_knock_retard:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EEDB↓w
 								; iv6_ne_process+FA↓r
-dmatx_unk_21C:			.block 2			; DATA XREF: copy_dma_tx+38↓w
+dmatx_pw_loop_mode:		.block 2			; DATA XREF: copy_dma_tx+38↓w
+								; Only the first byte is ever written (=
+								; var_pw_loop_mode, see copy_dma_tx) -
+								; the second byte of this word-sized slot
+								; is never touched in this file, likely
+								; padding to match CPU2's struct layout.
 dmatx_error_flags1:		.block 1			; DATA XREF: copy_dma_tx+3D↓w
 dmatx_error_flags2:		.block 1
 dmatx_flags_46:			.block 1			; DATA XREF: copy_dma_tx+42↓w
@@ -1189,6 +2220,10 @@ dmatx_flags_1:			.block 1			; DATA XREF: copy_dma_tx:loc_F992↓w
 dmatx_limiter_flags:		.block 1			; DATA XREF: copy_dma_tx+75↓w
 unk_223:			.block 1			; DATA XREF: sub_E115+3F↓w
 								; sub_E115:loc_E172↓w
+								; Scratch register local to sub_E115's
+								; factory self-test/RAM-test sequence -
+								; not traced further (that whole routine
+								; is out of scope for this pass).
 word_224:			.block 2			; DATA XREF: sub_E115+46↓w
 								; sub_E115:loc_E183↓w ...
 dmarx_word_226:			.block 2			; DATA XREF: divide_d_by_x+13FF↓r
@@ -1224,6 +2259,13 @@ dmarx_ign_timing_fallback2:	.block 1			; DATA XREF: sub_E865+5C↓r
 dmarx_ign_timing_unk_166:	.block 1			; DATA XREF: sub_E865+56↓r
 								; sub_E865+D9↓r
 dmarx_unk_241_167:		.block 1			; DATA XREF: sub_E84F+8↓r
+								; = CPU2's dmatx_unk_167 (0xDA offset,
+								; still unresolved on both sides): CPU2
+								; computes it as
+								; (table_C360_rpm(RPM)*table_C370_ect(ECT))
+								; /64, saturated - see that ROM's own
+								; comment. Consumed here via mult_rArX in
+								; sub_E84F, not traced further.
 dmarx_iscv_duty:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
 								; divide_d_by_x+C86↓r ...
 								; 242.0	-
@@ -1235,9 +2277,27 @@ dmarx_iscv_duty:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
 								; 242.6	- Set when open	loop mode should be used
 								; 242.7	-
 								;
-dmarx_unk_243:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EEC7↓r
+dmarx_status1_169:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EEC7↓r
+								; = CPU2's dmatx_status1_169 (0xDA offset):
+								; a packed status snapshot, not an
+								; independently meaningful value - see
+								; that ROM's update_dmatx_status_flags for
+								; the exact bit-to-source mapping
+								; (var_flags_40.6/var_flags_47.2/.3,
+								; var_enrich_flags.5/.6, all inverted).
 damrx_unk_244:			.block 1			; DATA XREF: sub_E115+1EB↓r
-dmarx_unk_245:			.block 1			; DATA XREF: sub_E115+1E4↓r
+								; READ-ONLY in this file: read by loc_E2F3, with
+								; no bit- or byte-level write site found here -
+								; so it holds whatever clear_variables left (0)
+								; unless something writes it by a path this
+								; sweep missed.
+dmarx_status2_16B:		.block 1			; DATA XREF: sub_E115+1E4↓r
+								; = CPU2's dmatx_status2_16B (0xDA offset):
+								; same packed-snapshot pattern as
+								; dmarx_status1_169 above (var_input_bits.
+								; 5/.6/.7, PORTC.7, PORTD_ASRIN.5, all
+								; inverted) - see CPU2's
+								; update_dmatx_status_flags.
 dmarx_ign_advance_hi:	.block 1			; DATA XREF: iv6_ne_process+123↓r
 dmarx_ign_advance_lo:	.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12B↓r
@@ -1247,8 +2307,21 @@ stack_top:			.block 1			; DATA XREF: ROM:C663↓o
 var_nv_tps:			.block 1			; DATA XREF: divide_d_by_x+23C↓o
 								; divide_d_by_x:loc_C7F5↓r ...
 				.block 1
-unk_302:			.block 1			; DATA XREF: clear_nv_ram+55↓w
+var_nv_trac_tps:		.block 1			; DATA XREF: clear_nv_ram+55↓w
 								; ROM:FEA2↓r ...
+								; NV-stored closed-throttle calibration
+								; for the TRAC (traction control)
+								; secondary throttle sensor - the exact
+								; counterpart of var_nv_tps for the
+								; primary TPS: same 0xAE51 reset default
+								; (clear_nv_ram), same clamp bounds
+								; (nv_trac_tps_limits == nv_tps_limits ==
+								; 0xC3/0x14), same write_rB_nv_ram commit
+								; path, and its self-calibration is gated
+								; by var_flags_4D.5 exactly as the primary
+								; TPS's is by var_flags_42.5/47.5. Read by
+								; adc_handler_trac_tps to scale
+								; var_trac_tps_scaled.
 				.block 1
 nv_table_knock_info:		.block 3			; DATA XREF: divide_d_by_x:loc_C7DA↓o
 								; clear_nv_ram+5C↓w ...
@@ -1265,6 +2338,13 @@ nv_table_knock_info:		.block 3			; DATA XREF: divide_d_by_x:loc_C7DA↓o
 				;.segment ROM
 				.org 0C000h
 unk_C000:			.db  5Fh ; _			; DATA XREF: sub_E115+EE↓o
+								; ROM origin (0xC000) itself - 3 bytes of
+								; 0x5F, read by sub_E115's factory self-
+								; test/RAM-test routine, likely a known-
+								; value signature/checksum-adjacent
+								; pattern rather than a RAM variable. Not
+								; renamed - not a "variable" in the usual
+								; sense.
 				.db  5Fh ; _
 				.db  5Fh ; _
 
@@ -1726,20 +2806,26 @@ table_gearing_unk_C2E7:		.db 1Ah, 80h			; DATA XREF: calc_4ms_corrections:loc_EB
 				.db 06h, 0Ah, 19h, 25h,	25h
 
 
-unk_C2EE:			.db  4Fh ; O			; DATA XREF: calc_ign_timing_min+6C↓o
+table_unk_C2EE:			.db  4Fh ; O			; DATA XREF: calc_ign_timing_min+6C↓o
 				.db  40h ; @
 				.db  80h ; Ç
 				.db  00h
+								; Lookup table used by calc_ign_timing_min
+								; (itself still on the "renamed but not
+								; commented" pending list) - real-world
+								; meaning of these 4 bytes not traced.
 
-
-unk_C2F2:			.db  20h			; DATA XREF: calc_4ms_corrections+32↓o
+table_unk_C2F2:			.db  20h			; DATA XREF: calc_4ms_corrections+32↓o
 				.db  40h ; @
 				.db  29h ; )
 				.db  3Ah ; :
 				.db  4Dh ; M
+								; Lookup table used by
+								; calc_4ms_corrections - not traced
+								; further.
 
 ;2-D Table
-unk_C2F7:			.db  04h			; DATA XREF: calc_4ms_corrections+69↓o
+table_unk_C2F7:			.db  04h			; DATA XREF: calc_4ms_corrections+69↓o
 								; (04h + 2) / 2	= 3 entries
 				.db  28h ; (
 				.db  44h ; D
@@ -1885,7 +2971,7 @@ ect_adc_limits:			.db 0FCh, 07h			; DATA XREF: ROM:adc_handler_ect↓o
 				.db 31h, 05h
 nv_tps_limits:			.db 0C3h, 14h			; DATA XREF: divide_d_by_x+25D↓o
 								; divide_d_by_x+260↓t ...
-nv_302_limits:			.db 0C3h, 14h			; DATA XREF: ROM:loc_FEC4↓o
+nv_trac_tps_limits:			.db 0C3h, 14h			; DATA XREF: ROM:loc_FEC4↓o
 								; ROM:FEC7↓t
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -3337,12 +4423,12 @@ reset_vector:							; DATA XREF: ROM:FFFE↓o
 				setb	bit3, DOUT		; DOUT.3 high (injector enable / ISC relay)
 				ld	s, #stack_top		; Initialise stack pointer
 
-; Phase 2a: Zero-fill byte RAM (unk_40..unk_7F)
+; Phase 2a: Zero-fill byte RAM (var_flags_40..unk_7F)
 clear_variables:
 				clr	a			; A = 0 (byte fill value)
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 				clr	b			; B = 0 (high byte for word fill below)
-				ld	y, #unk_40		; Y = start of byte RAM region
+				ld	y, #var_flags_40		; Y = start of byte RAM region
 
 loc_C66B:							; CODE XREF: divide_d_by_x+D4↓j
 				st	a, [y]			; Zero byte at Y; Y auto-increments
@@ -3365,7 +4451,7 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 
 ; Set startup flags
 				setb	bit0, var_flags_46	; Set sensor error flag (cleared when sensors read OK)
-				setb	bit5, unk_40		; Set init guard (prevents premature knock MCU enable)
+				setb	bit5, var_flags_40		; Set init guard (prevents premature knock MCU enable)
 
 ; Initialise 4ms counters to 0xFF (will count down from max on first run)
 				ld	#0FFh, var_4ms_cnt_B1
@@ -3376,7 +4462,7 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				setb	bit6, var_flags_42
 				ld	#00h, var_schedule_flag_41	; Clear injector schedule flag
 				ld	a, #10h
-				st	a, unk_101
+				st	a, var_tps_closed_ref
 				ld	#0FFh, var_4ms_cnt_B3
 				ld	#0FFh, var_4ms_cnt_B6
 				ld	#0FFh, var_4ms_cnt_B7
@@ -3404,7 +4490,7 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				ld	a, #0FEh
 				st	a, var_ign_advance_max	; Max advance = 0xFE (wide open)
 				ld	a, #0FFh
-				st	a, unk_A6
+				st	a, var_limiter_ign_ramp
 				ld	a, #0FFh
 				st	a, var_ign_timing_min	; Min timing limit = 0xFF (no minimum yet)
 				st	a, var_idle_timing_ramp
@@ -3465,8 +4551,8 @@ loc_C718:							; CODE XREF: divide_d_by_x:loc_C718↓j
 				tbbs	bit5, var_io_input1, loc_C742	; TE1 pin high: diagnostic mode active
 				tbbc	bit6, var_io_input1, loc_C742	; OBD stream pin low: skip OBD setup
 
-; OBD stream mode: set unk_40.2 and mark OBD errors in diag register
-				setb	bit2, unk_40
+; OBD stream mode: set var_flags_40.2 and mark OBD errors in diag register
+				setb	bit2, var_flags_40
 				ld	a, var_diag_errors_4
 				or	a, #0Ch			; Set OBD active bits (bits 2 and 3)
 				st	a, var_diag_errors_4
@@ -3527,7 +4613,7 @@ loc_C749:							; CODE XREF: divide_d_by_x+2484↓j
 				st	d, ASR3			; ASR3 edge counter value MSB
 				tbbs	bit7, var_flags_46, loc_C7AD
 
-				tbbc	bit0, unk_40, loc_C7AA
+				tbbc	bit0, var_flags_40, loc_C7AA
 
 				tbbc	bit0, var_io_input1, loc_C7AA ;	Jump if	STA low	(starter not running)
 
@@ -3550,7 +4636,7 @@ loc_C7AD:							; CODE XREF: divide_d_by_x+203↑j
 
 				clr	var_4ms_cnt_BF
 				clrb	bit2, DOUT
-				clrb	bit6, unk_44
+				clrb	bit6, var_flags_44
 
 loc_C7B9:							; CODE XREF: divide_d_by_x+216↑j
 				tbbs	bit5, IRQLL, loc_C7BF	; Interrupt Request Flag LSB
@@ -3667,7 +4753,7 @@ loc_C82D:							; CODE XREF: clear_nv_ram+29↓j
 				ld	d, #00FFh
 				st	d, var_nv_trim_unk_96
 				ld	d, #619Eh
-				tbbs	bit0, unk_40, loc_C841
+				tbbs	bit0, var_flags_40, loc_C841
 
 				ld	d, #50AFh
 
@@ -3684,7 +4770,7 @@ loc_C841:							; CODE XREF: clear_nv_ram+33↑j
 				ld	d, #0AE51h
 				st	d, var_nv_tps
 				ld	d, #0AE51h
-				st	d, unk_302
+				st	d, var_nv_trac_tps
 				di
 				ld	d, #9A9Ah
 				st	d, nv_table_knock_info
@@ -3702,7 +4788,7 @@ loc_C841:							; CODE XREF: clear_nv_ram+33↑j
 
 loc_C873:							; CODE XREF: divide_d_by_x+230↑j
 								; divide_d_by_x:loc_C806↑j
-				ld	a, unk_1DC
+				ld	a, var_flags_1DC
 				tbs	bit0, var_schedule_flag_41
 				bne	loc_C87E
 
@@ -3715,7 +4801,7 @@ loc_C87E:							; CODE XREF: divide_d_by_x+2DD↑j
 				and	a, #0FEh
 
 loc_C880:							; CODE XREF: divide_d_by_x+2E1↑j
-				st	a, unk_1DC
+				st	a, var_flags_1DC
 				di
 				cmp	#3Dh, var_cnt_C7
 				bcs	loc_C8B4
@@ -3737,7 +4823,7 @@ loc_C880:							; CODE XREF: divide_d_by_x+2E1↑j
 				clrb	bit7, DOUT
 				clr	PORTAL			; Port A Latch
 				clrb	bit4, var_limiter_flags
-				clrb	bit5, unk_44
+				clrb	bit5, var_flags_44
 				ei
 				clr	a
 				clr	b
@@ -3849,7 +4935,7 @@ loc_C8DC:							; CODE XREF: calc_rpm+D↑j
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
 loc_C8EE:							; CODE XREF: divide_d_by_x+323↑j
-				ld	a, unk_1DC
+				ld	a, var_flags_1DC
 				cmpb	a, #01h
 				bne	loc_C8F7
 
@@ -3947,13 +5033,13 @@ loc_C94B:							; CODE XREF: divide_d_by_x+3AC↑j
 				cmp	a, #0Ch			; Check	if RPM >= 300rpm
 				bcc	loc_C951		; Jump if it is
 
-				setb	bit5, unk_40		; Set RPM flag
+				setb	bit5, var_flags_40		; Set RPM flag
 
 loc_C951:							; CODE XREF: divide_d_by_x+3B2↑j
 				cmp	a, #14h			; Check	if RPM < 500rpm
 				bcs	loc_C957		; Jump if it is
 
-				clrb	bit5, unk_40		; Clear	RPM flag
+				clrb	bit5, var_flags_40		; Clear	RPM flag
 
 loc_C957:							; CODE XREF: divide_d_by_x+3B8↑j
 				tbbc	bit0, var_flags_46, loc_C95C
@@ -3964,7 +5050,7 @@ loc_C95C:							; CODE XREF: divide_d_by_x:loc_C957↑j
 				cmp	a, #08h			; Check	if RPM < 200rpm
 				bcs	loc_C967		; Jump if it is
 
-				tbbs	bit5, unk_44, loc_C96B
+				tbbs	bit5, var_flags_44, loc_C96B
 
 				cmp	a, #10h			; Check	if RPM >= 400
 				bcc	loc_C96B		; Jump if it is
@@ -3978,13 +5064,13 @@ loc_C96B:							; CODE XREF: divide_d_by_x+3C5↑j
 								; divide_d_by_x+3CA↑j
 				tbbc	bit2, var_flags_46, loc_C971
 
-				setb	bit0, unk_44
+				setb	bit0, var_flags_44
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_C971:							; CODE XREF: divide_d_by_x:loc_C96B↑j
-				clrb	bit0, unk_44
+				clrb	bit0, var_flags_44
 				tbbc	bit1, var_io_input1, loc_C990 ;	Jump if	throttle opened	(IDL low)
 
 				ld	a, #18h
@@ -4023,15 +5109,15 @@ loc_C994:							; CODE XREF: divide_d_by_x+3F3↑j
 sub_C996:							; CODE XREF: ROM:FE09↓p
 				tbbc	bit1, var_io_input1, loc_C9BD ;	Jump if	throttle opened	(IDL low)
 
-				tbbs	bit4, unk_47, loc_C9BF
+				tbbs	bit4, var_flags_47, loc_C9BF
 
-				tbbs	bit7, unk_40, loc_C9BA
+				tbbs	bit7, var_flags_40, loc_C9BA
 
 				ld	d, var_tps_unk_150
 				jsr	divide_rD_64_saturate
 
 				mov	b, a
-				ld	b, unk_101
+				ld	b, var_tps_closed_ref
 				sub	a, b
 				ble	loc_C9AE
 
@@ -4048,19 +5134,19 @@ loc_C9AE:							; CODE XREF: sub_C996+14↑j
 				ld	a, #10h
 
 loc_C9B7:							; CODE XREF: sub_C996+1D↑j
-				st	a, unk_101
+				st	a, var_tps_closed_ref
 
 loc_C9BA:							; CODE XREF: sub_C996+6↑j
-				setb	bit4, unk_47
+				setb	bit4, var_flags_47
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_C9BD:							; CODE XREF: sub_C996↑j
-				clrb	bit4, unk_47
+				clrb	bit4, var_flags_47
 
 loc_C9BF:							; CODE XREF: sub_C996+3↑j
-				ld	b, unk_101
+				ld	b, var_tps_closed_ref
 				shr	b
 				cmp	b, #04h
 				bcc	loc_C9C9
@@ -4073,7 +5159,7 @@ loc_C9C9:							; CODE XREF: sub_C996+2F↑j
 				cmp	b, var_tps_unk_150
 				bgt	loc_C9D7
 
-				tbs	bit4, unk_40
+				tbs	bit4, var_flags_40
 				beq	locret_C9D9
 
 				clr	var_4ms_cnt_B1
@@ -4082,7 +5168,7 @@ loc_C9C9:							; CODE XREF: sub_C996+2F↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_C9D7:							; CODE XREF: sub_C996+38↑j
-				clrb	bit4, unk_40
+				clrb	bit4, var_flags_40
 
 locret_C9D9:							; CODE XREF: sub_C996+3C↑j
 				ret
@@ -4183,7 +5269,7 @@ loc_CA19:							; CODE XREF: divide_d_by_x:loc_CA04↑j
 
 loc_CA1B:							; CODE XREF: divide_d_by_x:loc_C9FF↑j
 								; divide_d_by_x+46F↑j ...
-				clrb	bit6, unk_40
+				clrb	bit6, var_flags_40
 				setb	bit6, var_flags_42
 				clrb	bit1, var_flags_4E
 				ld	a, var_flags_4E
@@ -4200,13 +5286,13 @@ loc_CA1B:							; CODE XREF: divide_d_by_x:loc_C9FF↑j
 				st	a, var_flags_4E
 				tbbc	bit0, var_limiter_flags, loc_CA3D
 
-				setb	bit3, unk_44
+				setb	bit3, var_flags_44
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_CA3D:							; CODE XREF: divide_d_by_x+49C↑j
-				clrb	bit3, unk_44
+				clrb	bit3, var_flags_44
 				clrb	bit5, var_flags_4E
 				clrb	bit0, var_flags_4E
 				ld	b, #0Ch
@@ -4230,7 +5316,7 @@ loc_CA3D:							; CODE XREF: divide_d_by_x+49C↑j
 loc_CA5C:							; CODE XREF: divide_d_by_x+4AD↑j
 				tbbs	bit0, var_limiter_flags, loc_CA62
 
-				tbbs	bit0, unk_44, loc_CA64
+				tbbs	bit0, var_flags_44, loc_CA64
 
 
 loc_CA62:							; CODE XREF: divide_d_by_x:loc_CA5C↑j
@@ -4580,7 +5666,7 @@ loc_CBC1:							; CODE XREF: divide_d_by_x+620↑j
 
 loc_CBCA:							; CODE XREF: divide_d_by_x+624↑j
 								; divide_d_by_x+629↑j
-				tbbs	bit0, unk_40, loc_CBEF
+				tbbs	bit0, var_flags_40, loc_CBEF
 
 				ld	d, #3C46h
 				ld	x, var_ect
@@ -4925,7 +6011,7 @@ loc_CD13:							; Clear	engine start counter
 loc_CD15:							; CODE XREF: divide_d_by_x+775↑j
 				tbbc	bit0, var_flags_46, loc_CD31
 
-				tbbs	bit1, unk_40, loc_CD31	; Jump if start-up injection pulse already performed
+				tbbs	bit1, var_flags_40, loc_CD31	; Jump if start-up injection pulse already performed
 
 				cmp	#0C4h, var_ect		; Check	if ECT >= 51c
 				bcc	loc_CD33		; Jump if it is
@@ -4943,7 +6029,7 @@ loc_CD15:							; CODE XREF: divide_d_by_x+775↑j
 
 loc_CD31:							; CODE XREF: divide_d_by_x:loc_CD15↑j
 								; divide_d_by_x+77D↑j
-				setb	bit1, unk_40		; Set flag indicating injection	pulse has been done
+				setb	bit1, var_flags_40		; Set flag indicating injection	pulse has been done
 
 loc_CD33:							; CODE XREF: divide_d_by_x+783↑j
 								; divide_d_by_x+788↑j ...
@@ -4961,10 +6047,13 @@ loc_CD33:							; CODE XREF: divide_d_by_x+783↑j
 ; Issues a single batch injection pulse under cold or cranking conditions.
 ;
 ; Gates (all must pass):
-;   var_flags_42.4 = 0 (phase 1 ADC scan complete)
+;   var_flags_42.4 = 0 (private one-shot self-lock, `tbs`-armed on this
+;     function's own first NE-pulse call this power cycle - see its own
+;     declaration comment; not a shared ADC-phase flag despite the old
+;     "phase 1 ADC" naming here)
 ;   var_flags_46.0 = 1 ("RPM low" flag: RPM has not yet risen past the
 ;     200-400rpm hysteresis band, i.e. still cranking/just caught)
-;   unk_40.1 = 0 (startup injection not yet done this cycle)
+;   var_flags_40.1 = 0 (startup injection not yet done this cycle)
 ;   ECT > 0xB3 (coldant < 41 deg: skip - not cold enough)
 ;
 ; Two paths based on ECT:
@@ -4975,15 +6064,15 @@ loc_CD33:							; CODE XREF: divide_d_by_x+783↑j
 ;   ECT >= 0xF5C0 (engine warm): only inject if starter running > 0x3D * 4ms = 244ms
 ;     PW = 0x04E2 (5ms) in this case
 ;
-; After injection: sets unk_40.1 to prevent re-triggering this cycle.
+; After injection: sets var_flags_40.1 to prevent re-triggering this cycle.
 ; ---------------------------------------------------------------------------
 
 injector_cold_start:						; CODE XREF: iv6_ne_process↓p
-				tbs	bit4, var_flags_42		; ADC phase 1 complete? (bit4 set = phase 2)
-				bne	locret_CD65			; No: not ready, skip
+				tbs	bit4, var_flags_42		; Self-lock: was this already run this power cycle?
+				bne	locret_CD65			; Yes (bit was set): skip
 
 				tbbc	bit0, var_flags_46, loc_CD63	; RPM has risen past cranking band: skip, just set flag
-				tbbs	bit1, unk_40, loc_CD63		; Already injected this startup: skip
+				tbbs	bit1, var_flags_40, loc_CD63		; Already injected this startup: skip
 
 				cmp	#0B3h, var_ect			; ECT < 0xB3 (coolant < 41 deg)?
 				bcs	locret_CD65			; Yes: not cold enough for cold-start injection
@@ -5014,7 +6103,7 @@ loc_CD60:							; CODE XREF: injector_cold_start+26↑j
 
 loc_CD63:							; CODE XREF: injector_cold_start+4↑j
 								; injector_cold_start+7↑j
-				setb	bit1, unk_40			; Mark startup injection as done for this cycle
+				setb	bit1, var_flags_40			; Mark startup injection as done for this cycle
 
 locret_CD65:							; CODE XREF: injector_cold_start+2↑j
 								; injector_cold_start+D↑j ...
@@ -5044,7 +6133,7 @@ main_CD66:							; CODE XREF: divide_d_by_x:loc_CD33↑j
 ; Gates (all must pass, else return doing nothing):
 ;   var_flags_46.0 = 0 (RPM has risen past the ~200-400rpm cranking/stall
 ;     hysteresis band - not still cranking)
-;   unk_44.0 = 1 (idle-debounce latch: mirrors var_flags_46.2 from one
+;   var_flags_44.0 = 1 (idle-debounce latch: mirrors var_flags_46.2 from one
 ;     hysteresis stage back, i.e. throttle was confirmed closed)
 ;   var_flags_46.2 = 0 (the throttle-closed debounce timer is not currently
 ;     mid-countdown - the idle state has settled)
@@ -5064,7 +6153,7 @@ main_CD66:							; CODE XREF: divide_d_by_x:loc_CD33↑j
 injector_warmup:							; CODE XREF: divide_d_by_x:loc_CAD4↑p
 				tbbs	bit0, var_flags_46, locret_CD8A ; Still in cranking/stall RPM band: skip
 
-				tbbc	bit0, unk_44, locret_CD8A	; Idle-debounce latch not set: skip
+				tbbc	bit0, var_flags_44, locret_CD8A	; Idle-debounce latch not set: skip
 
 				tbbs	bit2, var_flags_46, locret_CD8A ; Throttle-closed debounce still counting: skip
 
@@ -5117,13 +6206,13 @@ main_CD8B:							; CODE XREF: divide_d_by_x:main_CD66↑j
 ;   RPM < 4000 (var_rpm_div_25 < 0xA0)
 ;   TPS > 0x0E (throttle is at least slightly open)
 ;   var_flags_46.0 = 0 (no sensor error)
-;   unk_40.3 = 0 (throttle pump not already active)
+;   var_flags_40.3 = 0 (throttle pump not already active)
 ;
 ; Pulse width: table_ect_inj_throttle_pump (ECT-based pair interpolation)
 ;   Result >> 5 (divide by 32) before passing to injectors_batch_update
 ;   Scales down the ECT-based value to an appropriate pump shot size.
 ;
-; If var_tps_delta is negative (throttle closing), clears unk_40.3 to
+; If var_tps_delta is negative (throttle closing), clears var_flags_40.3 to
 ; re-arm the throttle pump for the next opening event.
 ; ---------------------------------------------------------------------------
 
@@ -5131,7 +6220,7 @@ async_throttle_inject:						; CODE XREF: ROM:FE0F↓p
 				ld	a, var_tps_delta		; A = TPS change since last sample (signed)
 				bpz	loc_CD93			; Positive or zero: check threshold
 
-				clrb	bit3, unk_40			; Throttle closing: re-arm throttle pump
+				clrb	bit3, var_flags_40			; Throttle closing: re-arm throttle pump
 
 loc_CD93:							; CODE XREF: async_throttle_inject+2↑j
 				cmp	a, #0Eh				; TPS delta >= 0x0E (14 counts minimum opening)?
@@ -5145,7 +6234,7 @@ loc_CD93:							; CODE XREF: async_throttle_inject+2↑j
 
 				tbbs	bit0, var_flags_46, locret_CDB6	; Sensor error active: skip
 
-				tbs	bit3, unk_40			; Test-and-set throttle pump active flag
+				tbs	bit3, var_flags_40			; Test-and-set throttle pump active flag
 				bne	locret_CDB6			; Already active (flag was set): skip
 
 ; Compute pulse width from ECT-based table, then fire batch injection
@@ -5208,7 +6297,7 @@ main_CDCA:							; CODE XREF: divide_d_by_x:main_CDB7↑j
 				ld	a, var_flags_4E_copy_D0
 				st	a, var_flags_4E
 				ld	a, #80h
-				tbbs	bit2, unk_44, loc_CDDB
+				tbbs	bit2, var_flags_44, loc_CDDB
 
 				clrb	bit0, var_flags_4E
 				st	a, var_fuel_enrich_rpm
@@ -5310,17 +6399,17 @@ sub_CE3C:							; CODE XREF: ROM:FE0C↓p
 				cmp	a, #0F4h
 				blta	loc_CE4B
 
-				clrb	bit2, unk_44
+				clrb	bit2, var_flags_44
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_CE49:							; CODE XREF: sub_CE3C+4↑j
-				setb	bit2, unk_44
+				setb	bit2, var_flags_44
 
 loc_CE4B:							; CODE XREF: sub_CE3C+8↑j
 				mov	a, b
-				sub	a, unk_11D
+				sub	a, var_tps_delta_prev
 				bvc	loc_CE58
 
 				bcs	loc_CE56
@@ -5334,8 +6423,8 @@ loc_CE56:							; CODE XREF: sub_CE3C+15↑j
 				ld	a, #7Fh
 
 loc_CE58:							; CODE XREF: sub_CE3C+13↑j
-				st	a, unk_11E
-				st	b, unk_11D
+				st	a, var_tps_delta_rate
+				st	b, var_tps_delta_prev
 				cmp	a, #0F4h
 				blta	loc_CE69
 
@@ -5443,10 +6532,10 @@ loc_CECD:							; CODE XREF: divide_d_by_x+90C↑j
 				mul	a, var_overrun_fuel_mult
 				st	a, var_accel_enrich
 				di
-				ld	a, unk_1DC
+				ld	a, var_flags_1DC
 				mov	a, b
 				and	b, #0FDh
-				st	b, unk_1DC
+				st	b, var_flags_1DC
 				ei
 				cmpb	a, #02h
 				beq	loc_CEF5
@@ -5545,9 +6634,9 @@ closed_loop_CF56:						; CODE XREF: divide_d_by_x+9B3↑j
 				setb	bit1, var_flags_46
 				di
 				ld	a, var_adc_lambda
-				ld	b, unk_44
+				ld	b, var_flags_44
 				st	d, var_temp_w
-				clrb	bit4, unk_44
+				clrb	bit4, var_flags_44
 				ei
 				tbbc	bit2, PORTA, loc_CF78	; Port A Data Register
 
@@ -5756,7 +6845,7 @@ loc_D04D:							; CODE XREF: divide_d_by_x+A89↑j
 loc_D04F:							; CODE XREF: divide_d_by_x+9B8↑j
 				ld	d, #8000h
 				st	d, var_lambda_integrator
-				clrb	bit4, unk_44
+				clrb	bit4, var_flags_44
 				setb	bit5, var_schedule_flag_41
 				ld	a, var_flags_4E_copy2
 				and	a, #0FEh
@@ -5855,7 +6944,7 @@ loc_D0BA:							; CODE XREF: divide_d_by_x+AF8↑j
 				clr	var_trim_stable_cnt
 
 loc_D0C6:							; CODE XREF: divide_d_by_x+B27↑j
-				tbbs	bit0, unk_40, open_loop_mode_D0A9
+				tbbs	bit0, var_flags_40, open_loop_mode_D0A9
 
 				tbbc	bit1, var_flags_46, open_loop_mode_D0A9	; Jump if open loop mode
 
@@ -6155,7 +7244,7 @@ loc_D1FD:							; CODE XREF: divide_d_by_x+C4E↑j
 				ld	d, #COUNTER_ARG(var_cnt_EA, 05h) ; Increment	counters at 0EAh - 0EEh
 				jsr	increment_counters
 
-				inc	unk_EF
+				inc	var_tps_closed_cnt
 
 loc_D20C:							; CODE XREF: divide_d_by_x+C65↑j
 				tbs	bit2, var_schedule_flag_41
@@ -6491,7 +7580,7 @@ calc_ect_iscv:							; CODE XREF: divide_d_by_x+1DED↓p
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
 loc_D380:							; CODE XREF: divide_d_by_x:loc_D374↑j
-				tbs	bit1, unk_44
+				tbs	bit1, var_flags_44
 				bne	loc_D3A5
 
 				jsr	calc_iscv
@@ -6555,7 +7644,7 @@ loc_D3A2:							; CODE XREF: drive_dout1_iscv+13↑j
 
 loc_D3A5:							; CODE XREF: divide_d_by_x+DE7↑j
 								; divide_d_by_x+DEC↑j
-				tbbc	bit0, unk_40, loc_D3AB
+				tbbc	bit0, var_flags_40, loc_D3AB
 
 				jmp	loc_D4C6
 
@@ -6867,7 +7956,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ; ---------------------------------------------------------------------------
 ; calc_iscv: idle speed control - compute ISC valve duty target
 ;
-; Called from the main 4ms loop (divide_d_by_x, guarded by "tbs bit1,unk_44"
+; Called from the main 4ms loop (divide_d_by_x, guarded by "tbs bit1,var_flags_44"
 ; at loc_D380 - purpose of that gate not yet confirmed). Produces
 ; var_iscv_target_rpm/var_iscv_rpm_cmp_197 (target idle RPM and RPM error)
 ; in its first chunk, then a duty value in var_iscv_19D in its second chunk.
@@ -7799,7 +8888,7 @@ loc_D8C4:							; CODE XREF: calc_iscv+3F2↑j
 				inc	y
 
 loc_D8CB:							; CODE XREF: calc_iscv+3FE↑j
-				tbbc	bit6, unk_40, loc_D8D5
+				tbbc	bit6, var_flags_40, loc_D8D5
 
 				inc	y
 				inc	y
@@ -7929,9 +9018,9 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ;  2) (D956-D989) Open-loop vs closed-loop path selection: gated on
 ;     var_cnt_EA (warm-up elapsed), diagnostic-check mode, ECT (with a
 ;     trim_state-dependent threshold, 0xE1 or 0xE3), CPU2 enrichment
-;     request flags, unk_40.7, var_flags_46.1 (real closed-loop flag) and
-;     dmarx_iscv_duty. Calls init_pw_closed_loop (closed-loop path init: unk_1BD=0xC8)
-;     or init_pw_open_loop (open-loop path init: unk_1BD=0), which forward into
+;     request flags, var_flags_40.7, var_flags_46.1 (real closed-loop flag) and
+;     dmarx_iscv_duty. Calls init_pw_closed_loop (closed-loop path init: var_pw_loop_mode=0xC8)
+;     or init_pw_open_loop (open-loop path init: var_pw_loop_mode=0), which forward into
 ;     shared init code setting unk_1C0/unk_1C6.
 ;  3) (D998-DA10) VE-map candidate calculation: combines CPU2's DMA'd
 ;     speed-density fuel terms - dmarx_word_226 (MAP-only VE correction
@@ -7947,11 +9036,11 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ;     via "mov" (NOTE: mov is src,dest - opposite of ld/st, easy to misread
 ;     - see docs/fuel_calculation_system.md's "mov direction" note),
 ;     producing a raw candidate stored via unk_1C0/var_inj_pw_base and a
-;     clamp indicator unk_1BD.
+;     clamp indicator var_pw_loop_mode.
 ;  4) (DA10-DA60) Every ~488ms (var_4ms_cnt_B5 >= 0x7A), nudges
 ;     var_inj_pw_base by +0x0C/-0x02 based on var_lambda_integrator vs
 ;     var_adc_lambda's sign, clamped via ram_1BE_limits. In closed-loop
-;     mode (unk_1BD==0xC8) also overwrites unk_1C0 with var_adc_lambda
+;     mode (var_pw_loop_mode==0xC8) also overwrites unk_1C0 with var_adc_lambda
 ;     itself. Then calls ramp_limit_inj_pw_simple when var_adc_lambda
 ;     (not var_inj_pw_base - see ramp_limit_inj_pw_simple's header) is
 ;     below 0x4D.
@@ -8023,7 +9112,7 @@ loc_D965:							; CODE XREF: divide_d_by_x+13C5↑j
 				or	a, dmarx_idle_enrich
 				bne	loc_D986
 
-				tbbs	bit7, unk_40, loc_D986
+				tbbs	bit7, var_flags_40, loc_D986
 
 				tbbs	bit1, var_flags_46, loc_D98E ; Jump if closed loop mode
 
@@ -8143,7 +9232,7 @@ loc_D9F6:							; CODE XREF: divide_d_by_x+1446↑j
 
 loc_D9FA:							; CODE XREF: divide_d_by_x+1440↑j
 				pull	a
-				st	a, unk_1BD
+				st	a, var_pw_loop_mode
 				cmp	a, #0C8h
 				bcs	loc_DA10
 
@@ -8178,7 +9267,7 @@ loc_DA17:							; CODE XREF: divide_d_by_x+1478↑j
 				ble	loc_DA4D
 
 				mov	d, x
-				ld	a, unk_1BD
+				ld	a, var_pw_loop_mode
 				cmp	a, #0C8h
 				bcc	loc_DA4E
 
@@ -8210,7 +9299,7 @@ loc_DA4D:							; CODE XREF: divide_d_by_x+148E↑j
 				mov	d, x
 
 loc_DA4E:							; CODE XREF: divide_d_by_x+1496↑j
-				ld	a, unk_1BD
+				ld	a, var_pw_loop_mode
 				cmp	a, #0C8h
 				bcc	loc_DA58
 
@@ -8517,14 +9606,14 @@ reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 
 
 ; ---------------------------------------------------------------------------
-; init_pw_open_loop / init_pw_closed_loop: initialise the fuel-calc mode selector (unk_1BD)
+; init_pw_open_loop / init_pw_closed_loop: initialise the fuel-calc mode selector (var_pw_loop_mode)
 ;
-; init_pw_open_loop (open-loop path, called from loc_D986): unk_1BD = 0
-; init_pw_closed_loop (closed-loop path, called from calc_inj_pw_base's gate): unk_1BD = 0xC8 (200)
+; init_pw_open_loop (open-loop path, called from loc_D986): var_pw_loop_mode = 0
+; init_pw_closed_loop (closed-loop path, called from calc_inj_pw_base's gate): var_pw_loop_mode = 0xC8 (200)
 ;
 ; Both fall into shared init code (loc_DB97) that clears D and stores it to
 ; unk_1C0, then resets unk_1C6 to 0xCCCD (the same ramp-limiter constant as
-; reset_pw_ramp_limiter). unk_1BD is read later (ramp_limit_inj_pw, loc_DA10 area) as a mode
+; reset_pw_ramp_limiter). var_pw_loop_mode is read later (ramp_limit_inj_pw, loc_DA10 area) as a mode
 ; flag/blend factor distinguishing the two paths - exact usage not fully
 ; traced, but 0 vs 0xC8(=200, suggestive of a 0-200 percentage-like scale)
 ; is consistent with "open-loop: no closed-loop blend" vs "closed-loop:
@@ -8533,7 +9622,7 @@ reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 
 init_pw_open_loop:							; CODE XREF: divide_d_by_x:loc_D986↑p
 				clr	a
-				st	a, unk_1BD
+				st	a, var_pw_loop_mode
 				bra	loc_DB97
 
 ; End of function init_pw_open_loop
@@ -8544,7 +9633,7 @@ init_pw_open_loop:							; CODE XREF: divide_d_by_x:loc_D986↑p
 
 init_pw_closed_loop:							; CODE XREF: divide_d_by_x+13E6↑p
 				ld	a, #0C8h
-				st	a, unk_1BD
+				st	a, var_pw_loop_mode
 
 loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 				clr	a
@@ -8601,7 +9690,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;     exit - clears trim_state.3, stores D into unk_1C6, done (var_inj_pw_base/
 ;     unk_1C0/unk_1C4 untouched).
 ;   - D > unk_1C8 and unk_1C4 also already > unk_1C8 (i.e. sustained
-;     over-ceiling): loc_DC24 - in closed-loop mode (unk_1BD == 0xC8) only,
+;     over-ceiling): loc_DC24 - in closed-loop mode (var_pw_loop_mode == 0xC8) only,
 ;     resets unk_1C0 back to var_inj_pw_base (discards the stale candidate);
 ;     either way clears trim_state.3 and stores the original loc_DBDE-entry
 ;     D (the candidate/blend value itself, NOT the ceiling) into unk_1C6.
@@ -8736,7 +9825,7 @@ loc_DC21:							; CODE XREF: ramp_limit_inj_pw+75↑j
 
 loc_DC24:							; CODE XREF: ramp_limit_inj_pw+4C↑j
 				mov	d, x
-				ld	a, unk_1BD
+				ld	a, var_pw_loop_mode
 				beq	loc_DC34
 
 				cmp	a, #0C8h
@@ -8989,7 +10078,7 @@ loc_DCD8:							; CODE XREF: divide_d_by_x+1734↑j
 
 loc_DCDF:							; CODE XREF: divide_d_by_x+1737↑j
 								; divide_d_by_x+173A↑j ...
-				ld	b, unk_1DC
+				ld	b, var_flags_1DC
 				cmpb	b, #04h
 				bne	loc_DD02
 
@@ -9049,7 +10138,7 @@ loc_DD28:							; CODE XREF: divide_d_by_x+1786↑j
 
 
 sub_DD2A:							; CODE XREF: iv6_ne_process+3↓p
-				tbbs	bit2, unk_40, loc_DD2F
+				tbbs	bit2, var_flags_40, loc_DD2F
 
 				clrb	bit1, var_error_flags1
 
@@ -9152,9 +10241,9 @@ loc_DD7C:							; CODE XREF: ROM:DD77↑j
 				clrb	bit2, var_error_flags2
 				tbbs	bit6, var_io_input1, loc_DDA0 ;	Jump forward if	ODB stream enabled
 
-				tbbc	bit2, unk_40, loc_DD96
+				tbbc	bit2, var_flags_40, loc_DD96
 
-				clrb	bit2, unk_40
+				clrb	bit2, var_flags_40
 				tbbs	bit3, var_diag_errors_5, loc_DD8C
 
 				tbbc	bit1, var_flags_4D, loc_DD96
@@ -9247,7 +10336,7 @@ loc_DE0A:							; CODE XREF: ROM:DE06↑j
 				bcs	loc_DE1C
 
 				setb	bit5, var_error_flags2	; Set O2 sensor	heater error flag
-				tbbc	bit2, unk_40, loc_DE1C
+				tbbc	bit2, var_flags_40, loc_DE1C
 
 				ld	b, var_diag_errors_4
 				or	b, #20h
@@ -9290,7 +10379,7 @@ loc_DE42:							; CODE XREF: ROM:DE25↑j
 				cmp	b, #04h
 				bcs	loc_DE50
 
-				tbbs	bit2, unk_40, loc_DE50
+				tbbs	bit2, var_flags_40, loc_DE50
 
 				ld	a, #0DFh
 				jsr	sub_DFAA
@@ -9353,7 +10442,7 @@ locret_DE7A:							; CODE XREF: sub_DE71+4↑j
 loc_DE7B:							; CODE XREF: ROM:loc_DE58↑j
 				ld	a, unk_1CF_alias
 				st	a, unk_1CF
-				tbbs	bit6, unk_40, loc_DEC1
+				tbbs	bit6, var_flags_40, loc_DEC1
 
 				ld	a, var_speed_kph	; Is measured speed > 0...
 				bne	loc_DEAB		; Jump if it is, as speed sensor is probably working
@@ -9439,7 +10528,7 @@ loc_DEE5:							; CODE XREF: ROM:DEE1↑j
 				bcs	loc_DEF7
 
 				setb	bit6, var_error_flags2
-				tbbc	bit2, unk_40, loc_DEF7
+				tbbc	bit2, var_flags_40, loc_DEF7
 
 				ld	a, var_diag_errors_4
 				or	a, #40h
@@ -9451,7 +10540,7 @@ loc_DEF7:							; CODE XREF: ROM:DEE8↑j
 				ld	a, var_adc_lambda
 				bpz	loc_DF05
 
-				tbbs	bit2, unk_40, loc_DF05
+				tbbs	bit2, var_flags_40, loc_DF05
 
 				clrb	bit6, var_error_flags2
 				ld	a, #0BFh
@@ -9460,7 +10549,7 @@ loc_DEF7:							; CODE XREF: ROM:DEE8↑j
 
 loc_DF05:							; CODE XREF: ROM:DEF9↑j
 								; ROM:DEFB↑j
-				tbbc	bit2, unk_40, loc_DF1F
+				tbbc	bit2, var_flags_40, loc_DF1F
 
 				tbbc	bit5, var_io_input1, loc_DF1F ;	Jump forward if	not diagnostic check mode
 
@@ -9754,7 +10843,7 @@ loc_E03A:							; CODE XREF: ROM:DFEA↑j
 
 loc_E03E:							; CODE XREF: ROM:DFD1↑j
 								; ROM:E019↑j
-				tbbc	bit2, unk_40, loc_E05F
+				tbbc	bit2, var_flags_40, loc_E05F
 
 				tbbc	bit0, var_flags_46, loc_E05F
 
@@ -9791,7 +10880,7 @@ loc_E05D:							; CODE XREF: ROM:E056↑j
 
 loc_E05F:							; CODE XREF: ROM:loc_E03E↑j
 								; ROM:E041↑j
-				tbbc	bit2, unk_40, loc_E067
+				tbbc	bit2, var_flags_40, loc_E067
 
 				ld	b, #0FEh
 				tbbs	bit1, var_flags_4D, loc_E092
@@ -10020,7 +11109,7 @@ sub_E115:							; CODE XREF: divide_d_by_x+1E08↓p
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_E13D:							; CODE XREF: sub_E115↑j
-				clrb	bit0, unk_40
+				clrb	bit0, var_flags_40
 
 loc_E13F:							; CODE XREF: sub_E115+3↑j
 								; sub_E115+6↑j ...
@@ -10167,7 +11256,7 @@ loc_E1E1:							; CODE XREF: sub_E115+C7↑j
 
 loc_E1E4:							; CODE XREF: sub_E115+EC↓j
 				mov	a, b			; Copy test value into b for checking later
-				ld	y, #unk_40		; Get address of start of RAM
+				ld	y, #var_flags_40		; Get address of start of RAM
 
 loc_E1E8:							; CODE XREF: sub_E115+D8↓j
 				st	a, [y]			; Write	test value to RAM & increment y
@@ -10175,7 +11264,7 @@ loc_E1E8:							; CODE XREF: sub_E115+D8↓j
 				cmp	y, #var_nv_tps		; Check	if reached end of RAM
 				bcs	loc_E1E8		; Loop back if not there yet
 
-				ld	y, #unk_40		; Get address of start of RAM again
+				ld	y, #var_flags_40		; Get address of start of RAM again
 
 loc_E1F2:							; CODE XREF: sub_E115+E5↓j
 				ld	a, [y]			; Read value from RAM &	increment y
@@ -10347,7 +11436,7 @@ loc_E291:							; CODE XREF: watchdog_kick+23↓j
 				inc	x
 				bne	loc_E291
 
-				ld	y, #unk_40
+				ld	y, #var_flags_40
 				clr	a
 				clr	b
 				st	d, IRQL			; Interrupt Request Flag MSB
@@ -10362,7 +11451,7 @@ loc_E29B:							; CODE XREF: watchdog_kick+30↓j
 				ld	#0D9h, PORTB		; Port B Data Register
 				ld	#03h, PORTD_ASRIN	; Port D Data Register / ASR Input Data
 				ld	#08h, DOUT		; DOUT Data Register
-				setb	bit0, unk_40
+				setb	bit0, var_flags_40
 				jmp	loc_C67A
 
 ; End of function watchdog_kick
@@ -10371,7 +11460,7 @@ loc_E29B:							; CODE XREF: watchdog_kick+30↓j
 ; START	OF FUNCTION CHUNK FOR sub_E115
 
 loc_E2B5:							; CODE XREF: sub_E115:loc_E13F↑j
-				tbbs	bit0, unk_40, loc_E2BB
+				tbbs	bit0, var_flags_40, loc_E2BB
 
 				jmp	locret_E362
 
@@ -10436,7 +11525,7 @@ loc_E2F3:							; CODE XREF: sub_E115:loc_E2DA↑j
 				cmp	b, #18h
 				bcs	loc_E358
 
-				ld	a, dmarx_unk_245
+				ld	a, dmarx_status2_16B
 				cmp	b, #26h
 				bcs	loc_E35D
 
@@ -10597,7 +11686,7 @@ loc_E3B2:							; CODE XREF: divide_d_by_x+1E11↑j
 				mov	a, b
 
 loc_E3CE:							; CODE XREF: divide_d_by_x+1E30↑j
-				tbbs	bit0, unk_40, loc_E3D9
+				tbbs	bit0, var_flags_40, loc_E3D9
 
 				ld	a, unk_9F
 				cmp	a, #7Ah
@@ -10726,7 +11815,7 @@ sub_E454:							; CODE XREF: divide_d_by_x+48B↑p
 				ld	a, dmarx_fuel_enrich
 				beq	no_enrichment		; Jump if no fuel enrichment required
 
-				tbbc	bit2, unk_44, loc_E469
+				tbbc	bit2, var_flags_44, loc_E469
 
 				tbbc	bit2, var_flags_4D, loc_E469
 
@@ -10954,11 +12043,11 @@ sub_E551:							; CODE XREF: divide_d_by_x+48E↑p
 
 				st	x, unk_131
 				ld	d, var_pim2
-				tbbs	bit0, unk_40, loc_E56F
+				tbbs	bit0, var_flags_40, loc_E56F
 
 				tbbs	bit0, var_flags_46, loc_E56F
 
-				tbbc	bit7, unk_47, loc_E572
+				tbbc	bit7, var_flags_47, loc_E572
 
 
 loc_E56F:							; CODE XREF: sub_E551+15↑j
@@ -11016,7 +12105,7 @@ loc_E5AC:							; CODE XREF: divide_d_by_x+200D↑j
 				push	a
 				shr	a
 				st	a, var_temp_7B
-				tbbc	bit6, unk_47, loc_E5DC
+				tbbc	bit6, var_flags_47, loc_E5DC
 
 				bsr	get_tps_unk
 
@@ -11226,7 +12315,7 @@ loc_E6A8:							; CODE XREF: divide_d_by_x+2109↑j
 
 				jsr	mult_rDrX
 
-				tbbs	bit0, unk_40, loc_E6CE
+				tbbs	bit0, var_flags_40, loc_E6CE
 
 				st	d, var_temp_w
 				ld	d, unk_127
@@ -11299,7 +12388,7 @@ loc_E702:							; CODE XREF: divide_d_by_x+2161↑j
 				push	y
 				ld	a, x + 00h
 				ld	x, var_temp_w		; Get calculated injector pulsewidth
-				tbbs	bit0, unk_40, loc_E70E
+				tbbs	bit0, var_flags_40, loc_E70E
 
 				tbbs	bit0, var_flags_4E, loc_E70F
 
@@ -11502,7 +12591,7 @@ loc_E7D8:							; CODE XREF: divide_d_by_x+2238↑j
 				jsr	table_rD_fixed64_interpolate
 
 				st	a, unk_13C
-				tbbs	bit5, unk_44, loc_E7FD
+				tbbs	bit5, var_flags_44, loc_E7FD
 
 				ld	y, #table_ect_C185
 				jsr	table_ect_fixed_32_interpolate
@@ -11560,7 +12649,7 @@ loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
 
 
 sub_E832:							; CODE XREF: sub_E865+1A3↓p
-				tbbc	bit5, unk_44, locret_E842
+				tbbc	bit5, var_flags_44, locret_E842
 
 				ld	d, unk_13D
 				sub	d, #000Ch
@@ -11649,7 +12738,7 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 ; real-world meaning also aren't traced. Worth a dedicated follow-up
 ; session - see session_journal.md's CPU1 pending work.
 ;
-; Reads: var_schedule_flag_41, dmatx_pim, unk_44, unk_12F,
+; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, unk_12F,
 ;   var_unk_knock_12B, dmarx_ign_timing_unk_166, dmarx_ign_timing_fallback2,
 ;   unk_129, var_limiter_flags, unk_AA, var_flags_46, dmarx_ign_timing,
 ;   dmarx_ign_timing_fallback1, unk_13C, unk_13F, unk_141
@@ -11668,10 +12757,10 @@ sub_E865:							; CODE XREF: divide_d_by_x+D3A↑p
 
 loc_E86C:							; CODE XREF: sub_E865+2↑j
 
-; Init/reset path, when unk_44.5 is set: seeds var_unk_knock_12B/unk_12D/
+; Init/reset path, when var_flags_44.5 is set: seeds var_unk_knock_12B/unk_12D/
 ; unk_12F to table_pim_unk_C154(dmatx_pim)/2 (a PIM-indexed baseline),
 ; zeroes unk_129/unk_127, sets unk_AA=0xFF - a first-run/reset baseline,
-; not the normal per-tick path (that's loc_E890 below, when unk_44.5 is
+; not the normal per-tick path (that's loc_E890 below, when var_flags_44.5 is
 ; clear instead).
 
 				ld	d, dmatx_pim
@@ -11679,7 +12768,7 @@ loc_E86C:							; CODE XREF: sub_E865+2↑j
 				jsr	table_rD_fixed64_interpolate
 
 				shr	d
-				tbbs	bit5, unk_44, loc_E890
+				tbbs	bit5, var_flags_44, loc_E890
 
 				st	d, var_unk_knock_12B
 				st	d, unk_12D
@@ -11695,7 +12784,7 @@ loc_E86C:							; CODE XREF: sub_E865+2↑j
 
 loc_E890:							; CODE XREF: sub_E865+11↑j
 
-; Normal path (unk_44.5 clear, every other qualifying tick): clamps
+; Normal path (var_flags_44.5 clear, every other qualifying tick): clamps
 ; var_unk_knock_12B between unk_12F and the PIM-table baseline above
 ; (whichever's larger/smaller each becomes the clamp bound), using
 ; var_diag_errors_5.0 purely as this function's OWN local "did the
@@ -12119,7 +13208,7 @@ loc_EA2D:							; CODE XREF: calc_4ms_corrections+3↑j
 				st	a, var_ign_dwell_min
 				ld	a, var_flags_4E_saved
 				st	a, var_flags_4E
-				ld	y, #unk_C2F2
+				ld	y, #table_unk_C2F2
 				ld	b, var_rpm_div_25
 				jsr	table_rB_fixed_32_interpolate
 
@@ -12158,7 +13247,7 @@ loc_EA7A:							; CODE XREF: calc_4ms_corrections+54↑j
 				cmp	a, var_temp_7A
 				bcs	loc_EA95
 
-				ld	y, #unk_C2F7
+				ld	y, #table_unk_C2F7
 				jsr	table_rpm_pair_interpolate
 
 				st	a, var_overrun_advance
@@ -12214,7 +13303,7 @@ loc_EAAC:							; CODE XREF: calc_4ms_corrections:loc_EA95↑j
 				st	a, var_flags_4E_saved
 				ld	a, var_flags_4E_copy_1D3
 				st	a, var_flags_4E
-				tbbs	bit6, unk_40, loc_EAE0
+				tbbs	bit6, var_flags_40, loc_EAE0
 
 				cmp	#5Ch, var_cnt_startup
 				bcs	loc_EAE0
@@ -12314,7 +13403,7 @@ loc_EB37:							; CODE XREF: calc_4ms_corrections+D8↑j
 loc_EB39:							; CODE XREF: calc_4ms_corrections+F7↑j
 								; calc_4ms_corrections+FA↑j	...
 				ld	d, var_temp_w
-				tbbc	bit0, unk_44, loc_EB41
+				tbbc	bit0, var_flags_44, loc_EB41
 
 				tbbc	bit2, var_flags_46, loc_EB49
 
@@ -12423,7 +13512,7 @@ loc_EBBC:							; CODE XREF: calc_ign_timing_min+62↑j
 				jsr	table_rB_fixed_32_interpolate
 
 				push	d
-				ld	y, #unk_C2EE
+				ld	y, #table_unk_C2EE
 				ld	b, var_tps
 				jsr	table_rB_fixed4_interpolate
 
@@ -13044,7 +14133,7 @@ loc_EE5F:							; CODE XREF: calc_4ms_corrections+403↑j
 								; calc_4ms_corrections+436↑j
 				st	a, var_lambda_ign_corr
 				ld	b, var_ign_corr_combined
-				ld	a, unk_A6
+				ld	a, var_limiter_ign_ramp
 				cmp	a, #0FFh
 				beq	loc_EE86
 
@@ -13086,7 +14175,7 @@ loc_EE89:							; CODE XREF: calc_4ms_corrections+454↑j
 				inc	a
 				beq	loc_EE8E
 
-				st	a, unk_A6
+				st	a, var_limiter_ign_ramp
 
 loc_EE8E:							; CODE XREF: calc_4ms_corrections+44E↑j
 								; calc_4ms_corrections+451↑j ...
@@ -13107,14 +14196,14 @@ check_clear_speed_limiter_tps:							; CODE XREF: divide_d_by_x:loc_CCD1↑p
 				cmp	#29h, var_tps
 				bcs	loc_EEA4
 
-				clr	unk_A6
+				clr	var_limiter_ign_ramp
 				bra	locret_EEA7
 
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_EEA4:							; CODE XREF: check_clear_speed_limiter_tps+6↑j
 								; check_clear_speed_limiter_tps+B↑j
-				ld	#0FFh, unk_A6
+				ld	#0FFh, var_limiter_ign_ramp
 
 locret_EEA7:							; CODE XREF: check_clear_speed_limiter_tps↑j
 								; check_clear_speed_limiter_tps+F↑j
@@ -13135,14 +14224,14 @@ check_clear_speed_limiter_rev:							; CODE XREF: divide_d_by_x:check_clear_spee
 				cmp	#29h, var_tps
 				bcs	loc_EEB9
 
-				clr	unk_A6
+				clr	var_limiter_ign_ramp
 				bra	locret_EEBC
 
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_EEB9:							; CODE XREF: check_clear_speed_limiter_rev+6↑j
 								; check_clear_speed_limiter_rev+B↑j
-				ld	#0FFh, unk_A6
+				ld	#0FFh, var_limiter_ign_ramp
 
 locret_EEBC:							; CODE XREF: check_clear_speed_limiter_rev↑j
 								; check_clear_speed_limiter_rev+F↑j
@@ -13162,7 +14251,7 @@ loc_EEBD:							; CODE XREF: calc_4ms_corrections+46F↑j
 				ld	a, #0FFh
 
 loc_EEC7:							; CODE XREF: calc_4ms_corrections+4A1↑j
-				ld	b, dmarx_unk_243
+				ld	b, dmarx_status1_169
 				cmpb	b, #0Fh
 				beq	loc_EED4
 
@@ -13196,7 +14285,7 @@ loc_EEED:							; CODE XREF: calc_4ms_corrections+4C4↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_EEF1:							; CODE XREF: calc_4ms_corrections+4C9↑j
-				tbbs	bit6, unk_40, loc_EF25
+				tbbs	bit6, var_flags_40, loc_EF25
 
 				tbbc	bit6, var_flags_4E, loc_EEFE
 
@@ -13257,12 +14346,12 @@ loc_EF27:							; CODE XREF: calc_4ms_corrections+4DA↑j
 
 
 ; Set var_flags_4E.6 (overrun fuel cut enable) when all gates pass:
-; unk_40.6 clear, no limiter, unk_44.3 set, flags_4E.5 set, no sensor error,
+; var_flags_40.6 clear, no limiter, var_flags_44.3 set, flags_4E.5 set, no sensor error,
 ; speed > 5 kph, ECT > 0xC4 (engine warm)
 check_set_overrun_flag:							; CODE XREF: divide_d_by_x:loc_CB1E↑p
-				tbbs	bit6, unk_40, locret_EF47	; Init guard active: skip
+				tbbs	bit6, var_flags_40, locret_EF47	; Init guard active: skip
 				tbbs	bit0, var_limiter_flags, locret_EF47 ; Fuel cut active: skip
-				tbbc	bit3, unk_44, locret_EF47	; unk_44.3 not set: skip
+				tbbc	bit3, var_flags_44, locret_EF47	; var_flags_44.3 not set: skip
 				tbbc	bit5, var_flags_4E, locret_EF47 ; flags_4E.5 not set: skip
 				tbbc	bit2, var_flags_46, locret_EF47 ; Sensor error: skip
 				cmp	#05h, var_speed_kph		; Speed > 5 kph?
@@ -13311,11 +14400,11 @@ loc_EF6C:							; CODE XREF: calc_4ms_corrections+546↑j
 				st	a, var_flags_4E
 				jsr	calc_ign_timing_min
 
-				tbbs	bit5, unk_40, loc_EF83
+				tbbs	bit5, var_flags_40, loc_EF83
 
 				tbbs	bit7, var_flags_46, loc_EF83
 
-				tbbs	bit0, unk_40, loc_EF95
+				tbbs	bit0, var_flags_40, loc_EF95
 
 				tbbc	bit3, var_flags_4D, loc_EF87 ; Jump if not using default PIM value
 
@@ -13505,7 +14594,7 @@ int_vector_e_ne_F00E:						; CODE XREF: ROM:F006↑j
 int_vector_e_ne_F011:						; CODE XREF: ROM:EFF8↑j
 								; ROM:EFFF↑j
 ; Counter is initialised but at wrong position for G1/G2 sync: set error flags
-				tbbc	bit2, unk_40, int_vector_e_ne_F01B	; Skip error if flag not set
+				tbbc	bit2, var_flags_40, int_vector_e_ne_F01B	; Skip error if flag not set
 				tbbs	bit0, var_flags_46, int_vector_e_ne_F01B ; Skip if RPM<200 flag set
 
 				setb	bit3, var_diag_errors_5	; Set G1/G2 signal sync error flag
@@ -13551,7 +14640,7 @@ init_ne_counters:						; CODE XREF: divide_d_by_x:loc_C67A↑p
 init_ne_on_start:						; CODE XREF: iv6_4ms_process+59↓p
 				tbbc	bit0, var_io_input1, loc_F047 ;	Jump if	STA low	(starter not running)
 
-				tbs	bit7, unk_44
+				tbs	bit7, var_flags_44
 				bne	locret_F04E
 
 				cmp	#0Ch, var_4ms_cnt_sta
@@ -13567,9 +14656,9 @@ init_ne_on_start:						; CODE XREF: iv6_4ms_process+59↓p
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_F047:							; CODE XREF: init_ne_on_start↑j
-				tbbc	bit7, unk_44, locret_F04E
+				tbbc	bit7, var_flags_44, locret_F04E
 
-				clrb	bit7, unk_44
+				clrb	bit7, var_flags_44
 				clr	var_4ms_cnt_sta
 
 locret_F04E:							; CODE XREF: init_ne_on_start+5↑j
@@ -13792,7 +14881,7 @@ loc_F121:							; CODE XREF: iv6_ne_process+C3↑j
 				clrb	bit4, var_ignition_flags
 				tbbs	bit7, var_flags_46, loc_F137
 
-				tbbs	bit0, unk_40, loc_F142
+				tbbs	bit0, var_flags_40, loc_F142
 
 				tbbs	bit3, var_flags_4D, loc_F137 ; Jump if using default PIM value
 
@@ -14167,7 +15256,7 @@ bg_ne_process_F276:						; CODE XREF: iv6_ne_process+218↑j
 				ld	d, var_inj_pw_inj1
 				tbbs	bit0, var_flags_46, bg_ne_process_F29D
 
-				tbbs	bit5, unk_44, bg_ne_process_F2D2
+				tbbs	bit5, var_flags_44, bg_ne_process_F2D2
 
 				cmp	#18h, var_rpm_div_25	; Check	if RPM >= 600rpm
 				bcc	bg_ne_process_F289	; Jump if so
@@ -14181,7 +15270,7 @@ bg_ne_process_F289:						; CODE XREF: iv6_ne_process+229↑j
 				bne	bg_ne_process_F29D
 
 				shr	d
-				setb	bit5, unk_44
+				setb	bit5, var_flags_44
 				ld	x, #table_injector_control
 				jsr	injector_update
 
@@ -14194,7 +15283,7 @@ bg_ne_process_F289:						; CODE XREF: iv6_ne_process+229↑j
 
 bg_ne_process_F29D:						; CODE XREF: iv6_ne_process+220↑j
 								; iv6_ne_process+22E↑j ...
-				clrb	bit5, unk_44
+				clrb	bit5, var_flags_44
 				ld	x, #table_injector_control
 				cmp	#12h, va_ne_count_2
 				beq	bg_ne_process_F2BA
@@ -14327,7 +15416,7 @@ bg_ne_process_F33A:						; CODE XREF: iv6_ne_process+2DD↑j
 
 bg_ne_process_F345:						; CODE XREF: iv6_ne_process+25E↑j
 								; iv6_ne_process+289↑j
-				tbbc	bit5, unk_44, bg_ne_process_F365
+				tbbc	bit5, var_flags_44, bg_ne_process_F365
 
 				ld	a, var_inj_sched_ne
 				mov	a, b
@@ -14476,7 +15565,7 @@ bg_ne_process_F3BE:						; CODE XREF: iv6_ne_process+361↑j
 				bne	bg_ne_process_F3CC
 
 				clrb	bit0, var_schedule_flag_41
-				clrb	bit1, unk_44
+				clrb	bit1, var_flags_44
 				jsr	loc_EDCB
 
 				jsr	sub_CE29
@@ -14554,9 +15643,9 @@ injector_update:						; CODE XREF: iv6_ne_process+23B↑p
 				bcs	no_injection
 
 				mov	d, y
-				ld	a, unk_1DC
+				ld	a, var_flags_1DC
 				or	a, #02h
-				st	a, unk_1DC
+				st	a, var_flags_1DC
 				mov	y, d
 				bra	loc_F405
 
@@ -14796,7 +15885,7 @@ loc_F48A:							; CODE XREF: knock_mcu_update+16↑j
 
 ; Position 2: gate checks before reading knock level
 loc_F490:							; CODE XREF: knock_mcu_update+1C↑j
-				tbbs	bit5, unk_40, loc_F508		; Skip if init guard flag set
+				tbbs	bit5, var_flags_40, loc_F508		; Skip if init guard flag set
 				tbbc	bit2, DOUT, loc_F508		; Skip if knock MCU in reset (DOUT.2 = 0)
 				tbbs	bit5, IRQLL, loc_F508		; Skip if ASR0 interrupt pending
 				tbbs	bit5, PORTD_ASRIN, loc_F508	; Skip if ASR3 input pin high
@@ -15514,7 +16603,7 @@ loc_F770:							; CODE XREF: int_vector_9_ignition+20↑j
 ignition_on:							; CODE XREF: int_vector_9_ignition+4↑j
 				ld	d, CPR0				; D = CPR0 value that triggered coil-on
 				st	d, var_ign_coil_on_time		; Save as coil-on timestamp for dwell feedback
-				tbbs	bit5, unk_40, loc_F780		; Fault mode: skip normal fire scheduling
+				tbbs	bit5, var_flags_40, loc_F780		; Fault mode: skip normal fire scheduling
 				tbbs	bit0, var_io_input1, loc_F780	; Starter running: skip fire scheduling
 
 				clrb	bit2, var_ignition_flags	; Clear limp/fault flag (normal operation)
@@ -15647,16 +16736,16 @@ iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+F↓p
 				beq	loc_F7E4			; Yes: matching - healthy path
 
 ; CPU2 command does not match: check if state already flagged
-				tbbs	bit3, unk_47, loc_F7FD		; Already mismatch: go to error accumulation
-				setb	bit3, unk_47			; First mismatch: set mismatch flag
+				tbbs	bit3, var_flags_47, loc_F7FD		; Already mismatch: go to error accumulation
+				setb	bit3, var_flags_47			; First mismatch: set mismatch flag
 				bra	loc_F7E9			; Accumulate health (ISC toggling normally)
 
 ; ───────────────────────────────────────────────────────────────────────────
 
 ; CPU2 command matches state - healthy transition
 loc_F7E4:							; CODE XREF: iv6_4ms_process+14↑j
-				tbbc	bit3, unk_47, loc_F7FD		; Was mismatch flag set? If not: error path
-				clrb	bit3, unk_47			; Clear mismatch flag (ISC recovered)
+				tbbc	bit3, var_flags_47, loc_F7FD		; Was mismatch flag set? If not: error path
+				clrb	bit3, var_flags_47			; Clear mismatch flag (ISC recovered)
 
 ; ISC healthy: increment health counter, clear error if at max
 loc_F7E9:							; CODE XREF: iv6_4ms_process+1B↑j
@@ -15681,7 +16770,7 @@ loc_F7FD:							; CODE XREF: iv6_4ms_process+16↑j
 				bcs	loc_F81B			; No: store and continue
 
 ; Threshold reached: shut off ISC relay and set error flag
-				clrb	bit3, unk_47			; Clear mismatch flag
+				clrb	bit3, var_flags_47			; Clear mismatch flag
 				clrb	bit3, DOUT			; Turn off DOUT.3 (cut ISC relay)
 				clr	var_iscv_error_cnt		; Reset error counter
 				and	b, #0Fh				; Keep lower nibble of health counter only
@@ -15955,15 +17044,15 @@ loc_F933:							; CODE XREF: copy_dma_tx+C↑j
 				ld	a, var_cnt_EA
 				st	a, dmatx_cnt_unk_20F
 				ld	a, var_lambda_state
-				st	a, dmatx_unk_211
+				st	a, dmatx_lambda_state
 				ld	d, var_inj_pw_inj1
-				st	d, dmatx_unk_206
+				st	d, dmatx_inj_pw_inj1
 				ld	d, nv_table_knock_info
 				st	d, dmatx_knock_retard_info
 				ld	a, nv_table_knock_info+2
 				st	a, dmatx_knock_retard_info+2
-				ld	a, unk_1BD
-				st	a, dmatx_unk_21C
+				ld	a, var_pw_loop_mode
+				st	a, dmatx_pw_loop_mode
 				ld	d, var_error_flags1
 				st	d, dmatx_error_flags1
 				ld	a, var_flags_46
@@ -16279,10 +17368,10 @@ adc_advance_index:						; CODE XREF: ROM:FA42↑j
 				and	a, #7Fh				; Wrap at 128
 				mov	a, b				; B = full index (saved), A = slot bits
 				and	b, #07h				; B = slot index (0..7) for table lookup
-; Select channel table: normal or TRAC variant (based on unk_40 flags)
+; Select channel table: normal or TRAC variant (based on var_flags_40 flags)
 				ld	y, #table_adc_ch_normal		; Y = normal channel table
-				tbbs	bit1, unk_40, loc_FA66		; If flag set, use normal table
-				tbbs	bit0, unk_40, loc_FA66		; If flag set, use normal table
+				tbbs	bit1, var_flags_40, loc_FA66		; If flag set, use normal table
+				tbbs	bit0, var_flags_40, loc_FA66		; If flag set, use normal table
 				ld	y, #table_adc_ch_trac		; Both flags clear: use TRAC variant table
 
 loc_FA66:							; CODE XREF: ROM:FA5D↑j
@@ -16610,7 +17699,7 @@ adc_handler_pim:						; DATA XREF: ROM:table_adc_handler↑o
 				bcc	adc_handler_pim_ok	; Jump if PIM value not	out of range
 
 				ld	x, #6666h		; Default PIM value
-				tbbc	bit2, unk_40, loc_FB9E
+				tbbc	bit2, var_flags_40, loc_FB9E
 
 				setb	bit5, var_error_flags1	; Set PIM sensor error flag
 				setb	bit3, var_diag_errors_5	; Set sensor error flag
@@ -16640,7 +17729,7 @@ loc_FBAF:							; CODE XREF: adc_handler_pim+21↑j
 
 adc_handler_pim_ok:						; CODE XREF: adc_handler_pim+8↑j
 				and	a, #0FEh		; Clear	bit 0 of flags
-				tbbs	bit2, unk_40, loc_FBBD
+				tbbs	bit2, var_flags_40, loc_FBBD
 
 				clrb	bit5, var_error_flags1	; Clear	PIM sensor error flag
 
@@ -16679,20 +17768,20 @@ loc_FBCC:							; CODE XREF: adc_handler_pim+3C↑j
 
 loc_FBE0:							; CODE XREF: adc_handler_pim+40↑j
 								; adc_handler_pim+51↑j
-				tbbs	bit0, unk_40, loc_FC30
+				tbbs	bit0, var_flags_40, loc_FC30
 
-				tbbs	bit1, unk_47, loc_FBF6
+				tbbs	bit1, var_flags_47, loc_FBF6
 
 				cmp	#0Ch, TIMER		; Timer	MSB (bit11~bit18)
 				bcs	loc_FC30
 
-				setb	bit1, unk_47
-				st	a, unk_FA
+				setb	bit1, var_flags_47
+				st	a, var_pim_baseline
 				tbbc	bit0, var_io_input1, loc_FC30 ;	Jump if	STA low	(starter not running)
 
 
 loc_FBF2:							; CODE XREF: adc_handler_pim+81↓j
-				setb	bit2, unk_47
+				setb	bit2, var_flags_47
 				bra	loc_FC30
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -16705,9 +17794,9 @@ loc_FBF6:							; CODE XREF: adc_handler_pim+59↑j
 
 				add	d, var_pim2
 				mov	d, y
-				tbbs	bit2, unk_47, loc_FC19
+				tbbs	bit2, var_flags_47, loc_FC19
 
-				sub	a, unk_FA
+				sub	a, var_pim_baseline
 				bcc	loc_FC08
 
 				neg	a
@@ -16719,27 +17808,27 @@ loc_FC08:							; CODE XREF: adc_handler_pim+7B↑j
 
 				tbbc	bit0, var_io_input1, loc_FC19 ;	Jump if	STA low	(starter not running)
 
-				setb	bit2, unk_47
+				setb	bit2, var_flags_47
 				cmp	#0FFh, var_cnt_C7
 				bcs	loc_FC19
 
-				setb	bit0, unk_47
+				setb	bit0, var_flags_47
 
 loc_FC19:							; CODE XREF: adc_handler_pim+76↑j
 								; adc_handler_pim+83↑j ...
-				tbbc	bit0, unk_47, loc_FC30
+				tbbc	bit0, var_flags_47, loc_FC30
 
 				tbbc	bit5, RAMST, loc_FC30	; Built-in RAM status
 
 				push	d
-				ld	b, unk_FA
+				ld	b, var_pim_baseline
 				ld	y, #byte_C3BD
 				jsr	y + (clamp_rB -	byte_C3BD) ; C3D7
 
 				ld	x, #var_nv_trim_unk_98
 				jsr	write_rB_nv_ram
 
-				clrb	bit0, unk_47
+				clrb	bit0, var_flags_47
 				pull	d
 
 loc_FC30:							; CODE XREF: adc_handler_pim:loc_FBE0↑j
@@ -16860,7 +17949,7 @@ loc_FC89:							; CODE XREF: adc_handler_o2_heater+21↑j
 
 
 loc_FC90:							; CODE XREF: adc_handler_o2_heater+28↑j
-				setb	bit4, unk_44
+				setb	bit4, var_flags_44
 
 loc_FC92:							; CODE XREF: adc_handler_o2_heater+26↑j
 								; adc_handler_o2_heater+31↑j
@@ -16921,7 +18010,7 @@ loc_FCB1:							; CODE XREF: ROM:FCA9↑j
 				cmp	b, #31h
 				bgt	loc_FCC7
 
-				tbbs	bit2, unk_40, loc_FCBE
+				tbbs	bit2, var_flags_40, loc_FCBE
 
 				clrb	bit1, var_error_flags2
 
@@ -16930,7 +18019,7 @@ loc_FCBE:							; CODE XREF: ROM:FCAC↑j
 				cmpb	a, #20h
 				beq	loc_FCC4
 
-				clrb	bit7, unk_40
+				clrb	bit7, var_flags_40
 
 loc_FCC4:							; CODE XREF: ROM:FCC0↑j
 				or	a, #20h
@@ -16952,10 +18041,10 @@ adc_handler_tps_low:						; CODE XREF: ROM:FCA3↑j
 
 adc_handler_tps_high:						; CODE XREF: ROM:FCA7↑j
 								; ROM:FCB3↑j
-				setb	bit7, unk_40
+				setb	bit7, var_flags_40
 				clrb	bit3, var_flags_46
 				ld	b, #10h
-				st	b, unk_101
+				st	b, var_tps_closed_ref
 				and	a, #0DFh
 				cmpb	a, #08h
 				bne	loc_FCE3
@@ -16964,7 +18053,7 @@ adc_handler_tps_high:						; CODE XREF: ROM:FCA7↑j
 				or	a, #08h
 
 loc_FCE3:							; CODE XREF: ROM:FCDD↑j
-				tbbs	bit2, unk_40, loc_FCEC
+				tbbs	bit2, var_flags_40, loc_FCEC
 
 				cmp	#0Fh, var_cnt_sensor_error
 				bcs	loc_FCF0
@@ -16980,9 +18069,9 @@ loc_FCEC:							; CODE XREF: ROM:loc_FCE3↑j
 loc_FCF0:							; CODE XREF: ROM:FCCB↑j
 								; ROM:FCE9↑j
 				st	a, var_flags_18C
-				tbbc	bit7, unk_40, loc_FD03
+				tbbc	bit7, var_flags_40, loc_FD03
 
-				clr	unk_EF
+				clr	var_tps_closed_cnt
 				ld	d, #0000h
 				st	d, var_tps
 				st	d, dmatx_tps
@@ -16993,18 +18082,18 @@ loc_FCF0:							; CODE XREF: ROM:FCCB↑j
 loc_FD03:							; CODE XREF: ROM:FCF3↑j
 				tbbs	bit1, var_io_input1, loc_FD08 ;	Jump if	throttle closed	(IDL high)
 
-				clr	unk_EF
+				clr	var_tps_closed_cnt
 
 loc_FD08:							; CODE XREF: ROM:loc_FD03↑j
 				ld	a, var_nv_tps
 				ld	b, #0AEh
-				tbbs	bit0, unk_40, loc_FD67
+				tbbs	bit0, var_flags_40, loc_FD67
 
 				tbbc	bit1, var_flags_42, loc_FD67
 
 				tbbc	bit0, var_flags_42, loc_FD67 ; Jump if trims are not valid
 
-				tbs	bit5, unk_47
+				tbs	bit5, var_flags_47
 				bne	loc_FD22
 
 				add	a, #08h
@@ -17018,7 +18107,7 @@ loc_FD20:							; CODE XREF: ROM:FD1C↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_FD22:							; CODE XREF: ROM:FD18↑j
-				ld	b, unk_EF
+				ld	b, var_tps_closed_cnt
 
 loc_FD24:							; CODE XREF: ROM:FD2A↓j
 				cmp	b, #40h
@@ -17039,13 +18128,13 @@ loc_FD2C:							; CODE XREF: ROM:FD26↑j
 				ld	a, #0FFh
 
 loc_FD36:							; CODE XREF: ROM:FD32↑j
-				inc	unk_EF
+				inc	var_tps_closed_cnt
 				bra	loc_FD57
 
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_FD3A:							; CODE XREF: ROM:FD2E↑j
-				cmp	#02h, unk_EF
+				cmp	#02h, var_tps_closed_cnt
 				bcs	loc_FD68
 
 				push	a
@@ -17142,12 +18231,12 @@ loc_FD9C:							; CODE XREF: ROM:FD97↑j
 				clrb	bit3, var_flags_46
 
 loc_FD9E:							; CODE XREF: ROM:FD00↑j
-				tbbc	bit7, unk_40, loc_FDAA
+				tbbc	bit7, var_flags_40, loc_FDAA
 
 				clr	a
 				st	a, var_tps_delta
-				clrb	bit6, unk_47
-				setb	bit7, unk_47
+				clrb	bit6, var_flags_47
+				setb	bit7, var_flags_47
 				bra	loc_FE05
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -17167,7 +18256,7 @@ loc_FDAA:							; CODE XREF: ROM:loc_FD9E↑j
 				cmp	d, #3D71h
 				bcs	loc_FDC0
 
-				setb	bit7, unk_47
+				setb	bit7, var_flags_47
 
 loc_FDC0:							; CODE XREF: ROM:FDBC↑j
 				cmpb	a, #0E0h
@@ -17215,7 +18304,7 @@ loc_FDE1:							; CODE XREF: ROM:FDDE↑j
 				cmp	b, #01h
 				bcc	loc_FDE7
 
-				clrb	bit7, unk_47
+				clrb	bit7, var_flags_47
 
 loc_FDE7:							; CODE XREF: ROM:FDE3↑j
 				ld	b, var_tps_delta
@@ -17241,14 +18330,14 @@ loc_FDFC:							; CODE XREF: ROM:FDF9↑j
 
 
 loc_FE00:							; CODE XREF: ROM:FDF4↑j
-				setb	bit6, unk_47
+				setb	bit6, var_flags_47
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_FE03:							; CODE XREF: ROM:FDEB↑j
 								; ROM:FDF1↑j ...
-				clrb	bit6, unk_47
+				clrb	bit6, var_flags_47
 
 loc_FE05:							; CODE XREF: ROM:FDA8↑j
 								; ROM:FDFE↑j
@@ -17277,11 +18366,11 @@ loc_FE05:							; CODE XREF: ROM:FDA8↑j
 ;   var_4ms_cnt_B9 > 0x18 (post-start settle time)
 ;   B >= 0xF0 (TRAC throttle >= 94% open)
 ;
-; If active (unk_1DC.2 set):
+; If active (var_flags_1DC.2 set):
 ;   Validates TPS range (same bounds as primary: 0x0D..0xFB)
 ;   Applies closed-throttle detection using PORTA.2 (TE1 input)
 ;   Stores scaled result in var_trac_tps_scaled
-;   Uses NV trim value (unk_302, stored in PRAM) for calibration
+;   Uses NV trim value (var_nv_trac_tps, stored in PRAM) for calibration
 ;
 ; Error handling: same 15-read threshold as primary TPS
 ;   Sets var_diag_errors_5.3, var_error_flags2.3
@@ -17302,17 +18391,17 @@ adc_handler_trac_tps:						; DATA XREF: ROM:table_adc_handler↑o
 
 loc_FE24:							; CODE XREF: ROM:FE18↑j
 								; ROM:FE1E↑j
-				ld	a, unk_1DC
+				ld	a, var_flags_1DC
 				and	a, #0FBh
-				st	a, unk_1DC
+				st	a, var_flags_1DC
 				bra	loc_FE49
 
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_FE2E:							; CODE XREF: ROM:FE22↑j
-				ld	a, unk_1DC
+				ld	a, var_flags_1DC
 				or	a, #04h
-				st	a, unk_1DC
+				st	a, var_flags_1DC
 				ld	d, #0FFFFh
 				st	d, var_trac_tps_scaled
 				clrb	bit3, var_error_flags2
@@ -17340,7 +18429,7 @@ loc_FE49:							; CODE XREF: ROM:FE2C↑j
 				bgt	loc_FE66
 
 				and	a, #0BFh
-				tbbs	bit2, unk_40, loc_FE66
+				tbbs	bit2, var_flags_40, loc_FE66
 
 				clrb	bit3, var_error_flags2
 
@@ -17365,7 +18454,7 @@ loc_FE6D:							; CODE XREF: ROM:FE52↑j
 				or	a, #80h
 
 loc_FE77:							; CODE XREF: ROM:FE71↑j
-				tbbs	bit2, unk_40, loc_FE80
+				tbbs	bit2, var_flags_40, loc_FE80
 
 				cmp	#0Fh, var_cnt_sensor_error
 				bcs	loc_FE84
@@ -17405,10 +18494,10 @@ loc_FE9B:							; CODE XREF: ROM:FE94↑j
 				mov	x, d
 				jsr	divide_rD_64
 
-				add	b, unk_302
+				add	b, var_nv_trac_tps
 				addc	a, #00h
 				shr	d
-				add	b, unk_302
+				add	b, var_nv_trac_tps
 				addc	a, #00h
 				shr	d
 				cmpz	a
@@ -17417,7 +18506,7 @@ loc_FE9B:							; CODE XREF: ROM:FE94↑j
 				ld	b, #0FFh
 
 loc_FEB3:							; CODE XREF: ROM:FEAF↑j
-				ld	a, unk_302
+				ld	a, var_nv_trac_tps
 				tbs	bit5, var_flags_4D
 				bne	loc_FEC0
 
@@ -17434,11 +18523,11 @@ loc_FEC0:							; CODE XREF: ROM:FEB8↑j
 				mov	a, b
 
 loc_FEC4:							; CODE XREF: ROM:FEC1↑j
-				ld	y, #nv_302_limits
-				jsr	y + (clamp_rB -	nv_302_limits)
+				ld	y, #nv_trac_tps_limits
+				jsr	y + (clamp_rB -	nv_trac_tps_limits)
 
 				push	x
-				ld	x, #unk_302
+				ld	x, #var_nv_trac_tps
 				jsr	write_rB_nv_ram
 
 				pull	x
@@ -17448,7 +18537,7 @@ loc_FEC4:							; CODE XREF: ROM:FEC1↑j
 
 loc_FED2:							; CODE XREF: ROM:loc_FE9B↑j
 				clrb	bit5, var_flags_4D
-				ld	a, unk_302
+				ld	a, var_nv_trac_tps
 
 loc_FED7:							; CODE XREF: ROM:FE99↑j
 				clr	b
@@ -17504,7 +18593,7 @@ adc_handler_tha:						; DATA XREF: ROM:table_adc_handler↑o
 				clr	var_cnt_sensor_error	; Reset error counter on first detection
 
 loc_FEFC:							; CODE XREF: ROM:FEF6↑j
-				tbbs	bit2, unk_40, loc_FF05
+				tbbs	bit2, var_flags_40, loc_FF05
 
 				cmp	#0Fh, var_cnt_sensor_error ; Check if less than	15 reads out of	range
 				bcs	loc_FF09		; Jump if so
@@ -17524,7 +18613,7 @@ loc_FF09:							; CODE XREF: ROM:FF02↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_FF0D:							; CODE XREF: ROM:FEF2↑j
-				tbbs	bit2, unk_40, loc_FF12
+				tbbs	bit2, var_flags_40, loc_FF12
 
 				clrb	bit4, var_error_flags1	; Clear	THA sensor error flag
 
@@ -17570,7 +18659,7 @@ adc_handler_tham:						; DATA XREF: ROM:table_adc_handler↑o
 				clr	var_cnt_sensor_error	; Reset error counter on first detection
 
 loc_FF33:							; CODE XREF: ROM:FF2D↑j
-				tbbs	bit2, unk_40, loc_FF3C
+				tbbs	bit2, var_flags_40, loc_FF3C
 
 				cmp	#0Fh, var_cnt_sensor_error ; Check if less than	15 reads out of	range
 				bcs	loc_FF40		; Jump if so
@@ -17590,7 +18679,7 @@ loc_FF40:							; CODE XREF: ROM:FF39↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_FF44:							; CODE XREF: ROM:FF29↑j
-				tbbs	bit2, unk_40, loc_FF49
+				tbbs	bit2, var_flags_40, loc_FF49
 
 				clrb	bit4, var_error_flags2	; Clear	THAM sensor error flag
 
@@ -17635,7 +18724,7 @@ adc_handler_battery:						; DATA XREF: ROM:table_adc_handler↑o
 				cmp	b, #53h				; Battery voltage >= 6.5V?
 				bcs	loc_FF6A			; No: skip knock MCU release
 
-				tbs	bit6, unk_44			; Init flag set?
+				tbs	bit6, var_flags_44			; Init flag set?
 				beq	loc_FF6A			; No: skip
 
 				setb	bit2, DOUT			; Release knock MCU reset (DOUT.2 high)
@@ -17685,7 +18774,7 @@ adc_handler_ect:						; DATA XREF: ROM:table_adc_handler↑o
 				clr	var_cnt_sensor_error	; Reset error counter on first detection
 
 loc_FF8D:							; CODE XREF: ROM:FF87↑j
-				tbbs	bit2, unk_40, loc_FF96
+				tbbs	bit2, var_flags_40, loc_FF96
 
 				cmp	#0Fh, var_cnt_sensor_error
 				bcs	loc_FF9A
@@ -17705,7 +18794,7 @@ loc_FF9A:							; CODE XREF: ROM:FF93↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_FF9F:							; CODE XREF: ROM:FF83↑j
-				tbbs	bit2, unk_40, loc_FFA4
+				tbbs	bit2, var_flags_40, loc_FFA4
 
 				clrb	bit3, var_error_flags1
 

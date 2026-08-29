@@ -7,6 +7,83 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Sibling-ROM port: D151803-9651 (CPU1) -> D151804-0461
+Scoping pass to see whether the 9651 RE work transfers to D151804-0461 — same
+3S-GTE, different car; 9651 is air-to-air intercooled, 0461 has a water
+chargecooler with an ECU-controlled pump. It transfers well. Method and
+results below; a `Claude/D151804-0461.asm` working copy now exists with the
+first batch applied.
+
+**Method.** Names cannot be ported by address — the two RAM maps genuinely
+differ. Comparing the 125 hand-named symbols the two files already share
+gives a piecewise shift: delta 0 below ~0x0B3, -4 across ~0x0B4-0x0CC, -6
+across ~0x0CE-0x14C, -8 across ~0x14F-0x194, back to -6 by 0x1DE-0x222, and
+0/-2 at 0x300+. So 0461 allocates less RAM in the mid-range and gains some
+back above 0x222.
+
+Instead, match on *behaviour*: normalise each function to its instruction
+sequence with every symbol operand replaced by a placeholder (numeric
+immediates kept), then pair functions across the two ROMs by that signature.
+85 of 0461's 149 functions are an exact signature match to a 9651 function —
+i.e. logically identical code — plus 60 more at >=0.75 similarity. Walking
+each exactly-matched pair in lockstep then yields variable renames: where
+9651 uses a hand-name and 0461 an auto-name at the same instruction position,
+that is a confirmed rename.
+
+The derived deltas reproduce the anchor-based shift map exactly, which is a
+useful self-check — the two derivations are independent.
+
+**Worked confirmations.**
+- `sub_D32F` (0461) = `drive_dout1_iscv` (9651): identical xref offsets into
+  the same hardware registers (+A into TIMER, +C into CPR1).
+- `sub_CAC1` (0461) = `calc_ect_unk_148` (9651): identical bodies; 9651
+  stores to `var_ect_unk_148` (0x148), 0461 to `unk_142` (0x142) — a -6
+  delta, matching the predicted map for that region.
+
+**Applied** to `Claude/D151804-0461.asm` (created from the parent `.ASM`,
+converted CP437 -> UTF-8 as with the 9651/9661 copies): 96 renames, 649
+substitutions. Names embedding their own address were adapted to the 0461
+address rather than copied verbatim (`var_ect_unk_148` -> `var_ect_unk_142`,
+`table_C163` -> `table_C12C`, and so on). Verified: assembles byte-identical
+to the shipped `D151804-0461.BIN`, and `verify_assembly_match.py` reports
+"Total real edit regions: 0".
+
+**A trap worth remembering.** The first attempt failed to converge because a
+fuzzy match renamed `sub_FBB7` to `adc_handler_pim`, a name 0461 already
+uses — a duplicate label. Any bulk rename needs a guard against target names
+that already exist in the destination file, not just against duplicates
+within the rename set itself.
+
+**Secondary throttle is 9651-only, and the ADC table proves it.** Both ROMs
+have a 14-slot `table_adc_handler` in the same order with identical
+`table_adc_channel` bytes, so slots correspond one-to-one. Slot 8 is
+`adc_handler_trac_tps` in 9651 — it range-checks the reading, drives bit 2 of
+`unk_1DC`, writes `var_trac_tps_unk_152`, and sets diagnostic flags. In 0461
+the same slot is a two-instruction stub: store the raw reading to
+`var_adc_unk_14C`, `jmp adc_complete`. Same physical channel, sampled and
+discarded. Consistent with traction control living in a separate ECU on the
+9651 car, with this ECU only monitoring the secondary throttle position.
+
+**The chargecooler pump is not yet located.** It is not on that ADC slot
+(0461 does nothing with it), and it is not one of the 0461-only functions —
+`sub_DC4A` (147 insns) and `sub_DCAC` (24 insns) both turn out to be knock
+scaling / error-flag code, not pump drive. Note also that the "82.7 -
+Chargecooler pump/level" comment appears identically in *both* files: it is
+transcribed from the generic Toyota diagnostic-code list, not evidence the
+feature exists in 9651. Next place to look is inline in the main loop
+(`sub_C57A`) and at the DOUT/LDOUT bit writes that differ between the ROMs.
+
+**Left for a decision.** 10 renames were held back rather than guessed: the
+`dmarx_*` / `var_flags_4E_copy_*` names that embed *both* a CPU1 and a CPU2
+address (e.g. `dmarx_max_retard_23B_161`). Resolving the CPU2 half needs
+0461's sibling CPU2 ROM, and the CPU1_addr = CPU2_addr + 0xDA offset should
+be re-confirmed for that pair rather than assumed from the 9651/9661 pair.
+Two naming conflicts also need reconciling: 0461's
+`check_batch_inj_limiters` / `check_inj_limiters` are exact signature matches
+for 9651's `check_limiters_active` / `check_limiters_active_2`.
+
+---
+
 ### CPU2 (D151803-9661): unk_ variable rename pass
 Went through every remaining `unk_`/`dmarx_unk_`/`dmatx_unk_` variable in
 CPU2, renaming where a confirmed role exists and adding a reference note
@@ -1017,7 +1094,7 @@ the same flag byte are not analogous just because they're adjacent.
 
 ### Chunk C667 — reset_vector / startup sequence
 - reset_vector: hardware init (ASR timers, ASR2=0x81DE DMA RX, ASR3=0x9200 DMA TX, ports, serial flush, stack)
-- clear_variables: byte-fill unk_40..unk_7F, word-fill var_diag_errors_4..dmarx_ign_advance_lo
+- clear_variables: byte-fill var_flags_40..unk_7F, word-fill var_diag_errors_4..dmarx_ign_advance_lo
 - loc_C67A: software defaults (flags, counters, sensor defaults, ignition limp mode, idle trim restore)
 - adc_start: enable serial RX interrupt, kick ADC phase 1, spin-wait at loc_C718 until complete, send first DMA frame
 - loc_C749: 4ms main loop entry / watchdog re-entry point
@@ -1116,7 +1193,7 @@ Key variable renames (chunk CE6C):
 
 ### injector_warmup (sub_CD68) — now commented
 Fires one batch injection pulse (via injectors_batch_update), gated on RPM
-being past the cranking/stall band, an idle-debounce latch (unk_44.0), and
+being past the cranking/stall band, an idle-debounce latch (var_flags_44.0), and
 the throttle-closed debounce timer having settled (var_flags_46.2 clear).
 Picks between an ECT-indexed table (normal case) or an RPM-indexed table
 (when var_limiter_flags.0 shows an overrun fuel-cut is being recovered from
@@ -1172,6 +1249,86 @@ existing unit tests still pass, and Claude/D151803-9651.asm now both
 assembles with 0 errors and matches the buildable D151803-9651.ASM with 0
 real edit regions via verify_assembly_match.py - the aliasing technique is
 now genuinely confirmed byte-safe.
+
+---
+
+### CPU1 (D151803-9651): flags-variable and unk_ variable pass
+
+Brought CPU1 up to the standard CPU2 reached in the previous session (the
+same two-part brief: every "flags" variable documented bit by bit, every
+`unk_` variable either properly named or given a reference to where it is
+set and read). Assembly equivalence re-verified after every edit -
+`verify_assembly_match.py` reported "Total real edit regions: 0" throughout.
+
+**Flags variables - all bits now documented.** Filled in every blank in the
+pre-existing address-keyed bit templates and added templates where none
+existed: `var_flags_40` (was `unk_40`), `var_schedule_flag_41`,
+`var_flags_42`, `var_limiter_flags`, `var_flags_44` (was `unk_44`),
+`var_ignition_flags`, `var_flags_46`, `var_flags_47` (was `unk_47`),
+`var_diag_errors_5`, `var_io_input1`/`var_io_input2`,
+`var_error_flags1`/`var_error_flags2`, `var_flags_4D`, `var_flags_4E`,
+`var_flags_4F`, plus `var_flags_1DC` (was `unk_1DC` - a flags byte that
+earlier bit-op sweeps missed entirely because it is manipulated with
+whole-byte AND/OR masks rather than `setb`/`clrb`).
+
+**Renames (18).** `unk_40`->`var_flags_40`, `unk_44`->`var_flags_44`,
+`unk_47`->`var_flags_47`, `unk_1DC`->`var_flags_1DC`,
+`unk_1BD`->`var_pw_loop_mode`, `unk_302`->`var_nv_trac_tps`
+(+`nv_302_limits`->`nv_trac_tps_limits`), `unk_101`->`var_tps_closed_ref`,
+`unk_EF`->`var_tps_closed_cnt`, `unk_FA`->`var_pim_baseline`,
+`unk_11D`->`var_tps_delta_prev`, `unk_11E`->`var_tps_delta_rate`,
+`unk_A6`->`var_limiter_ign_ramp`, `dmatx_unk_206`->`dmatx_inj_pw_inj1`,
+`dmatx_unk_211`->`dmatx_lambda_state`, `dmatx_unk_21C`->`dmatx_pw_loop_mode`,
+`dmarx_unk_243`->`dmarx_status1_169`, `dmarx_unk_245`->`dmarx_status2_16B`,
+and the three ROM constant tables `unk_C2EE/C2F2/C2F7`->`table_unk_*`.
+
+The two `dmarx_status*` names come from CPU2's side: that ROM's
+`update_dmatx_status_flags` already documents both bytes as packed status
+snapshots and gives the exact bit-to-source mapping, so the CPU1 receive-side
+names now match across the DMA boundary.
+
+**Reference notes (43).** Every remaining `unk_` declaration got a factual
+"written by X, read by Y" note generated from the actual instruction stream
+(not from the IDA xref comments), so the fallback half of the brief is
+satisfied for all of them. Deliberately left named `unk_` per CLAUDE.md
+rather than guessed at.
+
+**Findings worth flagging (all corrections or dead code, not just naming):**
+- **`var_schedule_flag_41`'s entire bit table was mislabeled `40.X`** - a
+  copy/paste from the `unk_40` declaration above it during last session's
+  `tbs` correction. The content was right, the address prefix was wrong.
+  Fixed to `41.X`.
+- **`var_flags_40.6` looks genuinely dead**: no `setb` exists anywhere in the
+  file, only `clrb` plus non-destructive `tbbs`/`tbbc` reads. It starts clear
+  and is only ever re-cleared, so every "jump if set" site never jumps -
+  including `check_set_overrun_flag`'s own "init guard active: skip" gate.
+- **`unk_14A` is permanently zero**: exactly one reference in the whole file
+  (`sub a, unk_14A` in the rev-limiter hysteresis check) and no write site at
+  all, which makes the subtract a no-op. Reads like a tunable that was
+  disabled by zeroing rather than a live variable.
+- **`unk_E0` is completely unreferenced** - a genuinely unused RAM byte.
+- Eight more are write-only in this file (written, never read here) - either
+  consumed by CPU2 over the DMA buffer or vestigial; each is marked as such.
+- **`var_flags_4D.2` was documented wrongly** by an earlier pass as
+  "acceleration enrichment... opposite direction" to `var_flags_44.2`. It is
+  actually the *second* derivative of throttle position (`var_tps_delta_rate`)
+  in the *same* closing direction - the pair distinguishes "closing fast"
+  from "closing ever faster". Corrected.
+- **`injector_cold_start`'s `var_flags_42.4` gate was mis-described** as an
+  "ADC phase 1 complete" check (a guess predating the `tbs` correction). It
+  is the function's own private one-shot self-lock; the real ADC-phase flag
+  is bit1. Corrected at both the declaration and the use site.
+- **`var_flags_44.7`**: because its `tbs` self-lock fires on the very first
+  4ms tick after STA goes high, the NE-counter resync guarded behind it can
+  only run on that same tick - when `var_4ms_cnt_sta` is still 0 and the 0x0C
+  threshold therefore always fails. As written that resync path reads as
+  unreachable. Flagged rather than asserted; ruling it out for certain needs
+  confirmation that nothing else advances `var_4ms_cnt_sta` while bit7 is held.
+
+**Still open on CPU1** (unchanged by this pass): the pending-work list below.
+This pass was breadth-first over variables, so `sub_E551`, `loc_E112`/`E363`,
+`sub_E865`'s middle blend and the second lambda-trim system are all still
+untouched - several of the reference notes above point into them.
 
 ---
 
@@ -1300,10 +1457,10 @@ ROM.
   self-re-arming one-shot gate: only the first call after each periodic
   unlock (iv6_4ms_process's 32ms sub-slot) runs the blend below. Two
   confirmed parts:
-  1. **Init/reset path** (`unk_44.5` set): seeds `var_unk_knock_12B`/
+  1. **Init/reset path** (`var_flags_44.5` set): seeds `var_unk_knock_12B`/
      `unk_12D`/`unk_12F` to `table_pim_unk_C154(dmatx_pim)/2` and zeroes
      `unk_129`/`unk_127`/sets `unk_AA=0xFF` - a first-run/reset baseline.
-  2. **Normal path** (`unk_44.5` clear, every other tick): clamps
+  2. **Normal path** (`var_flags_44.5` clear, every other tick): clamps
      `var_unk_knock_12B` between `unk_12F` and the PIM-table baseline
      (whichever's larger/smaller), using `var_diag_errors_5.0` purely as
      its own local "did the clamped value drop since last tick" flag - NOT

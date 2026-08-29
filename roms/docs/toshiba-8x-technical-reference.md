@@ -1649,15 +1649,15 @@ from CPU2's own ASM.
 
 | Address | Name | Description |
 |---|---|---|
-| $40 | unk_40 | 40.1: startup injection pulse done; 40.3: transient throttle injection; 40.5: set when RPM < 300, cleared when RPM > 500 |
+| $40 | var_flags_40 | 40.0: factory self-test active (sub_E115); 40.1: startup injection pulse done; 40.2: OBD stream mode active; 40.3: transient throttle injection; 40.4: TPS settled below threshold (sub_C996); 40.5: set when RPM < 300, cleared when RPM > 500; 40.6: **no setter exists - reads as permanently clear**; 40.7: 64ms self-re-arming schedule gate |
 | $41 | var_schedule_flag | Flags controlling scheduling of various processes |
 | $42 | var_flags_42 | 42.0: trim valid; 42.1: ADC table mode; 42.2: cleared in 4ms interrupt to schedule 4ms background; 42.3: cleared in NE interrupt; 42.7: set at end of 4ms process |
 | $43 | var_limiter_flags | 43.3: speed limiter active; 43.4: 4 IGF pulses missing; 43.5: throttle shut; 43.6: rev limit active; 43.7: boost limit exceeded |
-| $44 | unk_44 | — |
+| $44 | var_flags_44 | 44.0: idle-debounce latch; 44.1: calc_iscv one-shot gate; 44.2: throttle closing fast; 44.3: fuel-cut-active mirror (1 tick lag); 44.4: written, no reader found; 44.5: sub_E865 init path / injector table select; 44.6: knock-MCU-release one-shot; 44.7: starter-episode latch |
 | $45 | var_ignition_flags | 45.7: set to halve injector pulse widths |
 | $46 | var_flags_46 | 46.0: RPM < 200 (clr >400); 46.1: closed loop allowed; 46.2: throttle closed flag; 46.3: TPS flag; 46.4: diagnostic error; 46.5: knock sensor error; 46.7: sub-CPU error |
-| $47 | unk_47 | — |
-| $48 | var_diag_errors_5 | 48.0: RPM rising/falling; 48.3: sensor error; 48.4: knock management error; 48.5: air-con switch signal |
+| $47 | var_flags_47 | 47.0: PIM NV-trim write eligible; 47.1: PIM sampling-window latch; 47.2: large PIM delta; 47.3: ISC relay/CPU2 command mismatch; 47.4: throttle-closed averaging done; 47.5: NV-TPS calib one-shot; 47.6/47.7: large positive/negative TPS delta |
+| $48 | var_diag_errors_5 | 48.0: **not RPM-related** - generic "did we negate D for an abs()" remember-bit (see set/check_knock_sensor_err_flag); 48.1: ISC PWM step-direction latch; 48.2: PIM-trim clamped to zero; 48.3: sensor error; 48.4: knock management error; 48.5: air-con switch signal; 48.6: no site found (dead); 48.7: persistent knock + G1/G2 error |
 | $49 | var_io_input1 | 49.0: STA high; 49.1: IDL low (throttle closed); 49.4: STP high; 49.5: TE1 low (diagnostic); 49.6: TE2 low (OBD stream); 49.7: ELS high |
 | $4A | var_io_input2 | 4A.0: ECO high; 4A.3: PS/IDUP |
 | $4B | var_error_flags1 | 4B.1: G1/G2 error; 4B.2: too many IGF missing; 4B.3: ECT sensor error; 4B.4: THA error; 4B.5: PIM error; 4B.6: SPD error |

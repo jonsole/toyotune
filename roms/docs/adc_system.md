@@ -39,7 +39,7 @@ On startup (`var_flags_42.1 = 0`), commands 0x00..0x0D are issued in sequence. T
 
 ### Phase 2 — Scheduled Scan
 
-`var_adc_idx` cycles 0..127, incrementing each interrupt. The lower 3 bits (slot 0..7) index an 8-entry schedule table. Two tables exist — selection depends on `unk_40.0` and `unk_40.1` flags (TRAC active / A/T mode):
+`var_adc_idx` cycles 0..127, incrementing each interrupt. The lower 3 bits (slot 0..7) index an 8-entry schedule table. Two tables exist — selection depends on `var_flags_40.0` and `var_flags_40.1` flags (TRAC active / A/T mode):
 
 #### `table_adc_ch_normal` — Standard Schedule
 
@@ -188,12 +188,12 @@ The crossover voltage is 0x170A (raw 16-bit): above this = lean signal; below = 
 - `var_4ms_cnt_B9 > 0x18` (post-start settle period elapsed)
 - B ≥ 0xF0 (secondary throttle ≥ 94% open)
 
-If not active: `unk_1DC.2` cleared, `var_trac_tps_scaled` not updated.
+If not active: `var_flags_1DC.2` cleared, `var_trac_tps_scaled` not updated.
 
 **If active:**
 - Same bounds check as primary TPS (0x0D..0xFB)
 - Closed-throttle detection uses PORTA.2 (TE1 input)
-- NV trim `unk_302` (PRAM, limits `nv_302_limits = [0x14, 0xC3]`) used for calibration
+- NV trim `var_nv_trac_tps` (PRAM, limits `nv_trac_tps_limits = [0x14, 0xC3]`) used for calibration
 - Error after 15 reads: sets `var_diag_errors_5.3`, `var_error_flags2.3`
 
 **Outputs:** `var_trac_tps_raw`, `var_trac_tps_scaled`
@@ -262,7 +262,7 @@ var_ect = A:B
 **Input:** B = raw 8-bit ADC (voltage divider, measuring 0–~15V)
 
 **Voltage threshold `0x53` (≈ 6.5V):**
-If battery ≥ 6.5V AND PRAM valid AND init flag (`unk_44.6`) set → release knock MCU reset (assert DOUT.2 high). This prevents the knock MCU from starting until the battery is stable post-crank.
+If battery ≥ 6.5V AND PRAM valid AND init flag (`var_flags_44.6`) set → release knock MCU reset (assert DOUT.2 high). This prevents the knock MCU from starting until the battery is stable post-crank.
 
 **Injector battery compensation:**
 
@@ -299,7 +299,7 @@ Stores raw reading only. Used by `adc_handler_o2_heater` in the subsequent lambd
 Both handlers share the same bounds (0x0D..0xFB) and IDL-based closed-throttle logic, but differ in:
 - Input signal: primary vs secondary throttle body
 - TRAC TPS activation guard (engine running, settle time, ≥94% open condition)
-- NV trim variable: `var_nv_tps` vs `unk_302`
+- NV trim variable: `var_nv_tps` vs `var_nv_trac_tps`
 - Error flag bits: `var_error_flags2.1` vs `var_error_flags2.3`
 
 ---
@@ -354,7 +354,7 @@ These are not transmitted to CPU2 via DMA and appear to be used locally in idle 
 |---|---|
 | `var_nv_trim_unk_98` | PIM calibration trim value |
 | `var_nv_tps` | Learned TPS closed-throttle position |
-| `unk_302` | Learned TRAC TPS trim value |
+| `var_nv_trac_tps` | Learned TRAC TPS trim value |
 
 ### DMA Transmit Variables (→ CPU2 every 4ms)
 
@@ -384,11 +384,11 @@ All sensors with out-of-range detection follow the same pattern:
      e. Use default value for this cycle
 3. If C clear (in range):
      a. Clear error flag in var_flags_18x
-     b. Clear operational error flag (if not blocked by unk_40.2)
+     b. Clear operational error flag (if not blocked by var_flags_40.2)
      c. Use actual ADC value
 ```
 
-The `unk_40.2` flag gates error flag clearing — when set, existing errors are preserved even when readings return to range.
+The `var_flags_40.2` flag gates error flag clearing — when set, existing errors are preserved even when readings return to range.
 
 ---
 

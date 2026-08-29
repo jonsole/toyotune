@@ -114,13 +114,13 @@ Gated on:
 - CPU2 enrichment request flags (`dmarx_fuel_trim_231`,
   `dmarx_warmup_enrich`, `dmarx_idle_enrich` - any nonzero forces the
   fallback/open-loop path)
-- `unk_40.7`
+- `var_flags_40.7`
 - `var_flags_46.1` (the *real* closed-loop flag, not aliased)
 - `dmarx_iscv_duty == 0x40` (nominal idle duty - if already at nominal,
   skip the closed-loop-specific init)
 
-Calls `init_pw_closed_loop` (closed-loop init: `unk_1BD = 0xC8`) or `init_pw_open_loop`
-(open-loop init: `unk_1BD = 0`), both of which fall into shared code
+Calls `init_pw_closed_loop` (closed-loop init: `var_pw_loop_mode = 0xC8`) or `init_pw_open_loop`
+(open-loop init: `var_pw_loop_mode = 0`), both of which fall into shared code
 resetting `unk_1C0` and `unk_1C6` (`= 0xCCCD`, see the ramp-limiter
 constant below).
 
@@ -144,7 +144,7 @@ by a `0xC8/256` (~78%) factor via `mult_rArX` and divided into
 `dmarx_word_22A` again) whose high word is divided by either
 `dmarx_word_226+dmarx_word_228` or `dmarx_word_228` alone, producing the
 final candidate stored in `unk_1C0`. The `0xC8`/`200` value doubles as a
-tag carried in `unk_1BD` for the two paths.
+tag carried in `var_pw_loop_mode` for the two paths.
 
 **Why the high-word substitution (resolved):** `mult_rDrX` doesn't just
 return an overflow indicator in `X` - it **auto-saturates its own `D`
@@ -233,7 +233,7 @@ Every ~488ms (`var_4ms_cnt_B5 >= 0x7A`): nudges `var_inj_pw_base` by
 sign, clamped via `ram_1BE_limits` (range `0x0000`-`0x0500`, i.e.
 0-~5.12ms of injector time - matches known PW constants elsewhere, e.g.
 `injector_cold_start`'s `0x04E2`/`0x09C4`). In closed-loop mode
-(`unk_1BD == 0xC8`) also overwrites `unk_1C0` with `var_adc_lambda` itself.
+(`var_pw_loop_mode == 0xC8`) also overwrites `unk_1C0` with `var_adc_lambda` itself.
 Then calls `ramp_limit_inj_pw_simple` when `var_adc_lambda` (**not**
 `var_inj_pw_base` - see the correction under "The ramp-limiter cluster"
 below) is below `0x4D`.
@@ -380,7 +380,7 @@ read/written throughout (via the alias - real `var_flags_4E` bits, not
      simplest exit (`loc_DC35`/`DC37`) - clears `trim_state.3`, stores `D`
      into `unk_1C6`, done. `var_inj_pw_base`/`unk_1C0`/`unk_1C4` untouched.
    - `D > unk_1C8` **and** `unk_1C4` also already `> unk_1C8` (sustained
-     over-ceiling): `loc_DC24` - in closed-loop mode (`unk_1BD == 0xC8`)
+     over-ceiling): `loc_DC24` - in closed-loop mode (`var_pw_loop_mode == 0xC8`)
      only, resets `unk_1C0` back to `var_inj_pw_base` (discards the stale
      candidate); either way clears `trim_state.3` and stores the original
      `loc_DBDE`-entry `D` (the candidate/blend value itself, **not** the
@@ -439,7 +439,7 @@ just this one ceiling value.
 | Variable | Description |
 |---|---|
 | `var_inj_pw_base` | Working base injector pulse-width (was `unk_1BE`), clamped to 0x0000-0x0500 via `ram_1BE_limits` |
-| `unk_1BD` | Open-loop (0) vs closed-loop (0xC8) path selector, set by `init_pw_open_loop`/`init_pw_closed_loop` |
+| `var_pw_loop_mode` | Open-loop (0) vs closed-loop (0xC8) path selector, set by `init_pw_open_loop`/`init_pw_closed_loop` |
 | `unk_1C0` | The VE-map candidate, but reused as scratch: also overwritten with `var_adc_lambda` (DA10-DA60, closed-loop), the `unk_1C8` ceiling-driven divide result (`ramp_limit_inj_pw`'s `loc_DBF1`), or `var_inj_pw_base` (`loc_DC24`, closed-loop). No single fixed identity - see `ramp_limit_inj_pw`'s branch trace |
 | `unk_1C2` | Ratio value nominally `0xCCCD` (~0.8 in Q16) - `ramp_limit_inj_pw_simple`'s output, `ramp_limit_inj_pw`'s deviation input. The one variable in this cluster with a stable role |
 | `unk_1C4` | Carried-forward PW-scale value at `ramp_limit_inj_pw`'s entry, but overwritten with the `unk_1C8` ceiling in `loc_DBF1` when `trim_state.0` clear, or with the ratio-deviation result by `calc_inj_pw_base`'s diagnostic-only call. No single fixed identity |

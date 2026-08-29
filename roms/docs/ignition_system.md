@@ -91,7 +91,7 @@ This is the main timing computation. It selects the appropriate advance value an
 | Condition | Override |
 |---|---|
 | `var_flags_46.7` set (knock error) | Force -5° BTDC (raw 86) |
-| `unk_40.0` set | Use normal computation |
+| `var_flags_40.0` set | Use normal computation |
 | `var_flags_4D.3` set (default PIM) | Force -5° BTDC |
 | `var_flags_46.2` set AND diagnostic mode active | Force -10° BTDC (raw 128) |
 

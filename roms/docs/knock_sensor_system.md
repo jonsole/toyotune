@@ -74,7 +74,7 @@ This is the main processing step. Several gate conditions must all be satisfied 
 
 | Gate condition | Skip if… |
 |---|---|
-| Init guard flag | `unk_40.5` is set |
+| Init guard flag | `var_flags_40.5` is set |
 | Knock MCU reset | `DOUT.2` is low (MCU in reset) |
 | Interrupt pending | ASR0 interrupt pending |
 | ASR3 pin | ASR3 input is high |

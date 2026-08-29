@@ -23,7 +23,7 @@ Two functions cooperate:
 - Otherwise: `DOUT.1 = 1`, `CPR1 = TIMER + var_iscv_pwm` (pulse ends at the
   next CPR1 match, `DOM.1` latched to track the pending event)
 
-`calc_iscv` itself is only called when `unk_44.1` is clear (gate at
+`calc_iscv` itself is only called when `var_flags_44.1` is clear (gate at
 `divide_d_by_x:loc_D380`) — the exact condition this bit tracks was not
 pinned down this session.
 
@@ -193,7 +193,7 @@ stored to `var_iscv_19D`.
 ## Data Flow Diagram
 
 ```
-calc_iscv  [4ms tick, gated on unk_44.1 clear]
+calc_iscv  [4ms tick, gated on var_flags_44.1 clear]
   │
   ├─ Phase 1: flare/enrichment terms -> var_iscv_target_rpm
   │            (var_rpm_x_5p12 - target_rpm) -> var_iscv_rpm_cmp_197
@@ -268,7 +268,7 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 
 ## Open Questions (not resolved this session)
 
-- `unk_44.1`'s exact meaning — it gates whether `calc_iscv` runs at all this
+- `var_flags_44.1`'s exact meaning — it gates whether `calc_iscv` runs at all this
   tick, and is cleared once per NE cycle at the TDC-ish position, but its
   setter wasn't located.
 - ~~`var_flags_46.6`~~ **Resolved** (see "Fixed-Opening Override" above): it
