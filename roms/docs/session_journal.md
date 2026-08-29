@@ -1503,7 +1503,7 @@ actual code (comments stripped) gives the true figures:
 
 | | real `unk_` symbols in code |
 |---|---|
-| CPU1 | **31** (after this pass; was 35 before it - four unk_ retired, since var_unk_knock_12B was never an unk_ symbol) |
+| CPU1 | **27** (was 35 two passes ago) |
 | CPU2 | **6** |
 
 Of those, a good share are deliberately left: the ramp-limiter cluster

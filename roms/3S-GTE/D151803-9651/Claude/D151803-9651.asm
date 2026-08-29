@@ -1123,7 +1123,14 @@ var_lambda_avg:				.block 1			; DATA XREF: divide_d_by_x+B73↓r
 				.block 1
 var_trim_cell_idx:		.block 1			; DATA XREF: divide_d_by_x+B25↓r
 								; divide_d_by_x:loc_D16D↓r
-unk_68:				.block 1			; DATA XREF: divide_d_by_x+655↓w
+var_rev_limit_ramp:				.block 1			; DATA XREF: divide_d_by_x+655↓w
+								; Accumulator for the rev-limiter ramp: once RPM is near
+								; the limit, var_rev_limit_rpm is ramped/decayed using
+								; this together with var_temp_w and unk_14A (see
+								; check_boost_limit's neighbouring chunk at loc_CBCA-
+								; CC5A, gated on ECT > 71 deg, throttle state and road
+								; speed >= 0x0A). Added into the running value at
+								; loc_CC70.
 								; divide_d_by_x+65E↓r ...
 								; Part of the second, distinct closed-
 								; loop lambda trim system in chunk D1DD
@@ -2135,25 +2142,40 @@ var_ne_sum3_prev:			.block 1			; DATA XREF: ROM:EDE3↓r
 var_cyl_rpm_dev:			.block 1			; DATA XREF: reset_cyl_rpm_dev+3↓w
 								; calc_4ms_corrections+30A↓o ...
 				.block 1
-unk_17D:			.block 1			; DATA XREF: reset_cyl_rpm_dev+6↓w
-								; WRITE-ONLY in this file: written by reset_cyl_rpm_dev,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+var_cyl_rpm_dev_hi:			.block 1			; DATA XREF: reset_cyl_rpm_dev+6↓w
+								; Upper half of the 4-byte per-cylinder array based at
+								; var_cyl_rpm_dev - it is not an independent variable.
+								; reset_cyl_rpm_dev seeds both words with 0x8080, i.e.
+								; all four bytes to a 0x80 neutral, and the scan loop at
+								; loc_ED31 walks the array with #var_cyl_rough_cnt as
+								; its upper bound. (An earlier automated note called
+								; this 'write-only'; it is read, but through the array
+								; pointer rather than by name.)
 				.block 1
-unk_17F:			.block 1			; DATA XREF: calc_4ms_corrections+2E1↓w
+var_cyl_rough_cnt:			.block 1			; DATA XREF: calc_4ms_corrections+2E1↓w
+								; Base of a SECOND 4-byte per-cylinder array, running
+								; 0x17F..0x182 - the loop at loc_ED56 walks it with
+								; #diag_code_delay as the upper bound, which is what
+								; fixes its length at four.
+								;
+								; Seeded to zero at loc_ED01, scanned for a zero entry
+								; at loc_ED56, and decayed at loc_ED61 by subtracting 9
+								; per pass with a clamp at 0. So: four per-cylinder
+								; event counters that bleed away.
+								;
+								; CONFIRMED: the array shape, the seeding, the decay
+								; rate and the per-cylinder indexing. INFERRED: that the
+								; events counted are roughness/misfire ones - that comes
+								; from sitting immediately beside the per-cylinder
+								; crank-speed deviation array and from calc_4ms_
+								; corrections' misfire path, not from anything stated
+								; here.
 								; calc_4ms_corrections+310↓o ...
-								; Written by loc_ED01; read by loc_ED31,
-								; loc_ED53, loc_ED56, loc_ED6E, loc_ED85,
-								; loc_ED91. Purpose not established - left named
-								; unk_ deliberately per CLAUDE.md (rename only
-								; on confirmed understanding).
 				.block 1
-unk_181:			.block 1			; DATA XREF: calc_4ms_corrections+2E4↓w
-								; WRITE-ONLY in this file: written by loc_ED01,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+var_cyl_rough_cnt_hi:			.block 1			; DATA XREF: calc_4ms_corrections+2E4↓w
+								; Upper half of the var_cyl_rough_cnt array - see that
+								; declaration. Written as the second word of its seed;
+								; read through the array pointer, not by name.
 				.block 1
 diag_code_delay:		.block 1			; DATA XREF: ROM:DFD9↓r
 								; ROM:E016↓w ...
@@ -6172,7 +6194,7 @@ loc_CB1A:							; CODE XREF: calc_ect_unk_148+6↑j
 ;     high byte 0x94 = ~7400rpm). The commented alternates "9e00h"/"a5h" next
 ;     to the hardcoded constants are per-tuner values (~7900rpm "Marf",
 ;     ~8250rpm "Jon") matching the person-named ECU folders elsewhere in
-;     this repo. var_rev_limit_rpm is then ramped/decayed via unk_68 and
+;     this repo. var_rev_limit_rpm is then ramped/decayed via var_rev_limit_ramp and
 ;     var_temp_w/unk_14A once near the limit, before falling into
 ;     check_clear_speed_limiter (already documented separately, not part of
 ;     this pass).
@@ -6353,7 +6375,7 @@ loc_CBDA:							; CODE XREF: divide_d_by_x+63A↑j
 loc_CBEF:							; CODE XREF: divide_d_by_x:loc_CBCA↑j
 								; divide_d_by_x+644↑j ...
 				clr	a
-				st	a, unk_68
+				st	a, var_rev_limit_ramp
 
 loc_CBF2:							; CODE XREF: divide_d_by_x+669↓j
 				jsr	reset_rev_limiter
@@ -6364,7 +6386,7 @@ loc_CBF2:							; CODE XREF: divide_d_by_x+669↓j
 
 loc_CBF7:							; CODE XREF: divide_d_by_x+651↑j
 				ld	b, var_rpm_x_5p12
-				ld	a, unk_68
+				ld	a, var_rev_limit_ramp
 				cmp	a, #0FFh
 				bcc	loc_CC09
 
@@ -6473,7 +6495,7 @@ loc_CC68:							; CODE XREF: divide_d_by_x+6B3↑j
 				cmp	a, var_rpm_x_5p12
 				ble	loc_CC75
 
-				ld	a, unk_68
+				ld	a, var_rev_limit_ramp
 				beq	loc_CC73
 
 				dec	a
@@ -6497,7 +6519,7 @@ loc_CC75:							; CODE XREF: divide_d_by_x+6D1↑j
 
 
 loc_CC87:							; CODE XREF: divide_d_by_x+6E7↑j
-				add	a, unk_68
+				add	a, var_rev_limit_ramp
 				bcc	loc_CC8D
 
 
@@ -6506,7 +6528,7 @@ loc_CC8B:							; CODE XREF: divide_d_by_x+6EA↑j
 
 loc_CC8D:							; CODE XREF: divide_d_by_x:loc_CC73↑j
 								; divide_d_by_x+6EE↑j
-				st	a, unk_68
+				st	a, var_rev_limit_ramp
 
 loc_CC8F:							; CODE XREF: divide_d_by_x+6C8↑j
 				clrb	bit2, var_flags_4E
@@ -15196,8 +15218,8 @@ loc_ECE2:							; CODE XREF: calc_4ms_corrections+2B3↑j
 loc_ED01:							; CODE XREF: calc_4ms_corrections:loc_ECE2↑j
 				clr	a
 				clr	b
-				st	d, unk_17F
-				st	d, unk_181
+				st	d, var_cyl_rough_cnt
+				st	d, var_cyl_rough_cnt_hi
 
 loc_ED09:							; CODE XREF: calc_4ms_corrections+2C3↑j
 								; calc_4ms_corrections+2C9↑j ...
@@ -15233,13 +15255,13 @@ reset_cyl_proc_idx:							; CODE XREF: calc_4ms_corrections+2EB↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: (none)
-; Writes: unk_17D, var_cyl_rpm_dev
+; Writes: var_cyl_rpm_dev_hi, var_cyl_rpm_dev
 ; ---------------------------------------------------------------------------
 reset_cyl_rpm_dev:							; CODE XREF: calc_4ms_corrections+2E9↑p
 								; calc_4ms_corrections+32F↓p ...
 				ld	d, #8080h
 				st	d, var_cyl_rpm_dev
-				st	d, unk_17D
+				st	d, var_cyl_rpm_dev_hi
 				ret
 
 ; End of function reset_cyl_rpm_dev
@@ -15262,7 +15284,7 @@ loc_ED2F:							; CODE XREF: calc_4ms_corrections+31B↓j
 
 loc_ED31:							; CODE XREF: calc_4ms_corrections+319↓j
 				inc	y
-				cmp	y, #unk_17F
+				cmp	y, #var_cyl_rough_cnt
 				bcc	loc_ED3F
 
 				ld	a, x + 00h
@@ -15291,7 +15313,7 @@ loc_ED4F:							; CODE XREF: calc_4ms_corrections+329↑j
 
 
 loc_ED53:							; CODE XREF: calc_4ms_corrections+321↑j
-				ld	y, #unk_17F
+				ld	y, #var_cyl_rough_cnt
 
 loc_ED56:							; CODE XREF: calc_4ms_corrections+33A↓j
 				ld	a, [y]
@@ -15300,7 +15322,7 @@ loc_ED56:							; CODE XREF: calc_4ms_corrections+33A↓j
 				cmp	y, #diag_code_delay
 				bcs	loc_ED56
 
-				ld	y, #unk_17F
+				ld	y, #var_cyl_rough_cnt
 
 loc_ED61:							; CODE XREF: calc_4ms_corrections+34A↓j
 				ld	a, y + 00h
@@ -15321,7 +15343,7 @@ loc_ED6E:							; CODE XREF: calc_4ms_corrections+2ED↑j
 				bne	loc_ED85
 
 				di
-				ld	y, #unk_17F
+				ld	y, #var_cyl_rough_cnt
 				ld	a, #2Bh
 
 loc_ED78:							; CODE XREF: calc_4ms_corrections+360↓j
@@ -15344,7 +15366,7 @@ loc_ED85:							; CODE XREF: calc_4ms_corrections+34E↑j
 
 				clr	a
 				clr	b
-				ld	y, #unk_17F
+				ld	y, #var_cyl_rough_cnt
 
 loc_ED91:							; CODE XREF: calc_4ms_corrections+377↓j
 				add	b, y + 00h
@@ -15365,7 +15387,7 @@ loc_ED91:							; CODE XREF: calc_4ms_corrections+377↓j
 				shr	b
 				add	b, #02h
 				and	b, #03h
-				ld	y, #unk_17F
+				ld	y, #var_cyl_rough_cnt
 				add	y, b
 				clr	a
 				ld	b, var_temp_w
