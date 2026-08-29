@@ -1680,6 +1680,37 @@ entry gate is still unestablished (see that bit's declaration comment).
   `var_serbus_rx+0x00..+0x1D`, is exactly contiguous with the tail byte
   copies at +0x1E, which is an independent check that 15 is right.
 
+  **RESOLVED - the dead field is vestigial, not variant-reserved.** I had
+  wrongly claimed the repo held no second CPU2 to test against; Jon
+  corrected that. **The ROM pairs are CPU1/CPU2 by consecutive part
+  number:**
+
+  | Vehicle | CPU1 | CPU2 |
+  |---|---|---|
+  | JDM Gen3 SW20 | D151803-9651 | D151803-9661 |
+  | JDM ST205 | D151804-0461 | **D151804-0471** |
+  | UK ST205 | D151804-0481 | **D151804-0491** |
+
+  `roms.txt` lists all five but does not say which side each is, which is
+  what misled me - worth stating there if that file is ever touched.
+
+  Checking D151804-0471 (the ST205's CPU2) settles it. Its `sub_D754` is the
+  structural twin of `copy_serbus_rx`: the same 15-word copy, the same four
+  tail bytes, read from the **same source offsets**
+  (+0x1E/+0x20/+0x21/+0x22). So the wire protocol is byte-for-byte
+  identical across the two generations - a genuinely useful fact for the
+  0461 port work. Its receive block simply sits 2 bytes higher (base 0x0C7
+  vs 0x0C5), confirmed independently by `dmarx_tha`, which is *already
+  named* in that ROM at 0x0D1 against 9661's 0x0CF.
+
+  The barometric-trim slot therefore maps to **0x0D4 in 0471** - and that
+  address has no label and no xref there either. It is a bare, unnamed
+  `.block 1` sitting between `unk_D3` and `unk_D5`, which in an IDA export
+  means nothing references it.
+
+  So **both CPU2s in the family ignore the slot**: CPU1 populates a protocol
+  field that no CPU2 reads. Vestigial, not reserved.
+
   CPU1-side renames: `dmatx_trim_unk_20D` -> `dmatx_nv_trim_pim`,
   `dmatx_trim_unk_210` -> `dmatx_nv_trim_o2`.
 

@@ -636,10 +636,28 @@ dmarx_nv_trim_pim:		.block 1
 								; it - but the reason is "no reader", not
 								; "untouched memory".)
 								;
-								; Either vestigial, or reserved for a variant
-								; that does use it - the DMA layout is shared
-								; across the family, so a dead field here does
-								; not mean a dead field everywhere.
+								; CROSS-VARIANT CHECK - it is dead there too.
+								; D151804-0471 (the ST205's CPU2) runs the
+								; same receive structure: sub_D754 copies the
+								; identical 15 words plus the same four tail
+								; bytes, from the SAME source offsets
+								; (+0x1E/+0x20/+0x21/+0x22), so the wire
+								; protocol is byte-for-byte the same. Its
+								; block simply sits 2 bytes higher (base
+								; 0x0C7 vs 0x0C5), which is confirmed
+								; independently by dmarx_tha - already named
+								; in that ROM - sitting at 0x0D1 against this
+								; one's 0x0CF.
+								;
+								; This field therefore maps to 0x0D4 in 0471,
+								; and that address carries no label and no
+								; xref there at all - it is a bare, unnamed
+								; .block 1 between unk_D3 and unk_D5. So both
+								; CPU2s in this family ignore the slot.
+								;
+								; Conclusion: genuinely VESTIGIAL, not
+								; reserved for a variant. CPU1 populates a
+								; protocol field nobody reads.
 dmarx_cnt_startup:		.block 1			; CCA8↓r ...
 								; DMARX0E:
 								; RESOLVED via the DMA address mapping: this
