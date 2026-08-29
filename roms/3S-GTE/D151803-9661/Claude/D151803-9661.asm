@@ -6281,10 +6281,46 @@ serial_debug_check:						; D46E↑p
 ; internal ECU control logic. No bounds-check on the index was found in
 ; what's traced here, so this likely reaches most/all of RAM.
 ;
-; NOT fully traced: the exact byte-by-byte framing (how the 2-byte index
-; accumulates across multiple 4ms ticks, what SSD.6 distinguishes) - a
-; full write-up of this protocol would be a worthwhile future subsystem
-; doc, similar treatment to adc_system.md/knock_sensor_system.md.
+; FRAMING - now traced. The old note here asked "how does the 2-byte index
+; accumulate across multiple 4ms ticks". It does not: that premise was
+; wrong. The index is assembled entirely within this one call, and it is
+; NINE bits, not sixteen:
+;
+;   ld b, SIDR_SODR    B = the received data byte      -> index bits 7..0
+;   ld a, SSD          A = SSD masked to bit 0, the
+;   and a, #01h        9th/parity bit of the frame     -> index bit 8
+;
+; D is never loaded here - it simply IS A:B, built by those two loads, and
+; `cmp d, #001Fh` then tests the assembled 9-bit value. `shl d` doubles it
+; to a byte address, so the reachable range is 0x000-0x3FE, which covers
+; the whole of RAM (0x40-0x300). That is why there is no bounds check: the
+; encoding itself cannot address outside RAM.
+;
+; SEQUENCE. The ECU is the bus master here, and this routine is one poll:
+;   1. Prime Tx (SSD.1 clear) and send 0xDA - the "read 16-bit word"
+;      command byte.
+;   2. Spin up to 14 times waiting for SSD.7 (receive buffer full). On
+;      timeout, fall into serial_drop_rx_data.
+;   3. If SSD.6 is SET, read and DISCARD the byte. Only a clear SSD.6
+;      proceeds. Given SSD.7 is "data ready" and SSD.0 is the 9th data
+;      bit, SSD.6 reads as a receive error/framing flag - i.e. drop a
+;      corrupt frame - but that is inference from its position and use,
+;      not something this ROM states.
+;   4. Assemble the 9-bit index as above, look the word up, and send it
+;      back MSB then LSB, priming the Tx buffer before each byte.
+;
+; The 0xDA command byte matches the gateway firmware's protocol notes in
+; CLAUDE.md (0xDA read-16, 0xDB/0xDC write-16, 0xDD/0xDE write-8) and the
+; "Denso is master, the SAMC21 answers" description - the ECU polls with
+; 0xDA and the other end replies with the index byte plus its 9th bit.
+; Only the read-16 command is implemented in THIS routine; the write
+; commands are not handled here.
+;
+; Two implementation curiosities worth not 'fixing' if this is ever
+; reassembled: `div d, #00h` is a deliberate divide-by-zero used purely as
+; an inter-byte delay, and the `.db 41h` after the rom_version load is the
+; opcode trick that swallows the following `shl d` - rom_version is
+; already a byte address and must not be doubled.
 				clrb	bit1, SSD		; Prime	serial Tx buffer
 				ld	a, #0DAh		; Write	0xDA...
 				st	a, SIDR_SODR		; ...to	serial Tx buffer
@@ -6297,16 +6333,20 @@ serial_wait_for_data:						; D63D↓j
 				bra	serial_drop_rx_data	; Timed	out waiting for	data
 
 serial_data_found:						; serial_wait_for_data↑j
-				tbbc	bit6, SSD, loc_D648	; Jump if SSD.6	(what's this?) cleared
+				tbbc	bit6, SSD, loc_D648	; SSD.6 clear: process. Set: drop the frame -
+								; reads as a receive-error flag (SSD.7 = ready,
+								; SSD.0 = 9th bit), though that is inference
 
 serial_drop_rx_data:						; D63F↑j
 				ld	a, SIDR_SODR		; Read data from serial	receive	buffer
 				bra	serial_debug_return	; Jump to end, discard serial data
 
 loc_D648:							; serial_data_found↑j
-				ld	b, SIDR_SODR		; Read data from serial	receive	buffer
-				ld	a, SSD			; Read Serial Status Register...
-				and	a, #01h			; ...bottom bit	is parity bit
+				ld	b, SIDR_SODR		; B = received byte -> index bits 7..0
+				ld	a, SSD			; A = SSD...
+				and	a, #01h			; ...bit 0, the 9th/parity bit -> index bit 8.
+								; D is now A:B, a 9-bit index: never loaded
+								; directly, only assembled by these two loads
 				cmp	d, #001Fh		; Check	if request for SW version number...
 				bne	loc_D657		; ...jump forward if not
 				ld	d, #rom_version		; Load D with address of SW version 16 bit word
@@ -6318,7 +6358,8 @@ loc_D657:							; D651↑j
 				ld	d, [y]			; Read 16 bit word
 				clrb	bit1, SSD		; Prime	serial Tx buffer
 				st	a, SIDR_SODR		; Write	MSB to serial Tx buffer
-				div	d, #00h			; Wait for a bit...
+				div	d, #00h			; Deliberate divide-by-zero, used purely as an
+								; inter-byte delay between MSB and LSB
 				clrb	bit1, SSD		; Prime	serial Tx buffer
 				st	b, SIDR_SODR		; Write	LSB to serial Tx buffer
 

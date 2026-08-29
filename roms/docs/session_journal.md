@@ -44,7 +44,7 @@ useful self-check — the two derivations are independent.
 converted CP437 -> UTF-8 as with the 9651/9661 copies): 96 renames, 649
 substitutions. Names embedding their own address were adapted to the 0461
 address rather than copied verbatim (`var_ect_unk_148` -> `var_ect_unk_142`,
-`table_C163` -> `table_C12C`, and so on). Verified: assembles byte-identical
+`table_ign_blend_weight` -> `table_C12C`, and so on). Verified: assembles byte-identical
 to the shipped `D151804-0461.BIN`, and `verify_assembly_match.py` reports
 "Total real edit regions: 0".
 
@@ -1830,7 +1830,7 @@ generically must not assume every slot is live on every ROM.
      genuine correction to what this entry said in an earlier session).
      That flag then selects `dmarx_ign_timing_fallback1/2` vs the primary
      `dmarx_ign_timing`/`dmarx_ign_timing_unk_166` for a
-     multiply/table_C163 blend feeding an `unk_129` accumulator, and later
+     multiply/table_ign_blend_weight blend feeding an `unk_129` accumulator, and later
      a `table_pair_interpolate` lookup (`unk_13F`/`unk_141`-selected)
      feeding `unk_127`, ending with a call to `decay_ign_ect_term`.
   **RESOLVED - the middle blend.** The ambiguity was the `mov`/`mult_rDrX`
@@ -1886,7 +1886,7 @@ generically must not assume every slot is live on every ROM.
   timing sum. A warm-up ignition correction that fades out - the
   ignition-side counterpart of CPU2's enrichment decay.
 
-  **Still not traced:** `table_C163`'s real-world meaning (the second lookup
+  **Still not traced:** `table_ign_blend_weight`'s real-world meaning (the second lookup
   at loc_E92B feeding `unk_127`).
 
 ### `calc_transient_terms` (was `sub_E76D`) and its two maps
@@ -1967,13 +1967,39 @@ to a meaningful name - see "loc_ sweep" above). What's left is prose
 documentation and a few specific loose ends, not "find the function" work.
 
 **Not yet started:**
-- **serial_debug_check's full protocol framing** - discovered while
-  resolving unk_51's consumer: a generic "read arbitrary RAM word by
-  index" debug protocol over the K-line serial link (see that function's
-  header comment). The overall existence and purpose is established, but
-  the exact byte-by-byte framing (how the 2-byte index accumulates across
-  4ms ticks, what SSD.6 distinguishes) isn't traced. Worth a dedicated
-  subsystem doc, similar treatment to adc_system.md.
+- **RESOLVED: serial_debug_check's framing.** The open question asked how a
+  2-byte index accumulates across 4ms ticks. It does not - that premise was
+  wrong. The index is assembled entirely inside one call, and it is **nine
+  bits, not sixteen**:
+
+      ld b, SIDR_SODR   B = received byte              -> index bits 7..0
+      ld a, SSD         A = SSD bit 0, the 9th/parity
+      and a, #01h           bit of the frame           -> index bit 8
+
+  `D` is never loaded directly - it simply *is* A:B, built by those two
+  loads, and `cmp d, #001Fh` tests the assembled value. `shl d` doubles it
+  to a byte address, giving a reach of 0x000-0x3FE, which covers all of RAM
+  (0x40-0x300). **That is why there is no bounds check: the encoding cannot
+  address outside RAM.**
+
+  Sequence, with the ECU as bus master: send 0xDA (the read-16 command),
+  spin up to 14 times on SSD.7 (receive ready), drop the frame if SSD.6 is
+  set, else assemble the index, look the word up and send it back MSB then
+  LSB. SSD.6 reads as a receive-error flag given SSD.7 is "ready" and SSD.0
+  is the 9th data bit - but that is inference from position and use, not
+  something the ROM states.
+
+  The 0xDA byte matches the gateway firmware's protocol notes in CLAUDE.md
+  (0xDA read-16, 0xDB/0xDC write-16, 0xDD/0xDE write-8) and its "Denso is
+  master, the SAMC21 answers" description. Only read-16 is implemented in
+  this routine; the write commands are not handled here.
+
+  Two curiosities recorded inline so nobody "fixes" them: `div d, #00h` is a
+  deliberate divide-by-zero used as an inter-byte delay, and the `.db 41h`
+  after the rom_version load is the opcode trick that swallows the following
+  `shl d`, because rom_version is already a byte address and must not be
+  doubled.
+
 - **`unk_126`'s bit 6/7 semantics** (remainder of the former
   `serial_dma_start`/`int_vector_0` item - the ASR2/ASR3/TIMER3 register
   format and `int_vector_0`=IV0 identification are now resolved, see

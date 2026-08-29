@@ -2765,7 +2765,22 @@ table_pim_unk_C154:		.dw 0113h			; DATA XREF: update_ign_timing_blend+A↓o
 				.db 80h
 
 
-table_C163:			.dw 0100h			; DATA XREF: update_ign_timing_blend+CB↓o
+table_ign_blend_weight:		.dw 0100h			; DATA XREF: update_ign_timing_blend+CB↓o
+								; The blend WEIGHT curve - the crossfade that
+								; gives update_ign_timing_blend its name.
+								;
+								; Just two entries, 0x1A and 0x80, so it is a
+								; plain linear ramp. At loc_E92B the first
+								; timing product is interpolated through it to
+								; yield a weight, which is then multiplied
+								; into the SECOND timing source (chosen by
+								; var_diag_errors_5.0 between
+								; dmarx_ign_timing_unk_166 and
+								; dmarx_ign_timing_fallback2) and saturated.
+								;
+								; If 0x80 is unity in Q7 - which the value
+								; strongly suggests but nothing here proves -
+								; the weight spans roughly 0.20 to 1.00.
 				.db 01h				; 2 entries
 				.db 1Ah
 				.db 80h
@@ -13848,7 +13863,7 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 ; differences values across those stages, so like calc_dmatx_pim's filter
 ; pair this is fundamentally a rate-of-change structure.
 ;
-; STILL NOT TRACED: decay_ign_ect_term's own body, and table_C163's real-world
+; STILL NOT TRACED: decay_ign_ect_term's own body, and table_ign_blend_weight's real-world
 ; meaning (the second lookup, at loc_E92B onward, feeding unk_127).
 ;
 ; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, unk_12F,
@@ -13913,7 +13928,7 @@ loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 ; bit, unrelated to real knock sensor state outside the actual knock
 ; subsystem). That flag then selects dmarx_ign_timing_fallback1/2 vs the
 ; primary dmarx_ign_timing/dmarx_ign_timing_unk_166 for a multiply/
-; table_C163 blend feeding the unk_129 accumulator, then a
+; table_ign_blend_weight blend feeding the unk_129 accumulator, then a
 ; table_pair_interpolate lookup (selected by unk_13F/unk_141) feeding
 ; unk_127, before calling decay_ign_ect_term.
 
@@ -14032,7 +14047,7 @@ loc_E92B:							; CODE XREF: update_ign_timing_blend+C0↑j
 				jsr	mult_rBrX2
 
 				st	d, var_temp_w
-				ld	y, #table_C163
+				ld	y, #table_ign_blend_weight
 				jsr	table_rD_fixed2_interpolate
 
 				st	a, var_temp_7A
