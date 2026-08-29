@@ -1575,6 +1575,42 @@ settled for ~612ms, which is the gate on idle-trim learning that
 `calc_iscv`'s header had guessed at. `var_cnt_idle_dwell` is itself another
 `increment_counters` case - it appears only ever CLEARED here.
 
+### Declaration comments: measured coverage, and the high-value gap
+
+Jon noticed many variables carry no comment at all. Measured: **~55% of the
+425 variable declarations in CPU1 and ~56% of CPU2's 218** have nothing
+beyond IDA's xref boilerplate.
+
+That number needs reading carefully, though - most of the bare ones are
+**self-documenting by name** (`var_cnt4ms_A3`, `var_cnt8ms_B0`, and dozens
+like them; the name already says "a 4ms counter at 0xA3"). Writing prose for
+those would add length without adding knowledge.
+
+The gap that actually matters is variables where **the name does not convey
+units, scaling or polarity** - precisely what made `var_pim2` a problem
+earlier in this session. Those are now annotated from facts already
+established in `adc_system.md` and this session's trim work, so a reader of
+the disassembly no longer has to know the docs exist:
+
+- **`var_tha` / `var_tham` are INVERTED** - the NTC gives high voltage when
+  cold and the handler stores `B XOR 0xFF`, so in these variables HIGH =
+  HOT. Every threshold compare against them has to be read that way. This is
+  the same shape of trap as the MAP scaling.
+- **`var_adc_battery` is inversely related to voltage** - 13.92V is 0x1E,
+  16.40V is 0x11, so a LOWER byte means a HIGHER voltage.
+- **`var_tps` is forced to 0x0000 on sensor fault**, so zero means FAULT and
+  not closed throttle.
+- **`var_lambda_avg` is not independent of `var_lambda_integrator`** - it
+  tracks its high byte, which the matching 0x1A/0xE6 vs 0x1A00/0xE600 clamp
+  pairs give away.
+- **`var_rpm_delta` uses 0x80 as zero**, not 0.
+- `var_temp_w` carries no meaning across calls - always find the writer in
+  the same routine.
+
+Remaining bare declarations are mostly named counters and scratch where the
+name is the documentation. Worth revisiting opportunistically rather than as
+a sweep.
+
 ---
 
 ## Pending work (next targets)

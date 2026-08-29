@@ -1063,13 +1063,40 @@ var_pim2:			.block 1			; DATA XREF: divide_d_by_x+61E↓r
 								; reaches it.
 				.block 1
 var_tps:			.block 1			; DATA XREF: async_throttle_inject+F↓r
+								; Throttle position, 16-bit. Forced to 0x0000 when the
+								; sensor reads out of range - so a zero here means
+								; FAULT, not closed throttle. The raw byte is
+								; var_tps_raw; var_nv_tps holds the learned
+								; closed-throttle reference used to scale it. See
+								; docs/adc_system.md.
 								; divide_d_by_x+845↓r ...
 				.block 1
 var_tha:			.block 1			; DATA XREF: injector_cold_start:loc_CD50↓r
+								; Intake air temperature - **INVERTED**. The NTC
+								; thermistor gives high voltage when COLD, and
+								; adc_handler_tha stores B XOR 0xFF, so in this
+								; variable HIGH = HOT and LOW = COLD. Easy to read
+								; backwards; every threshold compare against it has to
+								; be read with that in mind.
+								;
+								; Valid ADC range 0.14V..4.94V (tha_adc_limits).
+								; Out-of-range substitutes 0x86 (about 20C). See
+								; docs/adc_system.md.
 								; calc_iscv+F↓r	...
 var_tham:			.block 1			; DATA XREF: factory_self_test+238↓r
+								; Manifold air temperature - **INVERTED**, exactly as
+								; var_tha above: stored as B XOR 0xFF, so HIGH = HOT.
 								; ROM:FF50↓w
 var_adc_battery:		.block 1			; DATA XREF: divide_d_by_x+785↓r
+								; Raw battery-voltage ADC byte, and INVERSELY related to
+								; voltage - the table in docs/adc_system.md runs 13.92V
+								; -> 0x1E, 16.40V -> 0x11, so a LOWER byte means a
+								; HIGHER voltage.
+								;
+								; Feeds var_inj_battery_adjust =
+								; table_rB_fixed_32_interpolate(B) / 64, the injector
+								; dead-time compensation added per firing in
+								; injector_drive.
 								; divide_d_by_x+B4A↓r ...
 var_ect:			.block 2			; DATA XREF: table_ect_pair_interpolate↓r
 								; table_ect_fixed4_interpolate↓r ...
@@ -1081,16 +1108,33 @@ var_rpm_div_25:			.block 1			; DATA XREF: divide_d_by_x+321↓w
 								; divide_d_by_x:loc_C93D↓r ...
 								; Engine speed / 25
 var_rpm_delta:			.block 1			; DATA XREF: calc_rpm_delta+18↓w
+								; Signed RPM deviation with 0x80 as ZERO, not 0.
+								; calc_rpm_delta computes |var_rpm_avg -
+								; var_rpm_x_5p12| / 16 / 2, restores the sign, then adds
+								; 0x80 - so 0x80 means no deviation, above is one
+								; direction and below the other.
 								; divide_d_by_x+531↓r ...
 var_speed_kph:			.block 1			; DATA XREF: divide_d_by_x+4B7↓r
 								; divide_d_by_x+4CF↓r ...
 								; Road speed in	Km/h
 var_tps_delta:			.block 1			; DATA XREF: async_throttle_inject↓r
+								; Signed rate of change of throttle position, written by
+								; the TPS-delta block (~loc_FD9E-FE05) and saturated to
+								; 0x7F/0x80. Its own derivative is var_tps_delta_rate
+								; (see update_tps_delta_rate); the two drive
+								; var_flags_44.2 and var_flags_4D.2 respectively, both
+								; in the throttle-CLOSING direction.
 								; update_tps_delta_rate↓r ...
 var_adc_lambda:			.block 1			; DATA XREF: divide_d_by_x+95F↓r
 								; divide_d_by_x+9BE↓r ...
 								; Lambda sensor	voltage	(signed	value)
 var_lambda_state:				.block 1			; DATA XREF: divide_d_by_x+110↓r
+								; O2 loop state byte, with 0x80 as the neutral value.
+								; Forced to 0x80 when fuel cut engages (loc_CADD) and to
+								; 0x66 on the overrun-candidate path (loc_CAAA), and
+								; ramped back by decay_lambda_state, which adds 2 per
+								; call and clamps at 0x80. Also sent to CPU2 verbatim as
+								; dmatx_lambda_state.
 								; divide_d_by_x+35E↓r ...
 var_lambda_byte:				.block 1			; DATA XREF: divide_d_by_x+BE0↓w
 								; update_lambda_avg↓r ...
@@ -1118,10 +1162,22 @@ var_lambda_integrator:			.block 2			; DATA XREF: divide_d_by_x:loc_D026↓r
 								; nv_afr_trim_base and read_nv_afr_trim's
 								; own header.
 var_lambda_avg:				.block 1			; DATA XREF: divide_d_by_x+B73↓r
+								; Byte-scale companion to var_lambda_integrator, and
+								; NOT independent of it: update_lambda_stft steps this
+								; by 0x0F with clamps at 0x1A/0xE6 while stepping the
+								; integrator by 0x0F5C with clamps at 0x1A00/0xE600.
+								; Those clamp pairs are the same numbers scaled by 256,
+								; so this tracks the integrator's high byte. Do not
+								; treat the two as separate signals.
 								; divide_d_by_x+B79↓r ...
 				.block 1
 				.block 1
 var_trim_cell_idx:		.block 1			; DATA XREF: divide_d_by_x+B25↓r
+								; Index of the load cell currently selected in the LTFT
+								; table - see read_nv_afr_trim, which derives the cell
+								; from var_pim2 and interpolates between neighbours.
+								; The idle cell (nv_afr_trim_base itself) is returned
+								; directly when the throttle is closed, bypassing this.
 								; divide_d_by_x:loc_D16D↓r
 var_rev_limit_ramp:				.block 1			; DATA XREF: divide_d_by_x+655↓w
 								; Accumulator for the rev-limiter ramp: once RPM is near
@@ -1140,6 +1196,10 @@ var_rev_limit_ramp:				.block 1			; DATA XREF: divide_d_by_x+655↓w
 								; nv_afr_trim system; see
 								; session_journal.md's CPU1 pending work.
 var_trim_stable_cnt:		.block 1			; DATA XREF: divide_d_by_x+B29↓w
+								; Stability dwell for trim learning, advanced by
+								; increment_counters via COUNTER_ARG(var_trim_stable_cnt,
+								; 2) - so it is one of the counters whose increments are
+								; invisible to a per-symbol search.
 								; divide_d_by_x:loc_D108↓r ...
 var_cnt_6A:			.block 1			; DATA XREF: divide_d_by_x:loc_D954↓w
 								; ROM:DB3A↓r
@@ -1191,6 +1251,13 @@ var_cnt_unk_76:			.block 1			; DATA XREF: start_dma:loc_F8AB↓r
 var_cnt_unk_77:			.block 1			; DATA XREF: start_dma+65↓r
 								; start_dma:loc_F8E7↓w ...
 var_temp_w:			.block 1			; DATA XREF: map_rD_rX_interpolate+3↓w
+								; General-purpose 16-bit scratch, reused by many
+								; unrelated routines within a single call. It carries no
+								; meaning across calls, so do not read a value here as
+								; state - always find the writer in the same routine.
+								; Note it is also where the injector pulse-width chain
+								; parks 'the' calculated PW between stages 3 and 4 (see
+								; docs/fuel_calculation_system.md).
 								; map_rD_rX_interpolate+1A↓r ...
 var_temp_b:			.block 1			; DATA XREF: divide_d_by_x+670↓r
 								; divide_d_by_x:loc_CC68↓r ...
