@@ -1494,7 +1494,24 @@ in-function BRANCH targets, not callables. Even the gold-standard
 `knock_mcu_update.ASM` has those, and renaming them is not a goal - the
 metric that matters is call targets.
 
-Still named `unk_`: **45 on CPU1**, 13 on CPU2 (down from 60). Every one carries
+**Metric correction.** Earlier entries reported "60", then "52", then "45"
+`unk_` variables on CPU1 and 13 on CPU2. Those numbers were **too high**: the
+counting regex scanned the whole file, so it also matched old names quoted
+inside COMMENT PROSE - e.g. `unk_1A9` appears only in text describing the
+already-renamed `var_iscv_unk_1A9`. Counting only symbols that appear in
+actual code (comments stripped) gives the true figures:
+
+| | real `unk_` symbols in code |
+|---|---|
+| CPU1 | **30** (after this pass; was 35 before it) |
+| CPU2 | **6** |
+
+Of those, a good share are deliberately left: the ramp-limiter cluster
+(`unk_1C0/1C2/1C4/1C6/1C8`) has no single fixed identity by design, `unk_1CF`
+is the short-lived alias, `unk_C000` is ROM signature bytes, `unk_7F` is a
+RAM-region boundary sentinel, `unk_1C`/`unk_1D` are reserved-range hardware
+registers, and `unk_223` is factory-self-test scratch. Each says so at its
+declaration. Every one carries
 either a full explanation or a factual "written by X, read by Y" note; they
 are unnamed because their purpose is genuinely unestablished, not because
 nobody looked.
@@ -1911,11 +1928,11 @@ generically must not assume every slot is live on every ROM.
   unlock (iv6_4ms_process's 32ms sub-slot) runs the blend below. Two
   confirmed parts:
   1. **Init/reset path** (`var_flags_44.5` CLEAR - see the polarity
-     correction below): seeds `var_unk_knock_12B`/
-     `unk_12D`/`unk_12F` to `table_pim_unk_C154(dmatx_pim)/2` and zeroes
+     correction below): seeds `var_ign_blend_hist0`/
+     `var_ign_blend_hist1`/`var_ign_blend_hist2` to `table_pim_unk_C154(dmatx_pim)/2` and zeroes
      `var_ign_blend_accum`/`var_ign_blend_out`/sets `var_fuelcut_recovery_cnt=0xFF` - a first-run/reset baseline.
   2. **Normal path** (`var_flags_44.5` SET, every other tick): clamps
-     `var_unk_knock_12B` between `unk_12F` and the PIM-table baseline
+     `var_ign_blend_hist0` between `var_ign_blend_hist2` and the PIM-table baseline
      (whichever's larger/smaller), using `var_diag_errors_5.0` purely as
      its own local "did the clamped value drop since last tick" flag - NOT
      knock-sensor-fault handling despite the flag's name (see
@@ -1925,7 +1942,7 @@ generically must not assume every slot is live on every ROM.
      That flag then selects `dmarx_ign_timing_fallback1/2` vs the primary
      `dmarx_ign_timing`/`dmarx_ign_timing_unk_166` for a
      multiply/table_ign_blend_weight blend feeding an `var_ign_blend_accum` accumulator, and later
-     a `table_pair_interpolate` lookup (`unk_13F`/`unk_141`-selected)
+     a `table_pair_interpolate` lookup (`var_ign_blend_pos`/`var_ign_blend_neg`-selected)
      feeding `var_ign_blend_out`, ending with a call to `decay_ign_ect_term`.
   **RESOLVED - the middle blend.** The ambiguity was the `mov`/`mult_rDrX`
   register flow, and it turns on the two `mov`s, both of which follow the
@@ -1947,7 +1964,7 @@ generically must not assume every slot is live on every ROM.
   `inc a`/`inc b` carries that to `0x8000` (-32768) - a neat way to saturate
   either direction using the flag that already carries the sign.
 
-  **`var_unk_knock_12B`/`unk_12D`/`unk_12F` are a 3-stage delay line**, not
+  **`var_ign_blend_hist0`/`var_ign_blend_hist1`/`var_ign_blend_hist2` are a 3-stage delay line**, not
   three independent values: `12F <- 12D <- 12B <- new`, shifted once per
   qualifying tick at loc_E907. The init path seeds all three to the SAME
   PIM-table baseline - exactly how you initialise a delay line so it emits no

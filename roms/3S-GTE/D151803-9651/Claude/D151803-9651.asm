@@ -1872,15 +1872,28 @@ var_ign_blend_accum:			.block 1			; DATA XREF: divide_d_by_x+2235↓r
 								; Read/written by update_ign_timing_blend - see that
 								; function's Reads/Writes header.
 				.block 1
-var_unk_knock_12B:		.block 1			; DATA XREF: update_ign_timing_blend+14↓w
+var_ign_blend_hist0:		.block 1			; DATA XREF: update_ign_timing_blend+14↓w
+								; Stage 0 (newest) of update_ign_timing_blend's 3-stage
+								; delay line: hist2 <- hist1 <- hist0 <- new, shifted
+								; once per qualifying tick at loc_E907. The init path
+								; seeds all three to the same PIM-table baseline so the
+								; line starts flat. NOTE the old name's 'knock' was a
+								; wrong guess inherited from the same mistake that
+								; produced var_unk_knk_133 - this is ignition-blend
+								; history, not knock data.
 								; update_ign_timing_blend+3F↓r	...
 				.block 1
-unk_12D:			.block 1			; DATA XREF: update_ign_timing_blend+17↓w
+var_ign_blend_hist1:			.block 1			; DATA XREF: update_ign_timing_blend+17↓w
+								; Stage 1 (middle) of the delay line - see
+								; var_ign_blend_hist0.
 								; update_ign_timing_blend+85↓r	...
 								; Read/written by update_ign_timing_blend - see that
 								; function's Reads/Writes header.
 				.block 1
-unk_12F:			.block 1			; DATA XREF: update_ign_timing_blend+1A↓w
+var_ign_blend_hist2:			.block 1			; DATA XREF: update_ign_timing_blend+1A↓w
+								; Stage 2 (oldest) of the delay line - see
+								; var_ign_blend_hist0. Also the lower bound the blend
+								; clamps var_ign_blend_hist0 against.
 								; update_ign_timing_blend+2C↓r	...
 								; Read/written by update_ign_timing_blend - see that
 								; function's Reads/Writes header.
@@ -1943,14 +1956,27 @@ var_ign_ect_term:			.block 1			; DATA XREF: divide_d_by_x:loc_E7FA↓w
 								; left named unk_ deliberately per CLAUDE.md
 								; (rename only on confirmed understanding).
 				.block 1
-unk_13F:			.block 1			; DATA XREF: divide_d_by_x+227C↓w
+var_ign_blend_pos:			.block 1			; DATA XREF: divide_d_by_x+227C↓w
+								; Endpoint value used twice by
+								; update_ign_timing_blend's final lookup: as one of the
+								; two Y-endpoints of an on-the-fly 2-entry
+								; table_pair_interpolate (loc_E9DB), and directly at
+								; loc_E9F0 where it is the DEFAULT selection.
+								;
+								; Its partner var_ign_blend_neg is selected instead when
+								; var_diag_errors_5.0 is set - that flag being the
+								; 'value was negated' marker from the abs() idiom - so
+								; the pos/neg naming follows the selector, not a
+								; measured sign of the values themselves.
 								; update_ign_timing_blend+175↓r ...
 								; Written by loc_E815; read by loc_E9C8,
 								; loc_E9F0. Purpose not established - left named
 								; unk_ deliberately per CLAUDE.md (rename only
 								; on confirmed understanding).
 				.block 1
-unk_141:			.block 1			; DATA XREF: divide_d_by_x+2291↓w
+var_ign_blend_neg:			.block 1			; DATA XREF: divide_d_by_x+2291↓w
+								; The other endpoint - selected at loc_E9F0 when
+								; var_diag_errors_5.0 is SET. See var_ign_blend_pos.
 								; update_ign_timing_blend+170↓r ...
 								; Written by loc_E815; read by loc_E9C8,
 								; loc_E9F0. Purpose not established - left named
@@ -13858,7 +13884,7 @@ loc_E7FD:							; CODE XREF: divide_d_by_x+2245↑j
 loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
 				bsr	scale_by_dmarx_167
 
-				st	d, unk_13F
+				st	d, var_ign_blend_pos
 				ld	y, #table_ect_C19F
 				jsr	table_ect_pair_interpolate
 
@@ -13870,7 +13896,7 @@ loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
 
 				bsr	scale_by_dmarx_167
 
-				st	d, unk_141
+				st	d, var_ign_blend_neg
 				jmp	loc_EA17
 
 ; END OF FUNCTION CHUNK	FOR divide_d_by_x
@@ -14025,9 +14051,9 @@ locret_E864:							; CODE XREF: scale_by_dmarx_167+10↑j
 ; saturates to -32768 rather than +32767. var_ign_blend_accum is therefore a signed
 ; accumulator pinned at +/-full scale.
 ;
-; THE SHIFT REGISTER (loc_E907). var_unk_knock_12B / unk_12D / unk_12F are
+; THE SHIFT REGISTER (loc_E907). var_ign_blend_hist0 / var_ign_blend_hist1 / var_ign_blend_hist2 are
 ; not three independent values but a 3-stage delay line, shifted once per
-; qualifying tick:  unk_12F <- unk_12D <- var_unk_knock_12B <- new. The
+; qualifying tick:  var_ign_blend_hist2 <- var_ign_blend_hist1 <- var_ign_blend_hist0 <- new. The
 ; init path above seeds all three to the SAME PIM-table baseline, which is
 ; exactly how you start a delay line so it produces no false derivative on
 ; the first tick - good corroboration that this is what it is. The blend
@@ -14037,11 +14063,11 @@ locret_E864:							; CODE XREF: scale_by_dmarx_167+10↑j
 ; STILL NOT TRACED: decay_ign_ect_term's own body, and table_ign_blend_weight's real-world
 ; meaning (the second lookup, at loc_E92B onward, feeding var_ign_blend_out).
 ;
-; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, unk_12F,
-;   var_unk_knock_12B, dmarx_ign_timing_unk_166, dmarx_ign_timing_fallback2,
+; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, var_ign_blend_hist2,
+;   var_ign_blend_hist0, dmarx_ign_timing_unk_166, dmarx_ign_timing_fallback2,
 ;   var_ign_blend_accum, var_limiter_flags, var_fuelcut_recovery_cnt, var_flags_46, dmarx_ign_timing,
-;   dmarx_ign_timing_fallback1, unk_13C, unk_13F, unk_141
-; Writes: var_unk_knock_12B, unk_12D, unk_12F, var_ign_blend_accum, var_ign_blend_out, var_fuelcut_recovery_cnt,
+;   dmarx_ign_timing_fallback1, unk_13C, var_ign_blend_pos, var_ign_blend_neg
+; Writes: var_ign_blend_hist0, var_ign_blend_hist1, var_ign_blend_hist2, var_ign_blend_accum, var_ign_blend_out, var_fuelcut_recovery_cnt,
 ;   var_diag_errors_5, var_temp_w, var_temp_7A, var_temp_b, var_temp_7B,
 ;   var_temp_7C
 ; ---------------------------------------------------------------------------
@@ -14056,8 +14082,8 @@ update_ign_timing_blend:							; CODE XREF: divide_d_by_x+D3A↑p
 
 loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 
-; Init/reset path, taken when var_flags_44.5 is CLEAR: seeds var_unk_knock_12B/unk_12D/
-; unk_12F to table_pim_unk_C154(dmatx_pim)/2 (a PIM-indexed baseline),
+; Init/reset path, taken when var_flags_44.5 is CLEAR: seeds var_ign_blend_hist0/var_ign_blend_hist1/
+; var_ign_blend_hist2 to table_pim_unk_C154(dmatx_pim)/2 (a PIM-indexed baseline),
 ; zeroes var_ign_blend_accum/var_ign_blend_out, sets var_fuelcut_recovery_cnt=0xFF - a first-run/reset baseline,
 ; not the normal per-tick path (that's loc_E890 below, taken when
 ; var_flags_44.5 is SET instead - `tbbs` branches if set).
@@ -14075,9 +14101,9 @@ loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 				shr	d
 				tbbs	bit5, var_flags_44, loc_E890
 
-				st	d, var_unk_knock_12B
-				st	d, unk_12D
-				st	d, unk_12F
+				st	d, var_ign_blend_hist0
+				st	d, var_ign_blend_hist1
+				st	d, var_ign_blend_hist2
 				clr	a
 				clr	b
 				st	d, var_ign_blend_accum
@@ -14090,7 +14116,7 @@ loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 
 ; Normal path (var_flags_44.5 SET, every other qualifying tick): clamps
-; var_unk_knock_12B between unk_12F and the PIM-table baseline above
+; var_ign_blend_hist0 between var_ign_blend_hist2 and the PIM-table baseline above
 ; (whichever's larger/smaller each becomes the clamp bound), using
 ; var_diag_errors_5.0 purely as this function's OWN local "did the
 ; clamped value drop since last tick" flag - NOT knock-sensor fault
@@ -14100,27 +14126,27 @@ loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 ; subsystem). That flag then selects dmarx_ign_timing_fallback1/2 vs the
 ; primary dmarx_ign_timing/dmarx_ign_timing_unk_166 for a multiply/
 ; table_ign_blend_weight blend feeding the var_ign_blend_accum accumulator, then a
-; table_pair_interpolate lookup (selected by unk_13F/unk_141) feeding
+; table_pair_interpolate lookup (selected by var_ign_blend_pos/var_ign_blend_neg) feeding
 ; var_ign_blend_out, before calling decay_ign_ect_term.
 
 				push	d
-				ld	x, unk_12F
-				cmp	d, unk_12F
+				ld	x, var_ign_blend_hist2
+				cmp	d, var_ign_blend_hist2
 				bcc	loc_E89D
 
 				mov	d, x
-				ld	d, unk_12F
+				ld	d, var_ign_blend_hist2
 
 loc_E89D:							; CODE XREF: update_ign_timing_blend+32↑j
 				st	d, var_temp_w
 				st	x, var_temp_7A
 				ld	y, #var_temp_w
-				ld	d, var_unk_knock_12B
+				ld	d, var_ign_blend_hist0
 				jsr	clamp_rD
 
 				push	d
 				clrb	bit0, var_diag_errors_5
-				sub	d, var_unk_knock_12B
+				sub	d, var_ign_blend_hist0
 				bcc	loc_E8B5
 
 				jsr	set_knock_sensor_err_flag
@@ -14166,12 +14192,12 @@ loc_E8E0:							; CODE XREF: update_ign_timing_blend+71↑j
 
 loc_E8E3:							; CODE XREF: update_ign_timing_blend+53↑j
 				pull	d
-				st	d, var_unk_knock_12B
+				st	d, var_ign_blend_hist0
 				ld	y, #var_temp_w
-				ld	d, unk_12D
+				ld	d, var_ign_blend_hist1
 				jsr	clamp_rD
 
-				st	d, unk_12D
+				st	d, var_ign_blend_hist1
 				pull	d
 				mov	d, y
 				tbbc	bit0, var_limiter_flags, loc_E8FA
@@ -14194,13 +14220,13 @@ loc_E907:							; CODE XREF: update_ign_timing_blend+98↑j
 ; Shift the 3-stage delay line one place: 12F <- 12D <- 12B <- new value.
 ; The init path seeds all three identically so the first tick sees no
 ; artificial step - see this function's header.
-				sub	d, unk_12D		; Difference against the middle stage
-				ld	x, unk_12D
-				st	x, unk_12F		; 12F <- 12D  (oldest)
-				ld	x, var_unk_knock_12B
-				st	x, unk_12D		; 12D <- 12B
+				sub	d, var_ign_blend_hist1		; Difference against the middle stage
+				ld	x, var_ign_blend_hist1
+				st	x, var_ign_blend_hist2		; 12F <- 12D  (oldest)
+				ld	x, var_ign_blend_hist0
+				st	x, var_ign_blend_hist1		; 12D <- 12B
 				xch	x, y
-				st	x, var_unk_knock_12B	; 12B <- newest
+				st	x, var_ign_blend_hist0	; 12B <- newest
 				clrb	bit0, var_diag_errors_5
 				bcc	loc_E921
 
@@ -14346,9 +14372,9 @@ loc_E9C8:							; CODE XREF: update_ign_timing_blend+15E↑j
 				ld	d, #0040h
 				st	a, var_temp_b
 				st	b, var_temp_7B
-				ld	a, unk_141
+				ld	a, var_ign_blend_neg
 				st	a, var_temp_7A
-				ld	a, unk_13F
+				ld	a, var_ign_blend_pos
 				st	a, var_temp_7C
 				ld	#02h, var_temp_w
 				mov	x, d
@@ -14363,10 +14389,10 @@ loc_E9C8:							; CODE XREF: update_ign_timing_blend+15E↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_E9F0:							; CODE XREF: update_ign_timing_blend+167↑j
-				ld	d, unk_13F
+				ld	d, var_ign_blend_pos
 				tbbc	bit0, var_diag_errors_5, loc_E9F9
 
-				ld	d, unk_141
+				ld	d, var_ign_blend_neg
 
 loc_E9F9:							; CODE XREF: update_ign_timing_blend+189↑j
 								; update_ign_timing_blend+18E↑j
