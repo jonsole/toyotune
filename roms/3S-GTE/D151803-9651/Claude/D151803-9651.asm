@@ -3373,7 +3373,7 @@ loc_C40B:							; CODE XREF: table_pair_interpolate+F↑j
 				push	a			; Push (x1 - x0) onto stack
 				mov	x, d			; Restore D (x_in) from X
 				sub	a, y + 00h		; A = x_in - x0  (offset within segment)
-				mov	s, x			; SP = X: stack pointer now addresses (x1-x0) on stack
+				mov	s, x			; X = SP: X now addresses (x1-x0) on stack
 				div	d, x + 00h		; D=(x_in-x0)*256 / (x1-x0): B=frac [0..255], A=remainder
 				inc	s			; Pop (x1-x0) from stack
 
@@ -3395,7 +3395,7 @@ loc_C40B:							; CODE XREF: table_pair_interpolate+F↑j
 loc_C427:							; CODE XREF: table_pair_interpolate+2B↑j
 ; Multiply y_delta by frac and add base y value
 				push	b			; Push frac (B) onto stack
-				mov	s, x			; SP = X: stack pointer now addresses frac on stack
+				mov	s, x			; X = SP: X now addresses frac on stack
 				mul	a, x + 00h		; D = y_delta * frac: A = high byte (integer), B = low byte (fractional)
 				add	a, y + 01h		; A = y0 + (y_delta * frac / 256)  [interpolated y]
 				inc	s			; Pop frac from stack
@@ -3594,7 +3594,7 @@ table_rB_fixed_rA_interpolate:					; CODE XREF: table_rB_fixed4_interpolate+2↑
 
 loc_C454:							; CODE XREF: table_rB_fixed_16_interpolate+9↑j
 ; Compute: A = B * A / x_range  (scale B linearly across output range)
-				mov	s, x			; SP = X: stack pointer now addresses saved A (scale factor)
+				mov	s, x			; X = SP: X now addresses saved A (scale factor)
 				mov	b, a			; B = scale factor (A)
 				mul	a, x + 00h		; D = B_offset * scale_factor: A = integer part, B = fractional
 				inc	s			; Pop scale factor from stack
@@ -3630,7 +3630,7 @@ interp_y_pair:							; CODE XREF: map_rD_rX_interpolate+2D↓j
 				beq	loc_C46F		; If fraction is 0, skip interpolation: return Y[0] directly
 
 				push	b			; Save fraction on stack
-				mov	s, x			; SP = X: stack now addresses fraction
+				mov	s, x			; X = SP: X now addresses fraction
 				ld	a, y + 01h		; A = y1
 				sub	a, y + 00h		; A = y1 - y0  (y delta, signed)
 				bcc	loc_C46C		; If y1 >= y0 (positive delta), skip negation
@@ -3776,7 +3776,7 @@ map_rD_rX_interpolate:						; CODE XREF: calc_iscv+3B9↓p
 				ld	b, x + 01h		; B = n_cols (from x header, still on stack)
 				inc	b			; B = n_cols (convert from max_index to count)
 				push	b			; Save n_cols
-				mov	s, x			; SP = X: stack addresses n_cols
+				mov	s, x			; X = SP: X now addresses n_cols
 				mul	a, x + 00h		; D = row_index * n_cols (row base offset)
 				st	y, var_temp_7A		; Save Y (data pointer)
 				add	d, var_temp_7A		; D += data_ptr: absolute pointer to row start
@@ -4284,7 +4284,7 @@ mult_rDrX:							; CODE XREF: mult_rDrX_saturate↑p
 								; divide_d_by_x+1418↓p ...
 				push	d			; Save D (A:B) on stack
 				push	x			; Save X on stack
-				mov	s, x			; SP = X: stack addresses [D_hi, D_lo, X_hi, X_lo]
+				mov	s, x			; X = SP: X now addresses [D_hi, D_lo, X_hi, X_lo]
 				mul	a, x + 00h		; partial: A_hi * X_lo -> D
 				mov	d, y			; Y = partial product low word
 				ld	a, x + 00h		; A = X_lo
@@ -4402,7 +4402,7 @@ mult_rBrX2:							; CODE XREF: divide_d_by_x+E86↓p
 				ld	d, #0FFFFh		; Overflow: saturate to 0xFFFF
 
 loc_C558:							; CODE XREF: mult_rBrX2+4↑j
-				mov	d, x			; D = X (restore register pair)
+				mov	d, x			; X = D (src,dest) - restore register pair
 				ret
 
 ; End of function mult_rBrX2
@@ -4416,7 +4416,7 @@ mult_rBrX:							; CODE XREF: mult_rBrX2↑p
 ; 8x16 multiply: D = (A * X) / 256.
 ; Move A into B so that 'mul b, x' (called by the caller after this)
 ; performs the 8x16 -> 16-bit scaled multiply.
-				mov	b, a			; B = A (set up for mul b, x in caller)
+				mov	b, a			; A = B (src,dest) - set up for mul b, x in caller
 ; End of function mult_rBrX
 
 
@@ -4433,7 +4433,7 @@ mult_rBrX:							; CODE XREF: mult_rBrX2↑p
 mult_rArX:							; CODE XREF: signed_proportional_update+E↓p
 								; signed_proportional_update+1E↓p	...
 				push	x			; Save X on stack
-				mov	s, x			; SP = X: stack addresses [X_hi, X_lo]
+				mov	s, x			; X = SP: X now addresses [X_hi, X_lo]
 				xch	a, x + 01h		; A <-> X_lo; A = X_lo, X_lo = fraction
 				mul	a, x + 01h		; D = X_lo * fraction (low partial product)
 				push	b			; Save low partial product low byte
@@ -4617,7 +4617,7 @@ loc_C5BB:							; CODE XREF: divide_d_by_x+1A↑j
 				inc	a				; A++ (adjust loop count)
 				push	d				; Push numerator
 				push	y				; Push denominator
-				mov	s, x				; SP = X: addresses shift count on stack
+				mov	s, x				; X = SP: X now addresses shift count on stack
 				beq	loc_C5CD			; A was -1 (now 0): skip initial steps
 
 				mov	y, d				; Y = numerator high
@@ -13617,13 +13617,55 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 ; entered via jsr but takes/returns nothing in registers) - reads/writes
 ; the named variables below and documented inline at each section.
 ;
-; NOT fully confirmed: the exact arithmetic of the middle blend (the
-; mul/mult_rDrX/mov sequence around table_C163, roughly E8C4-E948) -
-; mult_rDrX clobbers X with the overflow MSW rather than preserving its
-; input, which makes a couple of the mov steps there ambiguous without
-; more careful re-derivation. sub_E832's own body and table_C163's
-; real-world meaning also aren't traced. Worth a dedicated follow-up
-; session - see session_journal.md's CPU1 pending work.
+; THE MIDDLE BLEND (loc_E8B5-loc_E8E0) - previously flagged here as "not
+; fully confirmed" because of the mov/mult_rDrX register flow. Now derived;
+; the two `mov`s are the crux and both follow the src,dest order:
+;
+;   D = |clamped - original|         magnitude the clamp moved the value by,
+;                                    with var_diag_errors_5.0 remembering the
+;                                    direction (set = value was above the
+;                                    ceiling and got pulled DOWN)
+;   cmp d,#0100h / bcs               deadband: a move under 0x100 is ignored
+;                                    entirely, so only a real excursion
+;                                    contributes
+;   mov d, x                         X = D  - the magnitude becomes the
+;                                    MULTIPLIER
+;   A = dmarx_ign_timing_unk_166, or dmarx_ign_timing_fallback2 when the
+;       flag says the value was pulled down
+;   neg a / (if 0 then 0xFF)         A = 256 - timing as an unsigned byte,
+;                                    forced non-zero. An INVERSION: less
+;                                    timing gives a bigger weight
+;   mul a,#80h                       D = A * 128
+;   jsr mult_rDrX                    D = D*X/256, and X = MSW of the 32-bit
+;                                    product
+;   mov x, d                         D = X  - takes the MSW, DISCARDING
+;                                    mult_rDrX's own D result
+;
+; That last step is the part that was ambiguous, and it matters: taking the
+; MSW is a >>16, so combined with the *128 the effective scale is
+;
+;       blend term = (256 - timing) * |clamp excursion| / 512
+;
+; not the /256 that mult_rDrX's normal D output would give.
+;
+; check_knock_sensor_err_flag then restores the sign (its usual abs()/restore
+; role, nothing to do with knock), and the term accumulates into unk_129 with
+; SIGNED saturation: on overflow D is set to 0x7FFF, and if the sign flag is
+; set the following `inc a`/`inc b` carries that 0x7FFF to 0x8000 - i.e. it
+; saturates to -32768 rather than +32767. unk_129 is therefore a signed
+; accumulator pinned at +/-full scale.
+;
+; THE SHIFT REGISTER (loc_E907). var_unk_knock_12B / unk_12D / unk_12F are
+; not three independent values but a 3-stage delay line, shifted once per
+; qualifying tick:  unk_12F <- unk_12D <- var_unk_knock_12B <- new. The
+; init path above seeds all three to the SAME PIM-table baseline, which is
+; exactly how you start a delay line so it produces no false derivative on
+; the first tick - good corroboration that this is what it is. The blend
+; differences values across those stages, so like calc_dmatx_pim's filter
+; pair this is fundamentally a rate-of-change structure.
+;
+; STILL NOT TRACED: sub_E832's own body, and table_C163's real-world
+; meaning (the second lookup, at loc_E92B onward, feeding unk_127).
 ;
 ; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, unk_12F,
 ;   var_unk_knock_12B, dmarx_ign_timing_unk_166, dmarx_ign_timing_fallback2,
@@ -13712,34 +13754,35 @@ loc_E8B5:							; CODE XREF: sub_E865+4B↑j
 				cmp	d, #0100h
 				bcs	loc_E8E3
 
-				mov	d, x
+				mov	d, x			; X = D (src,dest): excursion becomes the multiplier
 				ld	a, dmarx_ign_timing_unk_166
 				tbbc	bit0, var_diag_errors_5, loc_E8C4
 
-				ld	a, dmarx_ign_timing_fallback2
+				ld	a, dmarx_ign_timing_fallback2	; Value was pulled DOWN: use the fallback timing
 
 loc_E8C4:							; CODE XREF: sub_E865+59↑j
-				neg	a
+				neg	a			; A = 256 - timing (an inversion: less timing, more weight)
 				cmp	a, #00h
 				bne	loc_E8CA
 
-				dec	a
+				dec	a			; timing was 0: force 0xFF so the weight is never zero
 
 loc_E8CA:							; CODE XREF: sub_E865+62↑j
-				mul	a, #80h
-				jsr	mult_rDrX
+				mul	a, #80h			; D = A * 128
+				jsr	mult_rDrX		; D = D*X/256, X = MSW of the 32-bit product
 
-				mov	x, d
-				jsr	check_knock_sensor_err_flag
+				mov	x, d			; D = X (src,dest): take the MSW, DISCARDING mult_rDrX's D.
+								; Net effect is *128 then >>16, i.e. term = A*|excursion|/512
+				jsr	check_knock_sensor_err_flag	; Restore sign (generic abs() helper, not knock)
 
-				add	d, unk_129
-				bvc	loc_E8E0
+				add	d, unk_129		; Accumulate the blend term
+				bvc	loc_E8E0		; No signed overflow: store as-is
 
-				ld	d, #7FFFh
+				ld	d, #7FFFh		; Overflow: saturate to +32767...
 				tbbc	bit0, var_diag_errors_5, loc_E8E0
 
-				inc	a
-				inc	b
+				inc	a			; ...or, if the term was negative, carry
+				inc	b			; 0x7FFF -> 0x8000, i.e. -32768 instead
 
 loc_E8E0:							; CODE XREF: sub_E865+71↑j
 								; sub_E865+76↑j
@@ -13772,13 +13815,16 @@ loc_E901:
 
 loc_E907:							; CODE XREF: sub_E865+98↑j
 								; sub_E865:loc_E901↑j
-				sub	d, unk_12D
+; Shift the 3-stage delay line one place: 12F <- 12D <- 12B <- new value.
+; The init path seeds all three identically so the first tick sees no
+; artificial step - see this function's header.
+				sub	d, unk_12D		; Difference against the middle stage
 				ld	x, unk_12D
-				st	x, unk_12F
+				st	x, unk_12F		; 12F <- 12D  (oldest)
 				ld	x, var_unk_knock_12B
-				st	x, unk_12D
+				st	x, unk_12D		; 12D <- 12B
 				xch	x, y
-				st	x, var_unk_knock_12B
+				st	x, var_unk_knock_12B	; 12B <- newest
 				clrb	bit0, var_diag_errors_5
 				bcc	loc_E921
 
@@ -16755,7 +16801,7 @@ loc_F423:							; CODE XREF: injector_drive+1F↑j
 				push	x				; Save X
 
 loc_F424:
-				mov	s, x				; SP = X: stack addresses saved pulse width
+				mov	s, x				; X = SP: X now addresses saved pulse width
 				add	d, x + 02h			; D = remaining + new pulse width (extend injection)
 
 loc_F427:							; CODE XREF: injector_drive+17↑j
@@ -16765,7 +16811,7 @@ loc_F427:							; CODE XREF: injector_drive+17↑j
 ; Cap pulse width at ne_sum3 * 4 (= 180 degrees of crank rotation)
 loc_F42C:							; CODE XREF: injector_drive:loc_F427↑j
 				push	d				; Save total pulse width
-				mov	s, x				; SP = X: X now addresses the pulse width on stack
+				mov	s, x				; X = SP: X now addresses the pulse width on stack
 				ld	d, var_ne_sum3			; D = 45-degree period in 4us units
 				cmp	d, #15625			; Cap ne_sum3 at 15625 (62.5ms, very low RPM)
 				ble	loc_F438

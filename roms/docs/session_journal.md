@@ -1711,18 +1711,45 @@ entry gate is still unestablished (see that bit's declaration comment).
      multiply/table_C163 blend feeding an `unk_129` accumulator, and later
      a `table_pair_interpolate` lookup (`unk_13F`/`unk_141`-selected)
      feeding `unk_127`, ending with a call to `sub_E832`.
-  **Not yet confirmed with full instruction-level confidence:** the exact
-  arithmetic of the middle blend (the `mul`/`jsr mult_rDrX`/`mov`
-  sequence around `table_C163`, roughly E8C4-E948) - register flow through
-  `mult_rDrX`'s X-clobbering (`X` becomes the overflow MSW, not preserved)
-  makes a couple of `mov` steps there ambiguous without more careful
-  re-derivation. Also not traced: `sub_E832`'s own body, `table_C163`'s
-  real-world meaning, and whether this whole function is actually part of
-  the same knock-fault-handling area as `calc_dmatx_pim` (they share
-  `set_knock_sensor_err_flag`/`check_knock_sensor_err_flag` calls, but
-  per the correction above that's no longer strong evidence of a shared
-  subject matter - it's a generic negate primitive both happen to use).
-  Worth a dedicated follow-up session for the middle blend specifically.
+  **RESOLVED - the middle blend.** The ambiguity was the `mov`/`mult_rDrX`
+  register flow, and it turns on the two `mov`s, both of which follow the
+  src,dest order:
+  - `mov d, x` -> **X = D**: the clamp excursion becomes the multiplier.
+  - `mov x, d` -> **D = X**: takes `mult_rDrX`'s MSW output and DISCARDS its
+    normal `D` result. That is a `>>16`, so with the preceding `mul a,#80h`
+    the effective scale is `/512`, not the `/256` a casual read gives.
+
+  Net: `blend term = (256 - timing) * |clamp excursion| / 512`, where the
+  `neg a` inverts the timing byte (less timing -> more weight, forced
+  non-zero when the timing byte is 0), and the timing source is
+  `dmarx_ign_timing_unk_166` normally or `dmarx_ign_timing_fallback2` when
+  the value was pulled DOWN by the clamp. A `cmp d,#0100h` deadband ignores
+  excursions under 0x100 entirely.
+
+  `unk_129` is a SIGNED accumulator with saturation at both rails: on
+  overflow it loads `0x7FFF`, then if the sign flag is set the following
+  `inc a`/`inc b` carries that to `0x8000` (-32768) - a neat way to saturate
+  either direction using the flag that already carries the sign.
+
+  **`var_unk_knock_12B`/`unk_12D`/`unk_12F` are a 3-stage delay line**, not
+  three independent values: `12F <- 12D <- 12B <- new`, shifted once per
+  qualifying tick at loc_E907. The init path seeds all three to the SAME
+  PIM-table baseline - exactly how you initialise a delay line so it emits no
+  false derivative on the first tick, which corroborates the reading. So like
+  `calc_dmatx_pim`'s filter pair, this is fundamentally a rate-of-change
+  structure.
+
+  **Still not traced:** `sub_E832`'s body, and `table_C163`'s real-world
+  meaning (the second lookup at loc_E92B feeding `unk_127`).
+
+  **Related sweep done at the same time:** CLAUDE.md flagged that the shared
+  math library's `mov s, x` comments carried the reversed-notation error and
+  had never been swept. Ten of them said "SP = X"; `mov s, x` is `X = S`, and
+  the very next instruction (`div d, x + 00h`, `ld a, x + 01h` ...) uses X as
+  a stack frame pointer, which settles it. All ten fixed, plus two explicit
+  reversals (`mov d, x` commented "D = X", `mov b, a` commented "B = A").
+  Remaining `mov` comments in that library are descriptive ("Y = result"
+  meaning what Y holds) rather than wrong, so they were left alone.
 
 ### CPU2 (D151803-9661)
 
