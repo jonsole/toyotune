@@ -13418,7 +13418,12 @@ loc_E738:							; CODE XREF: divide_d_by_x+2197↑j
 				st	d, var_inj_pw_inj2	; Update injector 2 pulse-width
 				st	d, var_inj_pw_inj3	; Update injector 3 pulse-width
 				st	d, var_inj_pw_inj4	; Update injector 4 pulse-width
-				setb	bit7, var_ignition_flags ; Set injector	pulsewidth updated flag
+				setb	bit7, var_ignition_flags ; Mark these PWs as needing HALVING at
+								; injection time - NOT an "updated" flag, which
+								; is what an earlier comment here claimed. The
+								; sole reader, bg_ne_process_F2BA, does
+								; `tbbc bit7 -> skip / shr d`, i.e. it halves
+								; the pulse width when this bit is set
 				ei
 				bra	loc_E75E
 
@@ -13437,7 +13442,12 @@ loc_E751:							; CODE XREF: divide_d_by_x+21BE↓j
 				cmp	x, #var_inj_pw_inj4
 				ble	loc_E751
 
-				setb	bit7, var_ignition_flags ; Set injector	pulsewidth updated flag
+				setb	bit7, var_ignition_flags ; Mark these PWs as needing HALVING at
+								; injection time - NOT an "updated" flag, which
+								; is what an earlier comment here claimed. The
+								; sole reader, bg_ne_process_F2BA, does
+								; `tbbc bit7 -> skip / shr d`, i.e. it halves
+								; the pulse width when this bit is set
 				ei
 
 loc_E75E:							; CODE XREF: divide_d_by_x+20C7↑j

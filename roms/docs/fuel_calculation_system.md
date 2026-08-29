@@ -13,6 +13,165 @@ rate-limited blending step.
 
 ---
 
+## The pulse-width chain, end to end
+
+The sections below dissect individual stages in depth. This one is the map:
+how a pulse width gets from the sensors to the injector, and which stage owns
+each correction. Read it first.
+
+```
+  CPU2 ─── VE / fuel map ─────────────► dmarx_scaled_ve  (over the DMA link)
+                                              │
+  var_pim2 ──► calc_dmatx_pim ──► dmatx_pim ──┤   (transient-compensated MAP,
+      (raw MAP)   lead/lag pair               │    sent back to CPU2)
+                                              ▼
+                              ┌───────────────────────────┐
+                    (1)       │ calc_inj_pw_base (D931)   │
+                              │  open vs closed loop      │
+                              │  rate-limited blend       │
+                              └───────────┬───────────────┘
+                                          ▼  var_inj_pw_base
+                              ┌───────────────────────────┐
+                    (2)       │ sub_E454                  │
+                              │  x (0x100 + LTFT + STFT)  │
+                              │  ramp_limit_inj_pw        │
+                              └───────────┬───────────────┘
+                                          ▼
+                    (3)       + unk_127   (ignition-blend term, signed sat.)
+                                          ▼  var_temp_w = "the" pulse width
+                              ┌───────────────────────────┐
+                    (4)       │ loc_E6F6 per-injector trim│
+                              │  x table_inj_pw_adj_C25B  │
+                              │    or ...C25F             │
+                              │  clamp to inj_pw_limits   │
+                              └───────────┬───────────────┘
+                                          ▼  var_inj_pw_array[0..3]
+                    (5)       PIM-error override?  ──► fixed 0x0294 / 0x0AC8
+                                          ▼
+                              var_inj_pw_inj1..4   (+ var_ignition_flags.7)
+                                          ▼
+                    (6)       injector_update / injectors_batch_update
+                                          ▼
+                    (7)       injector_drive  + var_inj_battery_adjust
+                                          ▼
+                                    CPRn compare → injector opens
+```
+
+### (1) Base pulse width — `calc_inj_pw_base`, chunk `D931`
+
+Combines CPU2's VE output with the lambda state, selects the open-loop or
+closed-loop path, and rate-limits the result into `var_inj_pw_base`. Fully
+dissected in "Structure (chunk `D931`)" below.
+
+### (2) Fuel trims — `sub_E454` at `loc_E47B`
+
+The one place both trims are applied, as a single multiplier:
+
+```
+multiplier = 0x0100 (unity) + read_nv_afr_trim(load) + var_lambda_integrator
+                               └─ LTFT, NV, per-cell ┘  └─ STFT, volatile ─┘
+```
+
+then `mult_rDrX_saturate` / `divide_rD_32_saturate`, then
+`ramp_limit_inj_pw`. See "Short-term vs long-term fuel trim" for which is
+which and why it matters.
+
+### (3) The ignition-blend contribution
+
+`unk_127`, produced by `update_ign_timing_blend`, is added just above
+`loc_E6C7` with signed saturation - the sign of `unk_127` selects which of
+the two add-and-clamp paths runs, clamping to 0 on underflow or 0xFFFF on
+overflow. The result is stored to `var_temp_w` at `loc_E6CE` — **that is
+"the" calculated pulse width**, the single value all four injectors are
+derived from.
+
+### (4) Per-injector trim — `loc_E6F6`
+
+A four-iteration loop applying a per-cylinder correction:
+
+```
+PW_n = clamp( var_temp_w + (trim_table[n] * var_temp_w)/256 , inj_pw_limits )
+```
+
+Two trim tables exist and the choice is made just above, at `loc_E6DF`:
+
+| Table | Selected when |
+|---|---|
+| `table_inj_pw_adj_C25B` | `var_flags_4E.1` clear — RPM below ~2240 |
+| `table_inj_pw_adj_C25F` | `var_flags_4E.1` set — RPM at/above ~2450 |
+
+(`var_flags_4E.1` is set/cleared with hysteresis by the RPM compares at
+`loc_E6DD`/`loc_E6DF`; `var_flags_4E.0` is set from a PIM/ECT condition
+just after.) The per-injector trim is **forced to zero** — `clr a` at
+`loc_E70E` — while the factory self-test is running (`var_flags_40.0`) or
+`var_flags_4E.0` is set, so all four injectors get the identical value.
+
+Results land in `var_inj_pw_array`, a 4-word staging buffer, **not** directly
+in the live registers.
+
+### (5) Limp-home override, and the commit — `loc_E729`
+
+Before committing, two conditions substitute a fixed pulse width for the
+whole calculation:
+
+- `var_flags_46.7` (sub-CPU error), or
+- `var_flags_4D.3` (running on the default PIM value)
+
+in which case every injector gets `0x0294`, or `0x0AC8` if `var_flags_46.2`
+says the throttle has been closed. Otherwise `update_injector_pw` copies
+`var_inj_pw_array` into `var_inj_pw_inj1..4`.
+
+Either way the copy runs with **interrupts disabled** (`di`/`ei`), so the NE
+interrupt can never observe a half-updated set of pulse widths — worth
+preserving if this code is ever modified.
+
+### `var_ignition_flags.7` — "halve this pulse width"
+
+Both commit paths above **set** `var_ignition_flags.7`; a third store path at
+`loc_E423` (which clamps to 62500) **clears** it. The sole reader,
+`bg_ne_process_F2BA`, does:
+
+```
+tbbc bit7, var_ignition_flags, loc_F2BE
+shr  d                     ; halve the pulse width
+```
+
+So the bit means **"the value in `var_inj_pw_inj*` must be halved before
+use"** — it distinguishes a full-cycle value from an already-per-event one.
+Two inline comments used to call it an "injector pulsewidth updated flag";
+that was wrong and is corrected in the disassembly.
+
+### (6)-(7) Firing — `injector_update` / `injector_drive`
+
+`injector_drive` rejects anything below `0x0D` (52 us) as too short to be
+worth firing, adds `var_inj_battery_adjust` (injector dead-time compensation,
+in 4 us units) and schedules the `CPRn` compare that closes the injector. If
+the injector is already open it *extends* the existing pulse rather than
+restarting it (`injector_on`). See the journal's "Injector system" section.
+
+### What owns which correction
+
+| Correction | Applied at | Stage |
+|---|---|---|
+| VE / fuel map | CPU2, arrives as `dmarx_scaled_ve` | before (1) |
+| MAP transient compensation | `calc_dmatx_pim` | before (1) |
+| Open/closed loop selection, rate limit | `calc_inj_pw_base` | (1) |
+| LTFT (NV, per load cell) | `read_nv_afr_trim` | (2) |
+| STFT (volatile O2 integrator) | `var_lambda_integrator` | (2) |
+| Ignition-blend term | `unk_127` | (3) |
+| Per-cylinder trim | `table_inj_pw_adj_C25B/C25F` | (4) |
+| Limp-home fixed PW | `loc_E729` | (5) |
+| Full-cycle halving | `var_ignition_flags.7` | (6) |
+| Battery/dead-time compensation | `var_inj_battery_adjust` | (7) |
+
+Note the asymmetry that trips people up: **fuel trims are multiplicative and
+applied once, centrally, at (2)** — while the per-cylinder trim at (4) is a
+separate multiplicative stage with its own tables, and the battery
+compensation at (7) is *additive* and applied per firing. Changing "fuelling"
+means different things at each of those three points.
+
+---
+
 ## Critical: `mov` operand direction
 
 **The `mov` instruction is `mov src, dest` — the opposite of `ld`/`st`,
