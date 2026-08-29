@@ -194,13 +194,13 @@ formula (no padding discrepancy for these, unlike the three words above):
 
 | CPU1 name | CPU2 name | CPU2 computation |
 |---|---|---|
-| `dmarx_ign_timing_fallback1` | `dmatx_ign_timing_fallback1` | `table_ign_rpm1(RPM)` - substituted for `dmatx_ign_timing` by CPU1's `sub_E865` when `var_diag_errors_5.0` is set at that point in its own computation - **not** a knock-sensor fault despite the flag's name; see the correction below |
+| `dmarx_ign_timing_fallback1` | `dmatx_ign_timing_fallback1` | `table_ign_rpm1(RPM)` - substituted for `dmatx_ign_timing` by CPU1's `update_ign_timing_blend` when `var_diag_errors_5.0` is set at that point in its own computation - **not** a knock-sensor fault despite the flag's name; see the correction below |
 | `dmarx_ign_timing_fallback2` | `dmatx_ign_timing_fallback2` (was `dmatx_ign_timing_unk_165`) | `table_ign_rpm2(RPM)` - same fallback role, substituted for `dmatx_ign_timing_unk_166` |
 | `dmarx_iscv_duty` (CPU1 originally named it `dmarx_unk_242_168`, embedding this address) | `dmatx_iscv_duty` (was `dmatx_unk_168`) | `table_C376_rpm(RPM)/32` - base/nominal ISCV duty, refined by CPU1's own idle control loop (see `idle_control_system.md`) |
 | `dmarx_ign_timing_unk_166` | `dmatx_ign_timing_unk_166` | `(table_C356_rpm(RPM) * table_C36A_ect(ECT))/64`, saturated |
 | `dmarx_unk_241_167` | `dmatx_unk_167` | `(table_C360_rpm(RPM) * table_C370_ect(ECT))/64`, saturated |
 
-`sub_E865`, CPU1's consumer of all five (plus the primary `dmarx_ign_timing`
+`update_ign_timing_blend`, CPU1's consumer of all five (plus the primary `dmarx_ign_timing`
 and `dmarx_ign_timing_unk_166`), has since been partially traced (see
 session_journal.md): a PIM-table-baseline-vs-clamp update involving
 `unk_129`/`12B`/`12D`/`12F` state, self-re-armed to run once per ~32ms via
@@ -211,7 +211,7 @@ fault handling despite `var_diag_errors_5.0`'s name and the function's
 proximity to real knock code - `set_knock_sensor_err_flag`/
 `check_knock_sensor_err_flag` are a repo-wide reused negate/abs() idiom
 (see their own header comment and session_journal.md's architecture notes),
-and `sub_E865` uses that bit purely as its own local "did the clamped
+and `update_ign_timing_blend` uses that bit purely as its own local "did the clamped
 PIM-baseline value drop since last tick" signal. The middle blend's exact
 arithmetic (the `mul`/`mult_rDrX`/`mov` sequence around `table_C163`) wasn't
 fully re-derived with confidence and is still open CPU1 work.
@@ -506,7 +506,7 @@ off-idle, RPM < 3200, battery >= 11.4 V, no transient
 (`var_pim_trans_fast`), no CPU2 fuel-trim or idle-enrich request, and
 `var_trim_state == 4` - which reads as a slow, cruise-only global
 correction. It is stored as a value/complement pair (the halves stepped in
-opposite directions), and `sub_D2C5` wipes all NV RAM if it fails validation
+opposite directions), and `validate_nv_trim_o2` wipes all NV RAM if it fails validation
 against `nv_96_limits`.
 
 **Where it is spent - resolved.** Its consumers are `sub_E843` on CPU1 and

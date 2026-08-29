@@ -194,7 +194,7 @@ real hardware/test documentation.
 duplicate (corrected `tbs` section, with the toggle/self-re-arming idiom
 explained); `var_flags_41`'s and `var_schedule_flag_41`'s declaration
 comments (both fully rewritten - the periodic gates they describe are
-real, working mechanisms); `sub_E865`'s header (CPU1); `calc_ignition_
+real, working mechanisms); `update_ign_timing_blend`'s header (CPU1); `calc_ignition_
 timing`'s periodic-counters comment (CPU2); `var_flags_40.1`'s note
 (CPU2); `unk_47.7`/`check_starter_running`'s one-shot-latch description
 and `serial_dma_start`'s correction note (CPU2 - the original pre-
@@ -343,15 +343,15 @@ adopting them:
   `dmarx_ign_timing_fallback1`/`dmarx_ign_timing_unk_166`/
   `dmarx_unk_241_167`.
 
-All five are consumed by CPU1's `sub_E865` (an ignition timing blend) -
+All five are consumed by CPU1's `update_ign_timing_blend` (an ignition timing blend) -
 traced far enough to confirm the fallback role (fallback1/fallback2
 substitute for the primary values when `var_diag_errors_5.0` is set) but
-`sub_E865` itself was unexamined at the time - added to CPU1 pending work
+`update_ign_timing_blend` itself was unexamined at the time - added to CPU1 pending work
 below rather than tackled here. Full detail in fuel_calculation_system.md's
 DMA cross-reference section. Verified via verify_assembly_match.py - 0 real
-edit regions (renames/comments only). **Update (see "sub_E865 partially
+edit regions (renames/comments only). **Update (see "update_ign_timing_blend partially
 traced" below):** this isn't knock-sensor-fault gating - `var_diag_errors_5.0`
-is a repo-wide reused negate/abs() remember-bit, and `sub_E865` uses it
+is a repo-wide reused negate/abs() remember-bit, and `update_ign_timing_blend` uses it
 purely as its own local state, unrelated to actual knock sensor faults.
 
 ### CPU2 (D151803-9661): calc_ignition_timing documented
@@ -1001,7 +1001,7 @@ chunk's entry point in the ASM; this is the narrative summary.
   that bit is documented elsewhere as "boost limit exceeded" - not
   confirmed whether that's the same condition or bit reuse.
 - Calls sub_E454 (fuel enrichment scaling, confirmed), calc_dmatx_pim, loc_FC38,
-  sub_D2C5 (NV trim validation, see D1DD below) - only sub_D2C5 was
+  validate_nv_trim_o2 (NV trim validation, see D1DD below) - only validate_nv_trim_o2 was
   traced.
 - The overrun/deceleration fuel-cut decision feeding `injector_warmup`
   (already documented via injector_warmup's own header comment).
@@ -1034,7 +1034,7 @@ chunk's entry point in the ASM; this is the narrative summary.
   majority-style threshold. Not renamed - didn't confirm what
   specifically distinguishes this from the zone-based AFR trim (e.g.
   "cruise" vs "part-throttle"), worth a follow-up.
-- `sub_D2C5`: validates `var_nv_trim_unk_96` against `nv_96_limits` and
+- `validate_nv_trim_o2`: validates `var_nv_trim_unk_96` against `nv_96_limits` and
   wipes ALL NV RAM via `clear_nv_ram` if out of range - same defensive
   pattern as the AFR trim validation in chunk CE6C.
 
@@ -1327,7 +1327,7 @@ rather than guessed at.
 
 **Still open on CPU1** (unchanged by this pass): the pending-work list below.
 This pass was breadth-first over variables, so `calc_dmatx_pim`, `loc_E112`/`E363`,
-`sub_E865`'s middle blend and the second lambda-trim system are all still
+`update_ign_timing_blend`'s middle blend and the second lambda-trim system are all still
 untouched - several of the reference notes above point into them.
 
 ### CPU1 (D151803-9651): function Inputs/Outputs pass
@@ -1345,7 +1345,7 @@ stream*, not transcribed by hand or taken from the IDA xref comments - a
 small extractor walks each function body (following its chunks), classifies
 each operand as read or written per opcode form, and emits sorted
 `Reads:`/`Writes:`/`Calls:` lists. Validated by running it against
-`sub_C996`, whose footprint had already been derived by hand earlier in the
+`update_tps_closed_ref`, whose footprint had already been derived by hand earlier in the
 session: exact match. This matters because the IDA `DATA XREF` headers are
 incomplete - they show a couple of representative sites and then "...".
 
@@ -1353,14 +1353,14 @@ incomplete - they show a couple of representative sites and then "...".
 than a footprint: `iv6_ne_process` (the ~212-instruction crank-synchronous
 process, and why it is split off from the hardware NE vector via the IRQLL.1
 software interrupt), `knock_processing` (and how it differs from
-`knock_mcu_update` next to it), `sub_E115`, `check_io_inputs`, `copy_dma_tx`,
+`knock_mcu_update` next to it), `factory_self_test`, `check_io_inputs`, `copy_dma_tx`,
 `clear_nv_ram`, plus register-level Inputs/Outputs for `deglitch_io_input`,
 `write_rB_nv_ram`, `increment_counters`, `add_d_base_offset`,
 `scale_d_by_a_frac` and both divide cascades. `calc_iscv` already had an
 excellent SECTION 1-6 breakdown and just gained the footprint.
 
 **Things established while writing these:**
-- **`sub_E115` is a factory/end-of-line self-test**, and its entry interlock
+- **`factory_self_test` is a factory/end-of-line self-test**, and its entry interlock
   (diagnostic mode AND starter AND two PORTA pins AND TRAC TPS > 0x9A) is why
   it normally returns immediately. It sets `var_flags_40.0` and then scribbles
   a walking 0..255 pattern over all of RAM (0x40-0x300) to test the chip -
@@ -1579,7 +1579,7 @@ entry gate is still unestablished (see that bit's declaration comment).
 
   It is stored as a value/complement pair (the two halves stepped in
   opposite directions by `dec a`/`inc b`), the same integrity scheme
-  `write_rB_nv_ram` uses, and `sub_D2C5` wipes all NV RAM if it fails
+  `write_rB_nv_ram` uses, and `validate_nv_trim_o2` wipes all NV RAM if it fails
   validation against `nv_96_limits`.
 
   **RESOLVED - the third trim is a FUEL correction, spent on CPU2.** Its
@@ -1686,7 +1686,7 @@ entry gate is still unestablished (see that bit's declaration comment).
   or `0xE9-0xEE` must be checked against the `COUNTER_ARG` call sites first.
   This is the same class of mistake as the `tbs` error - a tool or
   assumption that cannot see one particular write mechanism.
-- **sub_E865 (~E865-E9E9, partially traced this session)** - an ignition
+- **update_ign_timing_blend (~E865-E9E9, partially traced this session)** - an ignition
   timing blend gated on `var_schedule_flag_41.3` via `tbs`+`beq` (runs on
   ticks where that bit tests clear; otherwise returns immediately). `tbs`
   is a destructive test-and-set (this session initially got that wrong,
@@ -1882,7 +1882,7 @@ for gaps" work needed.
   something knock-sensor-specific outside the actual knock subsystem -
   confirmed at three unrelated sites (`ramp_limit_inj_pw`'s loc_DBB5,
   `calc_iscv`'s threshold check per idle_control_system.md, and CPU1's
-  `sub_E865`). Watch for this shape - `jsr set_knock_sensor_err_flag`/
+  `update_ign_timing_blend`). Watch for this shape - `jsr set_knock_sensor_err_flag`/
   `jsr check_knock_sensor_err_flag` immediately before or after a
   subtract/compare on D - anywhere a stray-looking "knock" flag call
   doesn't fit the surrounding computation's subject matter.

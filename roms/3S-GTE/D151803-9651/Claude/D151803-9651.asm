@@ -100,7 +100,7 @@ PORTAL:				.block 1			; DATA XREF: ROM:C629↓w
 								; divide_d_by_x+30B↓w
 								; Port A Latch
 PORTB:				.block 1			; DATA XREF: ROM:C62B↓r
-								; sub_E115:loc_E16D↓r ...
+								; factory_self_test:loc_E16D↓r ...
 								; PORTB.0 - Some signal	to knock MCU
 								; PORTB.1 - Cylinder 1 signal to knock MCU
 								; PORTB.2 -
@@ -121,7 +121,7 @@ LDOUT:				.block 1			; DATA XREF: injector_drive+B↓r
 								; int_vector_9_ignition+4↓r
 								; Latch	DOUT
 DOUT:				.block 1			; DATA XREF: ROM:C648↓r
-								; sub_E115+4C↓r	...
+								; factory_self_test+4C↓r	...
 								; DOUT Data Register
 								; DOUT.0 - Ignition IGT	(o/p)
 								; DOUT.1 - ISCV
@@ -202,7 +202,7 @@ CPR7L:				.block 1			; Timer	comparison #3 LSB
 var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								; divide_d_by_x+206↓r ...
 								; 40.0 - "Factory self-test active" flag:
-								;   the ONLY writers are inside sub_E115
+								;   the ONLY writers are inside factory_self_test
 								;   (the factory self-check routine, RAM-
 								;   test etc. - see its own header) -
 								;   cleared on the "not eligible for self-
@@ -216,7 +216,7 @@ var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								;   FD67): normal computations skip or
 								;   alter themselves while self-test is
 								;   scribbling test patterns across all
-								;   of RAM (sub_E115 writes 0-255 across
+								;   of RAM (factory_self_test writes 0-255 across
 								;   0x40-0x300), since their own state
 								;   variables would otherwise be garbage.
 								; 40.1 - "Startup injection pulse done"
@@ -236,7 +236,7 @@ var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								;   mode is active.
 								; 40.3 - Transient throttle injection
 								; 40.4 - "TPS settled below threshold"
-								;   debounce latch, local to sub_C996's
+								;   debounce latch, local to update_tps_closed_ref's
 								;   TPS-averaging logic: `tbs`+`beq`
 								;   arms on the first call where the
 								;   smoothed TPS value (b) is at or below
@@ -276,7 +276,7 @@ var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								;   sub-slot ("unlock 64ms-gated injection
 								;   schedule"). ALSO read non-destructively
 								;   (`tbbs`/`tbbc`, no side effect) at
-								;   several unrelated sites - sub_C996
+								;   several unrelated sites - update_tps_closed_ref
 								;   (loc_C9BA), and the TPS-delta-tracking
 								;   block at loc_FD9E - reusing the same
 								;   bit as a plain state check rather than
@@ -334,7 +334,7 @@ var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								;   chunk @ D1DD, part 2 - see that
 								;   header, via `tbs`): same self-
 								;   re-arming shape as bit1.
-								; 41.3 - Gates sub_E865 (ignition timing
+								; 41.3 - Gates update_ign_timing_blend (ignition timing
 								;   blend) via `tbs` - see that function's
 								;   own header for the corrected,
 								;   self-re-arming mechanism.
@@ -478,7 +478,7 @@ var_flags_44:			.block 1			; DATA XREF: divide_d_by_x+3C5↓r
 								;   on every 4ms tick.
 								; 44.2 - Deceleration / fast-throttle-
 								;   closing latch with hysteresis, set/
-								;   cleared by sub_CE3C from var_tps_delta
+								;   cleared by update_tps_delta_rate from var_tps_delta
 								;   (signed): set when delta < -16 (0xF0),
 								;   cleared when delta >= -12 (0xF4),
 								;   holds its previous state in the -16..
@@ -512,7 +512,7 @@ var_flags_44:			.block 1			; DATA XREF: divide_d_by_x+3C5↓r
 								;   var_schedule_flag_41.5). Purpose not
 								;   established - may be CPU2-read only.
 								; 44.5 - Dual, unrelated roles (coincidental
-								;   bit reuse): (1) in sub_E865's ignition-
+								;   bit reuse): (1) in update_ign_timing_blend's ignition-
 								;   timing/knock blend, selects its init/
 								;   reset path (set) vs normal per-tick
 								;   path (clear) - see that function's own
@@ -639,7 +639,7 @@ var_flags_46:			.block 1			; DATA XREF: divide_d_by_x+203↓r
 								;   closed-loop); see divide_d_by_x chunks C9DA/D3A5
 								; 46.7 - Set on	sub-CPU	error
 								;
-var_flags_47:			.block 1			; DATA XREF: sub_C996+3↓r
+var_flags_47:			.block 1			; DATA XREF: update_tps_closed_ref+3↓r
 								; calc_dmatx_pim+1B↓r	...
 								; 47.0 - "PIM NV-trim write eligible"
 								;   one-shot in adc_handler_pim: set
@@ -676,7 +676,7 @@ var_flags_47:			.block 1			; DATA XREF: sub_C996+3↓r
 								;   trips var_iscv_error_cnt's threshold
 								;   and cuts the relay.
 								; 47.4 - "Throttle-closed averaging
-								;   computed" latch for sub_C996's IIR-
+								;   computed" latch for update_tps_closed_ref's IIR-
 								;   style smoothing of var_tps_closed_ref (a TPS-
 								;   derived value): set once the
 								;   averaging step has run while the
@@ -732,7 +732,7 @@ var_diag_errors_5:		.block 1			; DATA XREF: check_knock_sensor_err_flag↓r
 								;   writeup on those functions' own header
 								;   above (confirmed reused at
 								;   ramp_limit_inj_pw's loc_DBB5,
-								;   sub_E865, and calc_iscv's threshold
+								;   update_ign_timing_blend, and calc_iscv's threshold
 								;   check). Only genuinely knock-sensor-
 								;   related at actual knock-subsystem call
 								;   sites (e.g. knock_mcu_update).
@@ -887,7 +887,7 @@ var_flags_4D:			.block 1			; DATA XREF: divide_d_by_x+84A↓r
 								;   "acceleration enrichment... opposite
 								;   direction" to var_flags_44.2 - wrong
 								;   on both counts). Set/cleared by
-								;   sub_CE3C from var_tps_delta_rate, the
+								;   update_tps_delta_rate from var_tps_delta_rate, the
 								;   SECOND derivative of throttle
 								;   position: rate < 0xF4 (-12) sets,
 								;   rate >= 0xF8 (-8) clears, hysteresis
@@ -1062,7 +1062,7 @@ var_tps:			.block 1			; DATA XREF: async_throttle_inject+F↓r
 				.block 1
 var_tha:			.block 1			; DATA XREF: injector_cold_start:loc_CD50↓r
 								; calc_iscv+F↓r	...
-var_tham:			.block 1			; DATA XREF: sub_E115+238↓r
+var_tham:			.block 1			; DATA XREF: factory_self_test+238↓r
 								; ROM:FF50↓w
 var_adc_battery:		.block 1			; DATA XREF: divide_d_by_x+785↓r
 								; divide_d_by_x+B4A↓r ...
@@ -1081,7 +1081,7 @@ var_speed_kph:			.block 1			; DATA XREF: divide_d_by_x+4B7↓r
 								; divide_d_by_x+4CF↓r ...
 								; Road speed in	Km/h
 var_tps_delta:			.block 1			; DATA XREF: async_throttle_inject↓r
-								; sub_CE3C↓r ...
+								; update_tps_delta_rate↓r ...
 var_adc_lambda:			.block 1			; DATA XREF: divide_d_by_x+95F↓r
 								; divide_d_by_x+9BE↓r ...
 								; Lambda sensor	voltage	(signed	value)
@@ -1186,7 +1186,7 @@ var_temp_7A:			.block 1			; DATA XREF: map_rD_rX_interpolate+14↓w
 								; map_rD_rX_interpolate+16↓r ...
 var_temp_7B:			.block 1			; DATA XREF: map_rD_rX_interpolate+27↓w
 								; divide_d_by_x:loc_CFC9↓w ...
-var_temp_7C:			.block 1			; DATA XREF: sub_E865+178↓w
+var_temp_7C:			.block 1			; DATA XREF: update_ign_timing_blend+178↓w
 								; calc_4ms_corrections+248↓w
 				.block 2
 unk_7F:				.block 1			; DATA XREF: divide_d_by_x+D1↓o
@@ -1283,13 +1283,13 @@ var_nv_trim_unk_96:		.block 1			; DATA XREF: clear_nv_ram+2E↓w
 								; two halves are stepped in opposite
 								; directions (`dec a`/`inc b` or
 								; `inc a`/`dec b`), the same integrity
-								; scheme write_rB_nv_ram uses. sub_D2C5
+								; scheme write_rB_nv_ram uses. validate_nv_trim_o2
 								; validates it against nv_96_limits and
 								; wipes ALL NV RAM via clear_nv_ram on
 								; failure.
 								;
 								; Consumers: sub_E843 (an ignition-timing
-								; -adjacent calculation near sub_E865),
+								; -adjacent calculation near update_ign_timing_blend),
 								; and CPU2 via copy_dma_tx's
 								; dmatx_nv_trim_o2.
 								;
@@ -1403,8 +1403,8 @@ diag_code_digit:		.block 1			; DATA XREF: ROM:DFDF↓r
 diag_code_index:		.block 1			; DATA XREF: divide_d_by_x+14D↓w
 								; ROM:loc_DFD4↓r ...
 unk_AA:				.block 1			; DATA XREF: divide_d_by_x+113↓r
-								; sub_E865+25↓r	...
-								; Read/written by sub_E865's ignition-
+								; update_ign_timing_blend+25↓r	...
+								; Read/written by update_ign_timing_blend's ignition-
 								; timing/knock blend (init path sets it
 								; to 0xFF) - see that function's own
 								; Reads/Writes header. Not renamed: role
@@ -1678,17 +1678,17 @@ var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
 								; int_4ms_watchdog:loc_F7B4↓w ...
 var_tps_2:			.block 1			; DATA XREF: ROM:loc_FDAA↓r
 								; ROM:FE07↓w
-unk_100:			.block 1			; DATA XREF: sub_E115:loc_E208↓o
+unk_100:			.block 1			; DATA XREF: factory_self_test:loc_E208↓o
 								; READ-ONLY in this file: read by loc_E208, with
 								; no bit- or byte-level write site found here -
 								; so it holds whatever clear_variables left (0)
 								; unless something writes it by a path this
 								; sweep missed.
 var_tps_closed_ref:		.block 1			; DATA XREF: divide_d_by_x+FA↓w
-								; sub_C996+10↓r	...
+								; update_tps_closed_ref+10↓r	...
 								; Slew-limited "throttle has settled
 								; closed" reference level, maintained by
-								; sub_C996 (its only updater):
+								; update_tps_closed_ref (its only updater):
 								;   new = old + (var_tps_unk_150/64 - old)/2
 								; i.e. an IIR low-pass that halves the
 								; error each call, clamped to a 0x10
@@ -1708,7 +1708,7 @@ var_tps_closed_ref:		.block 1			; DATA XREF: divide_d_by_x+FA↓w
 								; threshold" debounce require the reading
 								; to hold steady rather than just dip
 								; once.
-var_adc_o2_sensor:		.block 1			; DATA XREF: sub_E115+231↓r
+var_adc_o2_sensor:		.block 1			; DATA XREF: factory_self_test+231↓r
 								; adc_handler_o2_heater+15↓r ...
 var_io_input1_tmp:		.block 1			; DATA XREF: check_io_inputs+2C↓o
 var_io_input2_tmp:		.block 1			; DATA XREF: check_io_inputs+5D↓o
@@ -1735,15 +1735,15 @@ var_inj_battery_adjust:		.block 2			; DATA XREF: ROM:DDA6↓r
 								; Calculated injector dead-time	for battery voltage. In	4uS units.
 var_fuel_enrich_rpm:		.block 1			; DATA XREF: divide_d_by_x+118↓w
 								; divide_d_by_x+83B↓w ...
-var_tps_delta_prev:		.block 1			; DATA XREF: sub_CE3C+10↓r
-								; sub_CE3C+1F↓w
+var_tps_delta_prev:		.block 1			; DATA XREF: update_tps_delta_rate+10↓r
+								; update_tps_delta_rate+1F↓w
 								; Previous call's var_tps_delta, kept by
-								; sub_CE3C purely so it can difference
+								; update_tps_delta_rate purely so it can difference
 								; against the current one - see
 								; var_tps_delta_rate below.
-var_tps_delta_rate:		.block 1			; DATA XREF: sub_CE3C:loc_CE58↓w
+var_tps_delta_rate:		.block 1			; DATA XREF: update_tps_delta_rate:loc_CE58↓w
 								; Rate of change of var_tps_delta between
-								; consecutive sub_CE3C calls (i.e. the
+								; consecutive update_tps_delta_rate calls (i.e. the
 								; second derivative of throttle position -
 								; "throttle jerk"), computed as
 								; var_tps_delta - var_tps_delta_prev and
@@ -1756,7 +1756,7 @@ var_tps_delta_rate:		.block 1			; DATA XREF: sub_CE3C:loc_CE58↓w
 								; with the band between holding the
 								; previous state (hysteresis). Note this
 								; is the SAME (closing) direction as
-								; var_flags_44.2, which sub_CE3C sets from
+								; var_flags_44.2, which update_tps_delta_rate sets from
 								; the first derivative a few instructions
 								; earlier - the two flags distinguish
 								; "closing fast" from "closing ever
@@ -1776,28 +1776,28 @@ word_125:			.block 2			; DATA XREF: adc_handler_pim+46↓w
 								; adc_handler_pim+4E↓r
 unk_127:			.block 1			; DATA XREF: divide_d_by_x+C7E↓r
 								; divide_d_by_x+211F↓r ...
-								; Written by sub_E865's ignition-timing/
+								; Written by update_ign_timing_blend's ignition-timing/
 								; knock blend (its final output register,
 								; per that function's own header) - not
 								; renamed pending the middle-blend
 								; arithmetic's own confirmation.
 				.block 1
 unk_129:			.block 1			; DATA XREF: divide_d_by_x+2235↓r
-								; sub_E865+1F↓w	...
-								; Read/written by sub_E865 - see that
+								; update_ign_timing_blend+1F↓w	...
+								; Read/written by update_ign_timing_blend - see that
 								; function's Reads/Writes header.
 				.block 1
-var_unk_knock_12B:		.block 1			; DATA XREF: sub_E865+14↓w
-								; sub_E865+3F↓r	...
+var_unk_knock_12B:		.block 1			; DATA XREF: update_ign_timing_blend+14↓w
+								; update_ign_timing_blend+3F↓r	...
 				.block 1
-unk_12D:			.block 1			; DATA XREF: sub_E865+17↓w
-								; sub_E865+85↓r	...
-								; Read/written by sub_E865 - see that
+unk_12D:			.block 1			; DATA XREF: update_ign_timing_blend+17↓w
+								; update_ign_timing_blend+85↓r	...
+								; Read/written by update_ign_timing_blend - see that
 								; function's Reads/Writes header.
 				.block 1
-unk_12F:			.block 1			; DATA XREF: sub_E865+1A↓w
-								; sub_E865+2C↓r	...
-								; Read/written by sub_E865 - see that
+unk_12F:			.block 1			; DATA XREF: update_ign_timing_blend+1A↓w
+								; update_ign_timing_blend+2C↓r	...
+								; Read/written by update_ign_timing_blend - see that
 								; function's Reads/Writes header.
 				.block 1
 var_pim_tps_est:			.block 1			; DATA XREF: calc_dmatx_pim+10↓w
@@ -1833,7 +1833,7 @@ var_scaled_ve_tham:		.block 1			; DATA XREF: sub_E454↓r
 								; divide_d_by_x+1F65↓w
 				.block 1
 unk_13C:			.block 1			; DATA XREF: divide_d_by_x+2242↓w
-								; sub_E865+115↓r
+								; update_ign_timing_blend+115↓r
 								; Written by loc_E7D8; read by loc_E978. Purpose
 								; not established - left named unk_ deliberately
 								; per CLAUDE.md (rename only on confirmed
@@ -1846,14 +1846,14 @@ unk_13D:			.block 1			; DATA XREF: divide_d_by_x:loc_E7FA↓w
 								; (rename only on confirmed understanding).
 				.block 1
 unk_13F:			.block 1			; DATA XREF: divide_d_by_x+227C↓w
-								; sub_E865+175↓r ...
+								; update_ign_timing_blend+175↓r ...
 								; Written by loc_E815; read by loc_E9C8,
 								; loc_E9F0. Purpose not established - left named
 								; unk_ deliberately per CLAUDE.md (rename only
 								; on confirmed understanding).
 				.block 1
 unk_141:			.block 1			; DATA XREF: divide_d_by_x+2291↓w
-								; sub_E865+170↓r ...
+								; update_ign_timing_blend+170↓r ...
 								; Written by loc_E815; read by loc_E9C8,
 								; loc_E9F0. Purpose not established - left named
 								; unk_ deliberately per CLAUDE.md (rename only
@@ -1924,16 +1924,16 @@ var_inj_next_ne:			.block 1			; DATA XREF: iv6_ne_process+274↓w
 								; iv6_ne_process+2CA↓w ...
 var_inj_sched_ne:			.block 1			; DATA XREF: iv6_ne_process:bg_ne_process_F2D2↓r
 								; iv6_ne_process+2E9↓w ...
-var_tps_raw:			.block 1			; DATA XREF: sub_E115+13↓r
-								; sub_E115+217↓r ...
-var_tps_unk_150:		.block 1			; DATA XREF: sub_C996+9↓r
-								; sub_C996+35↓r	...
+var_tps_raw:			.block 1			; DATA XREF: factory_self_test+13↓r
+								; factory_self_test+217↓r ...
+var_tps_unk_150:		.block 1			; DATA XREF: update_tps_closed_ref+9↓r
+								; update_tps_closed_ref+35↓r	...
 				.block 1
 var_trac_tps_scaled:		.block 1			; DATA XREF: ROM:FD7A↓r
 								; ROM:FE39↓w ...
 				.block 1
-var_trac_tps_raw:	.block 1			; DATA XREF: sub_E115+C↓r
-								; sub_E115+23E↓r ...
+var_trac_tps_raw:	.block 1			; DATA XREF: factory_self_test+C↓r
+								; factory_self_test+23E↓r ...
 var_lambda_ign_corr:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EE5F↓w
 								; calc_4ms_corrections+52C↓r
 var_open_loop_ign_corr:			.block 1			; DATA XREF: divide_d_by_x+14A↓w
@@ -2261,13 +2261,13 @@ unk_1CA:			.block 1			; DATA XREF: sub_E454+3E↓w
 								; not established - left named unk_ deliberately
 								; per CLAUDE.md (rename only on confirmed
 								; understanding).
-var_adc_iscv_pos:		.block 1			; DATA XREF: sub_E115+204↓r
+var_adc_iscv_pos:		.block 1			; DATA XREF: factory_self_test+204↓r
 								; adc_handler_iscv_pos↓w
-var_adc_iscv_fb:		.block 1			; DATA XREF: sub_E115+1FE↓r
+var_adc_iscv_fb:		.block 1			; DATA XREF: factory_self_test+1FE↓r
 								; adc_handler_iscv_fb↓w
-var_adc_iscv_3:		.block 1			; DATA XREF: sub_E115+1F8↓r
+var_adc_iscv_3:		.block 1			; DATA XREF: factory_self_test+1F8↓r
 								; adc_handler_iscv_3↓w
-var_adc_iscv_4:		.block 1			; DATA XREF: sub_E115+1F2↓r
+var_adc_iscv_4:		.block 1			; DATA XREF: factory_self_test+1F2↓r
 								; adc_handler_iscv_4↓w
 ; Same address as var_flags_4E, readability alias for two confirmed
 ; short-lived instances of the same trick used for var_trim_state (see
@@ -2429,21 +2429,21 @@ dmatx_error_flags2:		.block 1
 dmatx_flags_46:			.block 1			; DATA XREF: copy_dma_tx+42↓w
 dmatx_flags_1:			.block 1			; DATA XREF: copy_dma_tx:loc_F992↓w
 dmatx_limiter_flags:		.block 1			; DATA XREF: copy_dma_tx+75↓w
-unk_223:			.block 1			; DATA XREF: sub_E115+3F↓w
-								; sub_E115:loc_E172↓w
-								; Scratch register local to sub_E115's
+unk_223:			.block 1			; DATA XREF: factory_self_test+3F↓w
+								; factory_self_test:loc_E172↓w
+								; Scratch register local to factory_self_test's
 								; factory self-test/RAM-test sequence -
 								; not traced further (that whole routine
 								; is out of scope for this pass).
-word_224:			.block 2			; DATA XREF: sub_E115+46↓w
-								; sub_E115:loc_E183↓w ...
+word_224:			.block 2			; DATA XREF: factory_self_test+46↓w
+								; factory_self_test:loc_E183↓w ...
 dmarx_word_226:			.block 2			; DATA XREF: divide_d_by_x+13FF↓r
 								; copy_dma_rx↓o
 dmarx_word_228:			.block 2			; DATA XREF: divide_d_by_x+1404↓r
 dmarx_word_22A:			.block 2			; DATA XREF: divide_d_by_x+141B↓r
 								; divide_d_by_x+144D↓r
 dmarx_scaled_ve:		.block 2			; DATA XREF: divide_d_by_x:loc_E4EB↓r
-dmarx_rpm_x_5p12:		.block 2			; DATA XREF: sub_E115+210↓r
+dmarx_rpm_x_5p12:		.block 2			; DATA XREF: factory_self_test+210↓r
 dmarx_warmup_enrich:	.block 1			; DATA XREF: divide_d_by_x+B42↓r
 								; divide_d_by_x+13D1↓r ...
 dmarx_fuel_trim_231:		.block 1			; DATA XREF: divide_d_by_x+B39↓r
@@ -2463,12 +2463,12 @@ dmarx_knock_retard_cpu2:	.block 1			; DATA XREF: ROM:F554↓r
 								; ROM:F5DD↓r ...
 dmarx_max_retard_23B_161:	.block 1			; DATA XREF: divide_d_by_x+1F45↓r
 dmarx_lambda_trim:		.block 1			; DATA XREF: calc_4ms_corrections+400↓r
-dmarx_ign_timing:		.block 1			; DATA XREF: sub_E865+BD↓r
-dmarx_ign_timing_fallback1:	.block 1			; DATA XREF: sub_E865+C3↓r
-dmarx_ign_timing_fallback2:	.block 1			; DATA XREF: sub_E865+5C↓r
-								; sub_E865+D3↓r
-dmarx_ign_timing_unk_166:	.block 1			; DATA XREF: sub_E865+56↓r
-								; sub_E865+D9↓r
+dmarx_ign_timing:		.block 1			; DATA XREF: update_ign_timing_blend+BD↓r
+dmarx_ign_timing_fallback1:	.block 1			; DATA XREF: update_ign_timing_blend+C3↓r
+dmarx_ign_timing_fallback2:	.block 1			; DATA XREF: update_ign_timing_blend+5C↓r
+								; update_ign_timing_blend+D3↓r
+dmarx_ign_timing_unk_166:	.block 1			; DATA XREF: update_ign_timing_blend+56↓r
+								; update_ign_timing_blend+D9↓r
 dmarx_unk_241_167:		.block 1			; DATA XREF: sub_E84F+8↓r
 								; = CPU2's dmatx_unk_167 (0xDA offset,
 								; still unresolved on both sides): CPU2
@@ -2496,13 +2496,13 @@ dmarx_status1_169:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EEC7↓r
 								; the exact bit-to-source mapping
 								; (var_flags_40.6/var_flags_47.2/.3,
 								; var_enrich_flags.5/.6, all inverted).
-damrx_unk_244:			.block 1			; DATA XREF: sub_E115+1EB↓r
+damrx_unk_244:			.block 1			; DATA XREF: factory_self_test+1EB↓r
 								; READ-ONLY in this file: read by loc_E2F3, with
 								; no bit- or byte-level write site found here -
 								; so it holds whatever clear_variables left (0)
 								; unless something writes it by a path this
 								; sweep missed.
-dmarx_status2_16B:		.block 1			; DATA XREF: sub_E115+1E4↓r
+dmarx_status2_16B:		.block 1			; DATA XREF: factory_self_test+1E4↓r
 								; = CPU2's dmatx_status2_16B (0xDA offset):
 								; same packed-snapshot pattern as
 								; dmarx_status1_169 above (var_input_bits.
@@ -2548,9 +2548,9 @@ nv_table_knock_info:		.block 3			; DATA XREF: divide_d_by_x:loc_C7DA↓o
 ; Segment type:	Pure code
 				;.segment ROM
 				.org 0C000h
-unk_C000:			.db  5Fh ; _			; DATA XREF: sub_E115+EE↓o
+unk_C000:			.db  5Fh ; _			; DATA XREF: factory_self_test+EE↓o
 								; ROM origin (0xC000) itself - 3 bytes of
-								; 0x5F, read by sub_E115's factory self-
+								; 0x5F, read by factory_self_test's factory self-
 								; test/RAM-test routine, likely a known-
 								; value signature/checksum-adjacent
 								; pattern rather than a RAM variable. Not
@@ -2686,7 +2686,7 @@ table_rpm_unk_C14D:		.db 60h, 80h			; DATA XREF: divide_d_by_x+5D6↓o
 				.db 06h
 
 
-table_pim_unk_C154:		.dw 0113h			; DATA XREF: sub_E865+A↓o
+table_pim_unk_C154:		.dw 0113h			; DATA XREF: update_ign_timing_blend+A↓o
 				.db 0Bh				; 12 entries
 				.db 00h
 				.db 07h
@@ -2702,7 +2702,7 @@ table_pim_unk_C154:		.dw 0113h			; DATA XREF: sub_E865+A↓o
 				.db 80h
 
 
-table_C163:			.dw 0100h			; DATA XREF: sub_E865+CB↓o
+table_C163:			.dw 0100h			; DATA XREF: update_ign_timing_blend+CB↓o
 				.db 01h				; 2 entries
 				.db 1Ah
 				.db 80h
@@ -3158,8 +3158,8 @@ nv_86_limits:			.db 0E6h, 1Ah			; DATA XREF: divide_d_by_x+ACC↓o
 				.db 0AEh, 52h
 
 
-nv_96_limits:			.db 80h, 00h			; DATA XREF: sub_D2C5+2↓o
-								; sub_D2C5+5↓t
+nv_96_limits:			.db 80h, 00h			; DATA XREF: validate_nv_trim_o2+2↓o
+								; validate_nv_trim_o2+5↓t
 inj_pw_limits:			.dw 7530h, 00AFh		; DATA XREF: divide_d_by_x:loc_E719↓o
 								; divide_d_by_x+2181↓t
 byte_C3BD:			.db 64h, 37h			; DATA XREF: adc_handler_pim+98↓o
@@ -3220,8 +3220,8 @@ clamp_rB:							; CODE XREF: divide_d_by_x+AD3↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clamp_rD:							; CODE XREF: sub_E865+42↓p
-								; sub_E865+88↓p
+clamp_rD:							; CODE XREF: update_ign_timing_blend+42↓p
+								; update_ign_timing_blend+88↓p
 								; DATA XREF: ...
 ; Clamp D (16-bit) against limits at Y[0..1] (min, max).
 ; On entry: Y = pointer to [min (1 byte), max (1 byte)]
@@ -3279,7 +3279,7 @@ locret_C3ED:							; CODE XREF: clamp_rD+8↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_ect
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 table_ect_pair_interpolate:					; CODE XREF: injector_warmup+19↓p
 								; async_throttle_inject+1E↓p ...
@@ -3293,7 +3293,7 @@ table_ect_pair_interpolate:					; CODE XREF: injector_warmup+19↓p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_rpm_x_5p12
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 table_rA_pair_interpolate:					; CODE XREF: divide_d_by_x+937↓p
 								; calc_iscv+11↓p ...
@@ -3309,7 +3309,7 @@ table_rA_pair_interpolate:					; CODE XREF: divide_d_by_x+937↓p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_rpm_x_5p12
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 table_rpm_pair_interpolate:					; CODE XREF: divide_d_by_x+92B↓p
 								; calc_4ms_corrections+19↓p	...
@@ -3322,7 +3322,7 @@ table_rpm_pair_interpolate:					; CODE XREF: divide_d_by_x+92B↓p
 
 
 table_pair_interpolate:						; CODE XREF: divide_d_by_x+85F↓p
-								; sub_E865+186↓p ...
+								; update_ign_timing_blend+186↓p ...
 ; 1D piecewise linear interpolation over a table of [x,y] byte pairs.
 ; On entry: Y = table pointer, D = input (A = x_in, B = 0)
 				mov	d, x			; Preserve D (x_in) in X
@@ -3462,7 +3462,7 @@ table_rD_fixed128_interpolate:					; CODE XREF: check_boost_limit+5↓p
 ; Attributes: noreturn
 
 table_rD_fixed64_interpolate:					; CODE XREF: divide_d_by_x+223F↓p
-								; sub_E865+D↓p
+								; update_ign_timing_blend+D↓p
 ; Pre-scale D: each shr halves the effective step size
 				shr	d			; D >>= 1 (64 D-units per step after this)
 
@@ -3501,11 +3501,11 @@ table_rD_fixed4_interpolate:
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
-; Writes: (no variable writes - register-only helper)
+; Reads: (none)
+; Writes: (none)
 ; Calls: table_rD_clamp
 ; ---------------------------------------------------------------------------
-table_rD_fixed2_interpolate:					; CODE XREF: sub_E865+CE↓p
+table_rD_fixed2_interpolate:					; CODE XREF: update_ign_timing_blend+CE↓p
 				shl	d			; D <<= 1 (fall through to table_rD_fixed_interpolate)
 
 table_rD_fixed_interpolate:					; CODE XREF: j_table_rD_fixed_interpolate↑j
@@ -3523,7 +3523,7 @@ table_rD_fixed_interpolate:					; CODE XREF: j_table_rD_fixed_interpolate↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_ect
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 table_ect_fixed4_interpolate:					; CODE XREF: calc_ect_unk_148+3↓p
 								; calc_iscv+1BC↓p
@@ -3548,7 +3548,7 @@ table_rB_fixed4_interpolate:					; CODE XREF: calc_ign_timing_min+71↓p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_ect
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 table_ect_fixed_32_interpolate:					; CODE XREF: divide_d_by_x+1E2B↓p
 								; divide_d_by_x+224B↓p ...
@@ -4018,7 +4018,7 @@ divide_rD_128_saturate:						; CODE XREF: divide_d_by_x+31E↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-divide_rD_64_saturate:						; CODE XREF: sub_C996+C↓p
+divide_rD_64_saturate:						; CODE XREF: update_tps_closed_ref+C↓p
 								; divide_d_by_x+20D4↓p ...
 				shr	d			; D >>= 1 (fall through)
 ; End of function divide_rD_64_saturate
@@ -4114,7 +4114,7 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 ; Despite the name, var_diag_errors_5.0 isn't knock-sensor-specific - it's
 ; reused as a generic "did we take the absolute value of D" remember-bit
 ; across unrelated computations (confirmed at ramp_limit_inj_pw's loc_DBB5,
-; sub_E865, and calc_iscv's threshold check - idle_control_system.md
+; update_ign_timing_blend, and calc_iscv's threshold check - idle_control_system.md
 ; previously flagged that calc_iscv site's purpose as "not fully
 ; confirmed"; this is the resolution). The pattern at each call site:
 ; compute a delta that may have underflowed (carry set), conditionally
@@ -4134,7 +4134,7 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 ;    var_diag_errors_5.0 - Set (see combined header above).
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_diag_errors_5
 ; ---------------------------------------------------------------------------
 set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
@@ -4155,7 +4155,7 @@ set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_diag_errors_5
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 check_knock_sensor_err_flag:					; CODE XREF: calc_iscv+F6↓p
 								; divide_d_by_x+1F85↓p ...
@@ -4243,8 +4243,8 @@ add_d_base_offset:							; CODE XREF: divide_d_by_x+1F4C↓p
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
-; Writes: (no variable writes - register-only helper)
+; Reads: (none)
+; Writes: (none)
 ; Calls: mult_rDrX
 ; ---------------------------------------------------------------------------
 mult_rDrX_saturate:							; CODE XREF: sub_E454+38↓p
@@ -4326,7 +4326,7 @@ loc_C534:							; CODE XREF: mult_rDrX+27↑j
 
 
 ; ---------------------------------------------------------------------------
-; scale_d_by_a_frac: guarded fixed-point scale, called only from sub_E865's
+; scale_d_by_a_frac: guarded fixed-point scale, called only from update_ign_timing_blend's
 ; ignition-timing blend.
 ;
 ; Acts as a sentinel check: A must hold exactly 0xF8 for the scaling path to
@@ -4343,12 +4343,12 @@ loc_C534:							; CODE XREF: mult_rDrX+27↑j
 ;    D - X shifted left 4 (and further processed below) on the 0xF8 path;
 ;        otherwise the constant 0x7FFF.
 ;
-; NOT fully traced: the tail past the shifts, which is part of the sub_E865
+; NOT fully traced: the tail past the shifts, which is part of the update_ign_timing_blend
 ; middle-blend arithmetic still flagged as unconfirmed in that function's
 ; own header.
 ; ---------------------------------------------------------------------------
 
-scale_d_by_a_frac:							; CODE XREF: sub_E865+19A↓p
+scale_d_by_a_frac:							; CODE XREF: update_ign_timing_blend+19A↓p
 				mov	x, d
 				cmpb	a, #0F8h
 				beq	loc_C542
@@ -4385,8 +4385,8 @@ loc_C542:							; CODE XREF: scale_d_by_a_frac+3↑j
 ; Result is the product shifted right 8 (i.e. only the upper word is kept).
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
-; Writes: (no variable writes - register-only helper)
+; Reads: (none)
+; Writes: (none)
 ; Calls: mult_rBrX
 ; ---------------------------------------------------------------------------
 mult_rBrX2:							; CODE XREF: divide_d_by_x+E86↓p
@@ -4454,8 +4454,8 @@ mult_rArX:							; CODE XREF: signed_proportional_update+E↓p
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
-; Writes: (no variable writes - register-only helper)
+; Reads: (none)
+; Writes: (none)
 ; Calls: mult_rArX
 ; ---------------------------------------------------------------------------
 signed_proportional_update:							; CODE XREF: divide_d_by_x+204F↓p
@@ -5260,7 +5260,7 @@ loc_C8B7:							; CODE XREF: divide_d_by_x+317↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: divide_rD_64, var_ne_sum3
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: table_advance_y_to_entry
 ; ---------------------------------------------------------------------------
 calc_rpm:							; CODE XREF: divide_d_by_x+31A↑p
@@ -5493,7 +5493,22 @@ loc_C994:							; CODE XREF: divide_d_by_x+3F3↑j
 ; Reads: var_io_input1, var_tps_unk_150
 ; Writes: var_4ms_cnt_B1, var_flags_40, var_flags_47, var_tps_closed_ref
 ; ---------------------------------------------------------------------------
-sub_C996:							; CODE XREF: ROM:FE09↓p
+; update_tps_closed_ref (was sub_C996): maintain var_tps_closed_ref, the
+; slew-limited "throttle has settled closed" reference.
+;
+;     new = old + (var_tps_unk_150/64 - old)/2
+;
+; an IIR low-pass halving the error each call, clamped to a 0x10 maximum.
+; Runs only while the throttle is closed (var_io_input1.1/IDL) and only once
+; per closed episode (var_flags_47.4 latches it); adc_handler_tps_high
+; force-resets the reference to 0x10 the moment the throttle opens.
+;
+; The tail at loc_C9BF derives a settling threshold, max(ref/2, 4)/4, and
+; compares it against var_tps_unk_150 - which tightens as the reference
+; converges downward. That is what makes var_flags_40.4's debounce require a
+; steady reading rather than a single dip.
+; ---------------------------------------------------------------------------
+update_tps_closed_ref:							; CODE XREF: ROM:FE09↓p
 				tbbc	bit1, var_io_input1, loc_C9BD ;	Jump if	throttle opened	(IDL low)
 
 				tbbs	bit4, var_flags_47, loc_C9BF
@@ -5511,7 +5526,7 @@ sub_C996:							; CODE XREF: ROM:FE09↓p
 				inc	b
 				dec	a
 
-loc_C9AE:							; CODE XREF: sub_C996+14↑j
+loc_C9AE:							; CODE XREF: update_tps_closed_ref+14↑j
 				rorc	a
 				shra	a
 				add	a, b
@@ -5520,19 +5535,19 @@ loc_C9AE:							; CODE XREF: sub_C996+14↑j
 
 				ld	a, #10h
 
-loc_C9B7:							; CODE XREF: sub_C996+1D↑j
+loc_C9B7:							; CODE XREF: update_tps_closed_ref+1D↑j
 				st	a, var_tps_closed_ref
 
-loc_C9BA:							; CODE XREF: sub_C996+6↑j
+loc_C9BA:							; CODE XREF: update_tps_closed_ref+6↑j
 				setb	bit4, var_flags_47
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_C9BD:							; CODE XREF: sub_C996↑j
+loc_C9BD:							; CODE XREF: update_tps_closed_ref↑j
 				clrb	bit4, var_flags_47
 
-loc_C9BF:							; CODE XREF: sub_C996+3↑j
+loc_C9BF:							; CODE XREF: update_tps_closed_ref+3↑j
 				ld	b, var_tps_closed_ref
 				shr	b
 				cmp	b, #04h
@@ -5540,7 +5555,7 @@ loc_C9BF:							; CODE XREF: sub_C996+3↑j
 
 				ld	b, #04h
 
-loc_C9C9:							; CODE XREF: sub_C996+2F↑j
+loc_C9C9:							; CODE XREF: update_tps_closed_ref+2F↑j
 				shr	b
 				shr	b
 				cmp	b, var_tps_unk_150
@@ -5554,13 +5569,13 @@ loc_C9C9:							; CODE XREF: sub_C996+2F↑j
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_C9D7:							; CODE XREF: sub_C996+38↑j
+loc_C9D7:							; CODE XREF: update_tps_closed_ref+38↑j
 				clrb	bit4, var_flags_40
 
-locret_C9D9:							; CODE XREF: sub_C996+3C↑j
+locret_C9D9:							; CODE XREF: update_tps_closed_ref+3C↑j
 				ret
 
-; End of function sub_C996
+; End of function update_tps_closed_ref
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -5581,7 +5596,7 @@ locret_C9D9:							; CODE XREF: sub_C996+3C↑j
 ;     condition or bit reuse).
 ;
 ;     Then calls sub_E454 (fuel enrichment scaling), calc_dmatx_pim, loc_FC38
-;     and sub_D2C5 (NV trim validation, see below) - only sub_D2C5 has
+;     and validate_nv_trim_o2 (NV trim validation, see below) - only validate_nv_trim_o2 has
 ;     been deep-dived.
 ;  2) (CA3D-CAE2) Overrun/deceleration fuel-cut decision feeding
 ;     injector_warmup - see the header comment on injector_warmup itself.
@@ -5667,7 +5682,7 @@ loc_CA1B:							; CODE XREF: divide_d_by_x:loc_C9FF↑j
 
 				jsr	loc_FC38
 
-				jsr	sub_D2C5
+				jsr	validate_nv_trim_o2
 
 				ld	a, var_flags_4E_copy_2
 				st	a, var_flags_4E
@@ -5847,7 +5862,7 @@ loc_CAFE:							; CODE XREF: divide_d_by_x+55B↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_lambda_state
 ; ---------------------------------------------------------------------------
 sub_CB00:							; CODE XREF: divide_d_by_x+C59↓p
@@ -6256,7 +6271,7 @@ loc_CC91:							; CODE XREF: divide_d_by_x+6AC↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_limiter_flags, var_rev_limit_rpm
 ; ---------------------------------------------------------------------------
 reset_rev_limiter:						; CODE XREF: divide_d_by_x:loc_CBF2↑p
@@ -6566,7 +6581,7 @@ main_CD66:							; CODE XREF: divide_d_by_x:loc_CD33↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_flags_44, var_flags_46, var_limiter_flags, var_rpm_div_25
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: injectors_batch_update, table_ect_pair_interpolate,
 ;    table_rB_fixed_32_interpolate
 ; ---------------------------------------------------------------------------
@@ -6713,7 +6728,7 @@ inj_overrun_end_2:					; CODE XREF: divide_d_by_x+536↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_rpm_delta
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: injectors_batch_update
 ; ---------------------------------------------------------------------------
 inj_overrun_end:						; CODE XREF: divide_d_by_x+55D↑p
@@ -6810,7 +6825,7 @@ loc_CE27:							; CODE XREF: divide_d_by_x+884↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_cnt_D4, var_fuel_enrich_rpm
 ; ---------------------------------------------------------------------------
 sub_CE29:							; CODE XREF: iv6_ne_process+370↓p
@@ -6841,7 +6856,24 @@ locret_CE3B:							; CODE XREF: sub_CE29+3↑j
 ; Writes: var_flags_44, var_flags_4D, var_tps_delta_prev,
 ;    var_tps_delta_rate
 ; ---------------------------------------------------------------------------
-sub_CE3C:							; CODE XREF: ROM:FE0C↓p
+; update_tps_delta_rate (was sub_CE3C): differentiate throttle position a
+; second time and set the two "throttle closing" flags.
+;
+; Keeps the previous var_tps_delta in var_tps_delta_prev and subtracts to get
+; var_tps_delta_rate (the second derivative - throttle jerk), saturating to
+; 0x7F/0x80 on signed overflow. Then sets two flags from the two
+; derivatives, both in the CLOSING direction, each with hysteresis:
+;
+;   var_flags_44.2  from var_tps_delta      - "closing fast"
+;                   set < 0xF0 (-16), cleared >= 0xF4 (-12)
+;   var_flags_4D.2  from var_tps_delta_rate - "closing ever faster"
+;                   set < 0xF4 (-12), cleared >= 0xF8 (-8)
+;
+; The pair is NOT an accel/decel pair - an earlier comment on var_flags_4D.2
+; claimed that and was wrong. Both are deceleration-side; they differ in
+; derivative order.
+; ---------------------------------------------------------------------------
+update_tps_delta_rate:							; CODE XREF: ROM:FE0C↓p
 				ld	a, var_tps_delta
 				cmp	a, #0F0h
 				blta	loc_CE49
@@ -6854,10 +6886,10 @@ sub_CE3C:							; CODE XREF: ROM:FE0C↓p
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_CE49:							; CODE XREF: sub_CE3C+4↑j
+loc_CE49:							; CODE XREF: update_tps_delta_rate+4↑j
 				setb	bit2, var_flags_44
 
-loc_CE4B:							; CODE XREF: sub_CE3C+8↑j
+loc_CE4B:							; CODE XREF: update_tps_delta_rate+8↑j
 				mov	a, b
 				sub	a, var_tps_delta_prev
 				bvc	loc_CE58
@@ -6869,10 +6901,10 @@ loc_CE4B:							; CODE XREF: sub_CE3C+8↑j
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_CE56:							; CODE XREF: sub_CE3C+15↑j
+loc_CE56:							; CODE XREF: update_tps_delta_rate+15↑j
 				ld	a, #7Fh
 
-loc_CE58:							; CODE XREF: sub_CE3C+13↑j
+loc_CE58:							; CODE XREF: update_tps_delta_rate+13↑j
 				st	a, var_tps_delta_rate
 				st	b, var_tps_delta_prev
 				cmp	a, #0F4h
@@ -6886,13 +6918,13 @@ loc_CE58:							; CODE XREF: sub_CE3C+13↑j
 				.db  8Ch ; î
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_CE69:							; CODE XREF: sub_CE3C+24↑j
+loc_CE69:							; CODE XREF: update_tps_delta_rate+24↑j
 				setb	bit2, var_flags_4D
 
-locret_CE6B:							; CODE XREF: sub_CE3C+28↑j
+locret_CE6B:							; CODE XREF: update_tps_delta_rate+28↑j
 				ret
 
-; End of function sub_CE3C
+; End of function update_tps_delta_rate
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -7543,7 +7575,7 @@ loc_D17F:							; CODE XREF: divide_d_by_x:loc_D174↑j
 ; Compute rolling lambda average: var_lambda_avg = (old + new) / 2
 ; Sets var_flags_4F.1, increments trim stability counters
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_flags_4F, var_lambda_avg, var_lambda_byte
 ; Calls: increment_counters
 ; ---------------------------------------------------------------------------
@@ -7612,7 +7644,7 @@ write_rB_nv_ram:						; CODE XREF: divide_d_by_x+B8A↑p
 ; Otherwise: interpolate from NV trim table using PIM/boost zone index
 ; ---------------------------------------------------------------------------
 ; Reads: var_flags_42, var_flags_46, var_pim2
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: interp_y_pair, table_rD_clamp
 ; ---------------------------------------------------------------------------
 read_nv_afr_trim:							; CODE XREF: sub_E454+28↓p
@@ -7694,7 +7726,7 @@ locret_D1DC:							; CODE XREF: read_nv_afr_trim+2↑j
 ;     var_trim_state == 4. Accumulates O2 sensor polarity into
 ;     var_o2_vote_accum over 17 samples (var_o2_vote_cnt), then nudges
 ;     var_nv_trim_unk_96 by +/-1 based on a majority-style threshold
-;     (0x7C/0x84). Persisted/validated by sub_D2C5 (clamps against
+;     (0x7C/0x84). Persisted/validated by validate_nv_trim_o2 (clamps against
 ;     nv_96_limits, wipes all NV RAM via clear_nv_ram if out of range - same
 ;     defensive pattern as the AFR trim validation in chunk CE6C).
 ;     Not renamed - the precise distinction from the zone-based AFR trim
@@ -7885,10 +7917,17 @@ loc_D2BC:							; CODE XREF: divide_d_by_x+CA6↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_nv_trim_unk_96
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: clear_nv_ram
 ; ---------------------------------------------------------------------------
-sub_D2C5:							; CODE XREF: divide_d_by_x+494↑p
+; validate_nv_trim_o2 (was sub_D2C5): startup sanity check on the O2-learned
+; NV trim. Clamps var_nv_trim_unk_96 against nv_96_limits and, if it was out
+; of range, wipes ALL of NV RAM via clear_nv_ram - the same defensive pattern
+; the AFR-trim table gets. One corrupted learned byte therefore costs every
+; adaptation: a deliberate trade, better to relearn from defaults than to
+; fuel from a value that failed its own bounds check.
+; ---------------------------------------------------------------------------
+validate_nv_trim_o2:							; CODE XREF: divide_d_by_x+494↑p
 				ld	b, var_nv_trim_unk_96
 				ld	y, #nv_96_limits
 				jsr	y + (clamp_rB -	nv_96_limits)
@@ -7898,10 +7937,10 @@ sub_D2C5:							; CODE XREF: divide_d_by_x+494↑p
 				jsr	clear_nv_ram
 
 
-locret_D2D1:							; CODE XREF: sub_D2C5+7↑j
+locret_D2D1:							; CODE XREF: validate_nv_trim_o2+7↑j
 				ret
 
-; End of function sub_D2C5
+; End of function validate_nv_trim_o2
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -7910,7 +7949,7 @@ loc_D2D2:							; CODE XREF: divide_d_by_x+C75↑j
 								; divide_d_by_x+CEB↑j ...
 				jsr	calc_4ms_corrections
 
-				jsr	sub_E865
+				jsr	update_ign_timing_blend
 
 				ld	a, var_flags_4E_copy2
 				st	a, var_flags_4E
@@ -8058,7 +8097,7 @@ loc_D374:							; CODE XREF: divide_d_by_x+DD1↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_iscv_ect_unk_191
 ; Calls: table_ect_pair_interpolate
 ; ---------------------------------------------------------------------------
@@ -8361,7 +8400,7 @@ loc_D483:							; CODE XREF: divide_d_by_x+EE0↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_adc_battery
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: table_rB_fixed_32_interpolate
 ; ---------------------------------------------------------------------------
 calc_idle_batt1:						; CODE XREF: divide_d_by_x+E59↑p
@@ -8382,7 +8421,7 @@ calc_idle_batt1:						; CODE XREF: divide_d_by_x+E59↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_adc_battery
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: table_rB_fixed_32_interpolate
 ; ---------------------------------------------------------------------------
 calc_idle_batt2:						; CODE XREF: divide_d_by_x+E64↑p
@@ -8403,7 +8442,7 @@ calc_idle_batt2:						; CODE XREF: divide_d_by_x+E64↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_ect_unk_194
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 sub_D4A1:							; CODE XREF: divide_d_by_x+ED7↑p
 								; divide_d_by_x:loc_D47D↑p
@@ -8446,7 +8485,7 @@ loc_D4B9:							; CODE XREF: sub_D4A1+2↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_ect_unk_194
 ; Calls: table_ect_pair_interpolate
 ; ---------------------------------------------------------------------------
@@ -8846,7 +8885,7 @@ loc_D602:							; CODE XREF: calc_iscv+135↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_flags_4F
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 inc_rX_if:							; CODE XREF: calc_iscv:loc_D576↑p
 								; calc_iscv+D8↑p ...
@@ -10164,7 +10203,7 @@ locret_DB74:							; CODE XREF: ROM:DABC↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_trim_state_alias
 ; ---------------------------------------------------------------------------
 sub_DB75:							; CODE XREF: ROM:DB37↑p
@@ -10176,7 +10215,7 @@ sub_DB75:							; CODE XREF: ROM:DB37↑p
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_trim_state_alias
 ; ---------------------------------------------------------------------------
 sub_DB77:							; CODE XREF: ROM:DAB7↑p
@@ -10200,7 +10239,7 @@ sub_DB77:							; CODE XREF: ROM:DAB7↑p
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: unk_1C2, unk_1C4, var_inj_pw_base, var_trim_state_alias
 ; ---------------------------------------------------------------------------
 reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
@@ -10234,7 +10273,7 @@ reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_pw_loop_mode
 ; ---------------------------------------------------------------------------
 init_pw_open_loop:							; CODE XREF: divide_d_by_x:loc_D986↑p
@@ -10249,7 +10288,7 @@ init_pw_open_loop:							; CODE XREF: divide_d_by_x:loc_D986↑p
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: unk_1C0, unk_1C6, var_pw_loop_mode
 ; ---------------------------------------------------------------------------
 init_pw_closed_loop:							; CODE XREF: divide_d_by_x+13E6↑p
@@ -11052,7 +11091,7 @@ loc_DE58:							; CODE XREF: ROM:DE32↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: unk_187, var_flags_4F
 ; ---------------------------------------------------------------------------
 sub_DE5A:							; CODE XREF: divide_d_by_x+A38↑p
@@ -11080,7 +11119,7 @@ loc_DE6B:							; CODE XREF: sub_DE5A+8↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: unk_187
 ; ---------------------------------------------------------------------------
 sub_DE71:							; CODE XREF: divide_d_by_x+C5F↑p
@@ -11334,7 +11373,7 @@ loc_DF9B:							; CODE XREF: ROM:DF96↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_diag_errors_4
 ; ---------------------------------------------------------------------------
 copy_diag_errors_3_to_4:					; CODE XREF: divide_d_by_x+196↑p
@@ -11350,7 +11389,7 @@ copy_diag_errors_3_to_4:					; CODE XREF: divide_d_by_x+196↑p
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_diag_errors_4
 ; Calls: write_rB_nv_ram
 ; ---------------------------------------------------------------------------
@@ -11613,7 +11652,7 @@ loc_E0A1:							; CODE XREF: ROM:E09C↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: check_diag_flags
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 check_diag_flags:						; CODE XREF: ROM:DFBE↑p
 								; ROM:DFF6↑p ...
@@ -11748,7 +11787,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 
 
 ; ---------------------------------------------------------------------------
-; sub_E115: factory / end-of-line self-test mode (~148 instructions plus a
+; factory_self_test: factory / end-of-line self-test mode (~148 instructions plus a
 ; chunk at E2B5). Called once per pass from divide_d_by_x's dispatch.
 ;
 ; Entry is heavily gated and normally fails immediately: it requires
@@ -11787,7 +11826,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ; Calls: sub_E254, watchdog_kick
 ; ---------------------------------------------------------------------------
 
-sub_E115:							; CODE XREF: divide_d_by_x+1E08↓p
+factory_self_test:							; CODE XREF: divide_d_by_x+1E08↓p
 
 ; FUNCTION CHUNK AT E2B5 SIZE 000000AE BYTES
 
@@ -11819,22 +11858,22 @@ sub_E115:							; CODE XREF: divide_d_by_x+1E08↓p
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E13D:							; CODE XREF: sub_E115↑j
+loc_E13D:							; CODE XREF: factory_self_test↑j
 				clrb	bit0, var_flags_40
 
-loc_E13F:							; CODE XREF: sub_E115+3↑j
-								; sub_E115+6↑j ...
+loc_E13F:							; CODE XREF: factory_self_test+3↑j
+								; factory_self_test+6↑j ...
 				jmp	loc_E2B5
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E142:							; CODE XREF: sub_E115+23↑j
+loc_E142:							; CODE XREF: factory_self_test+23↑j
 				clr	a
 				ld	b, #04h
 				st	d, IMASK		; Interrupt Request Mask MSB
 				clr	DOM			; DOUT Control Register
 
-loc_E149:							; CODE XREF: sub_E115+86↓j
+loc_E149:							; CODE XREF: factory_self_test+86↓j
 				tbbs	bit7, var_io_input1, loc_E166 ;	Jump if	ELS high
 
 				tbbs	bit4, var_io_input1, loc_E152 ;	Jump if	STP high
@@ -11843,7 +11882,7 @@ loc_E149:							; CODE XREF: sub_E115+86↓j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E152:							; CODE XREF: sub_E115+37↑j
+loc_E152:							; CODE XREF: factory_self_test+37↑j
 				ld	a, #0Ah
 				st	a, unk_223
 				ld	b, #15h
@@ -11855,18 +11894,18 @@ loc_E152:							; CODE XREF: sub_E115+37↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E166:							; CODE XREF: sub_E115:loc_E149↑j
+loc_E166:							; CODE XREF: factory_self_test:loc_E149↑j
 				ld	a, #15h
 				tbbc	bit5, PORTD_ASRIN, loc_E16D ; Port D Data Register / ASR Input Data
 
 				xor	a, #01h
 
-loc_E16D:							; CODE XREF: sub_E115+53↑j
+loc_E16D:							; CODE XREF: factory_self_test+53↑j
 				tbbs	bit7, PORTB, loc_E172	; Port B Data Register
 
 				xor	a, #04h
 
-loc_E172:							; CODE XREF: sub_E115:loc_E16D↑j
+loc_E172:							; CODE XREF: factory_self_test:loc_E16D↑j
 				st	a, unk_223
 				ld	a, #0Ah
 				or	a, #0A0h
@@ -11874,20 +11913,20 @@ loc_E172:							; CODE XREF: sub_E115:loc_E16D↑j
 
 				xor	a, #04h
 
-loc_E17E:							; CODE XREF: sub_E115+64↑j
+loc_E17E:							; CODE XREF: factory_self_test+64↑j
 				tbbc	bit0, var_io_input2, loc_E183
 
 				xor	a, #08h
 
-loc_E183:							; CODE XREF: sub_E115:loc_E17E↑j
+loc_E183:							; CODE XREF: factory_self_test:loc_E17E↑j
 				st	a, word_224
 				ld	#02h, PORTD_ASRIN	; Port D Data Register / ASR Input Data
 				ld	#0Eh, DOUT		; DOUT Data Register
 
-loc_E18C:							; CODE XREF: sub_E115+4F↑j
+loc_E18C:							; CODE XREF: factory_self_test+4F↑j
 				ld	x, #0F9C8h
 
-loc_E18F:							; CODE XREF: sub_E115+7B↓j
+loc_E18F:							; CODE XREF: factory_self_test+7B↓j
 				inc	x
 				bne	loc_E18F
 
@@ -11895,7 +11934,7 @@ loc_E18F:							; CODE XREF: sub_E115+7B↓j
 
 				ld	x, #0F9C0h
 
-loc_E198:							; CODE XREF: sub_E115+84↓j
+loc_E198:							; CODE XREF: factory_self_test+84↓j
 				inc	x
 				bne	loc_E198
 
@@ -11903,7 +11942,7 @@ loc_E198:							; CODE XREF: sub_E115+84↓j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E19D:							; CODE XREF: sub_E115+3A↑j
+loc_E19D:							; CODE XREF: factory_self_test+3A↑j
 				di
 				clr	a
 				clr	b
@@ -11912,7 +11951,7 @@ loc_E19D:							; CODE XREF: sub_E115+3A↑j
 				st	a, word_224
 				ld	x, #0F9C8h		; Delay	loop
 
-loc_E1AA:							; CODE XREF: sub_E115+96↓j
+loc_E1AA:							; CODE XREF: factory_self_test+96↓j
 				inc	x
 				bne	loc_E1AA
 
@@ -11920,7 +11959,7 @@ loc_E1AA:							; CODE XREF: sub_E115+96↓j
 
 				ld	x, #0F9C0h		; Delay	loop
 
-loc_E1B3:							; CODE XREF: sub_E115+9F↓j
+loc_E1B3:							; CODE XREF: factory_self_test+9F↓j
 				inc	x
 				bne	loc_E1B3
 
@@ -11928,7 +11967,7 @@ loc_E1B3:							; CODE XREF: sub_E115+9F↓j
 
 				ld	x, #0F9C0h		; Delay	loop
 
-loc_E1BC:							; CODE XREF: sub_E115+A8↓j
+loc_E1BC:							; CODE XREF: factory_self_test+A8↓j
 				inc	x
 				bne	loc_E1BC
 
@@ -11940,7 +11979,7 @@ loc_E1BC:							; CODE XREF: sub_E115+A8↓j
 				setb	bit2, DOUT
 				ld	b, #2Fh			; Delay	loop
 
-loc_E1CF:							; CODE XREF: sub_E115+BB↓j
+loc_E1CF:							; CODE XREF: factory_self_test+BB↓j
 				dec	b
 				bne	loc_E1CF
 
@@ -11953,23 +11992,23 @@ loc_E1CF:							; CODE XREF: sub_E115+BB↓j
 				tbbs	bit3, PORTB, loc_E1E1	; Port B Data Register
 
 
-loc_E1DF:							; CODE XREF: sub_E115+C1↑j
-								; sub_E115+C4↑j
+loc_E1DF:							; CODE XREF: factory_self_test+C1↑j
+								; factory_self_test+C4↑j
 				bra	loc_E230
 
 ; ───────────────────────────────────────────────────────────────────────────
 ;Start of RAM test, writes to all of RAM (0x40-0x300) with values 0 to 255.
 
-loc_E1E1:							; CODE XREF: sub_E115+C7↑j
-								; sub_E115+13C↓j
+loc_E1E1:							; CODE XREF: factory_self_test+C7↑j
+								; factory_self_test+13C↓j
 				clrb	bit1, PORTD_ASRIN	; Turn on MIL
 				clr	a			; Clear	RAM value counter
 
-loc_E1E4:							; CODE XREF: sub_E115+EC↓j
+loc_E1E4:							; CODE XREF: factory_self_test+EC↓j
 				mov	a, b			; Copy test value into b for checking later
 				ld	y, #var_flags_40		; Get address of start of RAM
 
-loc_E1E8:							; CODE XREF: sub_E115+D8↓j
+loc_E1E8:							; CODE XREF: factory_self_test+D8↓j
 				st	a, [y]			; Write	test value to RAM & increment y
 				inc	a			; Increment test value
 				cmp	y, #var_nv_tps		; Check	if reached end of RAM
@@ -11977,7 +12016,7 @@ loc_E1E8:							; CODE XREF: sub_E115+D8↓j
 
 				ld	y, #var_flags_40		; Get address of start of RAM again
 
-loc_E1F2:							; CODE XREF: sub_E115+E5↓j
+loc_E1F2:							; CODE XREF: factory_self_test+E5↓j
 				ld	a, [y]			; Read value from RAM &	increment y
 				cmp	a, b			; Check	value read matches test	value
 				bne	loc_E22F		; Jump out of RAM test if failure
@@ -11998,10 +12037,10 @@ loc_E1F2:							; CODE XREF: sub_E115+E5↓j
 				clr	a			; Clear	16 bit checksum
 				clr	b
 
-loc_E208:							; CODE XREF: sub_E115+103↓j
+loc_E208:							; CODE XREF: factory_self_test+103↓j
 				ld	y, #unk_100		; Checksum 256 words of	ROM
 
-loc_E20B:							; CODE XREF: sub_E115+FB↓j
+loc_E20B:							; CODE XREF: factory_self_test+FB↓j
 				add	d, x + 00h		; Add ROM 16 bit word to checksum
 				inc	x			; Increment address
 				inc	x			; Increment address
@@ -12029,18 +12068,18 @@ loc_E20B:							; CODE XREF: sub_E115+FB↓j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E22F:							; CODE XREF: sub_E115+DF↑j
-								; sub_E115+108↑j
+loc_E22F:							; CODE XREF: factory_self_test+DF↑j
+								; factory_self_test+108↑j
 				clr	b
 
-loc_E230:							; CODE XREF: sub_E115:loc_E1DF↑j
-								; sub_E115+10A↑j ...
+loc_E230:							; CODE XREF: factory_self_test:loc_E1DF↑j
+								; factory_self_test+10A↑j ...
 				tbs	bit1, PORTD_ASRIN	; Check	if MIL is on
 				beq	loc_E236		; Jump forward if so
 
 				clrb	bit1, PORTD_ASRIN	; Turn on MIL
 
-loc_E236:							; CODE XREF: sub_E115+11D↑j
+loc_E236:							; CODE XREF: factory_self_test+11D↑j
 				ld	a, #7Dh
 				cmpz	b
 				beq	loc_E242
@@ -12050,14 +12089,14 @@ loc_E236:							; CODE XREF: sub_E115+11D↑j
 
 				ld	a, #5Eh
 
-loc_E241:							; CODE XREF: sub_E115+128↑j
+loc_E241:							; CODE XREF: factory_self_test+128↑j
 				shl	a
 
-loc_E242:							; CODE XREF: sub_E115+118↑j
-								; sub_E115+124↑j ...
+loc_E242:							; CODE XREF: factory_self_test+118↑j
+								; factory_self_test+124↑j ...
 				ld	x, #0F7B5h
 
-loc_E245:							; CODE XREF: sub_E115+131↓j
+loc_E245:							; CODE XREF: factory_self_test+131↓j
 				inc	x
 				bne	loc_E245
 
@@ -12071,7 +12110,7 @@ loc_E245:							; CODE XREF: sub_E115+131↓j
 
 				jmp	loc_E1E1
 
-; End of function sub_E115
+; End of function factory_self_test
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -12082,8 +12121,8 @@ loc_E245:							; CODE XREF: sub_E115+131↓j
 ; Writes: PORTA
 ; Calls: check_io_inputs, start_dma
 ; ---------------------------------------------------------------------------
-sub_E254:							; CODE XREF: sub_E115+7D↑p
-								; sub_E115+98↑p
+sub_E254:							; CODE XREF: factory_self_test+7D↑p
+								; factory_self_test+98↑p
 				push	d
 				tbs	bit0, PORTA		; Port A Data Register
 				beq	loc_E25B
@@ -12116,8 +12155,8 @@ loc_E25B:							; CODE XREF: sub_E254+3↑j
 ; Reads: stack_top
 ; Writes: DOUT, IRQL, PORTA, PORTB, PORTD_ASRIN, var_flags_40
 ; ---------------------------------------------------------------------------
-watchdog_kick:							; CODE XREF: sub_E115+A1↑p
-								; sub_E115+E7↑p	...
+watchdog_kick:							; CODE XREF: factory_self_test+A1↑p
+								; factory_self_test+E7↑p	...
 				tbs	bit0, PORTA		; Port A Data Register
 				beq	loc_E275
 
@@ -12177,16 +12216,16 @@ loc_E29B:							; CODE XREF: watchdog_kick+30↓j
 ; End of function watchdog_kick
 
 ; ───────────────────────────────────────────────────────────────────────────
-; START	OF FUNCTION CHUNK FOR sub_E115
+; START	OF FUNCTION CHUNK FOR factory_self_test
 
-loc_E2B5:							; CODE XREF: sub_E115:loc_E13F↑j
+loc_E2B5:							; CODE XREF: factory_self_test:loc_E13F↑j
 				tbbs	bit0, var_flags_40, loc_E2BB
 
 				jmp	locret_E362
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E2BB:							; CODE XREF: sub_E115:loc_E2B5↑j
+loc_E2BB:							; CODE XREF: factory_self_test:loc_E2B5↑j
 				ld	a, #09h
 				or	a, #0E0h
 				st	a, word_224
@@ -12197,50 +12236,50 @@ loc_E2BB:							; CODE XREF: sub_E115:loc_E2B5↑j
 
 				or	a, #01h
 
-loc_E2CB:							; CODE XREF: sub_E115+1B1↑j
+loc_E2CB:							; CODE XREF: factory_self_test+1B1↑j
 				tbbc	bit7, var_io_input2, loc_E2D0
 
 				or	a, #02h
 
-loc_E2D0:							; CODE XREF: sub_E115:loc_E2CB↑j
+loc_E2D0:							; CODE XREF: factory_self_test:loc_E2CB↑j
 				tbbc	bit3, var_io_input2, loc_E2D5
 
 				or	a, #04h
 
-loc_E2D5:							; CODE XREF: sub_E115:loc_E2D0↑j
+loc_E2D5:							; CODE XREF: factory_self_test:loc_E2D0↑j
 				tbbc	bit2, var_io_input2, loc_E2DA
 
 				or	a, #08h
 
-loc_E2DA:							; CODE XREF: sub_E115:loc_E2D5↑j
+loc_E2DA:							; CODE XREF: factory_self_test:loc_E2D5↑j
 				bra	loc_E2F3
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E2DC:							; CODE XREF: sub_E115+1AE↑j
+loc_E2DC:							; CODE XREF: factory_self_test+1AE↑j
 				tbbc	bit4, var_io_input2, loc_E2E1
 
 				or	a, #01h
 
-loc_E2E1:							; CODE XREF: sub_E115:loc_E2DC↑j
+loc_E2E1:							; CODE XREF: factory_self_test:loc_E2DC↑j
 				tbbc	bit5, var_io_input2, loc_E2E6
 
 				or	a, #02h
 
-loc_E2E6:							; CODE XREF: sub_E115:loc_E2E1↑j
+loc_E2E6:							; CODE XREF: factory_self_test:loc_E2E1↑j
 				tbbc	bit2, var_io_input1, loc_E2EB
 
 				or	a, #04h
 
-loc_E2EB:							; CODE XREF: sub_E115:loc_E2E6↑j
+loc_E2EB:							; CODE XREF: factory_self_test:loc_E2E6↑j
 				ld	b, SMRC_SIR		; Serial Master	Register Control
 				cmpb	b, #02h
 				beq	loc_E2F3
 
 				or	a, #08h
 
-loc_E2F3:							; CODE XREF: sub_E115:loc_E2DA↑j
-								; sub_E115+1DA↑j
+loc_E2F3:							; CODE XREF: factory_self_test:loc_E2DA↑j
+								; factory_self_test+1DA↑j
 				ld	b, var_ect
 				cmp	b, #18h
 				bcs	loc_E358
@@ -12264,8 +12303,8 @@ loc_E2F3:							; CODE XREF: sub_E115:loc_E2DA↑j
 
 				ld	a, var_adc_iscv_pos
 
-loc_E31C:							; CODE XREF: sub_E115+1F5↑j
-								; sub_E115+1FB↑j ...
+loc_E31C:							; CODE XREF: factory_self_test+1F5↑j
+								; factory_self_test+1FB↑j ...
 				cmp	b, #6Bh
 				bcs	loc_E35D
 
@@ -12274,7 +12313,7 @@ loc_E31C:							; CODE XREF: sub_E115+1F5↑j
 
 				ld	a, dmarx_rpm_x_5p12
 
-loc_E328:							; CODE XREF: sub_E115+20D↑j
+loc_E328:							; CODE XREF: factory_self_test+20D↑j
 				cmp	b, #92h
 				bcs	loc_E35D
 
@@ -12307,23 +12346,23 @@ loc_E328:							; CODE XREF: sub_E115+20D↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E358:							; CODE XREF: sub_E115+1E2↑j
+loc_E358:							; CODE XREF: factory_self_test+1E2↑j
 				add	a, #08h
 
-loc_E35A:							; CODE XREF: sub_E115+1F0↑j
+loc_E35A:							; CODE XREF: factory_self_test+1F0↑j
 				shl	a
 				shl	a
 				shl	a
 
-loc_E35D:							; CODE XREF: sub_E115+1E9↑j
-								; sub_E115+209↑j ...
+loc_E35D:							; CODE XREF: factory_self_test+1E9↑j
+								; factory_self_test+209↑j ...
 				mul	a, #04h
 				st	d, var_iscv_pwm
 
-locret_E362:							; CODE XREF: sub_E115+1A3↑j
+locret_E362:							; CODE XREF: factory_self_test+1A3↑j
 				ret
 
-; END OF FUNCTION CHUNK	FOR sub_E115
+; END OF FUNCTION CHUNK	FOR factory_self_test
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
@@ -12372,7 +12411,7 @@ loc_E37F:							; CODE XREF: divide_d_by_x+1DDC↑j
 				st	a, var_trim_state
 				jsr	loc_DD69
 
-				jsr	sub_E115
+				jsr	factory_self_test
 
 
 loc_E3A6:							; CODE XREF: divide_d_by_x+1DCC↑j
@@ -13070,7 +13109,7 @@ loc_E651:							; CODE XREF: divide_d_by_x+20AC↑j
 				st	a, var_pim_trans_fast
 				jsr	calc_4ms_corrections
 
-				jsr	sub_E865
+				jsr	update_ign_timing_blend
 
 				ld	a, var_flags_4E_copy
 				st	a, var_flags_4E
@@ -13298,8 +13337,8 @@ loc_E75E:							; CODE XREF: divide_d_by_x+20C7↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
-; Writes: (no variable writes - register-only helper)
+; Reads: (none)
+; Writes: (none)
 ; Calls: get_tps_unk
 ; ---------------------------------------------------------------------------
 sub_E767:							; CODE XREF: calc_dmatx_pim↑p
@@ -13525,7 +13564,7 @@ loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
 ; Reads: var_flags_44
 ; Writes: unk_13D
 ; ---------------------------------------------------------------------------
-sub_E832:							; CODE XREF: sub_E865+1A3↓p
+sub_E832:							; CODE XREF: update_ign_timing_blend+1A3↓p
 				tbbc	bit5, var_flags_44, locret_E842
 
 				ld	d, unk_13D
@@ -13549,7 +13588,7 @@ locret_E842:							; CODE XREF: sub_E832↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_flags_42, var_nv_trim_unk_96
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: mult_rArX
 ; ---------------------------------------------------------------------------
 sub_E843:							; CODE XREF: divide_d_by_x+224E↑p
@@ -13573,7 +13612,7 @@ loc_E84B:							; CODE XREF: sub_E843+3↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: dmarx_unk_241_167, var_temp_w
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; Calls: mult_rArX
 ; ---------------------------------------------------------------------------
 sub_E84F:							; CODE XREF: divide_d_by_x:loc_E815↑p
@@ -13603,7 +13642,7 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 
 
 ; ---------------------------------------------------------------------------
-; sub_E865: ignition timing blend, gated on var_schedule_flag_41.3 via
+; update_ign_timing_blend: ignition timing blend, gated on var_schedule_flag_41.3 via
 ; `tbs`+`beq` (returns immediately when that bit tests set; runs when it
 ; tests clear). `tbs` is a destructive test-and-set (see toshiba-8x-
 ; technical-reference.md), so this test also re-arms ("locks") the bit -
@@ -13675,7 +13714,7 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 ;   var_diag_errors_5, var_temp_w, var_temp_7A, var_temp_b, var_temp_7B,
 ;   var_temp_7C
 ; ---------------------------------------------------------------------------
-sub_E865:							; CODE XREF: divide_d_by_x+D3A↑p
+update_ign_timing_blend:							; CODE XREF: divide_d_by_x+D3A↑p
 								; divide_d_by_x+20BC↑p ...
 				tbs	bit3, var_schedule_flag_41
 				beq	loc_E86C
@@ -13684,7 +13723,7 @@ sub_E865:							; CODE XREF: divide_d_by_x+D3A↑p
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E86C:							; CODE XREF: sub_E865+2↑j
+loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 
 ; Init/reset path, when var_flags_44.5 is set: seeds var_unk_knock_12B/unk_12D/
 ; unk_12F to table_pim_unk_C154(dmatx_pim)/2 (a PIM-indexed baseline),
@@ -13711,7 +13750,7 @@ loc_E86C:							; CODE XREF: sub_E865+2↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E890:							; CODE XREF: sub_E865+11↑j
+loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 
 ; Normal path (var_flags_44.5 clear, every other qualifying tick): clamps
 ; var_unk_knock_12B between unk_12F and the PIM-table baseline above
@@ -13735,7 +13774,7 @@ loc_E890:							; CODE XREF: sub_E865+11↑j
 				mov	d, x
 				ld	d, unk_12F
 
-loc_E89D:							; CODE XREF: sub_E865+32↑j
+loc_E89D:							; CODE XREF: update_ign_timing_blend+32↑j
 				st	d, var_temp_w
 				st	x, var_temp_7A
 				ld	y, #var_temp_w
@@ -13750,7 +13789,7 @@ loc_E89D:							; CODE XREF: sub_E865+32↑j
 				jsr	set_knock_sensor_err_flag
 
 
-loc_E8B5:							; CODE XREF: sub_E865+4B↑j
+loc_E8B5:							; CODE XREF: update_ign_timing_blend+4B↑j
 				cmp	d, #0100h
 				bcs	loc_E8E3
 
@@ -13760,14 +13799,14 @@ loc_E8B5:							; CODE XREF: sub_E865+4B↑j
 
 				ld	a, dmarx_ign_timing_fallback2	; Value was pulled DOWN: use the fallback timing
 
-loc_E8C4:							; CODE XREF: sub_E865+59↑j
+loc_E8C4:							; CODE XREF: update_ign_timing_blend+59↑j
 				neg	a			; A = 256 - timing (an inversion: less timing, more weight)
 				cmp	a, #00h
 				bne	loc_E8CA
 
 				dec	a			; timing was 0: force 0xFF so the weight is never zero
 
-loc_E8CA:							; CODE XREF: sub_E865+62↑j
+loc_E8CA:							; CODE XREF: update_ign_timing_blend+62↑j
 				mul	a, #80h			; D = A * 128
 				jsr	mult_rDrX		; D = D*X/256, X = MSW of the 32-bit product
 
@@ -13784,11 +13823,11 @@ loc_E8CA:							; CODE XREF: sub_E865+62↑j
 				inc	a			; ...or, if the term was negative, carry
 				inc	b			; 0x7FFF -> 0x8000, i.e. -32768 instead
 
-loc_E8E0:							; CODE XREF: sub_E865+71↑j
-								; sub_E865+76↑j
+loc_E8E0:							; CODE XREF: update_ign_timing_blend+71↑j
+								; update_ign_timing_blend+76↑j
 				st	d, unk_129
 
-loc_E8E3:							; CODE XREF: sub_E865+53↑j
+loc_E8E3:							; CODE XREF: update_ign_timing_blend+53↑j
 				pull	d
 				st	d, var_unk_knock_12B
 				ld	y, #var_temp_w
@@ -13802,7 +13841,7 @@ loc_E8E3:							; CODE XREF: sub_E865+53↑j
 
 				clr	unk_AA
 
-loc_E8FA:							; CODE XREF: sub_E865+90↑j
+loc_E8FA:							; CODE XREF: update_ign_timing_blend+90↑j
 				cmp	#02h, unk_AA
 				bcc	loc_E907
 
@@ -13813,8 +13852,8 @@ loc_E901:
 
 				add	d, #01F4h
 
-loc_E907:							; CODE XREF: sub_E865+98↑j
-								; sub_E865:loc_E901↑j
+loc_E907:							; CODE XREF: update_ign_timing_blend+98↑j
+								; update_ign_timing_blend:loc_E901↑j
 ; Shift the 3-stage delay line one place: 12F <- 12D <- 12B <- new value.
 ; The init path seeds all three identically so the first tick sees no
 ; artificial step - see this function's header.
@@ -13831,14 +13870,14 @@ loc_E907:							; CODE XREF: sub_E865+98↑j
 				jsr	set_knock_sensor_err_flag
 
 
-loc_E921:							; CODE XREF: sub_E865+B7↑j
+loc_E921:							; CODE XREF: update_ign_timing_blend+B7↑j
 				mov	d, x
 				ld	b, dmarx_ign_timing
 				tbbc	bit0, var_diag_errors_5, loc_E92B ; Jump if no knock sensor error
 
 				ld	b, dmarx_ign_timing_fallback1
 
-loc_E92B:							; CODE XREF: sub_E865+C0↑j
+loc_E92B:							; CODE XREF: update_ign_timing_blend+C0↑j
 				jsr	mult_rBrX2
 
 				st	d, var_temp_w
@@ -13851,14 +13890,14 @@ loc_E92B:							; CODE XREF: sub_E865+C0↑j
 
 				ld	a, dmarx_ign_timing_unk_166
 
-loc_E941:							; CODE XREF: sub_E865+D6↑j
+loc_E941:							; CODE XREF: update_ign_timing_blend+D6↑j
 				mul	a, var_temp_7A
 				shl	d
 				bcc	loc_E948
 
 				ld	a, #0FFh
 
-loc_E948:							; CODE XREF: sub_E865+DF↑j
+loc_E948:							; CODE XREF: update_ign_timing_blend+DF↑j
 				mov	a, b
 				neg	b
 				cmp	b, #00h
@@ -13866,7 +13905,7 @@ loc_E948:							; CODE XREF: sub_E865+DF↑j
 
 				dec	b
 
-loc_E94F:							; CODE XREF: sub_E865+E7↑j
+loc_E94F:							; CODE XREF: update_ign_timing_blend+E7↑j
 				push	b
 				ld	x, var_temp_w
 				jsr	mult_rArX
@@ -13876,7 +13915,7 @@ loc_E94F:							; CODE XREF: sub_E865+E7↑j
 
 				ld	d, #7FFFh
 
-loc_E95B:							; CODE XREF: sub_E865+F1↑j
+loc_E95B:							; CODE XREF: update_ign_timing_blend+F1↑j
 				jsr	check_knock_sensor_err_flag
 
 				st	d, var_temp_7A
@@ -13896,7 +13935,7 @@ loc_E95B:							; CODE XREF: sub_E865+F1↑j
 				jsr	set_knock_sensor_err_flag
 
 
-loc_E978:							; CODE XREF: sub_E865+10E↑j
+loc_E978:							; CODE XREF: update_ign_timing_blend+10E↑j
 				mov	d, x
 				push	d
 				ld	a, unk_13C
@@ -13913,7 +13952,7 @@ loc_E978:							; CODE XREF: sub_E865+10E↑j
 				dec	a
 				dec	b
 
-loc_E98D:							; CODE XREF: sub_E865+124↑j
+loc_E98D:							; CODE XREF: update_ign_timing_blend+124↑j
 				jsr	mult_rDrX
 
 				mov	x, d
@@ -13928,8 +13967,8 @@ loc_E98D:							; CODE XREF: sub_E865+124↑j
 				inc	a
 				inc	b
 
-loc_E9A0:							; CODE XREF: sub_E865+131↑j
-								; sub_E865+136↑j
+loc_E9A0:							; CODE XREF: update_ign_timing_blend+131↑j
+								; update_ign_timing_blend+136↑j
 				jsr	sub_EA0C
 
 				st	d, unk_129
@@ -13950,8 +13989,8 @@ loc_E9A0:							; CODE XREF: sub_E865+131↑j
 				inc	a
 				inc	b
 
-loc_E9BC:							; CODE XREF: sub_E865+14D↑j
-								; sub_E865+152↑j
+loc_E9BC:							; CODE XREF: update_ign_timing_blend+14D↑j
+								; update_ign_timing_blend+152↑j
 				jsr	sub_EA0C
 
 				mov	d, x
@@ -13962,7 +14001,7 @@ loc_E9BC:							; CODE XREF: sub_E865+14D↑j
 				jsr	set_knock_sensor_err_flag
 
 
-loc_E9C8:							; CODE XREF: sub_E865+15E↑j
+loc_E9C8:							; CODE XREF: update_ign_timing_blend+15E↑j
 				push	d
 				cmp	d, #0020h
 				bcc	loc_E9F0
@@ -13986,14 +14025,14 @@ loc_E9C8:							; CODE XREF: sub_E865+15E↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E9F0:							; CODE XREF: sub_E865+167↑j
+loc_E9F0:							; CODE XREF: update_ign_timing_blend+167↑j
 				ld	d, unk_13F
 				tbbc	bit0, var_diag_errors_5, loc_E9F9
 
 				ld	d, unk_141
 
-loc_E9F9:							; CODE XREF: sub_E865+189↑j
-								; sub_E865+18E↑j
+loc_E9F9:							; CODE XREF: update_ign_timing_blend+189↑j
+								; update_ign_timing_blend+18E↑j
 				mov	d, x
 				pull	d
 				shl	d
@@ -14009,11 +14048,11 @@ loc_EA05:
 				jsr	sub_E832
 
 
-locret_EA0B:							; CODE XREF: sub_E865+4↑j
-								; sub_E865+28↑j
+locret_EA0B:							; CODE XREF: update_ign_timing_blend+4↑j
+								; update_ign_timing_blend+28↑j
 				ret
 
-; End of function sub_E865
+; End of function update_ign_timing_blend
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -14021,10 +14060,10 @@ locret_EA0B:							; CODE XREF: sub_E865+4↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_cnt_startup
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
-sub_EA0C:							; CODE XREF: sub_E865:loc_E9A0↑p
-								; sub_E865:loc_E9BC↑p
+sub_EA0C:							; CODE XREF: update_ign_timing_blend:loc_E9A0↑p
+								; update_ign_timing_blend:loc_E9BC↑p
 				cmpz	a
 				bpz	locret_EA16
 
@@ -14046,7 +14085,7 @@ locret_EA16:							; CODE XREF: sub_EA0C+1↑j
 loc_EA17:							; CODE XREF: divide_d_by_x+2294↑j
 				bsr	calc_4ms_corrections
 
-				jsr	sub_E865
+				jsr	update_ign_timing_blend
 
 				nop
 				nop
@@ -14210,7 +14249,7 @@ loc_EA95:							; CODE XREF: calc_4ms_corrections:loc_EA7A↑j
 
 ; Decay var_overrun_advance by 9 per call, clamped at 0
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_overrun_advance
 ; ---------------------------------------------------------------------------
 decay_overrun_advance:							; CODE XREF: calc_4ms_corrections:loc_EC33↓p
@@ -14235,7 +14274,7 @@ locret_EAA2:							; CODE XREF: decay_overrun_advance+2↑j
 ; Clamp var_overrun_advance to max 0x2B (43), return result in A
 ; ---------------------------------------------------------------------------
 ; Reads: var_overrun_advance
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 clamp_overrun_advance:							; CODE XREF: calc_4ms_corrections:loc_EEBD↓p
 				ld	a, var_overrun_advance
@@ -14590,7 +14629,7 @@ loc_EC16:							; CODE XREF: ramp_misfire_correction+4↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_ect_unk_160
 ; Calls: table_ect_pair_interpolate
 ; ---------------------------------------------------------------------------
@@ -14812,7 +14851,7 @@ loc_ED09:							; CODE XREF: calc_4ms_corrections+2C3↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_cyl_proc_idx
 ; ---------------------------------------------------------------------------
 sub_ED12:							; CODE XREF: calc_4ms_corrections+2EB↑p
@@ -14830,7 +14869,7 @@ sub_ED12:							; CODE XREF: calc_4ms_corrections+2EB↑p
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: unk_17D, var_cyl_rpm_dev
 ; ---------------------------------------------------------------------------
 sub_ED19:							; CODE XREF: calc_4ms_corrections+2E9↑p
@@ -16131,7 +16170,7 @@ loc_F1E7:							; CODE XREF: iv6_ne_process+BB↑j
 ; ---------------------------------------------------------------------------
 ; Reads: ignition_schedule_off, var_ign_coil_on_time, var_ign_dwell_min,
 ; var_ign_dwell_offset, var_ne_sum3
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 ignition_update_off_time:					; CODE XREF: iv6_ne_process+18A↑p
 								; int_vector_9_ignition+A2↓p
@@ -16298,7 +16337,7 @@ ignition_done:							; CODE XREF: ignition_schedule_off+E↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_ign_ne_frac, var_ne_sum3
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 ignition_timing_to_cpr:							; CODE XREF: iv6_ne_process+17A↑p
 								; iv6_ne_process+198↑p
@@ -16681,8 +16720,8 @@ bg_ne_process_F3CC:						; CODE XREF: iv6_ne_process+367↑j
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
-; Writes: (no variable writes - register-only helper)
+; Reads: (none)
+; Writes: (none)
 ; Calls: check_limiters_active, injector_drive
 ; ---------------------------------------------------------------------------
 injectors_batch_update:						; CODE XREF: divide_d_by_x+793↑p
@@ -16713,7 +16752,7 @@ loc_F3DD:							; CODE XREF: injectors_batch_update+11↓j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: (no variable reads - register-only helper)
+; Reads: (none)
 ; Writes: var_flags_1DC
 ; Calls: check_limiters_active_2
 ; ---------------------------------------------------------------------------
@@ -16880,7 +16919,7 @@ check_limiters_active:						; CODE XREF: injectors_batch_update↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_limiter_flags
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 check_limiters_active_2:					; CODE XREF: ROM:F3CD↑p
 								; injector_update↑p
@@ -18304,7 +18343,7 @@ loc_F992:							; CODE XREF: copy_dma_tx:loc_F98D↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: dmarx_word_226, var_dma_rx_buffer
-; Writes: (no variable writes - register-only helper)
+; Writes: (none)
 ; ---------------------------------------------------------------------------
 copy_dma_rx:							; CODE XREF: IV0+F↑p
 				ld	x, #dmarx_word_226
@@ -19633,9 +19672,9 @@ loc_FE05:							; CODE XREF: ROM:FDA8↑j
 								; ROM:FDFE↑j
 				ld	d, var_tps
 				st	d, var_tps_2
-				jsr	sub_C996
+				jsr	update_tps_closed_ref
 
-				jsr	sub_CE3C
+				jsr	update_tps_delta_rate
 
 				jsr	async_throttle_inject
 
