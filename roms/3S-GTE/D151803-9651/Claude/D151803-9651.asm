@@ -265,7 +265,7 @@ var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								;   write (`st`/`or`) that isn't a plain
 								;   bit op could still be hiding
 								;   elsewhere, but none was found.
-								; 40.7 - Tested via `tbs` at loc_E363 (the
+								; 40.7 - Tested via `tbs` at bg_64ms_dispatch (the
 								;   still-unexplored loc_E112/DC77
 								;   diagnostic phase - see
 								;   session_journal.md CPU1 pending work)
@@ -361,7 +361,7 @@ var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								;   + sub_C91A/sub_CB00/
 								;   ramp_misfire_correction/sub_DE71 and
 								;   re-locks; later tests skip.
-								; 41.7 - Tested via `tbs` at loc_E363 (the
+								; 41.7 - Tested via `tbs` at bg_64ms_dispatch (the
 								;   still-unexplored loc_E112/DC77
 								;   diagnostic phase - see
 								;   session_journal.md CPU1 pending work)
@@ -1598,7 +1598,15 @@ var_spd_cnt:			.block 1			; DATA XREF: ROM:loc_DEAD↓w
 var_igt_timer:			.block 1			; DATA XREF: check_IGF_error+3↓w
 								; check_IGF_error+7↓r
 								; Number of ticks since	last IGT/IGF
-unk_E8:				.block 1			; DATA XREF: divide_d_by_x+1DD5↓r
+var_64ms_prescale:				.block 1			; DATA XREF: divide_d_by_x+1DD5↓r
+								; Prescaler for the slowest counter tier.
+								; Incremented once per 64ms dispatch slot in
+								; bg_64ms_dispatch, and touched nowhere else in
+								; this file. When it wraps around to 1 - every
+								; 256 slots, about 16.4s - it also advances
+								; var_cnt_E9. That two-stage arrangement is what
+								; lets var_cnt_E9's small thresholds in the ISCV
+								; code (0x17/0x26/0x99) represent minutes.
 								; divide_d_by_x+1DD8↓w
 								; Written by loc_E36A; read by loc_E36A. Purpose
 								; not established - left named unk_ deliberately
@@ -11778,8 +11786,12 @@ locret_E111:							; CODE XREF: ROM:E0A3↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
+; Trampoline only - the DC77/DD38/DD59 diagnostic phase ends by jumping here
+; (from loc_DD66) and this forwards straight to the periodic dispatch. There
+; is no body; a pending-work entry once listed "loc_E112 onward" as untraced
+; code, but this single jmp is all of it.
 loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
-				jmp	loc_E363
+				jmp	bg_64ms_dispatch
 
 ; END OF FUNCTION CHUNK	FOR divide_d_by_x
 
@@ -12366,7 +12378,42 @@ locret_E362:							; CODE XREF: factory_self_test+1A3↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
-loc_E363:							; CODE XREF: divide_d_by_x:loc_E112↑j
+; ---------------------------------------------------------------------------
+; bg_64ms_dispatch (was bg_64ms_dispatch): the 64ms slot of divide_d_by_x's periodic
+; dispatch, plus the always-run tail that follows it.
+;
+; Reached only via loc_E112, which is a one-instruction trampoline
+; (`jmp bg_64ms_dispatch`) that loc_DD66 jumps to at the end of the
+; DC77/DD38/DD59 diagnostic phase. That trampoline is the whole of what an
+; earlier pending-work entry called "loc_E112 onward" - there is no separate
+; body there to trace.
+;
+; Structure:
+;   tbs var_schedule_flag_41.7 - the self-re-arming one-shot gate. The bit is
+;     CLEARED by iv6_4ms_process's 64ms sub-slot; the first pass after each
+;     clear reads "unlocked", runs the block below, and re-locks in the same
+;     instruction. Later passes before the next clear jump straight to the
+;     tail. (See var_schedule_flag_41's declaration for the tbs mechanism.)
+;
+;   loc_E36A - counter maintenance. Bumps the 0xE1-0xE7 counter block, then
+;     var_64ms_prescale; when that wraps to 1 - i.e. once per 256 slots,
+;     about every 16.4s - it also bumps var_cnt_E9, giving a third and much
+;     slower counter tier. That is what makes var_cnt_E9's thresholds of
+;     0x17/0x26/0x99 in the ISCV code work out to roughly 6, 10 and 42
+;     minutes rather than seconds.
+;
+;   loc_E37F - the actual 64ms work list: sub_E435, calc_ect_unk_148,
+;     calc_ect_unk_160, calc_ect_iscv, then sub_D4BC, update_lambda_stft,
+;     loc_DD69 and factory_self_test. Note the var_flags_4E restore just
+;     before sub_D4BC: that CLOSES the long var_trim_state alias opened back
+;     in calc_inj_pw_base, and update_lambda_stft is then wrapped in its own
+;     short second alias instance - see var_trim_state_alias's declaration.
+;
+;   loc_E3A6 - the tail, which runs on EVERY pass regardless of the gate:
+;     sub_E454 (fuel enrichment scaling) then calc_dmatx_pim. So the fuel
+;     path is per-tick while the ECT/ISCV/trim housekeeping above is 64ms.
+; ---------------------------------------------------------------------------
+bg_64ms_dispatch:							; CODE XREF: divide_d_by_x:loc_E112↑j
 				tbs	bit7, var_schedule_flag_41
 				beq	loc_E36A
 
@@ -12378,9 +12425,9 @@ loc_E36A:							; CODE XREF: divide_d_by_x+1DCA↑j
 				ld	d, #COUNTER_ARG(var_cnt_E1, 07h)
 				jsr	increment_counters
 
-				ld	a, unk_E8
+				ld	a, var_64ms_prescale
 				inc	a
-				st	a, unk_E8
+				st	a, var_64ms_prescale
 				cmpb	a, #01h
 				bne	loc_E37F
 

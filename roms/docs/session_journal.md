@@ -1539,9 +1539,35 @@ entry gate is still unestablished (see that bit's declaration comment).
   by var_rpm_x_5p12 but their units are not established, and
   var_unk_tps_143's own producer is untraced. **Related and still not
   deep-dived:** loc_FC38 (called from chunk C9DA alongside this function).
-- loc_E112 onward, and the start of chunk E363 up to the restore point
-  around address E37F - continuation of the DC77/DD38/DD59 diagnostic
-  phase; loc_DD59 jumps directly to loc_E112.
+- **RESOLVED: `loc_E112` is a one-instruction trampoline**, and `E363` is
+  the 64ms dispatch slot. This entry was larger in the imagination than in
+  the ROM.
+
+  `loc_E112` is literally `jmp bg_64ms_dispatch` - the DC77/DD38/DD59
+  diagnostic phase ends by jumping here and this forwards straight on. There
+  is no body to trace.
+
+  `loc_E363` -> **`bg_64ms_dispatch`**, gated by `var_schedule_flag_41.7`'s
+  `tbs` one-shot (cleared by iv6_4ms_process's 64ms sub-slot, re-locked by
+  the test itself). Structure:
+  - `loc_E36A` - counter maintenance: bumps the 0xE1-0xE7 block, then
+    `var_64ms_prescale` (was `unk_E8`); when that wraps to 1, i.e. once per
+    256 slots (~16.4s), it also advances `var_cnt_E9`. **That two-stage
+    prescaler is what makes `var_cnt_E9`'s thresholds in the ISCV code
+    (0x17/0x26/0x99) mean roughly 6, 10 and 42 minutes rather than
+    seconds** - previously those constants had no explanation.
+  - `loc_E37F` - the 64ms work list: `sub_E435`, `calc_ect_unk_148`,
+    `calc_ect_unk_160`, `calc_ect_iscv`, `sub_D4BC`, `update_lambda_stft`,
+    `loc_DD69`, `factory_self_test`. The `var_flags_4E` restore just before
+    `sub_D4BC` is "the restore point around E37F" this entry referred to:
+    it CLOSES the long `var_trim_state` alias opened in `calc_inj_pw_base`,
+    and `update_lambda_stft` is then wrapped in its own short second alias
+    instance.
+  - `loc_E3A6` - the tail, run on EVERY pass regardless of the gate:
+    `sub_E454` then `calc_dmatx_pim`. So fuelling is per-tick while the
+    ECT/ISCV/trim housekeeping above it is 64ms.
+
+  Renames: `loc_E363` -> `bg_64ms_dispatch`, `unk_E8` -> `var_64ms_prescale`.
 - **RESOLVED: which trim is short-term and which is long-term.** Jon
   confirmed the ECU runs both; the code says exactly where each lives.
 
