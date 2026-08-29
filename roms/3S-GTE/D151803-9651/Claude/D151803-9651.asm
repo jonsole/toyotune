@@ -2626,7 +2626,17 @@ IVf:								; CODE XREF: IVf↓j
 				.db  00h
 
 
-map_c006:			.dw 0200h			; DATA XREF: sub_E76D:loc_E787↓o
+map_transient_mag:			.dw 0200h			; DATA XREF: calc_transient_terms:loc_E787↓o
+								; Stage 1 of the transient pair: 17 cols x 11
+								; rows, x-axis RPM (confirmed against the XDF
+								; entry at 0xC00C - the ASM label points at the
+								; 6-byte header, the XDF at the data). Output
+								; is scaled by var_pim_trim_scale, so it lands
+								; in the pressure domain. Values fall with RPM
+								; and rise with the other index, saturating
+								; near ~94 - consistent with "less correction
+								; needed as the manifold fills faster", though
+								; the absolute units are not established.
 				.db 10h				; 17 columns
 				.dw 0000h
 				.db 0Ah				; 11 rows
@@ -2643,7 +2653,14 @@ map_c006:			.dw 0200h			; DATA XREF: sub_E76D:loc_E787↓o
 				.db 097, 097, 097, 097,	097, 097, 097, 097, 097, 097, 097, 097,	097, 097, 097, 097, 097
 
 
-map_c0c7:			.dw 0080h			; DATA XREF: sub_E76D+27↓o
+map_transient_gain:			.dw 0080h			; DATA XREF: calc_transient_terms+27↓o
+								; Stage 2: 3 cols x 11 rows, x-axis RPM (XDF
+								; entry 0xC0CD). Indexed by RPM against stage
+								; 1's output / 8; its result becomes the step
+								; size handed to signed_proportional_update, so
+								; this map sets how FAST the estimator chases a
+								; transient while map_transient_mag sets how
+								; FAR.
 				.db 02h				; 3 columns
 				.dw 0225h
 				.db 0Ah				; 11 rows
@@ -3773,7 +3790,7 @@ loc_C483:							; CODE XREF: table_rD_clamp+8↑j
 ;   5. Interpolate between the two z values using row_frac via interp_y_pair
 ; ---------------------------------------------------------------------------
 
-map_rD_32_rX_map_interpolate:					; CODE XREF: sub_E76D+2A↓p
+map_rD_32_rX_map_interpolate:					; CODE XREF: calc_transient_terms+2A↓p
 ; Pre-scale D: D >>= 1 so x_step of 256 = 32 D-units per column
 				shr	d			; D >>= 1 (fall through to map_rD_16)
 ; End of function map_rD_32_rX_map_interpolate
@@ -3800,7 +3817,7 @@ map_rD_16_rX_map_interpolate:					; CODE XREF: divide_d_by_x+877↓p
 ; Calls: table_advance_y_to_entry, table_rD_clamp
 ; ---------------------------------------------------------------------------
 map_rD_rX_interpolate:						; CODE XREF: calc_iscv+3B9↓p
-								; sub_E76D+1D↓p
+								; calc_transient_terms+1D↓p
 ; Bilinear 2D map interpolation. D = x input, X = y input, Y = map pointer.
 
 ; Step 1: clamp x (D) to column range
@@ -12965,7 +12982,7 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ; the standard "freeze fuel trim during acceleration/deceleration" rule, and
 ; it is the direct link between this function and the trim systems.
 ;
-; NOT traced: sub_E76D's two RPM/load maps (map_c006, map_c0c7) are known to
+; NOT traced: calc_transient_terms's two RPM/load maps (map_transient_mag, map_transient_gain) are known to
 ; be indexed by var_rpm_x_5p12 but their real-world units are not
 ; established; nor is var_unk_tps_143's own producer.
 ;
@@ -12975,7 +12992,7 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ; Writes: dmatx_pim, var_pim_tps_est, var_pim_trans_est, var_pim_trans_fast,
 ;   var_unk_tps_inj_137, unk_145, var_diag_errors_5, var_temp_w,
 ;   var_temp_7A, var_temp_7B
-; Calls: sub_E767, get_tps_unk, sub_E76D, mult_rBrX2, mult_rArX, mult_rDrX,
+; Calls: sub_E767, get_tps_unk, calc_transient_terms, mult_rBrX2, mult_rArX, mult_rDrX,
 ;   divide_rD_32_saturate, divide_rD_64, signed_proportional_update,
 ;   set_knock_sensor_err_flag, check_knock_sensor_err_flag
 ; ---------------------------------------------------------------------------
@@ -13084,7 +13101,7 @@ loc_E5D0:							; CODE XREF: divide_d_by_x+202E↑j
 				shl	d
 				shl	d
 				shl	d
-				jsr	sub_E76D
+				jsr	calc_transient_terms
 
 				ld	b, var_pim_trim_scale
 				jsr	mult_rBrX2
@@ -13439,11 +13456,41 @@ sub_E767:							; CODE XREF: calc_dmatx_pim↑p
 
 
 ; ---------------------------------------------------------------------------
-; Reads: map_c006, map_c0c7, var_rpm_x_5p12
+; Reads: map_transient_mag, map_transient_gain, var_rpm_x_5p12
 ; Writes: var_temp_7A
 ; Calls: map_rD_32_rX_map_interpolate, map_rD_rX_interpolate
 ; ---------------------------------------------------------------------------
-sub_E76D:							; CODE XREF: divide_d_by_x+2038↑p
+; ---------------------------------------------------------------------------
+; calc_transient_terms (was calc_transient_terms): two cascaded RPM maps that produce the
+; transient-response terms calc_dmatx_pim uses.
+;
+; Reached only from calc_dmatx_pim's var_flags_47.6 branch, i.e. only when a
+; large positive TPS delta is in progress.
+;
+; Stage 1: scales the incoming value right by 0-2 places depending on A, puts
+; it in X, loads RPM/4 into D (shifted once more when A >= 6), and looks up
+; map_transient_mag bilinearly. That result is returned in X, and
+; calc_dmatx_pim immediately multiplies it by var_pim_trim_scale - so stage 1
+; lands in the pressure domain.
+;
+; Stage 2: divides that result by 8, uses it as the X index with RPM again,
+; and looks up map_transient_gain. That result is left in var_temp_7A, which
+; the caller then passes as `b` to signed_proportional_update - i.e. stage 2
+; sets the filter's STEP SIZE. (var_temp_7A is shared scratch -
+; map_rD_rX_interpolate uses it internally too - so it carries this value
+; only across the short window between here and that call.)
+;
+; So the pair answers "given engine speed and how fast the throttle is
+; opening, how big is the correction and how fast should the filter chase
+; it" - the transient-response calibration for the whole manifold-pressure
+; estimator. These are the maps to touch if tip-in response needs changing.
+;
+; UNITS NOT ESTABLISHED. The XDF covers both (as "Unknown C00C" / "Unknown
+; C0CD", so its author did not know either) and confirms only the RPM x-axis
+; and the dimensions - identity scaling, blank axis labels. Their structural
+; role above is solid; what one count means in physical terms is not.
+; ---------------------------------------------------------------------------
+calc_transient_terms:							; CODE XREF: divide_d_by_x+2038↑p
 				cmp	a, #05h
 				bcs	loc_E77B
 
@@ -13455,8 +13502,8 @@ sub_E76D:							; CODE XREF: divide_d_by_x+2038↑p
 				add	a, #08h
 				shr	d
 
-loc_E77B:							; CODE XREF: sub_E76D+2↑j
-								; sub_E76D+9↑j
+loc_E77B:							; CODE XREF: calc_transient_terms+2↑j
+								; calc_transient_terms+9↑j
 				mov	d, x
 				ld	d, var_rpm_x_5p12
 				shr	d
@@ -13467,8 +13514,8 @@ loc_E77B:							; CODE XREF: sub_E76D+2↑j
 				add	a, #06h
 				shr	d
 
-loc_E787:							; CODE XREF: sub_E76D+15↑j
-				ld	y, #map_c006		; 3-D map address
+loc_E787:							; CODE XREF: calc_transient_terms+15↑j
+				ld	y, #map_transient_mag		; 3-D map address
 				jsr	map_rD_rX_interpolate
 
 				push	d
@@ -13476,14 +13523,14 @@ loc_E787:							; CODE XREF: sub_E76D+15↑j
 
 				mov	d, x
 				ld	d, var_rpm_x_5p12
-				ld	y, #map_c0c7
+				ld	y, #map_transient_gain
 				jsr	map_rD_32_rX_map_interpolate
 
 				st	a, var_temp_7A
 				pull	x
 				ret
 
-; End of function sub_E76D
+; End of function calc_transient_terms
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████

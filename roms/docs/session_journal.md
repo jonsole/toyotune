@@ -1535,7 +1535,7 @@ entry gate is still unestablished (see that bit's declaration comment).
   var_unk_knk_133/135->var_pim_est_fast/slow, unk_131->var_pim_tps_est,
   unk_144->var_pim_trim_scale, unk_146/147->var_pim_trans_est/fast.
 
-  **Still open here:** sub_E76D's two maps (map_c006, map_c0c7) are indexed
+  **Still open here:** calc_transient_terms's two maps (map_transient_mag, map_transient_gain) are indexed
   by var_rpm_x_5p12 but their units are not established, and
   var_unk_tps_143's own producer is untraced. **Related and still not
   deep-dived:** validate_nv_trim_pim (called from chunk C9DA alongside this function).
@@ -1888,6 +1888,41 @@ generically must not assume every slot is live on every ROM.
 
   **Still not traced:** `table_C163`'s real-world meaning (the second lookup
   at loc_E92B feeding `unk_127`).
+
+### `calc_transient_terms` (was `sub_E76D`) and its two maps
+
+The last "units unknown" item, and the XDF only half-helps here - unlike the
+PIM scaling, which it cracked outright. It *does* cover both maps, at 0xC00C
+and 0xC0CD, exactly +6 from the ASM labels because the ASM label points at
+the 6-byte map header and the XDF at the data. Both entries are titled
+"Unknown", with identity scaling and blank axis labels - so the XDF's author
+did not know their units either. What it does confirm is the x-axis (RPM) and
+the dimensions, and those match the ASM headers exactly: 17x11 and 3x11.
+
+Their structural role, though, is now solid. `calc_transient_terms` is
+reached only from `calc_dmatx_pim`'s `var_flags_47.6` branch - i.e. only
+during a large positive TPS delta - and runs two cascaded lookups:
+
+- **`map_transient_mag`** (was `map_c006`): RPM x scaled-TPS-delta. Its
+  result is returned in X and immediately multiplied by
+  `var_pim_trim_scale`, so it lands in the pressure domain. It sets how FAR
+  to correct. Values fall with RPM and rise with the other index, saturating
+  near ~94 - consistent with "less correction needed as the manifold fills
+  faster", though that reading is inference, not established units.
+- **`map_transient_gain`** (was `map_c0c7`): RPM x (stage 1 / 8). Its result
+  is left in `var_temp_7A`, which the caller hands to
+  `signed_proportional_update` as the step size. It sets how FAST the
+  estimator chases the transient.
+
+So the pair is the **transient-response calibration for the whole
+manifold-pressure estimator** - the maps to touch if tip-in response needs
+changing. That is a genuinely useful answer for tuning even without absolute
+units.
+
+One caution recorded in the ASM: `var_temp_7A` is shared scratch
+(`map_rD_rX_interpolate` uses it internally too), so it carries stage 2's
+result only across the short window between the call and
+`signed_proportional_update`.
 
 ### `loc_FC38` resolved: `validate_nv_trim_pim`
 
