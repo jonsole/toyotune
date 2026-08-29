@@ -5804,13 +5804,33 @@ serial_dma_start:						; D2D7↑p ...
 				cmp	#04h, var_cnt4ms_AE
 				ble	loc_D4DF
 
-; var_asr0n_shadow_126 is shadowed into the real ASR0N hardware register on every
-; write (every store to var_asr0n_shadow_126 here is immediately followed by the same
-; value going to ASR0N). Bits 6/7 are toggled in ways that don't
-; obviously fit ASR0N's documented "ASR0 falling edge counter" role -
-; whether ASR0 is itself partly repurposed on this variant (the way
-; ASR2/ASR3 are) or these are pure software flags piggy-backing on a
-; shadowed register isn't established. This first occurrence clears bit6.
+; RESOLVED - ASR0 read and write are DIFFERENT FUNCTIONS at the same
+; address. Writing ASR0 configures the DMA engine; reading it returns the
+; latched timer value captured on an I/O transition. The "falling edge
+; counter" name describes the READ side only.
+;
+; That is the whole explanation for this variable. Because a read does not
+; return what was last written, ASR0N cannot be read-modify-written, so the
+; code must keep a software shadow of the value it wrote - which is exactly
+; what var_asr0n_shadow_126 is. Every site has the same shape:
+;
+;     ld a, var_asr0n_shadow_126    recover what we last wrote
+;     and/or a, #mask               change one bit
+;     st a, var_asr0n_shadow_126    keep the shadow current
+;     st a, ASR0N                   push it to the register
+;
+; So bits 6/7 are DMA CONTROL bits, not counter bits, and the long-standing
+; note here - that they "don't obviously fit ASR0N's documented falling edge
+; counter role" - was comparing them against the wrong side of the register.
+; See the ASR0 note in docs/toshiba-8x-technical-reference.md.
+;
+; (Source: Jon, from hardware knowledge. Corroborated by the shadow pattern
+; above appearing at every single site, and by the deliberate clear-then-set
+; pulse on bit 7 at loc_D516 - writing 0 then 1 to the register while the
+; shadow only ever records the final value, which is a command to a DMA
+; engine and makes no sense as a counter write.)
+;
+; This first occurrence clears bit6.
 
 				ld	a, var_asr0n_shadow_126
 				and	a, #0BFh

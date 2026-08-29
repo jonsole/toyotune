@@ -772,10 +772,39 @@ The following table consolidates register names with functional descriptions der
 | $0D | CPR2L | Timer Compare Register 2 — LSB |
 | $0E | CPR3 | Timer Compare Register 3 — MSB |
 | $0F | CPR3L | Timer Compare Register 3 — LSB |
-| $10 | ASR0P | ASR0 rising edge counter — MSB |
-| $11 | ASR0PL | ASR0 rising edge counter — LSB |
-| $12 | ASR0N | ASR0 falling edge counter — MSB |
-| $13 | ASR0NL | ASR0 falling edge counter — LSB |
+| $10 | ASR0P | ASR0 rising edge — MSB (**read**; see note) |
+| $11 | ASR0PL | ASR0 rising edge — LSB (**read**; see note) |
+| $12 | ASR0N | ASR0 falling edge — MSB (**read**; see note) |
+| $13 | ASR0NL | ASR0 falling edge — LSB (**read**; see note) |
+
+> **ASR0 read and write are different functions at the same addresses.**
+> The descriptions above are the READ side only:
+>
+> - **Reading** ASR0P/ASR0N returns the **latched timer value captured on an
+>   I/O transition** (the edge-capture behaviour these names describe).
+> - **Writing** them **configures the DMA engine** - it is not a counter
+>   preload.
+>
+> This matters when reading disassembly, because it means an ASR0 register
+> cannot be read-modify-written: a read does not return what was last
+> written. Code that needs to change one configuration bit must therefore
+> keep a **software shadow** of the value it wrote. `D151803-9661`'s
+> `var_asr0n_shadow_126` is exactly that, and every site follows the same
+> shape:
+>
+> ```
+> ld a, var_asr0n_shadow_126      ; recover what we last wrote
+> and/or a, #mask                 ; change one bit
+> st a, var_asr0n_shadow_126      ; keep the shadow current
+> st a, ASR0N                     ; and push it to the register
+> ```
+>
+> That shadow's bits 6 and 7 were long noted as "not fitting ASR0N's
+> documented falling-edge-counter role". They fit fine once the asymmetry is
+> known - they are DMA control bits, and the counter role belongs to the read
+> side. (Source: Jon, from hardware knowledge; corroborated throughout that
+> ROM by the shadow pattern above and by a deliberate clear-then-set pulse on
+> bit 7 at `loc_D516`, which only makes sense as a command to a DMA engine.)
 | $14 | ASR1P | ASR1 rising edge counter — MSB |
 | $15 | ASR1PL | ASR1 rising edge counter — LSB |
 | $16 | ASR1N | ASR1 falling edge counter — MSB |

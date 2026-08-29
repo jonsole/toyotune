@@ -2000,16 +2000,42 @@ documentation and a few specific loose ends, not "find the function" work.
   `shl d`, because rom_version is already a byte address and must not be
   doubled.
 
-- **`unk_126`'s bit 6/7 semantics** (remainder of the former
-  `serial_dma_start`/`int_vector_0` item - the ASR2/ASR3/TIMER3 register
-  format and `int_vector_0`=IV0 identification are now resolved, see
-  Completed subsystems above): `unk_126` shadows the real ASR0N hardware
-  register, but bits 6/7 are toggled in ways that don't fit ASR0N's
-  documented "falling edge counter" role - whether ASR0 is itself partly
-  repurposed on this variant, or these are pure software flags on a
-  shadowed register, isn't established. Electrical-level protocol details
-  (pins/baud rate/clock master) remain unknown without hardware probing -
-  out of scope for static analysis.
+- **RESOLVED: `var_asr0n_shadow_126`'s bits 6/7** - and the answer was a
+  hardware fact no amount of ROM reading would have produced. From Jon:
+  **ASR0 read and write are different functions at the same address.**
+  Writing ASR0 configures the DMA engine; reading it returns the latched
+  timer value captured on an I/O transition. The "falling edge counter"
+  name in the technical reference describes only the READ side.
+
+  That explains the whole variable. Because a read does not return what was
+  written, ASR0N cannot be read-modify-written - so the code keeps a
+  software shadow of what it wrote, which is precisely what
+  `var_asr0n_shadow_126` is. Every site has the identical shape:
+
+      ld a, var_asr0n_shadow_126     recover what we last wrote
+      and/or a, #mask                change one bit
+      st a, var_asr0n_shadow_126     keep the shadow current
+      st a, ASR0N                    push it to the register
+
+  So bits 6/7 are **DMA control bits**, not counter bits. The standing note
+  that they "don't fit ASR0N's documented falling-edge-counter role" was
+  comparing them against the wrong side of the register.
+
+  Two independent corroborations from the ROM itself: the shadow pattern
+  appears at *every* site without exception, and `loc_D516` performs a
+  deliberate clear-then-set pulse on bit 7 - writing 0 then 1 to the
+  register while the shadow records only the final value. That is a command
+  to a DMA engine; it is meaningless as a counter write.
+
+  `docs/toshiba-8x-technical-reference.md`'s ASR0 register table now carries
+  this asymmetry as a note, since it applies to any D8X disassembly, not
+  just this ROM.
+
+  **Lesson worth keeping:** this sat open for several sessions labelled
+  "needs hardware probing", and it did - but the probe needed was one fact
+  about the silicon, not a scope trace. Where a register's behaviour refuses
+  to fit its documented role, the documentation describing only one access
+  direction is now a hypothesis worth testing early.
 
 **Resolved - broad prose-documentation gap:** every real (non-math-library)
 function in CPU2 now has gold-standard header prose, confirmed by a
