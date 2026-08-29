@@ -1816,10 +1816,11 @@ generically must not assume every slot is live on every ROM.
   self-re-arming one-shot gate: only the first call after each periodic
   unlock (iv6_4ms_process's 32ms sub-slot) runs the blend below. Two
   confirmed parts:
-  1. **Init/reset path** (`var_flags_44.5` set): seeds `var_unk_knock_12B`/
+  1. **Init/reset path** (`var_flags_44.5` CLEAR - see the polarity
+     correction below): seeds `var_unk_knock_12B`/
      `unk_12D`/`unk_12F` to `table_pim_unk_C154(dmatx_pim)/2` and zeroes
      `unk_129`/`unk_127`/sets `unk_AA=0xFF` - a first-run/reset baseline.
-  2. **Normal path** (`var_flags_44.5` clear, every other tick): clamps
+  2. **Normal path** (`var_flags_44.5` SET, every other tick): clamps
      `var_unk_knock_12B` between `unk_12F` and the PIM-table baseline
      (whichever's larger/smaller), using `var_diag_errors_5.0` purely as
      its own local "did the clamped value drop since last tick" flag - NOT
@@ -1831,7 +1832,7 @@ generically must not assume every slot is live on every ROM.
      `dmarx_ign_timing`/`dmarx_ign_timing_unk_166` for a
      multiply/table_C163 blend feeding an `unk_129` accumulator, and later
      a `table_pair_interpolate` lookup (`unk_13F`/`unk_141`-selected)
-     feeding `unk_127`, ending with a call to `sub_E832`.
+     feeding `unk_127`, ending with a call to `decay_ign_ect_term`.
   **RESOLVED - the middle blend.** The ambiguity was the `mov`/`mult_rDrX`
   register flow, and it turns on the two `mov`s, both of which follow the
   src,dest order:
@@ -1860,8 +1861,33 @@ generically must not assume every slot is live on every ROM.
   `calc_dmatx_pim`'s filter pair, this is fundamentally a rate-of-change
   structure.
 
-  **Still not traced:** `sub_E832`'s body, and `table_C163`'s real-world
-  meaning (the second lookup at loc_E92B feeding `unk_127`).
+  **RESOLVED: `sub_E832` is `decay_ign_ect_term`** - and tracing it exposed
+  an inverted-polarity error in this entry and in the ASM comments it came
+  from.
+
+  The function itself is trivial: subtract 12 from `var_ign_ect_term` (was
+  `unk_13D`), clamp at 0, and only while `var_flags_44.5` is SET.
+
+  **The polarity correction.** Earlier comments - and points 1 and 2 above -
+  said bit5 SET selects the init path and CLEAR the normal path. That is
+  backwards. `tbbs` branches if SET, and three independent gates agree:
+  - `tbbs bit5 -> loc_E890` takes the NORMAL path when set;
+  - `tbbs bit5 -> loc_E7FD` SKIPS seeding `var_ign_ect_term` when set;
+  - `decay_ign_ect_term` only decays when set.
+
+  So **bit5 SET = normal running, CLEAR = init/seed.** Fixed in the ASM
+  (four statements) and above. I had propagated the original error into
+  `var_flags_44`'s own bit table as well, so that is corrected too.
+
+  With the polarity right, the mechanism reads cleanly: `var_ign_ect_term`
+  is seeded ONCE on the init pass from `table_ect_C185` (scaled through
+  `sub_E843`, which folds in the O2-learned NV trim) plus `table_ect_C17C`,
+  then bleeds down at 12 per tick while running, feeding an `add` into the
+  timing sum. A warm-up ignition correction that fades out - the
+  ignition-side counterpart of CPU2's enrichment decay.
+
+  **Still not traced:** `table_C163`'s real-world meaning (the second lookup
+  at loc_E92B feeding `unk_127`).
 
   **Related sweep done at the same time:** CLAUDE.md flagged that the shared
   math library's `mov s, x` comments carried the reversed-notation error and

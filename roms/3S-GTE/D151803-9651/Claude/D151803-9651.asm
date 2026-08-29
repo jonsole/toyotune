@@ -514,8 +514,13 @@ var_flags_44:			.block 1			; DATA XREF: divide_d_by_x+3C5↓r
 								; 44.5 - Dual, unrelated roles (coincidental
 								;   bit reuse): (1) in update_ign_timing_blend's ignition-
 								;   timing/knock blend, selects its init/
-								;   reset path (set) vs normal per-tick
-								;   path (clear) - see that function's own
+								;   reset path (CLEAR) vs normal per-tick
+								;   path (SET). Note the polarity: earlier
+								;   comments here had it inverted. `tbbs`
+								;   branches if SET, and all three gates in
+								;   that function agree - bit5 set takes the
+								;   running path, skips the ECT seed, and
+								;   enables decay_ign_ect_term's decay - see that function's own
 								;   header for the full writeup; (2) in
 								;   iv6_ne_process's bg_ne_process_F2D2/
 								;   F29D/F365 area (~F2D0-F370), selects
@@ -1846,10 +1851,23 @@ unk_13C:			.block 1			; DATA XREF: divide_d_by_x+2242↓w
 								; not established - left named unk_ deliberately
 								; per CLAUDE.md (rename only on confirmed
 								; understanding).
-unk_13D:			.block 1			; DATA XREF: divide_d_by_x:loc_E7FA↓w
+var_ign_ect_term:			.block 1			; DATA XREF: divide_d_by_x:loc_E7FA↓w
+								; Warm-up ignition correction term, ECT-derived.
+								; Seeded only on update_ign_timing_blend's init
+								; pass (var_flags_44.5 CLEAR) as
+								; table_ect_C185 (scaled through sub_E843, which
+								; folds in the O2-learned NV trim) plus
+								; table_ect_C17C, saturated at 0xFFFF.
+								;
+								; Thereafter decay_ign_ect_term subtracts 12 per
+								; tick down to 0 while the engine runs, and the
+								; value is consumed by an `add d, ...` into the
+								; timing sum at loc_E80F. Seed-then-bleed, so it
+								; contributes most just after the init pass and
+								; fades out.
 								; divide_d_by_x+2272↓r ...
 								; Written by loc_E7FA, loc_E83F; read by
-								; loc_E7FD, sub_E832. Purpose not established -
+								; loc_E7FD, decay_ign_ect_term. Purpose not established -
 								; left named unk_ deliberately per CLAUDE.md
 								; (rename only on confirmed understanding).
 				.block 1
@@ -13584,7 +13602,7 @@ loc_E7D8:							; CODE XREF: divide_d_by_x+2238↑j
 				ld	d, #0FFFFh
 
 loc_E7FA:							; CODE XREF: divide_d_by_x+225A↑j
-				st	d, unk_13D
+				st	d, var_ign_ect_term
 
 loc_E7FD:							; CODE XREF: divide_d_by_x+2245↑j
 				ld	y, #table_ect_C18E
@@ -13596,7 +13614,7 @@ loc_E7FD:							; CODE XREF: divide_d_by_x+2245↑j
 
 				bsr	sub_E843
 
-				add	d, unk_13D
+				add	d, var_ign_ect_term
 				bcc	loc_E815
 
 				ld	d, #0FFFFh
@@ -13626,25 +13644,38 @@ loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_flags_44
-; Writes: unk_13D
+; Writes: var_ign_ect_term
 ; ---------------------------------------------------------------------------
-sub_E832:							; CODE XREF: update_ign_timing_blend+1A3↓p
+; ---------------------------------------------------------------------------
+; decay_ign_ect_term (was sub_E832): bleed the warm-up ignition term away.
+;
+; Subtracts 12 from var_ign_ect_term each call, clamped at 0, and only while
+; var_flags_44.5 is SET - i.e. only during normal running, never on the
+; init/seed pass. Called from the tail of update_ign_timing_blend.
+;
+; Pairs with the seeding gate at loc_E7CD: when bit5 is CLEAR that code
+; computes var_ign_ect_term from two ECT tables and stores it; when bit5 is
+; SET it skips the store and this function decays what is already there. So
+; the term is seeded once and then bleeds down at 12 per qualifying tick -
+; the ignition-side counterpart of CPU2's enrichment decay.
+; ---------------------------------------------------------------------------
+decay_ign_ect_term:							; CODE XREF: update_ign_timing_blend+1A3↓p
 				tbbc	bit5, var_flags_44, locret_E842
 
-				ld	d, unk_13D
+				ld	d, var_ign_ect_term
 				sub	d, #000Ch
 				bcc	loc_E83F
 
 				clr	a
 				clr	b
 
-loc_E83F:							; CODE XREF: sub_E832+9↑j
-				st	d, unk_13D
+loc_E83F:							; CODE XREF: decay_ign_ect_term+9↑j
+				st	d, var_ign_ect_term
 
-locret_E842:							; CODE XREF: sub_E832↑j
+locret_E842:							; CODE XREF: decay_ign_ect_term↑j
 				ret
 
-; End of function sub_E832
+; End of function decay_ign_ect_term
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -13767,7 +13798,7 @@ locret_E864:							; CODE XREF: sub_E84F+10↑j
 ; differences values across those stages, so like calc_dmatx_pim's filter
 ; pair this is fundamentally a rate-of-change structure.
 ;
-; STILL NOT TRACED: sub_E832's own body, and table_C163's real-world
+; STILL NOT TRACED: decay_ign_ect_term's own body, and table_C163's real-world
 ; meaning (the second lookup, at loc_E92B onward, feeding unk_127).
 ;
 ; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, unk_12F,
@@ -13789,11 +13820,17 @@ update_ign_timing_blend:							; CODE XREF: divide_d_by_x+D3A↑p
 
 loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 
-; Init/reset path, when var_flags_44.5 is set: seeds var_unk_knock_12B/unk_12D/
+; Init/reset path, taken when var_flags_44.5 is CLEAR: seeds var_unk_knock_12B/unk_12D/
 ; unk_12F to table_pim_unk_C154(dmatx_pim)/2 (a PIM-indexed baseline),
 ; zeroes unk_129/unk_127, sets unk_AA=0xFF - a first-run/reset baseline,
-; not the normal per-tick path (that's loc_E890 below, when var_flags_44.5 is
-; clear instead).
+; not the normal per-tick path (that's loc_E890 below, taken when
+; var_flags_44.5 is SET instead - `tbbs` branches if set).
+;
+; POLARITY: an earlier revision of these two comments had this backwards.
+; Three independent gates agree on the corrected reading - this `tbbs`
+; branching to loc_E890, the `tbbs bit5 -> loc_E7FD` that SKIPS seeding
+; var_ign_ect_term, and decay_ign_ect_term only decaying when the bit is
+; set. Set = normal running; clear = seed/init.
 
 				ld	d, dmatx_pim
 				ld	y, #table_pim_unk_C154
@@ -13816,7 +13853,7 @@ loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 
 loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 
-; Normal path (var_flags_44.5 clear, every other qualifying tick): clamps
+; Normal path (var_flags_44.5 SET, every other qualifying tick): clamps
 ; var_unk_knock_12B between unk_12F and the PIM-table baseline above
 ; (whichever's larger/smaller each becomes the clamp bound), using
 ; var_diag_errors_5.0 purely as this function's OWN local "did the
@@ -13828,7 +13865,7 @@ loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 ; primary dmarx_ign_timing/dmarx_ign_timing_unk_166 for a multiply/
 ; table_C163 blend feeding the unk_129 accumulator, then a
 ; table_pair_interpolate lookup (selected by unk_13F/unk_141) feeding
-; unk_127, before calling sub_E832.
+; unk_127, before calling decay_ign_ect_term.
 
 				push	d
 				ld	x, unk_12F
@@ -14109,7 +14146,7 @@ loc_E9F9:							; CODE XREF: update_ign_timing_blend+189↑j
 
 loc_EA05:
 				st	d, unk_127
-				jsr	sub_E832
+				jsr	decay_ign_ect_term
 
 
 locret_EA0B:							; CODE XREF: update_ign_timing_blend+4↑j
