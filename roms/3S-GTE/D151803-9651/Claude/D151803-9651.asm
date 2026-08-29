@@ -1341,7 +1341,19 @@ var_nv_idle_trim:		.block 1			; DATA XREF: divide_d_by_x+165↓r
 var_nv_valid:			.block 2			; DATA XREF: divide_d_by_x+237↓r
 								; clear_nv_ram↓w ...
 								; 5AA5 if data storage block valid
-unk_9E:				.block 1			; DATA XREF: divide_d_by_x:loc_C7E9↓o
+var_idle_trim_flags:				.block 1			; DATA XREF: divide_d_by_x:loc_C7E9↓o
+								; Idle-trim control flags - a flags BYTE, manipulated
+								; with whole-byte or/and masks rather than setb/clrb,
+								; which is why bit-op sweeps never picked it up (same
+								; situation as var_flags_1DC).
+								;
+								; Bit 0 is the one exercised in calc_iscv: SET while
+								; var_flags_4F.5 (diagnostic mode) is active, and
+								; CLEARED once the idle-dwell counter shows idle has
+								; been settled for ~612ms. It gates the idle-trim nudge
+								; - which is what calc_iscv's header meant by 'appears
+								; to gate the direction or validity of a pending trim
+								; nudge'. Other bits not traced.
 								; clear_nv_ram+43↓r ...
 								; Written by loc_C841, loc_D718, loc_D786,
 								; loc_D791; read by loc_C7E9, loc_C841,
@@ -1554,7 +1566,7 @@ var_cnt_E0:			.block 1
 								; That was wrong: increment_counters writes a
 								; whole ADDRESS RANGE from a packed argument, so
 								; its writes are invisible to any per-symbol
-								; search. Same correction applies to unk_E2/E3/
+								; search. Same correction applies to var_cnt_idle_dwell/E3/
 								; E4/E5 below, all inside
 								; COUNTER_ARG(var_cnt_E1, 7).)
 								;
@@ -1563,7 +1575,20 @@ var_cnt_E0:			.block 1
 								; capacity, not as untouched memory.
 var_cnt_E1:			.block 1			; DATA XREF: divide_d_by_x+70C↓r
 								; divide_d_by_x:loc_CCB3↓w ...
-unk_E2:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
+var_cnt_idle_dwell:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
+								; Idle-dwell counter, in 4ms ticks.
+								;
+								; Free-running - it sits at 0x0E2, inside
+								; COUNTER_ARG(var_cnt_E1, 7), so increment_counters
+								; advances it every tick - and calc_iscv CLEARS it
+								; (loc_D784) whenever the ISC value falls to or below
+								; var_iscv_target_base. So it measures how long idle has
+								; been settled ABOVE the target.
+								;
+								; Once it reaches 0x99 (153 ticks, ~612ms) loc_D791
+								; clears the idle-trim flags' bit 0, releasing the
+								; idle-trim learn. A dwell requirement, so a momentary
+								; excursion cannot trigger learning.
 								; calc_iscv:loc_D791↓r
 								; ALSO auto-incremented every tick by
 								; increment_counters via COUNTER_ARG(var_cnt_E1,
@@ -2204,13 +2229,23 @@ var_iscv_19D:			.block 1			; DATA XREF: divide_d_by_x+EB5↓r
 				.block 1
 var_iscv_unk_19F:		.block 1			; DATA XREF: calc_iscv:loc_D891↓w
 								; calc_iscv+422↓r
-unk_1A0:			.block 1			; DATA XREF: calc_iscv:loc_D6A2↓w
+var_iscv_ect_term:			.block 1			; DATA XREF: calc_iscv:loc_D6A2↓w
+								; ECT-derived contribution to the ISC target, computed
+								; in calc_iscv Section 3 and added back into the sum
+								; later. One of the several additive 'flare/ramp/
+								; compensation' terms that section builds.
 								; calc_iscv+206↓r ...
 								; Written by loc_D6A2; read by loc_D6C9,
 								; loc_D89E. Purpose not established - left named
 								; unk_ deliberately per CLAUDE.md (rename only
 								; on confirmed understanding).
-unk_1A1:			.block 1			; DATA XREF: divide_d_by_x+15C↓w
+var_iscv_idle_base:			.block 1			; DATA XREF: divide_d_by_x+15C↓w
+								; Idle ISC base value (default 0x08A4 = 2212, set at
+								; reset). calc_iscv only recomputes it while
+								; var_flags_46.6 and var_flags_4E.2 both say the engine
+								; is genuinely at idle - otherwise the previous value is
+								; carried forward, which is what the 'use previous'
+								; comments at loc_D6C6 refer to.
 								; divide_d_by_x+DD6↓w ...
 								; Written by loc_C67A, loc_D36E, loc_D6F2; read
 								; by loc_D6A5, loc_D6B6, loc_D6C6, loc_D89E.
@@ -2218,14 +2253,27 @@ unk_1A1:			.block 1			; DATA XREF: divide_d_by_x+15C↓w
 								; deliberately per CLAUDE.md (rename only on
 								; confirmed understanding).
 				.block 1
-unk_1A3:			.block 1			; DATA XREF: calc_iscv+38A↓r
+var_iscv_rpm_droop:			.block 1			; DATA XREF: calc_iscv+38A↓r
+								; Idle RPM-droop term for ISC, computed at
+								; loc_D82D-D863 from (smoothed RPM - actual RPM): when
+								; RPM sags below its own smoothed reference - the engine
+								; bogging at idle - this grows, doubled and saturated,
+								; and it is pinned straight to its 0x400 maximum when
+								; the droop exceeds 0x200 or RPM is above the reference.
+								; Gated on road speed < 2 and RPM inside a 0x0D..0x14
+								; band, i.e. genuine idle only.
 								; calc_iscv:loc_D863↓w
 								; Written by loc_D863; read by loc_D84F. Purpose
 								; not established - left named unk_ deliberately
 								; per CLAUDE.md (rename only on confirmed
 								; understanding).
 				.block 1
-unk_1A5:			.block 1			; DATA XREF: divide_d_by_x+2F4↓w
+var_rpm_smoothed:			.block 1			; DATA XREF: divide_d_by_x+2F4↓w
+								; First-order low-pass tracking var_rpm_x_5p12,
+								; moving a quarter of the way toward current RPM each
+								; calc_iscv call (loc_D815) - a smoothed RPM reference.
+								; Its gap from actual RPM is what feeds
+								; var_iscv_rpm_droop below.
 								; calc_iscv+34E↓r ...
 								; Written by loc_C880, loc_D827; read by
 								; loc_D815, loc_D827, loc_D82D. Purpose not
@@ -2233,7 +2281,10 @@ unk_1A5:			.block 1			; DATA XREF: divide_d_by_x+2F4↓w
 								; CLAUDE.md (rename only on confirmed
 								; understanding).
 				.block 1
-unk_1A7:			.block 1			; DATA XREF: calc_iscv:loc_D5C9↓w
+var_iscv_diag_term:			.block 1			; DATA XREF: calc_iscv:loc_D5C9↓w
+								; Diagnostic-linked ISC term from calc_iscv Section 1
+								; (stored at loc_D5C9). Named for its role in the sum;
+								; the physical quantity is not established.
 								; calc_iscv+1C6↓r
 								; Written by loc_D5C9; read by loc_D67F. Purpose
 								; not established - left named unk_ deliberately
@@ -5019,7 +5070,7 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				ld	a, #0F3h
 				st	a, var_ect_unk_194	; Default ECT processing value
 				ld	d, #08A4h
-				st	d, unk_1A1		; 0x08A4 = 2212 (fuel base default)
+				st	d, var_iscv_idle_base		; 0x08A4 = 2212 (fuel base default)
 				ld	d, #0400h
 				st	d, unk_1AF		; 0x0400 = 1024 (injection timing default)
 				ld	a, var_nv_idle_trim
@@ -5202,7 +5253,7 @@ loc_C7E6:							; CODE XREF: divide_d_by_x+242↑j
 				ld	y, #nv_diag_errors_1	; Check	two's complement pairs at 0x80 - 0x9D
 
 loc_C7E9:							; CODE XREF: divide_d_by_x+256↓j
-				cmp	y, #unk_9E		; Check	if reached end of block...
+				cmp	y, #var_idle_trim_flags		; Check	if reached end of block...
 				bcc	loc_C7F5		; ...exit loop if so
 
 				ld	d, [y]			; Load two's complement pair
@@ -5267,7 +5318,7 @@ loc_C806:							; CODE XREF: divide_d_by_x:loc_C801↑j
 ; Writes: var_nv_valid, var_nv_tps, var_nv_trac_tps, var_nv_idle_trim,
 ;   var_nv_trim_unk_96, var_nv_trim_unk_98, var_idle_trim, var_diag_errors_4,
 ;   var_diag_errors_5, var_error_flags1, var_error_flags2, var_flags_42,
-;   var_flags_4D, nv_diag_errors_1/2/3, nv_table_knock_info, unk_9E, var_crank_cnt
+;   var_flags_4D, nv_diag_errors_1/2/3, nv_table_knock_info, var_idle_trim_flags, var_crank_cnt
 ; ---------------------------------------------------------------------------
 
 clear_nv_ram:							; CODE XREF: divide_d_by_x:loc_C7FF↑p
@@ -5308,9 +5359,9 @@ loc_C841:							; CODE XREF: clear_nv_ram+33↑j
 				ld	d, #6699h		; 99h =	66h ^ 0FFh
 				st	d, var_nv_idle_trim
 				st	a, var_idle_trim
-				ld	a, unk_9E
+				ld	a, var_idle_trim_flags
 				or	a, #01h
-				st	a, unk_9E
+				st	a, var_idle_trim_flags
 				clr	a
 				st	a, var_crank_cnt
 				ld	d, #0AE51h
@@ -5356,7 +5407,7 @@ loc_C880:							; CODE XREF: divide_d_by_x+2E1↑j
 				clr	b
 				st	d, var_rpm_unk_74
 				st	d, var_rpm_avg
-				st	d, unk_1A5
+				st	d, var_rpm_smoothed
 				jsr	init_ne_counters
 
 				clrb	bit0, DOUT
@@ -8258,7 +8309,7 @@ loc_D361:							; CODE XREF: divide_d_by_x:loc_D34D↑j
 loc_D36E:							; CODE XREF: divide_d_by_x:loc_D361↑j
 								; divide_d_by_x+DCC↑j
 				ld	d, #08A4h
-				st	d, unk_1A1
+				st	d, var_iscv_idle_base
 
 loc_D374:							; CODE XREF: divide_d_by_x+DD1↑j
 				bra	loc_D380
@@ -8710,7 +8761,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     these consolidate raw A/C (var_diag_errors_5.5) and PS/IDUP
 ;     (var_io_input2.3) switch state for idle-up compensation - not confirmed)
 ;   - byte_C36C/C36E/C370 threshold check sets var_diag_errors_5.0 and feeds
-;     check_knock_sensor_err_flag + unk_1A7 (exact meaning of this
+;     check_knock_sensor_err_flag + var_iscv_diag_term (exact meaning of this
 ;     diagnostic-linked term not confirmed)
 ;   - var_iscv_target_rpm = unk_1AD + unk_1A9 + unk_1AB + table_iscv_C391
 ;     entry (selected by var_io_input2 bits 6/7 - load switches, meaning
@@ -8728,12 +8779,12 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     larger of (candidate, previous var_iscv_target_base) is kept -
 ;     var_iscv_target_base only ratchets, never drops, except when clamped
 ;
-; SECTION 3 (D67F..D6C9): ECT/PIM-based unk_1A0 and unk_1A1 duty terms
-;   - unk_1A0: ECT-indexed (byte_C352/C354, table_ect_fixed4_interpolate)
-;     correction, combined with unk_1A7 via interp_y_pair
-;   - unk_1A1: second RPM-band lookup (table_iscv_rpm_C361, same search
+; SECTION 3 (D67F..D6C9): ECT/PIM-based var_iscv_ect_term and var_iscv_idle_base duty terms
+;   - var_iscv_ect_term: ECT-indexed (byte_C352/C354, table_ect_fixed4_interpolate)
+;     correction, combined with var_iscv_diag_term via interp_y_pair
+;   - var_iscv_idle_base: second RPM-band lookup (table_iscv_rpm_C361, same search
 ;     pattern as table_iscv_rpm_C357) when idle detected, else falls back
-;     to a fixed default; result is clamped to +/-0x400 of unk_1A1's
+;     to a fixed default; result is clamped to +/-0x400 of var_iscv_idle_base's
 ;     previous value (rate-of-change limit)
 ;
 ; SECTION 4 (D6C9..D815): Idle trim (var_nv_idle_trim) learning
@@ -8742,12 +8793,12 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     (var_cnt_DD/var_cnt_DE counters), var_idle_trim is nudged via
 ;     idle_trim_limits and written back to NV RAM (var_nv_idle_trim) via
 ;     write_rB_nv_ram, so the ISCV baseline adapts over time
-;   - unk_9E appears to gate/flag the direction or validity of a pending
+;   - var_idle_trim_flags appears to gate/flag the direction or validity of a pending
 ;     trim nudge (not fully confirmed)
 ;
-; SECTION 5 (D815..D863): unk_1A3/unk_1A5 RPM-slope-based terms
-;   - unk_1A5: signed quarter-rate-limited tracking of var_rpm_x_5p12
-;   - unk_1A3: doubled/saturated derivative-like term from the above,
+; SECTION 5 (D815..D863): var_iscv_rpm_droop/var_rpm_smoothed RPM-slope-based terms
+;   - var_rpm_smoothed: signed quarter-rate-limited tracking of var_rpm_x_5p12
+;   - var_iscv_rpm_droop: doubled/saturated derivative-like term from the above,
 ;     clamped to 0x400 under most conditions
 ;
 ; SECTION 6 (D863..D92D): Final 2D map lookup -> var_iscv_19D
@@ -8760,8 +8811,8 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;   - Final result stored to var_iscv_19D (consumed by divide_d_by_x as
 ;     described above)
 ;
-; NOTE: several intermediate terms (unk_1A0/1A1/1A3/1A5/1A7/1A9/1AB/1AD,
-; unk_9E, unk_E2) are understood at the level of "a flare/ramp/compensation
+; NOTE: several intermediate terms (var_iscv_ect_term/1A1/1A3/1A5/1A7/1A9/1AB/1AD,
+; var_idle_trim_flags, var_cnt_idle_dwell) are understood at the level of "a flare/ramp/compensation
 ; contribution combined additively into the target" but not fully
 ; distinguished from one another - left unrenamed rather than guessed at.
 ;
@@ -8777,7 +8828,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ; Writes: var_iscv_target_rpm, var_iscv_rpm_cmp_197, var_iscv_pim_flare,
 ;   var_iscv_startup_flare, var_iscv_unk_1A9, var_iscv_unk_1AB,
 ;   var_iscv_unk_1AD, var_flags_4E, var_diag_errors_5, var_cnt_DE,
-;   var_temp_w, unk_1A7
+;   var_temp_w, var_iscv_diag_term
 ; Calls: table_ect_pair_interpolate, table_rA_pair_interpolate,
 ;   table_rB_fixed_16_interpolate, map_rD_rX_interpolate, divide_rD_16,
 ;   divide_rD_16_saturate, divide_rD_64, inc_rX_if,
@@ -9004,7 +9055,7 @@ loc_D5BC:							; CODE XREF: calc_iscv+EE↑j
 				clr	b
 
 loc_D5C9:							; CODE XREF: calc_iscv+FC↑j
-				st	d, unk_1A7
+				st	d, var_iscv_diag_term
 				ld	a, x + 00h
 
 loc_D5CE:							; CODE XREF: calc_iscv+DC↑j
@@ -9188,7 +9239,7 @@ loc_D67F:							; CODE XREF: calc_iscv:loc_D64F↑j
 				ld	y, #byte_C352
 				clr	a
 				add	y, a
-				ld	d, unk_1A7		; Diagnostic-linked term from Section 1
+				ld	d, var_iscv_diag_term		; Diagnostic-linked term from Section 1
 				shr	d
 				shr	d
 				cmpz	a
@@ -9208,15 +9259,15 @@ loc_D69B:							; CODE XREF: calc_iscv+1CC↑j
 				clr	a
 
 loc_D6A2:							; CODE XREF: calc_iscv+1D6↑j
-				st	a, unk_1A0
+				st	a, var_iscv_ect_term
 
 loc_D6A5:							; CODE XREF: calc_iscv:loc_D67F↑j
-				tbbc	bit6, var_flags_46, loc_D6C6	; var_flags_46.6 clear: use previous unk_1A1
+				tbbc	bit6, var_flags_46, loc_D6C6	; var_flags_46.6 clear: use previous var_iscv_idle_base
 
-				tbbc	bit2, var_flags_4E, loc_D6C6	; Not at idle: use previous unk_1A1
+				tbbc	bit2, var_flags_4E, loc_D6C6	; Not at idle: use previous var_iscv_idle_base
 
 				cmp	#5Ch, var_cnt_DB
-				bcs	loc_D6C6			; Idle not yet stable: use previous unk_1A1
+				bcs	loc_D6C6			; Idle not yet stable: use previous var_iscv_idle_base
 
 				ld	y, #table_iscv_rpm_C361	; Same search pattern as table_iscv_rpm_C357
 				ld	b, var_iscv_rpm_cmp_197
@@ -9228,7 +9279,7 @@ loc_D6B6:							; CODE XREF: calc_iscv+1F0↓j
 
 				ld	b, y + 05h			; Matched band's step value
 				clr	a
-				add	d, unk_1A1		; Candidate = step + previous unk_1A1
+				add	d, var_iscv_idle_base		; Candidate = step + previous var_iscv_idle_base
 				sub	d, #0080h		; Bias-center the candidate
 				bra	loc_D6C9
 
@@ -9236,16 +9287,16 @@ loc_D6B6:							; CODE XREF: calc_iscv+1F0↓j
 
 loc_D6C6:							; CODE XREF: calc_iscv:loc_D6A5↑j
 								; calc_iscv+1DF↑j ...
-				ld	d, unk_1A1
+				ld	d, var_iscv_idle_base
 
 loc_D6C9:							; CODE XREF: calc_iscv+1FB↑j
 ; Rate-of-change limit: below 0xA66 (idle-ish) the candidate passes straight
-; through; above it, unk_1A1 may step at most 0x400 toward the candidate
+; through; above it, var_iscv_idle_base may step at most 0x400 toward the candidate
 				cmp	d, #0A66h
 				bcc	loc_D6EF			; Below 0xA66: skip the rate limit entirely
 
 				mov	d, x
-				ld	a, unk_1A0		; ECT term from earlier in this section
+				ld	a, var_iscv_ect_term		; ECT term from earlier in this section
 				mul	a, #10h
 				sub	d, #08A4h
 				bcs	loc_D6DB
@@ -9276,7 +9327,7 @@ loc_D6EF:							; CODE XREF: calc_iscv+203↑j
 
 loc_D6F2:							; CODE XREF: calc_iscv+221↑j
 								; calc_iscv+224↑j
-				st	d, unk_1A1
+				st	d, var_iscv_idle_base
 				ld	a, unk_19A
 				inc	a
 				st	a, unk_19A
@@ -9308,9 +9359,9 @@ loc_D718:							; CODE XREF: calc_iscv+24B↑j
 				cmp	#5Ch, var_cnt_DD
 				bcs	loc_D730
 
-				ld	a, unk_9E
+				ld	a, var_idle_trim_flags
 				or	a, #01h
-				st	a, unk_9E
+				st	a, var_idle_trim_flags
 				ld	b, #66h
 				st	b, var_idle_trim
 				ld	x, #var_nv_idle_trim
@@ -9378,29 +9429,29 @@ loc_D772:							; CODE XREF: calc_iscv+2A4↑j
 
 loc_D784:							; CODE XREF: calc_iscv+28E↑j
 								; calc_iscv+2A0↑j ...
-				clr	unk_E2
+				clr	var_cnt_idle_dwell
 
 loc_D786:							; CODE XREF: calc_iscv+2B9↑j
 				tbbc	bit5, var_flags_4F, loc_D791
 
-				ld	a, unk_9E
+				ld	a, var_idle_trim_flags
 				or	a, #01h
-				st	a, unk_9E
+				st	a, var_idle_trim_flags
 				bra	loc_D79C
 
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_D791:							; CODE XREF: calc_iscv:loc_D786↑j
-				cmp	#99h, unk_E2
+				cmp	#99h, var_cnt_idle_dwell
 				bcs	loc_D79C
 
-				ld	a, unk_9E
+				ld	a, var_idle_trim_flags
 				and	a, #0FEh
-				st	a, unk_9E
+				st	a, var_idle_trim_flags
 
 loc_D79C:							; CODE XREF: calc_iscv+2C6↑j
 								; calc_iscv+2CB↑j
-				ld	a, unk_9E
+				ld	a, var_idle_trim_flags
 				ld	b, var_nv_idle_trim
 				tbbs	bit0, var_flags_42, loc_D7A7 ; Jump if idle trim valid
 
@@ -9437,7 +9488,7 @@ loc_D7BF:							; CODE XREF: calc_iscv+2EF↑j
 				shl	b
 				bne	loc_D815
 
-				ld	a, unk_9E
+				ld	a, var_idle_trim_flags
 				cmpb	a, #01h
 				beq	loc_D815
 
@@ -9492,10 +9543,10 @@ loc_D7F9:							; CODE XREF: calc_iscv+317↑j
 
 loc_D815:							; CODE XREF: calc_iscv+2F9↑j
 								; calc_iscv+302↑j ...
-; unk_1A5: first-order low-pass filter tracking var_rpm_x_5p12, moving 1/4 of
+; var_rpm_smoothed: first-order low-pass filter tracking var_rpm_x_5p12, moving 1/4 of
 ; the way toward the current RPM each call (a smoothed/damped RPM reference)
 				ld	d, var_rpm_x_5p12
-				sub	d, unk_1A5
+				sub	d, var_rpm_smoothed
 				beq	loc_D82D
 
 				rorc	a
@@ -9508,8 +9559,8 @@ loc_D815:							; CODE XREF: calc_iscv+2F9↑j
 				inc	b
 
 loc_D827:							; CODE XREF: calc_iscv+35B↑j
-				add	d, unk_1A5
-				st	d, unk_1A5
+				add	d, var_rpm_smoothed
+				st	d, var_rpm_smoothed
 
 loc_D82D:							; CODE XREF: calc_iscv+351↑j
 				ld	x, var_rpm_x_5p12
@@ -9522,7 +9573,7 @@ loc_D82D:							; CODE XREF: calc_iscv+351↑j
 				cmp	#0Dh, var_rpm_x_5p12
 				bcs	loc_D84F
 
-				ld	d, unk_1A5
+				ld	d, var_rpm_smoothed
 				sub	d, var_rpm_x_5p12
 				bcs	loc_D84A
 
@@ -9541,7 +9592,7 @@ loc_D84F:							; CODE XREF: calc_iscv+369↑j
 								; calc_iscv+373↑j ...
 				mov	x, d
 				add	d, #0100h
-				sub	d, unk_1A3
+				sub	d, var_iscv_rpm_droop
 				bcc	loc_D85A
 
 				clr	a
@@ -9560,7 +9611,7 @@ loc_D860:							; CODE XREF: calc_iscv+392↑j
 
 loc_D863:							; CODE XREF: calc_iscv+384↑j
 								; calc_iscv+395↑j
-				st	x, unk_1A3
+				st	x, var_iscv_rpm_droop
 				mov	d, x
 				ld	a, #50h
 				cmp	#3Dh, var_cnt_startup
@@ -9604,13 +9655,13 @@ loc_D891:							; CODE XREF: calc_iscv+3A3↑j
 
 loc_D89E:							; CODE XREF: calc_iscv+3D0↑j
 				clr	a
-				add	b, unk_1A0
+				add	b, var_iscv_ect_term
 				addc	a, #00h
 				shl	d
 				shl	d
 				shl	d
 				shl	d
-				add	d, unk_1A1
+				add	d, var_iscv_idle_base
 				sub	d, #0800h
 				bra	loc_D8B3
 

@@ -97,14 +97,14 @@ ROM. The raw bits were not traced back to their source this session.
 
 A separate threshold check (`byte_C36C`/`C36E`/`C370`, also switch-selected)
 sets `var_diag_errors_5.0` and feeds both `check_knock_sensor_err_flag` and
-an accumulator `unk_1A7`. **Resolved**: `set_knock_sensor_err_flag`/
+an accumulator `var_iscv_diag_term`. **Resolved**: `set_knock_sensor_err_flag`/
 `check_knock_sensor_err_flag` share one fall-through tail with `negate_rD`
 (see their own header comment in `D151803-9651.asm`) - `var_diag_errors_5.0`
 isn't knock-sensor-specific here, it's reused as a generic "did we negate
 D" remember-bit for a disguised abs()/restore-sign idiom. So this site is
 computing a delta that may go negative, taking its magnitude (recording
-that via the flag), summing it into `unk_1A7`, then presumably restoring
-the sign later via `check_knock_sensor_err_flag` wherever `unk_1A7`
+that via the flag), summing it into `var_iscv_diag_term`, then presumably restoring
+the sign later via `check_knock_sensor_err_flag` wherever `var_iscv_diag_term`
 resurfaces in Phase 3 - not independently re-traced this session.
 
 The five terms are summed, plus a `table_iscv_C391` entry (values `0x00, 0x08,
@@ -144,14 +144,14 @@ mechanical trace; flagged as an open question below.
 
 ### Phase 3 — ECT and secondary RPM-band terms
 
-- `unk_1A0`: ECT-indexed 4-entry lookup (`byte_C352`/`C354` via
-  `table_ect_fixed4_interpolate`), refined against `unk_1A7` via
+- `var_iscv_ect_term`: ECT-indexed 4-entry lookup (`byte_C352`/`C354` via
+  `table_ect_fixed4_interpolate`), refined against `var_iscv_diag_term` via
   `interp_y_pair`.
-- `unk_1A1`: mirrors Phase 2's RPM-band search but against
+- `var_iscv_idle_base`: mirrors Phase 2's RPM-band search but against
   `table_iscv_rpm_C361` (same 5-byte-stride/step-value layout as `C357`),
   producing a second running value. Below the `0xA66` candidate threshold
   the new value passes straight through; above it, the step from the
-  previous `unk_1A1` is rate-limited to `±0x400` per tick.
+  previous `var_iscv_idle_base` is rate-limited to `±0x400` per tick.
 
 ### Phase 4 — Idle trim learning
 
@@ -161,15 +161,15 @@ Once idle has been stable long enough (`var_cnt_DD`/`var_cnt_DE`, ~368ms):
 include ECT, battery voltage, fuel/idle DMA trim state, and whether recent
 flare terms (`unk_1AB`, `var_iscv_startup_flare`) are still active — i.e.
 the trim is only allowed to adapt once the engine is warm, stable, and not
-mid-flare. `unk_9E` appears to record which direction/validity state the
+mid-flare. `var_idle_trim_flags` appears to record which direction/validity state the
 last nudge left the system in, but wasn't fully traced.
 
 ### Phase 5 — RPM-slope terms
 
-- `unk_1A5`: a first-order low-pass filter tracking `var_rpm_x_5p12`,
+- `var_rpm_smoothed`: a first-order low-pass filter tracking `var_rpm_x_5p12`,
   stepping 1/4 of the way to the current RPM each call (smoothed RPM
   reference, via `divide_rD_4_signed`).
-- `unk_1A3`: derived from the gap between current RPM and `unk_1A5` under a
+- `var_iscv_rpm_droop`: derived from the gap between current RPM and `var_rpm_smoothed` under a
   low-speed gate (`var_speed_kph < 2`), doubled/saturated and generally
   clamped to `0x400` — reads as a stall-recovery/derivative term, though the
   exact RPM-band thresholds (`0x14`, `0x0D`) weren't fully resolved.
@@ -180,7 +180,7 @@ The primary 2D interpolation: `table_idle_C2FE` via `map_rD_rX_interpolate`
 (bilinear — the same helper used for fuel/ignition maps), indexed by
 `var_iscv_rpm_cmp_197`-derived and load-flag-derived axes. The result is
 clamped to a max of `0x50` (`var_iscv_unk_19F`), then combined with
-`unk_1A0`, `unk_1A1`, `var_iscv_startup_flare`/`var_iscv_target_base`
+`var_iscv_ect_term`, `var_iscv_idle_base`, `var_iscv_startup_flare`/`var_iscv_target_base`
 (selected by `var_flags_46.6` — see Open Questions), and a `table_unk_C34A`
 load-compensation entry (selected by A/C-adjacent flags and
 `var_flags_42.6`). A final ECT/RPM-band gate (`var_cnt_DC`, 2800/3000rpm
@@ -199,11 +199,11 @@ calc_iscv  [4ms tick, gated on var_flags_44.1 clear]
   │            (var_rpm_x_5p12 - target_rpm) -> var_iscv_rpm_cmp_197
   ├─ Phase 2: RPM-band table (table_iscv_rpm_C357) or nv_idle_trim fallback
   │            -> var_iscv_target_base (ratcheted baseline)
-  ├─ Phase 3: ECT term (unk_1A0) + second RPM-band table (table_iscv_rpm_C361)
-  │            -> unk_1A1 (rate-limited)
+  ├─ Phase 3: ECT term (var_iscv_ect_term) + second RPM-band table (table_iscv_rpm_C361)
+  │            -> var_iscv_idle_base (rate-limited)
   ├─ Phase 4: idle trim learning -> var_idle_trim -> write_rB_nv_ram
   │            -> var_nv_idle_trim (persisted)
-  ├─ Phase 5: RPM-slope terms (unk_1A5, unk_1A3)
+  ├─ Phase 5: RPM-slope terms (var_rpm_smoothed, var_iscv_rpm_droop)
   └─ Phase 6: table_idle_C2FE bilinear map + load compensation
                -> var_iscv_19D
 
@@ -236,16 +236,16 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 | `var_iscv_19D` | Final duty target from `calc_iscv`, consumed by `divide_d_by_x` |
 | `var_iscv_pwm` | Final PWM pulse width (timer units) consumed by `drive_dout1_iscv` |
 | `var_iscv_ect_unk_191` | ECT-indexed idle baseline computed by the separate `calc_ect_iscv` helper |
-| `unk_1A0` | ECT-indexed correction term (Phase 3) |
-| `unk_1A1` | Secondary RPM-band running value, rate-limited (Phase 3) |
-| `unk_1A3` | Stall-recovery/derivative-like term from RPM slope (Phase 5) |
-| `unk_1A5` | Low-pass filtered ("smoothed") RPM reference (Phase 5) |
-| `unk_1A7` | Diagnostic-linked accumulator from the `byte_C36C` threshold check (Phase 1), reused in Phase 3 |
+| `var_iscv_ect_term` | ECT-indexed correction term (Phase 3) |
+| `var_iscv_idle_base` | Secondary RPM-band running value, rate-limited (Phase 3) |
+| `var_iscv_rpm_droop` | Stall-recovery/derivative-like term from RPM slope (Phase 5) |
+| `var_rpm_smoothed` | Low-pass filtered ("smoothed") RPM reference (Phase 5) |
+| `var_iscv_diag_term` | Diagnostic-linked accumulator from the `byte_C36C` threshold check (Phase 1), reused in Phase 3 |
 | `unk_1A9` | Post-start decaying flare term (Phase 1) |
 | `var_iscv_unk_1AB` | Cold/CPU2-enrichment-linked flare term (Phase 1) |
 | `var_iscv_unk_1AD` | AC/PS-load-dependent ramp term (Phase 1, hypothesis) |
-| `unk_9E` | Idle trim nudge direction/validity state (Phase 4, not fully confirmed) |
-| `unk_E2` | Cleared alongside idle-trim-stability resets; role not confirmed |
+| `var_idle_trim_flags` | Idle trim nudge direction/validity state (Phase 4, not fully confirmed) |
+| `var_cnt_idle_dwell` | Cleared alongside idle-trim-stability resets; role not confirmed |
 
 ### Key Tables
 
@@ -256,8 +256,8 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 | `table_idle_pim` | PIM | Phase 1 PIM flare |
 | `table_iscv_C391` | `var_io_input2` bits 6/7 (4 combinations) | Phase 1 load compensation, added to target RPM |
 | `table_iscv_rpm_C357` | `var_iscv_rpm_cmp_197` (ascending band search) | Phase 2 `var_iscv_target_base` step |
-| `table_iscv_rpm_C361` | `var_iscv_rpm_cmp_197` (ascending band search) | Phase 3 `unk_1A1` step |
-| `byte_C352`/`byte_C354` | ECT (`table_ect_fixed4_interpolate`) | Phase 3 `unk_1A0` |
+| `table_iscv_rpm_C361` | `var_iscv_rpm_cmp_197` (ascending band search) | Phase 3 `var_iscv_idle_base` step |
+| `byte_C352`/`byte_C354` | ECT (`table_ect_fixed4_interpolate`) | Phase 3 `var_iscv_ect_term` |
 | `idle_trim_limits` | — (min/max pair: `0x78`/`0x45`) | Phase 4 clamp for `var_idle_trim` nudges |
 | `table_idle_C2FE` | RPM error + load (bilinear, `map_rD_rX_interpolate`) | Phase 6 primary duty map |
 | `table_unk_C34A` | A/C-adjacent flags + `var_flags_42.6` (4-way select) | Phase 6 load compensation |
@@ -279,7 +279,7 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 - `var_io_input2` bits 6/7 — feed `table_iscv_C391`'s load-compensation
   selection but have no documented signal name (unlike bit 0 = ECO, bit 3 =
   PS/IDUP).
-- `unk_1A7`, `unk_9E`, `unk_E2` — participate in the flare/trim logic but
+- `var_iscv_diag_term`, `var_idle_trim_flags`, `var_cnt_idle_dwell` — participate in the flare/trim logic but
   their precise roles weren't pinned down; left unrenamed rather than
   guessed at.
 - `table_iscv_rpm_C357`/`C361`'s exact byte layout (why a 5-byte stride, what

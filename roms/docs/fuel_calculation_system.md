@@ -37,7 +37,7 @@ each correction. Read it first.
                               │  ramp_limit_inj_pw        │
                               └───────────┬───────────────┘
                                           ▼
-                    (3)       + unk_127   (ignition-blend term, signed sat.)
+                    (3)       + var_ign_blend_out   (ignition-blend term, signed sat.)
                                           ▼  var_temp_w = "the" pulse width
                               ┌───────────────────────────┐
                     (4)       │ loc_E6F6 per-injector trim│
@@ -78,8 +78,8 @@ which and why it matters.
 
 ### (3) The ignition-blend contribution
 
-`unk_127`, produced by `update_ign_timing_blend`, is added just above
-`loc_E6C7` with signed saturation - the sign of `unk_127` selects which of
+`var_ign_blend_out`, produced by `update_ign_timing_blend`, is added just above
+`loc_E6C7` with signed saturation - the sign of `var_ign_blend_out` selects which of
 the two add-and-clamp paths runs, clamping to 0 on underflow or 0xFFFF on
 overflow. The result is stored to `var_temp_w` at `loc_E6CE` — **that is
 "the" calculated pulse width**, the single value all four injectors are
@@ -158,7 +158,7 @@ restarting it (`injector_on`). See the journal's "Injector system" section.
 | Open/closed loop selection, rate limit | `calc_inj_pw_base` | (1) |
 | LTFT (NV, per load cell) | `read_nv_afr_trim` | (2) |
 | STFT (volatile O2 integrator) | `var_lambda_integrator` | (2) |
-| Ignition-blend term | `unk_127` | (3) |
+| Ignition-blend term | `var_ign_blend_out` | (3) |
 | Per-cylinder trim | `table_inj_pw_adj_C25B/C25F` | (4) |
 | Limp-home fixed PW | `loc_E729` | (5) |
 | Full-cycle halving | `var_ignition_flags.7` | (6) |
@@ -212,7 +212,7 @@ can be reused against `var_trim_state`'s bits instead of the assembler
 emitting separate code for each. Confirmed by:
 
 - Entry (`calc_inj_pw_base`): the *real* `var_flags_4E` is snapshotted to
-  `var_flags_4E_copy2` and `var_flags_4F` to `unk_1D8`, then
+  `var_flags_4E_copy2` and `var_flags_4F` to `var_flags_4F_copy2`, then
   `var_flags_4E` is overwritten with `var_trim_state`.
 - Exit (`loc_DC77`): `var_flags_4E`'s current value is written back to
   `var_trim_state` - but `var_flags_4E` itself is *not* restored yet.
@@ -362,7 +362,7 @@ formula (no padding discrepancy for these, unlike the three words above):
 `update_ign_timing_blend`, CPU1's consumer of all five (plus the primary `dmarx_ign_timing`
 and `dmarx_ign_timing_unk_166`), has since been partially traced (see
 session_journal.md): a PIM-table-baseline-vs-clamp update involving
-`unk_129`/`12B`/`12D`/`12F` state, self-re-armed to run once per ~32ms via
+`var_ign_blend_accum`/`12B`/`12D`/`12F` state, self-re-armed to run once per ~32ms via
 `var_schedule_flag_41.3`'s `tbs`-based one-shot gate (see that variable's
 ASM declaration comment for the mechanism).
 **Correction:** the fallback-vs-primary selection is **not** knock-sensor
@@ -427,9 +427,9 @@ header comment above `loc_DC77` in the ASM; summary:
   loop - the short second `var_trim_state`-alias instance that also calls
   `update_lambda_stft`) wraps a long run of O2-heater/lambda/coolant-sensor
   diagnostic checks in its own `unk_1CF` alias instance, and resolves two
-  previously-unexamined helpers: `check_cnt_187_window` (resets `unk_187`, sets
+  previously-unexamined helpers: `check_cnt_187_window` (resets `var_cnt_187`, sets
   `var_flags_4F.7` if outside `[3, 0x131)`) and `inc_cnt_187` (saturating
-  increment of `unk_187`).
+  increment of `var_cnt_187`).
 
 ---
 
@@ -724,7 +724,7 @@ only adapt once the fast and slow pressure estimates reconverge.
 - `unk_1C8`'s full producer chain: traced as far as `loc_E665`
   (~`E620`-`E6B0`) and confirmed it folds in `var_pim2`-derived
   `dmatx_pim`, but the surrounding computation (`var_pim_tps_est`,
-  `var_pim_est_fast`/`135`, `var_nv_trim_unk_98`, `unk_1CA`,
+  `var_pim_est_fast`/`135`, `var_nv_trim_unk_98`, `var_inj_pw_unk_1CA`,
   `divide_rD_64_saturate`/`divide_rD_16`/`mult_rArX`) isn't traced. This
   sits inside the still-largely-unexplored `E363`-onward region flagged
   below - worth resolving together with that pending work rather than as

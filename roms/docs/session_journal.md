@@ -833,7 +833,7 @@ and never reloaded before the gate.
 `ramp_limit_inj_pw`) is written from a computation near `loc_E665`
 (~`E620`-`E6B0`) that folds in `var_pim2`-derived `dmatx_pim`, confirming
 the "PIM/MAP-pressure-linked" read. The rest of that computation's inputs
-(`var_pim_tps_est`, `var_pim_est_fast`/`135`, `var_nv_trim_unk_98`, `unk_1CA`) are
+(`var_pim_tps_est`, `var_pim_est_fast`/`135`, `var_nv_trim_unk_98`, `var_inj_pw_unk_1CA`) are
 not traced - moved to Pending work below, grouped with the neighboring
 `E363`-onward exploration since it's in the same address range.
 
@@ -902,8 +902,8 @@ Key findings:
   `unk_1CF_alias` .equ (same technique as var_trim_state_alias) and applied
   it to both confirmed windows.
 - Resolved two previously-flagged "not deep-dived" helpers: `check_cnt_187_window`
-  (resets unk_187, sets var_flags_4F.7 if outside [3,0x131)) and
-  `inc_cnt_187` (saturating increment of unk_187) - a simple counter/error-flag
+  (resets var_cnt_187, sets var_flags_4F.7 if outside [3,0x131)) and
+  `inc_cnt_187` (saturating increment of var_cnt_187) - a simple counter/error-flag
   pair.
 
 **`var_flags_4E_copy_2` investigated and resolved** (was left open at the
@@ -951,7 +951,7 @@ start of E363), var_flags_4E is deliberately overwritten to hold
 var_trim_state's value and used as a scratch register, reusing the
 existing tbbc/tbbs/setb/clrb-on-var_flags_4E instruction encodings against
 var_trim_state's bits instead of compiling separate code. Confirmed by the
-snapshot-at-entry (var_flags_4E_copy2/unk_1D8), the commit-without-restore
+snapshot-at-entry (var_flags_4E_copy2/var_flags_4F_copy2), the commit-without-restore
 at loc_DC77, and an identical short-lived instance later
 (var_trim_state -> var_flags_4E -> jsr update_lambda_stft -> var_flags_4E ->
 var_trim_state) right before the real var_flags_4E is finally restored
@@ -1063,7 +1063,7 @@ Full documentation in idle_control_system.md.
 Computes the ISC valve duty target every 4ms: sums several flare/enrichment
 terms into a target idle RPM, compares against actual RPM for an error term,
 runs that error through twin RPM-band tables (table_iscv_rpm_C357/C361) to
-update two running values (var_iscv_target_base, unk_1A1), adaptively learns
+update two running values (var_iscv_target_base, var_iscv_idle_base), adaptively learns
 var_idle_trim into NV RAM once idle is stable, and finishes with a bilinear
 map (table_idle_C2FE) to produce var_iscv_19D. Downstream (divide_d_by_x)
 combines this with battery dead-time compensation into var_iscv_pwm, which
@@ -1073,7 +1073,7 @@ timer-compare PWM pattern used for ignition (CPR0) and injection (CPR4/6/7/5).
 Renames: var_iscv_unk_195 -> var_iscv_target_rpm, var_iscv_unk_19B ->
 var_iscv_target_base (both confidently justified by tracing their sole
 producers/consumers; see idle_control_system.md). Several other unk_
-variables (unk_1A0/1A1/1A3/1A5/1A7/9E/E2) are understood at the "some
+variables (var_iscv_ect_term/1A1/1A3/1A5/1A7/9E/E2) are understood at the "some
 flare/ramp/compensation contribution" level but not renamed - see that doc's
 Open Questions section for specifics worth revisiting.
 
@@ -1494,8 +1494,7 @@ in-function BRANCH targets, not callables. Even the gold-standard
 `knock_mcu_update.ASM` has those, and renaming them is not a goal - the
 metric that matters is call targets.
 
-Still named `unk_`: 52 on CPU1, 13 on CPU2 (down from 60 after a pass over
-the most-referenced ones). Every one carries
+Still named `unk_`: **45 on CPU1**, 13 on CPU2 (down from 60). Every one carries
 either a full explanation or a factual "written by X, read by Y" note; they
 are unnamed because their purpose is genuinely unestablished, not because
 nobody looked.
@@ -1504,14 +1503,14 @@ nobody looked.
 
 | was | now | basis |
 |---|---|---|
-| `unk_127` | `var_ign_blend_out` | update_ign_timing_blend's signed output; feeds PW stage 3 and an ISC gate |
-| `unk_129` | `var_ign_blend_accum` | the signed accumulator in that blend; its sign selects table_rpm_C168/C172 |
-| `unk_AA` | `var_fuelcut_recovery_cnt` | 0..2 counter; reset while fuel cut active, gates a +0x01F4 bump for ~2 ticks after it releases |
-| `unk_187` | `var_cnt_187` | 16-bit saturating counter with an accept-window of [3, 0x131); what it counts is still unknown |
-| `unk_1DD` | `var_asr0n_shadow_1DD` | **CPU1's ASR0N write-shadow** - see below |
-| `unk_1D8` | `var_flags_4F_copy2` | save/restore slot for var_flags_4F, parallel to var_flags_4E_copy2 |
-| `unk_1CA` | `var_inj_pw_unk_1CA` | intermediate on the injector-PW path; domain certain, quantity not |
-| `unk_E5` | `var_cnt_sta_active` | starter-engaged tick counter; >0x1F (~124ms) debounces the STA fault |
+| `var_ign_blend_out` | `var_ign_blend_out` | update_ign_timing_blend's signed output; feeds PW stage 3 and an ISC gate |
+| `var_ign_blend_accum` | `var_ign_blend_accum` | the signed accumulator in that blend; its sign selects table_rpm_C168/C172 |
+| `var_fuelcut_recovery_cnt` | `var_fuelcut_recovery_cnt` | 0..2 counter; reset while fuel cut active, gates a +0x01F4 bump for ~2 ticks after it releases |
+| `var_cnt_187` | `var_cnt_187` | 16-bit saturating counter with an accept-window of [3, 0x131); what it counts is still unknown |
+| `var_asr0n_shadow_1DD` | `var_asr0n_shadow_1DD` | **CPU1's ASR0N write-shadow** - see below |
+| `var_flags_4F_copy2` | `var_flags_4F_copy2` | save/restore slot for var_flags_4F, parallel to var_flags_4E_copy2 |
+| `var_inj_pw_unk_1CA` | `var_inj_pw_unk_1CA` | intermediate on the injector-PW path; domain certain, quantity not |
+| `var_cnt_sta_active` | `var_cnt_sta_active` | starter-engaged tick counter; >0x1F (~124ms) debounces the STA fault |
 
 **`var_asr0n_shadow_1DD` is the notable one.** CPU1 maintains an ASR0N write
 shadow using the identical idiom to CPU2's `var_asr0n_shadow_126`, for the
@@ -1525,6 +1524,39 @@ worth re-scanning the other for.
 `var_cnt_sta_active` is also a reminder of the `increment_counters` blind
 spot: it appears only ever CLEARED in this file, because its increments come
 from the `COUNTER_ARG(var_cnt_E1, 7)` range write.
+
+### `unk_` pass 2: the calc_iscv flare/ramp cluster
+
+`calc_iscv`'s header had long said its intermediate terms were "understood at
+the level of 'a flare/ramp/compensation contribution combined additively into
+the target' but not fully distinguished from one another". Seven of them are
+now distinguished:
+
+| was | now | what it is |
+|---|---|---|
+| `unk_1A5` | `var_rpm_smoothed` | first-order LP on RPM, moving 1/4 toward actual each call |
+| `unk_1A3` | `var_iscv_rpm_droop` | (smoothed - actual) RPM, doubled and saturated at 0x400 - the engine bogging at idle |
+| `unk_1A0` | `var_iscv_ect_term` | ECT-derived additive contribution |
+| `unk_1A1` | `var_iscv_idle_base` | idle base value, default 0x08A4; only recomputed at genuine idle |
+| `unk_1A7` | `var_iscv_diag_term` | diagnostic-linked term from Section 1 |
+| `unk_E2` | `var_cnt_idle_dwell` | idle-settled dwell counter |
+| `unk_9E` | `var_idle_trim_flags` | the idle-trim gate flags |
+
+Two of these are worth calling out.
+
+**`var_rpm_smoothed` + `var_iscv_rpm_droop` are a matched pair**, and the
+same shape as `calc_dmatx_pim`'s filter pair: a smoothed reference, and the
+gap between it and the live signal used as the control input. Here the gap
+means "RPM is sagging below where it should be" - an idle bog detector,
+gated to genuine idle by road speed < 2 and an RPM band.
+
+**`var_idle_trim_flags` was invisible to every previous bit-op sweep**
+because it is manipulated with whole-byte `or`/`and` masks rather than
+`setb`/`clrb` - exactly like `var_flags_1DC`. Its bit 0 is set while
+diagnostic mode is active and cleared once `var_cnt_idle_dwell` shows idle
+settled for ~612ms, which is the gate on idle-trim learning that
+`calc_iscv`'s header had guessed at. `var_cnt_idle_dwell` is itself another
+`increment_counters` case - it appears only ever CLEARED here.
 
 ---
 
@@ -1856,7 +1888,7 @@ generically must not assume every slot is live on every ROM.
     but as spare counter capacity, not untouched memory.)
   - `unk_E3` was called "write-only". Wrong for the same reason - its
     explicit write is a counter RESET.
-  - `unk_E2`, `unk_E5` similarly: their explicit writes are resets and their
+  - `var_cnt_idle_dwell`, `var_cnt_sta_active` similarly: their explicit writes are resets and their
     reads are elapsed-time tests, not value loads.
   - `unk_E4` -> **`var_stft_dwell_cnt`**, now understood: a free-running
     counter that `update_lambda_stft` clears whenever its entry conditions
@@ -1881,7 +1913,7 @@ generically must not assume every slot is live on every ROM.
   1. **Init/reset path** (`var_flags_44.5` CLEAR - see the polarity
      correction below): seeds `var_unk_knock_12B`/
      `unk_12D`/`unk_12F` to `table_pim_unk_C154(dmatx_pim)/2` and zeroes
-     `unk_129`/`unk_127`/sets `unk_AA=0xFF` - a first-run/reset baseline.
+     `var_ign_blend_accum`/`var_ign_blend_out`/sets `var_fuelcut_recovery_cnt=0xFF` - a first-run/reset baseline.
   2. **Normal path** (`var_flags_44.5` SET, every other tick): clamps
      `var_unk_knock_12B` between `unk_12F` and the PIM-table baseline
      (whichever's larger/smaller), using `var_diag_errors_5.0` purely as
@@ -1892,9 +1924,9 @@ generically must not assume every slot is live on every ROM.
      genuine correction to what this entry said in an earlier session).
      That flag then selects `dmarx_ign_timing_fallback1/2` vs the primary
      `dmarx_ign_timing`/`dmarx_ign_timing_unk_166` for a
-     multiply/table_ign_blend_weight blend feeding an `unk_129` accumulator, and later
+     multiply/table_ign_blend_weight blend feeding an `var_ign_blend_accum` accumulator, and later
      a `table_pair_interpolate` lookup (`unk_13F`/`unk_141`-selected)
-     feeding `unk_127`, ending with a call to `decay_ign_ect_term`.
+     feeding `var_ign_blend_out`, ending with a call to `decay_ign_ect_term`.
   **RESOLVED - the middle blend.** The ambiguity was the `mov`/`mult_rDrX`
   register flow, and it turns on the two `mov`s, both of which follow the
   src,dest order:
@@ -1910,7 +1942,7 @@ generically must not assume every slot is live on every ROM.
   the value was pulled DOWN by the clamp. A `cmp d,#0100h` deadband ignores
   excursions under 0x100 entirely.
 
-  `unk_129` is a SIGNED accumulator with saturation at both rails: on
+  `var_ign_blend_accum` is a SIGNED accumulator with saturation at both rails: on
   overflow it loads `0x7FFF`, then if the sign flag is set the following
   `inc a`/`inc b` carries that to `0x8000` (-32768) - a neat way to saturate
   either direction using the flag that already carries the sign.
@@ -1949,7 +1981,7 @@ generically must not assume every slot is live on every ROM.
   ignition-side counterpart of CPU2's enrichment decay.
 
   **Still not traced:** `table_ign_blend_weight`'s real-world meaning (the second lookup
-  at loc_E92B feeding `unk_127`).
+  at loc_E92B feeding `var_ign_blend_out`).
 
 ### `calc_transient_terms` (was `sub_E76D`) and its two maps
 
