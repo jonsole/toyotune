@@ -833,7 +833,7 @@ and never reloaded before the gate.
 `ramp_limit_inj_pw`) is written from a computation near `loc_E665`
 (~`E620`-`E6B0`) that folds in `var_pim2`-derived `dmatx_pim`, confirming
 the "PIM/MAP-pressure-linked" read. The rest of that computation's inputs
-(`unk_131`, `var_unk_knk_133`/`135`, `var_nv_trim_unk_98`, `unk_1CA`) are
+(`var_pim_tps_est`, `var_pim_est_fast`/`135`, `var_nv_trim_unk_98`, `unk_1CA`) are
 not traced - moved to Pending work below, grouped with the neighboring
 `E363`-onward exploration since it's in the same address range.
 
@@ -1000,7 +1000,7 @@ chunk's entry point in the ASM; this is the narrative summary.
   see chunk D3A5 below. Also sets `var_flags_4E.7` in this path, though
   that bit is documented elsewhere as "boost limit exceeded" - not
   confirmed whether that's the same condition or bit reuse.
-- Calls sub_E454 (fuel enrichment scaling, confirmed), sub_E551, loc_FC38,
+- Calls sub_E454 (fuel enrichment scaling, confirmed), calc_dmatx_pim, loc_FC38,
   sub_D2C5 (NV trim validation, see D1DD below) - only sub_D2C5 was
   traced.
 - The overrun/deceleration fuel-cut decision feeding `injector_warmup`
@@ -1326,7 +1326,7 @@ rather than guessed at.
   confirmation that nothing else advances `var_4ms_cnt_sta` while bit7 is held.
 
 **Still open on CPU1** (unchanged by this pass): the pending-work list below.
-This pass was breadth-first over variables, so `sub_E551`, `loc_E112`/`E363`,
+This pass was breadth-first over variables, so `calc_dmatx_pim`, `loc_E112`/`E363`,
 `sub_E865`'s middle blend and the second lambda-trim system are all still
 untouched - several of the reference notes above point into them.
 
@@ -1475,31 +1475,89 @@ ROM.
 
 ### CPU1 (D151803-9651)
 
-**Functions renamed but not commented:**
-- calc_ign_timing_min (sub_EB57)
-- check_limiters_active / check_limiters_active_2 (near injector_drive) -
-  renamed and inline-commented, but no header-block writeup yet
+**Functions renamed but not commented:** RESOLVED - `calc_ign_timing_min`
+and `check_limiters_active`/`_2` both have header blocks as of the
+Inputs/Outputs pass above, along with 143 other call targets. Note this is
+header/footprint coverage, not a deep trace: `calc_ign_timing_min`'s header
+records what it reads and writes, but the meaning of its `var_flags_4E.3`
+entry gate is still unestablished (see that bit's declaration comment).
 
 **Not yet started:**
-- **sub_E551 (~E551-E6B0+, 350+ bytes) - a substantial, entirely
-  uncharacterized function**, scoped out while chasing unk_1C8's producer
-  chain (its immediate write site, loc_E6A8, sits just past this
-  function's end and folds in a dmatx_pim/var_pim2-linked value that
-  traces back into sub_E551's output). Calls sub_E767, uses TPS delta
-  (get_tps_unk/var_tps_delta), runs a signed_proportional_update loop
-  against var_unk_knk_133, and calls set_knock_sensor_err_flag/
-  check_knock_sensor_err_flag - looks like its own knock/PIM-linked
-  limiting calculation (possibly boost/overpressure-related), not a small
-  helper. Recommend a dedicated session, same treatment as D931 got. See
-  fuel_calculation_system.md Open Questions for detail. **Related:**
-  loc_FC38 (also called from chunk C9DA, alongside sub_E551) - not
-  deep-dived either, worth tackling in the same pass.
+- **RESOLVED: sub_E551 is `calc_dmatx_pim`** - manifold-pressure transient
+  compensation, NOT the "knock/boost limiting calculation" this entry
+  previously guessed. Full writeup now lives in the function's own header
+  and in fuel_calculation_system.md; summary here.
+
+  The tell is loc_E627, its single exit: `st d, dmatx_pim`. Everything
+  above exists to decide what value CPU2 gets for fuel calculation. The
+  `set_knock_sensor_err_flag`/`check_knock_sensor_err_flag` calls that
+  drove the knock hypothesis are just the generic abs()/restore-sign
+  primitive (see the correction recorded for those functions) - they carry
+  no knock meaning, and the old `var_unk_knk_133`/`135` names came from
+  exactly that mistake.
+
+  **Mechanism.** A MAP sensor lags the real manifold event, so fuelling
+  from `var_pim2` alone runs lean on tip-in and rich on tip-out. The ECU
+  therefore builds an independent throttle-derived pressure estimate and
+  filters it twice at different rates, using the divergence between the
+  filters as a "how fast is load changing" signal - a lead/lag pair:
+
+      get_tps_unk        var_tps + var_unk_tps_143*0x40
+      sub_E767           the above >> 3
+      var_pim_tps_est    * var_pim_trim_scale * 2   (in calc_dmatx_pim)
+      var_pim_est_fast   tracks var_pim_tps_est     (update_pim_est_fast)
+      var_pim_est_slow   tracks fast at 1/4 rate    (update_pim_est_slow)
+
+  `var_pim_trim_scale` is the learned PIM/barometric NV trim
+  (`var_nv_trim_unk_98`, via adc_handler_pim) normalised to a multiplier -
+  that is what puts the throttle estimate into real PIM units. Both
+  filters force-load their input while `var_flags_46.0` is set, so they
+  start converged at cranking instead of injecting a false transient.
+
+  calc_dmatx_pim then derives a step count (clamped to 14) from injector
+  pulse width, injector trim and RPM, runs the filter that many times - so
+  it converges faster the bigger the load event - takes
+  (result - var_pim_est_slow), scales it against var_pim2 above a 0x61
+  threshold, and adds it to var_pim2 with saturation. It bails and passes
+  raw var_pim2 straight through during the factory self-test
+  (var_flags_40.0), while cranking (var_flags_46.0), and notably on a hard
+  throttle CLOSE (var_flags_47.7).
+
+  **The link to fuel trim** (and to Jon's short-term/long-term note above):
+  it publishes `var_pim_trans_fast` = sign(fast - slow), and
+  `closed_loop_control` refuses to run trim learning while that reads more
+  negative than -2 (`cmp a,#0FEh` / `blta`). That is the classic "freeze
+  fuel trim through a transient" rule - trims only adapt once the two
+  filters reconverge. Worth carrying into the trim-cluster session.
+
+  **Renamed as a result:** sub_E551->calc_dmatx_pim, knock_unk_E79E->
+  update_pim_est_fast, some_knock_averaging_calc->update_pim_est_slow,
+  var_unk_knk_133/135->var_pim_est_fast/slow, unk_131->var_pim_tps_est,
+  unk_144->var_pim_trim_scale, unk_146/147->var_pim_trans_est/fast.
+
+  **Still open here:** sub_E76D's two maps (map_c006, map_c0c7) are indexed
+  by var_rpm_x_5p12 but their units are not established, and
+  var_unk_tps_143's own producer is untraced. **Related and still not
+  deep-dived:** loc_FC38 (called from chunk C9DA alongside this function).
 - loc_E112 onward, and the start of chunk E363 up to the restore point
   around address E37F - continuation of the DC77/DD38/DD59 diagnostic
   phase; loc_DD59 jumps directly to loc_E112.
 - The second closed-loop lambda trim system in chunk D1DD
   (var_nv_trim_unk_96/unk_6B/var_lambda_count_unk_6C) - distinguish its
-  purpose from the zone-based nv_afr_trim system
+  purpose from the zone-based nv_afr_trim system.
+  **KEY CONTEXT (from Jon, the ECU's owner/tuner - not derived from the
+  disassembly): this ECU runs BOTH a short-term and a long-term fuel
+  trim**, which is almost certainly what the "multiple trim systems"
+  confusion in these entries actually is. Expect the fast-moving,
+  volatile, non-NV loop (var_lambda_integrator / lambda_avg, reset on
+  various events) to be SHORT-term, and the slow, NV-backed,
+  zone/cell-indexed one written through write_rB_nv_ram
+  (nv_afr_trim/var_nv_trim_unk_96/98, var_trim_cell_idx) to be
+  LONG-term - short-term trim is what the O2 loop swings cycle to cycle,
+  long-term is where its average is learned and stored across power
+  cycles. Verify against the code rather than assuming the mapping, but
+  this reframes the question from "how many trim systems are there" to
+  "which of these is short-term and which is long-term".
 - loc_DA63's lambda_avg/lambda_integrator adjustment logic (traced/renamed
   for the alias, but not characterized - looks like yet another distinct
   lambda-trim mechanism, see fuel_calculation_system.md Open Questions)
@@ -1535,7 +1593,7 @@ ROM.
   makes a couple of `mov` steps there ambiguous without more careful
   re-derivation. Also not traced: `sub_E832`'s own body, `table_C163`'s
   real-world meaning, and whether this whole function is actually part of
-  the same knock-fault-handling area as `sub_E551` (they share
+  the same knock-fault-handling area as `calc_dmatx_pim` (they share
   `set_knock_sensor_err_flag`/`check_knock_sensor_err_flag` calls, but
   per the correction above that's no longer strong evidence of a shared
   subject matter - it's a generic negate primitive both happen to use).

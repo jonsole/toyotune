@@ -411,26 +411,36 @@ there isn't one to find. `unk_1C2` is the one exception with a stable
 role - it's `ramp_limit_inj_pw_simple`'s output and `ramp_limit_inj_pw`'s
 deviation input, always a ratio nominally around `0xCCCD`.
 
-**`unk_1C8`'s producer - scoped, not traced:** its immediate write site is
-`loc_E6A8` (`st d, unk_1C8`), fed by a `dmatx_pim`/`var_pim2`-linked
-computation confirming the "MAP/PIM-pressure-linked" characterization used
-above. Tracing further back, that computation's own inputs (`unk_131`,
-`var_unk_knk_135`) are themselves produced by a **much larger, entirely
-separate function starting at `sub_E551`** (`~E551`-`E6B0`+, 350+ bytes) -
-not a small helper. `sub_E551` calls `sub_E767`, uses TPS delta
-(`get_tps_unk`/`var_tps_delta`), runs a `signed_proportional_update` loop
-against `var_unk_knk_133`, and calls `set_knock_sensor_err_flag`/
-`check_knock_sensor_err_flag` - i.e. it looks like its own knock/PIM-linked
-limiting calculation (possibly dynamic boost/overpressure-related, given
-the knock-error-flag involvement and `var_pim2` inputs), not simply a
-"compute the injector PW ceiling" helper. `unk_1C8` is just where its
-output happens to land for `ramp_limit_inj_pw`'s purposes.
+**`unk_1C8`'s producer - RESOLVED:** its immediate write site is `loc_E6A8`
+(`st d, unk_1C8`), fed by a `dmatx_pim`/`var_pim2`-linked computation, which
+confirms the "MAP/PIM-pressure-linked" characterization used above. That
+computation sits at the tail of **`calc_dmatx_pim`** (was `sub_E551`,
+`~E551`-`E6B0`+, 350+ bytes).
 
-**Recommendation:** treat `sub_E551` as its own subsystem for a future
-dedicated session (matching how `D931` itself was flagged in an earlier
-pass) rather than pursuing it as a footnote to injector PW - the knock/PIM
-signal involvement suggests it may turn out to matter more broadly than
-just this one ceiling value.
+An earlier pass guessed that function was a "knock/PIM-linked limiting
+calculation, possibly boost/overpressure-related". **That was wrong.** It is
+manifold-pressure transient compensation: its single exit stores to
+`dmatx_pim`, the value CPU2 fuels from. The `set_knock_sensor_err_flag` /
+`check_knock_sensor_err_flag` calls that suggested knock involvement are only
+the generic abs()/restore-sign primitive those functions actually implement -
+they carry no knock meaning here, and the old `var_unk_knk_*` names on its
+state came from the same mistake.
+
+Briefly: a MAP sensor lags the real manifold event, so the ECU also builds a
+throttle-derived pressure estimate (`var_pim_tps_est`), filters it twice at
+different rates (`var_pim_est_fast`, `var_pim_est_slow`), and uses the
+divergence between those filters as a "load is changing" measure that
+corrects `var_pim2` on its way to `dmatx_pim`. `unk_1C8` is simply where one
+intermediate of that computation lands for `ramp_limit_inj_pw`'s purposes.
+
+See `calc_dmatx_pim`'s own header in the disassembly for the full chain, and
+`session_journal.md` for the renames this produced.
+
+**Consequence for fuel trim:** the same function publishes
+`var_pim_trans_fast`, and `closed_loop_control` refuses to run trim learning
+while that indicates a transient - the standard "freeze fuel trim through a
+transient" rule. Any future work on this ECU's short-term vs long-term trim
+split should start from there.
 
 ---
 
@@ -457,8 +467,8 @@ just this one ceiling value.
 
 - `unk_1C8`'s full producer chain: traced as far as `loc_E665`
   (~`E620`-`E6B0`) and confirmed it folds in `var_pim2`-derived
-  `dmatx_pim`, but the surrounding computation (`unk_131`,
-  `var_unk_knk_133`/`135`, `var_nv_trim_unk_98`, `unk_1CA`,
+  `dmatx_pim`, but the surrounding computation (`var_pim_tps_est`,
+  `var_pim_est_fast`/`135`, `var_nv_trim_unk_98`, `unk_1CA`,
   `divide_rD_64_saturate`/`divide_rD_16`/`mult_rArX`) isn't traced. This
   sits inside the still-largely-unexplored `E363`-onward region flagged
   below - worth resolving together with that pending work rather than as

@@ -640,7 +640,7 @@ var_flags_46:			.block 1			; DATA XREF: divide_d_by_x+203↓r
 								; 46.7 - Set on	sub-CPU	error
 								;
 var_flags_47:			.block 1			; DATA XREF: sub_C996+3↓r
-								; sub_E551+1B↓r	...
+								; calc_dmatx_pim+1B↓r	...
 								; 47.0 - "PIM NV-trim write eligible"
 								;   one-shot in adc_handler_pim: set
 								;   (loc_FC13-ish, after 47.2 above) once
@@ -703,7 +703,7 @@ var_flags_47:			.block 1			; DATA XREF: sub_C996+3↓r
 								;   var_flags_40.7-gated reset, otherwise set/
 								;   cleared per-call from a magnitude/RPM-
 								;   gated threshold comparison against
-								;   unk_146. Not fully characterized in
+								;   var_pim_trans_est. Not fully characterized in
 								;   physical terms - see bit7 (same
 								;   block) and var_flags_44.2's related
 								;   deceleration flag.
@@ -714,7 +714,7 @@ var_flags_47:			.block 1			; DATA XREF: sub_C996+3↓r
 								;   placeholder) and again whenever the
 								;   negative-direction delta exceeds a
 								;   0x3D71 threshold; cleared once the
-								;   recomputed magnitude (unk_146) drops
+								;   recomputed magnitude (var_pim_trans_est) drops
 								;   below 1. Companion pair with bit6;
 								;   both likely feed acceleration/
 								;   deceleration enrichment logic
@@ -1528,7 +1528,7 @@ var_asr2_time:			.block 1			; DATA XREF: iv6_ne_process+8↓w
 var_prev_asr2_time:		.block 1			; DATA XREF: iv6_ne_process+2A↓r
 								; iv6_ne_process:bg_ne_process_F08E↓w ...
 				.block 1
-var_inj_pw_trim:		.block 1			; DATA XREF: sub_E551+31↓r
+var_inj_pw_trim:		.block 1			; DATA XREF: calc_dmatx_pim+31↓r
 								; calc_inj_phase_lead+26↓w
 var_inj_pw_inj1:		.block 2			; DATA XREF: divide_d_by_x+586↓r
 								; divide_d_by_x+5A2↓r ...
@@ -1610,22 +1610,32 @@ unk_12F:			.block 1			; DATA XREF: sub_E865+1A↓w
 								; Read/written by sub_E865 - see that
 								; function's Reads/Writes header.
 				.block 1
-unk_131:			.block 1			; DATA XREF: sub_E551+10↓w
-								; Written by sub_E551, the ~350-byte
-								; entirely-uncharacterized function that
-								; needs its own dedicated session - see
-								; session_journal.md's CPU1 pending work.
-								; Not renamed/traced further here.
+var_pim_tps_est:			.block 1			; DATA XREF: calc_dmatx_pim+10↓w
 								; divide_d_by_x+208F↓r ...
+								; Throttle-derived estimate of manifold pressure:
+								; (var_tps + var_unk_tps_143*0x40) >> 3, scaled by
+								; var_pim_trim_scale and doubled. Recomputed at the
+								; top of calc_dmatx_pim each pass. Head of the
+								; two-stage filter chain feeding the transient
+								; correction - see that function's header.
 				.block 1
-var_unk_knk_133:		.block 1			; DATA XREF: divide_d_by_x+2044↓r
+var_pim_est_fast:		.block 1			; DATA XREF: divide_d_by_x+2044↓r
 								; divide_d_by_x+20A4↓r ...
+								; First-stage (fast) filter of var_pim_tps_est,
+								; advanced every 4ms by update_pim_est_fast.
+								; Force-loaded with its input while var_flags_46.0
+								; is set (cranking), so it starts converged.
 				.block 1
-var_unk_knk_135:		.block 1			; DATA XREF: divide_d_by_x+2059↓r
+var_pim_est_slow:		.block 1			; DATA XREF: divide_d_by_x+2059↓r
 								; divide_d_by_x+2092↓r ...
+								; Second-stage (slow) filter, one quarter the rate
+								; of var_pim_est_fast, advanced every 4ms by
+								; update_pim_est_slow. The GAP between fast and slow
+								; is the ECU's measure of how quickly load is
+								; changing - see calc_dmatx_pim.
 				.block 1
-var_unk_tps_inj_137:		.block 1			; DATA XREF: sub_E551+3↓w
-								; knock_unk_E79E+C↓r
+var_unk_tps_inj_137:		.block 1			; DATA XREF: calc_dmatx_pim+3↓w
+								; update_pim_est_fast+C↓r
 var_enrich_unk_138:		.block 1			; DATA XREF: sub_E454+61↓w
 								; divide_d_by_x+2111↓r
 				.block 1
@@ -1661,30 +1671,41 @@ unk_141:			.block 1			; DATA XREF: divide_d_by_x+2291↓w
 				.block 1
 var_unk_tps_143:		.block 1			; DATA XREF: divide_d_by_x:loc_E534↓w
 								; get_tps_unk+8↓r
-unk_144:			.block 1			; DATA XREF: divide_d_by_x+E83↓r
-								; sub_E551+A↓r ...
-								; Written by loc_FC53; read by loc_D40E,
-								; loc_E5D0, sub_E551. Purpose not established -
-								; left named unk_ deliberately per CLAUDE.md
-								; (rename only on confirmed understanding).
-unk_145:			.block 1			; DATA XREF: sub_E551+7↓w
-								; WRITE-ONLY in this file: written by sub_E551,
+var_pim_trim_scale:			.block 1			; DATA XREF: divide_d_by_x+E83↓r
+								; calc_dmatx_pim+A↓r ...
+								; Learned PIM/barometric trim expressed as a
+								; multiplier: (var_nv_trim_unk_98 / 2) / 0x61,
+								; saturated to 0xFF, computed in adc_handler_pim
+								; (0x50 substituted when var_flags_42.0 says the
+								; trims are not valid). This is what converts the
+								; throttle-derived estimate into real PIM units.
+unk_145:			.block 1			; DATA XREF: calc_dmatx_pim+7↓w
+								; WRITE-ONLY in this file: written by calc_dmatx_pim,
 								; but no read site exists anywhere here. Either
 								; consumed by CPU2 over the DMA buffer, or
 								; vestigial.
-unk_146:			.block 1			; DATA XREF: divide_d_by_x:loc_E63C↓w
+var_pim_trans_est:			.block 1			; DATA XREF: divide_d_by_x:loc_E63C↓w
 								; ROM:loc_FDDB↓r
-								; Written by loc_E63C; read by loc_FDDB. Purpose
-								; not established - left named unk_ deliberately
-								; per CLAUDE.md (rename only on confirmed
-								; understanding).
-unk_147:			.block 1			; DATA XREF: divide_d_by_x:loc_D237↓r
+								; Transient indicator: the sign of (var_pim_tps_est -
+								; var_pim_est_slow), saturated to 0x7F/0x80. Written
+								; by calc_dmatx_pim, read in the TPS-delta block at
+								; loc_FDDB. Compare var_pim_trans_fast, which is the
+								; one that gates trim learning.
+var_pim_trans_fast:			.block 1			; DATA XREF: divide_d_by_x:loc_D237↓r
 								; divide_d_by_x+CC5↓r ...
-								; Written by loc_E651; read by
 								; closed_loop_control, loc_D237, loc_EA7A,
-								; loc_EAE0. Purpose not established - left named
-								; unk_ deliberately per CLAUDE.md (rename only
-								; on confirmed understanding).
+								; Transient indicator: the sign of (var_pim_est_fast -
+								; var_pim_est_slow), saturated to 0x7F/0x80, written
+								; by calc_dmatx_pim.
+								;
+								; IMPORTANT: this is the ECU's "load is changing right
+								; now" signal. closed_loop_control refuses to run fuel
+								; trim learning while it reads more negative than -2
+								; (`cmp a,#0FEh` / `blta`) - the standard "freeze fuel
+								; trim through a transient" rule, so trims only adapt
+								; once the two filters have reconverged. Also read at
+								; loc_D237 (var_lambda-adjacent) and in
+								; calc_4ms_corrections.
 var_ect_unk_148:		.block 1			; DATA XREF: divide_d_by_x+108↓w
 								; divide_d_by_x:loc_CA64↓r ...
 var_rev_limit_rpm:		.block 1			; DATA XREF: divide_d_by_x:loc_CC1B↓r
@@ -4248,7 +4269,7 @@ mult_rArX:							; CODE XREF: signed_proportional_update+E↓p
 ; Calls: mult_rArX
 ; ---------------------------------------------------------------------------
 signed_proportional_update:							; CODE XREF: divide_d_by_x+204F↓p
-								; knock_unk_E79E+F↓p
+								; update_pim_est_fast+F↓p
 				push	b
 				mov	x, d
 				sub	d, y + 00h
@@ -5369,7 +5390,7 @@ locret_C9D9:							; CODE XREF: sub_C996+3C↑j
 ;     elsewhere as "boost limit exceeded" - not clear if this is the same
 ;     condition or bit reuse).
 ;
-;     Then calls sub_E454 (fuel enrichment scaling), sub_E551, loc_FC38
+;     Then calls sub_E454 (fuel enrichment scaling), calc_dmatx_pim, loc_FC38
 ;     and sub_D2C5 (NV trim validation, see below) - only sub_D2C5 has
 ;     been deep-dived.
 ;  2) (CA3D-CAE2) Overrun/deceleration fuel-cut decision feeding
@@ -5452,7 +5473,7 @@ loc_CA1B:							; CODE XREF: divide_d_by_x:loc_C9FF↑j
 				st	a, var_flags_4E_copy2
 				jsr	sub_E454
 
-				jsr	sub_E551
+				jsr	calc_dmatx_pim
 
 				jsr	loc_FC38
 
@@ -7557,7 +7578,7 @@ loc_D22A:							; CODE XREF: divide_d_by_x+C8B↑j
 				mov	b, a
 
 loc_D237:							; CODE XREF: divide_d_by_x+C99↑j
-				cmp	a, unk_147
+				cmp	a, var_pim_trans_fast
 				bgta	loc_D23E
 
 
@@ -7588,7 +7609,7 @@ closed_loop_control:						; CODE XREF: divide_d_by_x:loc_D23E↑j
 
 				tbbs	bit1, var_io_input1, loc_D2BC ;	Jump if	throttle closed	(IDL high)
 
-				ld	a, unk_147
+				ld	a, var_pim_trans_fast
 				cmp	a, #0FEh
 				blta	loc_D2BC
 
@@ -8038,7 +8059,7 @@ loc_D40E:							; CODE XREF: divide_d_by_x:loc_D3C6↑j
 				bcs	loc_D434
 
 				ld	x, #6150h
-				ld	b, unk_144
+				ld	b, var_pim_trim_scale
 				jsr	mult_rBrX2
 
 				tbbc	bit7, var_flags_4F, loc_D42A
@@ -9395,7 +9416,7 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ; comparable to PW-scale values and traced (partially) to a
 ; var_pim2/dmatx_pim-linked producer near loc_E665 (E620-E6B0) - not
 ; renamed since that producer's own logic
-; (unk_131/var_unk_knk_133/135/var_nv_trim_unk_98) isn't traced.
+; (var_pim_tps_est/var_pim_est_fast/135/var_nv_trim_unk_98) isn't traced.
 ; ---------------------------------------------------------------------------
 
 calc_inj_pw_base:							; CODE XREF: divide_d_by_x:loc_D4C6↑j
@@ -10038,7 +10059,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ; - loc_DBDE compares D against unk_1C8 (a PIM/MAP-pressure-linked bound -
 ;   traced its producer to loc_E665's area near E620-E6B0, which folds
 ;   var_pim2-derived dmatx_pim into it; the surrounding computation
-;   involving unk_131/var_unk_knk_133/135/var_nv_trim_unk_98 is not itself
+;   involving var_pim_tps_est/var_pim_est_fast/135/var_nv_trim_unk_98 is not itself
 ;   traced - see docs/fuel_calculation_system.md Open Questions).
 ;   - D <= unk_1C8: falls into loc_DBF1 (blend-toward-ceiling path).
 ;   - D > unk_1C8 and trim_state bits 0 AND 1 both set and unk_1C4 (the
@@ -12115,7 +12136,7 @@ loc_E37F:							; CODE XREF: divide_d_by_x+1DDC↑j
 loc_E3A6:							; CODE XREF: divide_d_by_x+1DCC↑j
 				jsr	sub_E454
 
-				jsr	sub_E551
+				jsr	calc_dmatx_pim
 
 				tbbs	bit0, var_flags_46, loc_E3B2
 
@@ -12505,22 +12526,105 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: unk_144, var_flags_40, var_flags_46, var_flags_47,
+; Reads: var_pim_trim_scale, var_flags_40, var_flags_46, var_flags_47,
 ; var_inj_pw_inj1, var_inj_pw_trim, var_pim2
-; Writes: unk_131, unk_145, var_temp_w, var_unk_tps_inj_137
+; Writes: var_pim_tps_est, unk_145, var_temp_w, var_unk_tps_inj_137
 ; Calls: mult_rBrX2, sub_E767
 ; ---------------------------------------------------------------------------
-sub_E551:							; CODE XREF: divide_d_by_x+48E↑p
+; ---------------------------------------------------------------------------
+; calc_dmatx_pim (was sub_E551): produce dmatx_pim - the manifold-pressure
+; value CPU2 uses for its fuel calculation - by applying a transient
+; correction to the raw measured PIM.
+;
+; This was previously guessed at as a "knock/boost limiting calculation"
+; (hence the old var_unk_knk_* names on its state, now corrected). It is not
+; knock-related at all: the give-away is loc_E627, its single exit point,
+; which stores D to dmatx_pim. Everything above that exists to decide what
+; goes in there. The set_knock_sensor_err_flag / check_knock_sensor_err_flag
+; pair it calls is only the generic abs()/restore-sign primitive - see those
+; functions' own header.
+;
+; WHY IT EXISTS. A MAP sensor lags the real manifold event: on a fast
+; throttle change the measured var_pim2 is still reporting the old pressure
+; while the engine is already breathing differently. Fuelling from the lagged
+; value alone would run lean on tip-in and rich on tip-out. So the ECU builds
+; an independent throttle-derived estimate of manifold pressure, filters it
+; twice at different rates, and uses the DIVERGENCE between the two filters
+; as a measure of "how fast is load changing right now" - a lead/lag pair.
+; That divergence is what gets added to var_pim2 here.
+;
+; THE ESTIMATE CHAIN (built across three functions, one per 4ms tick):
+;   get_tps_unk       var_tps + var_unk_tps_143 * 0x40  - a throttle-derived
+;                     load figure
+;   sub_E767          the above >> 3
+;   var_pim_tps_est   sub_E767's result * var_pim_trim_scale * 2, computed
+;                     at the top of this function. var_pim_trim_scale carries
+;                     the learned PIM/barometric NV trim (adc_handler_pim
+;                     derives it from var_nv_trim_unk_98), which is what puts
+;                     the throttle estimate into real PIM units.
+;   var_pim_est_fast  tracks var_pim_tps_est via signed_proportional_update
+;                     (update_pim_est_fast, every 4ms)
+;   var_pim_est_slow  tracks var_pim_est_fast at 1/4 the rate
+;                     (update_pim_est_slow, every 4ms)
+; Both filters are force-reset to their input while var_flags_46.0 is set
+; (cranking / RPM below the band), so they start converged rather than
+; injecting a bogus transient on the first fire.
+;
+; WHAT THIS FUNCTION THEN DOES:
+;   1. Recomputes var_pim_tps_est from the current throttle estimate.
+;   2. Bails straight to loc_E627 - passing raw var_pim2 through untouched -
+;      when the factory self-test is running (var_flags_40.0), when
+;      var_flags_46.0 says we are still cranking, or when var_flags_47.7
+;      flags a large negative TPS delta. That last one matters: on a hard
+;      throttle CLOSE the correction is deliberately abandoned and the
+;      measured value used as-is.
+;   3. Otherwise builds a step count (clamped to 14) from injector pulse
+;      width (var_inj_pw_inj1), the injector trim, and RPM via var_ne_sum3,
+;      optionally folding in a var_tps_delta term when var_flags_47.6 flags a
+;      large positive delta, and runs signed_proportional_update that many
+;      times - so the filter converges FASTER the bigger the load event.
+;   4. Takes (result - var_pim_est_slow), remembers the sign through
+;      var_diag_errors_5.0, scales it against var_pim2 above a 0x61
+;      threshold, restores the sign, and adds it to var_pim2 with
+;      saturation at both ends.
+;   5. Stores that to dmatx_pim, then publishes two transient indicators:
+;        var_pim_trans_est  = sign of (var_pim_tps_est - var_pim_est_slow)
+;        var_pim_trans_fast = sign of (var_pim_est_fast - var_pim_est_slow)
+;      each saturated to 0x7F / 0x80.
+;
+; var_pim_trans_fast is the one that matters elsewhere: closed_loop_control
+; refuses to run fuel-trim learning while it reads more negative than -2
+; (`cmp a,#0FEh / blta`), i.e. the ECU will not learn trims through a
+; transient - it only adapts once the two filters have reconverged. That is
+; the standard "freeze fuel trim during acceleration/deceleration" rule, and
+; it is the direct link between this function and the trim systems.
+;
+; NOT traced: sub_E76D's two RPM/load maps (map_c006, map_c0c7) are known to
+; be indexed by var_rpm_x_5p12 but their real-world units are not
+; established; nor is var_unk_tps_143's own producer.
+;
+; Reads: var_pim2, var_tps, var_tps_delta, var_inj_pw_inj1, var_inj_pw_trim,
+;   var_ne_sum3, var_pim_est_fast, var_pim_est_slow, var_pim_trim_scale,
+;   var_flags_40, var_flags_46, var_flags_47, var_unk_tps_143
+; Writes: dmatx_pim, var_pim_tps_est, var_pim_trans_est, var_pim_trans_fast,
+;   var_unk_tps_inj_137, unk_145, var_diag_errors_5, var_temp_w,
+;   var_temp_7A, var_temp_7B
+; Calls: sub_E767, get_tps_unk, sub_E76D, mult_rBrX2, mult_rArX, mult_rDrX,
+;   divide_rD_32_saturate, divide_rD_64, signed_proportional_update,
+;   set_knock_sensor_err_flag, check_knock_sensor_err_flag
+; ---------------------------------------------------------------------------
+
+calc_dmatx_pim:							; CODE XREF: divide_d_by_x+48E↑p
 								; divide_d_by_x+1E0E↑p
 				jsr	sub_E767
 
 				st	a, var_unk_tps_inj_137
 				mov	x, d
 				st	a, unk_145
-				ld	b, unk_144
+				ld	b, var_pim_trim_scale
 				jsr	mult_rBrX2
 
-				st	x, unk_131
+				st	x, var_pim_tps_est
 				ld	d, var_pim2
 				tbbs	bit0, var_flags_40, loc_E56F
 
@@ -12529,27 +12633,27 @@ sub_E551:							; CODE XREF: divide_d_by_x+48E↑p
 				tbbc	bit7, var_flags_47, loc_E572
 
 
-loc_E56F:							; CODE XREF: sub_E551+15↑j
-								; sub_E551+18↑j
+loc_E56F:							; CODE XREF: calc_dmatx_pim+15↑j
+								; calc_dmatx_pim+18↑j
 				jmp	loc_E627
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-loc_E572:							; CODE XREF: sub_E551+1B↑j
+loc_E572:							; CODE XREF: calc_dmatx_pim+1B↑j
 				ld	d, var_inj_pw_inj1
 				add	d, #0591h
 				bcc	loc_E57D
 
 				ld	d, #0FFFFh
 
-loc_E57D:							; CODE XREF: sub_E551+27↑j
+loc_E57D:							; CODE XREF: calc_dmatx_pim+27↑j
 				shr	d
 				shr	d
 				shr	d
 				st	d, var_temp_w
 				ld	a, var_inj_pw_trim
 				mul	a, #0ABh
-; End of function sub_E551
+; End of function calc_dmatx_pim
 
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 				add	d, #053Fh
@@ -12616,14 +12720,14 @@ loc_E5D0:							; CODE XREF: divide_d_by_x+202E↑j
 				shl	d
 				jsr	sub_E76D
 
-				ld	b, unk_144
+				ld	b, var_pim_trim_scale
 				jsr	mult_rBrX2
 
 
 loc_E5DC:							; CODE XREF: divide_d_by_x+2015↑j
 				pull	a
 				st	a, var_temp_7B
-				ld	d, var_unk_knk_133
+				ld	d, var_pim_est_fast
 				st	d, var_temp_w
 
 loc_E5E4:							; CODE XREF: divide_d_by_x+2055↓j
@@ -12637,7 +12741,7 @@ loc_E5E4:							; CODE XREF: divide_d_by_x+2055↓j
 				bne	loc_E5E4
 
 				clrb	bit0, var_diag_errors_5
-				sub	d, var_unk_knk_135
+				sub	d, var_pim_est_slow
 				bcc	loc_E5FC
 
 				jsr	set_knock_sensor_err_flag
@@ -12681,11 +12785,11 @@ loc_E620:							; CODE XREF: divide_d_by_x+207A↑j
 
 				ld	d, #0FFFFh
 
-loc_E627:							; CODE XREF: sub_E551:loc_E56F↑j
+loc_E627:							; CODE XREF: calc_dmatx_pim:loc_E56F↑j
 								; divide_d_by_x+207F↑j ...
 				st	d, dmatx_pim
-				ld	d, unk_131
-				sub	d, var_unk_knk_135
+				ld	d, var_pim_tps_est
+				sub	d, var_pim_est_slow
 				bcs	loc_E638
 
 				bpz	loc_E63C
@@ -12702,9 +12806,9 @@ loc_E638:							; CODE XREF: divide_d_by_x+2095↑j
 
 loc_E63C:							; CODE XREF: divide_d_by_x+2097↑j
 								; divide_d_by_x+209B↑j ...
-				st	a, unk_146
-				ld	d, var_unk_knk_133
-				sub	d, var_unk_knk_135
+				st	a, var_pim_trans_est
+				ld	d, var_pim_est_fast
+				sub	d, var_pim_est_slow
 				bcs	loc_E64D
 
 				bpz	loc_E651
@@ -12721,7 +12825,7 @@ loc_E64D:							; CODE XREF: divide_d_by_x+20AA↑j
 
 loc_E651:							; CODE XREF: divide_d_by_x+20AC↑j
 								; divide_d_by_x+20B0↑j ...
-				st	a, unk_147
+				st	a, var_pim_trans_fast
 				jsr	calc_4ms_corrections
 
 				jsr	sub_E865
@@ -12956,7 +13060,7 @@ loc_E75E:							; CODE XREF: divide_d_by_x+20C7↑j
 ; Writes: (no variable writes - register-only helper)
 ; Calls: get_tps_unk
 ; ---------------------------------------------------------------------------
-sub_E767:							; CODE XREF: sub_E551↑p
+sub_E767:							; CODE XREF: calc_dmatx_pim↑p
 				jsr	get_tps_unk
 
 				shr	d
@@ -13020,38 +13124,67 @@ loc_E787:							; CODE XREF: sub_E76D+15↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: unk_131, var_flags_46, var_unk_tps_inj_137
-; Writes: var_unk_knk_133
+; update_pim_est_fast (was knock_unk_E79E - nothing to do with knock):
+; first-stage filter of the throttle-derived manifold-pressure estimate.
+; Called every 4ms from iv6_4ms_process.
+;
+; Moves var_pim_est_fast toward var_pim_tps_est by a step proportional to
+; var_unk_tps_inj_137, so it lags the raw estimate by a controlled amount.
+; While var_flags_46.0 is set (cranking / below the RPM band) it instead
+; force-loads var_pim_tps_est directly, so the filter starts converged
+; instead of ramping in from a stale value at first fire.
+;
+; Feeds update_pim_est_slow, and the divergence between the two is what
+; calc_dmatx_pim turns into a transient correction - see that function's
+; header for the whole chain.
+;
+; Reads: var_pim_tps_est, var_flags_46, var_unk_tps_inj_137
+; Writes: var_pim_est_fast
 ; Calls: signed_proportional_update
 ; ---------------------------------------------------------------------------
-knock_unk_E79E:							; CODE XREF: iv6_4ms_process+67↓p
-				ld	x, unk_131
+update_pim_est_fast:							; CODE XREF: iv6_4ms_process+67↓p
+				ld	x, var_pim_tps_est
 				tbbc	bit0, var_flags_46, loc_E7A7
 
-				st	x, var_unk_knk_133
+				st	x, var_pim_est_fast
 
-loc_E7A7:							; CODE XREF: knock_unk_E79E+3↑j
-				ld	y, #var_unk_knk_133
+loc_E7A7:							; CODE XREF: update_pim_est_fast+3↑j
+				ld	y, #var_pim_est_fast
 				ld	b, var_unk_tps_inj_137
 				jsr	signed_proportional_update
 
 				ret
 
-; End of function knock_unk_E79E
+; End of function update_pim_est_fast
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
 ; ---------------------------------------------------------------------------
-; Reads: var_flags_46, var_unk_knk_133
-; Writes: var_unk_knk_135
+; update_pim_est_slow (was some_knock_averaging_calc - nothing to do with
+; knock): second-stage, slower filter of the manifold-pressure estimate.
+; Called every 4ms from iv6_4ms_process.
+;
+;     var_pim_est_slow += (var_pim_est_fast - var_pim_est_slow) / 4
+;
+; The /4 is the rorc/shra/rorc sequence, with the `inc b` rounding the result
+; up when the high word is zero so a small persistent difference still
+; converges instead of stalling at zero. Like the fast stage it force-loads
+; its input while var_flags_46.0 is set.
+;
+; Because this lags var_pim_est_fast, the gap between the two is a measure of
+; how fast load is changing - which is exactly what calc_dmatx_pim uses, and
+; what gates fuel-trim learning through var_pim_trans_fast.
+;
+; Reads: var_flags_46, var_pim_est_fast
+; Writes: var_pim_est_slow
 ; ---------------------------------------------------------------------------
-some_knock_averaging_calc:					; CODE XREF: iv6_4ms_process:loc_F831↓p
-				ld	d, var_unk_knk_133
+update_pim_est_slow:					; CODE XREF: iv6_4ms_process:loc_F831↓p
+				ld	d, var_pim_est_fast
 				tbbs	bit0, var_flags_46, loc_E7C9
 
-				sub	d, var_unk_knk_135
+				sub	d, var_pim_est_slow
 				beq	locret_E7CC
 
 				rorc	a
@@ -13063,16 +13196,16 @@ some_knock_averaging_calc:					; CODE XREF: iv6_4ms_process:loc_F831↓p
 
 				inc	b
 
-loc_E7C6:							; CODE XREF: some_knock_averaging_calc+12↑j
-				add	d, var_unk_knk_135
+loc_E7C6:							; CODE XREF: update_pim_est_slow+12↑j
+				add	d, var_pim_est_slow
 
-loc_E7C9:							; CODE XREF: some_knock_averaging_calc+3↑j
-				st	d, var_unk_knk_135
+loc_E7C9:							; CODE XREF: update_pim_est_slow+3↑j
+				st	d, var_pim_est_slow
 
-locret_E7CC:							; CODE XREF: some_knock_averaging_calc+9↑j
+locret_E7CC:							; CODE XREF: update_pim_est_slow+9↑j
 				ret
 
-; End of function some_knock_averaging_calc
+; End of function update_pim_est_slow
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -13688,8 +13821,8 @@ loc_EA17:							; CODE XREF: divide_d_by_x+2294↑j
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: unk_147, var_adc_battery, var_cnt_C7, var_ect, var_flags_46,
-; var_flags_4E_saved, var_rpm_div_25, var_unk_knk_133
+; Reads: var_pim_trans_fast, var_adc_battery, var_cnt_C7, var_ect, var_flags_46,
+; var_flags_4E_saved, var_rpm_div_25, var_pim_est_fast
 ; Writes: var_flags_4E, var_ign_dwell_min, var_ign_dwell_offset,
 ; var_ignition_flags, var_overrun_advance, var_temp_7A, var_temp_w
 ; Calls: table_pair_interpolate, table_rB_fixed_32_interpolate,
@@ -13739,7 +13872,7 @@ loc_EA2D:							; CODE XREF: calc_4ms_corrections+3↑j
 				st	a, var_temp_7A
 				tbbs	bit2, var_flags_46, loc_EA6A
 
-				ld	a, var_unk_knk_133
+				ld	a, var_pim_est_fast
 				add	a, #0Ah
 				cmp	a, var_temp_7A
 				bcc	loc_EA6E
@@ -13763,11 +13896,11 @@ loc_EA78:							; CODE XREF: calc_4ms_corrections+4F↑j
 loc_EA7A:							; CODE XREF: calc_4ms_corrections+54↑j
 				tbbc	bit0, var_flags_4E, loc_EA95
 
-				ld	b, unk_147
+				ld	b, var_pim_trans_fast
 				cmp	b, #06h
 				blta	loc_EA95
 
-				ld	a, var_unk_knk_133
+				ld	a, var_pim_est_fast
 				cmp	a, var_temp_7A
 				bcs	loc_EA95
 
@@ -13863,8 +13996,8 @@ loc_EAAC:							; CODE XREF: calc_4ms_corrections:loc_EA95↑j
 
 loc_EAE0:							; CODE XREF: calc_4ms_corrections+94↑j
 								; calc_4ms_corrections+9A↑j	...
-				ld	a, unk_147
-				ld	b, var_unk_knk_133
+				ld	a, var_pim_trans_fast
+				ld	b, var_pim_est_fast
 				st	d, var_temp_w
 				tbbc	bit2, var_flags_46, loc_EAEF
 
@@ -17447,8 +17580,8 @@ loc_F7C0:							; Clear	flag to	run 4ms	background code
 ; var_gearing, var_iscv_error_cnt, var_iscv_relay_cnt,
 ;    var_schedule_flag_41
 ; Calls: calc_speed_kph, check_io_inputs, check_set_speed_limiter,
-; copy_dma_tx, increment_counters, init_ne_on_start, knock_unk_E79E,
-; some_knock_averaging_calc, start_dma, update_idle_timing_ramp
+; copy_dma_tx, increment_counters, init_ne_on_start, update_pim_est_fast,
+; update_pim_est_slow, start_dma, update_idle_timing_ramp
 ; ---------------------------------------------------------------------------
 iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+F↓p
 ; Step 1: Increment main 4ms counters (var_4m_cnt_AD and 0x19 more bytes)
@@ -17537,11 +17670,11 @@ loc_F81D:							; CODE XREF: iv6_4ms_process+D↑j
 				inc	var_cnt_C6			; Toggle counter (wraps 1..255)
 				ld	a, #01h
 				cmpb	a, var_cnt_C6			; Is this an odd tick?
-				beq	loc_F831			; Yes: skip knock_unk_E79E this tick
-				jsr	knock_unk_E79E			; Even tick: run secondary knock processing
+				beq	loc_F831			; Yes: skip update_pim_est_fast this tick
+				jsr	update_pim_est_fast			; Even tick: run secondary knock processing
 
 loc_F831:							; CODE XREF: iv6_4ms_process+65↑j
-				jsr	some_knock_averaging_calc	; Every tick: knock averaging/filtering
+				jsr	update_pim_est_slow	; Every tick: knock averaging/filtering
 
 ; Step 8: Vehicle speed and gear ratio update (every 344ms)
 				cmp	#56h, var_4ms_cnt_speed_update	; 0x56 * 4ms = 344ms elapsed?
@@ -18523,7 +18656,7 @@ deglitch_io_input:						; CODE XREF: check_io_inputs+2F↑p
 ;   After 15 errors: sets error flags (var_error_flags1.5, var_diag_errors_5.3)
 ;
 ; Also computes:
-;   unk_144 = var_pim2 / 2 / 97 = pressure lookup table index for boost limit
+;   var_pim_trim_scale = var_pim2 / 2 / 97 = pressure lookup table index for boost limit
 ;   var_nv_trim_unk_98: PIM calibration trim value stored in PRAM
 ;
 ; Outputs: var_pim2 (local), dmatx_pim2 (to CPU2), calls check_boost_limit
@@ -18682,7 +18815,7 @@ loc_FC30:							; CODE XREF: adc_handler_pim:loc_FBE0↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_flags_42, var_nv_trim_unk_98
-; Writes: unk_144
+; Writes: var_pim_trim_scale
 ; Calls: check_boost_limit, clear_nv_ram
 ; ---------------------------------------------------------------------------
 loc_FC38:							; CODE XREF: divide_d_by_x+491↑p
@@ -18710,7 +18843,7 @@ loc_FC4B:							; CODE XREF: adc_handler_pim+BC↑j
 				ld	b, #0FFh
 
 loc_FC53:							; CODE XREF: adc_handler_pim+C5↑j
-				st	b, unk_144
+				st	b, var_pim_trim_scale
 				ret
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -19141,7 +19274,7 @@ loc_FDD9:							; CODE XREF: ROM:FDD4↑j
 				ld	a, #7Fh
 
 loc_FDDB:							; CODE XREF: ROM:FDCA↑j
-				ld	b, unk_146
+				ld	b, var_pim_trans_est
 				bpz	loc_FDE1
 
 				neg	b
