@@ -2426,12 +2426,29 @@ dmatx_obd_iscv:			.block 1			; DATA XREF: ROM:DDB5↓w
 dmatx_obd_o2_sensor:		.block 1			; DATA XREF: divide_d_by_x:loc_D17F↓w
 dmatx_knock_retard:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EEDB↓w
 								; iv6_ne_process+FA↓r
-dmatx_pw_loop_mode:		.block 2			; DATA XREF: copy_dma_tx+38↓w
-								; Only the first byte is ever written (=
-								; var_pw_loop_mode, see copy_dma_tx) -
-								; the second byte of this word-sized slot
-								; is never touched in this file, likely
-								; padding to match CPU2's struct layout.
+dmatx_pw_loop_mode:		.block 1			; DATA XREF: copy_dma_tx+38↓w
+								; = var_pw_loop_mode, see copy_dma_tx.
+dmatx_tps_delta:		.block 1
+								; NOT WRITTEN BY THIS ROM - but it is a real
+								; protocol field, not padding. An earlier
+								; revision declared this byte as part of a
+								; 2-byte dmatx_pw_loop_mode and guessed it
+								; was "padding to match CPU2's struct
+								; layout". Two independent sources say
+								; otherwise:
+								;   - D151804-0461 (the ST205's CPU1) writes
+								;     var_tps_delta into this exact slot
+								;     (+0x1D), its unk_217.
+								;   - The SAMC21 gateway firmware's DMA
+								;     struct, written against the 0461
+								;     layout, names it dmatx_tps_delta here.
+								;
+								; So the two generations share the wire
+								; LAYOUT exactly, but not the content: the
+								; ST205 populates a field the SW20 leaves
+								; alone. Anything decoding this link
+								; generically must not assume every slot is
+								; live on every ROM.
 dmatx_error_flags1:		.block 1			; DATA XREF: copy_dma_tx+3D↓w
 dmatx_error_flags2:		.block 1
 dmatx_flags_46:			.block 1			; DATA XREF: copy_dma_tx+42↓w

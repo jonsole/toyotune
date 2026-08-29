@@ -1711,6 +1711,42 @@ entry gate is still unestablished (see that bit's declaration comment).
   So **both CPU2s in the family ignore the slot**: CPU1 populates a protocol
   field that no CPU2 reads. Vestigial, not reserved.
 
+### Applying the protocol identity: D151804-0461's DMA block named
+
+The layout match is worth cashing in, so the whole `dmatx_*` block on the
+ST205's CPU1 is now named from 9651's. **17 fields renamed**, taking 0461
+from 10 named DMA fields to 27.
+
+**Confidence, by field.** Eleven were confirmed directly from 0461's OWN
+`copy_dma_tx` code - the source variable matches 9651's, so these are not
+address arithmetic: e.g. `unk_200 <- var_inj_pw_inj1` (`dmatx_inj_pw_inj1`),
+`unk_207 <- nv_unk_trim_98` with the same 0x50 fallback (`dmatx_nv_trim_pim`),
+`unk_20A <- nv_unk_trim_96` with the 0x00 fallback (`dmatx_nv_trim_o2`).
+
+The other six are written outside `copy_dma_tx`, and were confirmed by xref
+shape instead - same enclosing function, near-identical offset:
+`unk_210` read at `sub_E996+49F` against 9651's `calc_4ms_corrections+49E`;
+`unk_212` written at `iv6_ne_process+99` against 9651's `+9A`. Weaker than a
+source match but still specific.
+
+Underpinning all of it: the 10 DMA fields 0461 *already* had named land
+exactly where the offset mapping predicts (delta -6), 10 for 10 across the
+full +0x00..+0x22 span. That is the real evidence the mapping is sound.
+
+**CORRECTION it forced - the protocol layout is shared, the CONTENT is not.**
+The previous entry called the protocol "byte-for-byte identical". Too strong.
+0461 writes `var_tps_delta` at +0x1D; 9651 leaves that byte untouched. The
+9651 declaration had absorbed it into a 2-byte `dmatx_pw_loop_mode` with a
+comment guessing it was "padding to match CPU2's struct layout" - wrong on
+both counts. It is a real protocol field, and two independent sources say so:
+0461 populates it, and the SAMC21 gateway firmware's DMA struct (written
+against the 0461 layout) names `dmatx_tps_delta` in exactly that position.
+9651's declaration is now split, with the byte named and marked
+not-written-by-this-ROM.
+
+So: same offsets, different occupancy. Anything decoding this link
+generically must not assume every slot is live on every ROM.
+
   CPU1-side renames: `dmatx_trim_unk_20D` -> `dmatx_nv_trim_pim`,
   `dmatx_trim_unk_210` -> `dmatx_nv_trim_o2`.
 
