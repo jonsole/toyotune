@@ -1330,6 +1330,61 @@ This pass was breadth-first over variables, so `sub_E551`, `loc_E112`/`E363`,
 `sub_E865`'s middle blend and the second lambda-trim system are all still
 untouched - several of the reference notes above point into them.
 
+### CPU1 (D151803-9651): function Inputs/Outputs pass
+
+Second half of the same brief - "each callable function should have inputs
+and outputs section, if there are values passed in and out via registers,
+otherwise it should document which variables are read and written to". Now
+**145 of 150 call targets** carry one (the other 5 are two-instruction branch
+stubs whose one-line comment already says everything). Purely additive: zero
+deleted lines, and `verify_assembly_match.py` stayed at 0 real edit regions
+throughout.
+
+**Method.** The variable footprints were *generated from the instruction
+stream*, not transcribed by hand or taken from the IDA xref comments - a
+small extractor walks each function body (following its chunks), classifies
+each operand as read or written per opcode form, and emits sorted
+`Reads:`/`Writes:`/`Calls:` lists. Validated by running it against
+`sub_C996`, whose footprint had already been derived by hand earlier in the
+session: exact match. This matters because the IDA `DATA XREF` headers are
+incomplete - they show a couple of representative sites and then "...".
+
+**Hand-written headers** for the functions where purpose needed prose rather
+than a footprint: `iv6_ne_process` (the ~212-instruction crank-synchronous
+process, and why it is split off from the hardware NE vector via the IRQLL.1
+software interrupt), `knock_processing` (and how it differs from
+`knock_mcu_update` next to it), `sub_E115`, `check_io_inputs`, `copy_dma_tx`,
+`clear_nv_ram`, plus register-level Inputs/Outputs for `deglitch_io_input`,
+`write_rB_nv_ram`, `increment_counters`, `add_d_base_offset`,
+`scale_d_by_a_frac` and both divide cascades. `calc_iscv` already had an
+excellent SECTION 1-6 breakdown and just gained the footprint.
+
+**Things established while writing these:**
+- **`sub_E115` is a factory/end-of-line self-test**, and its entry interlock
+  (diagnostic mode AND starter AND two PORTA pins AND TRAC TPS > 0x9A) is why
+  it normally returns immediately. It sets `var_flags_40.0` and then scribbles
+  a walking 0..255 pattern over all of RAM (0x40-0x300) to test the chip -
+  **which is what `var_flags_40.0` is for**, and explains why that one bit is
+  read in dozens of otherwise unrelated places: they are checking "is my state
+  currently garbage?". That closes the loop on the widest-read bit in the ROM.
+- **`deglitch_io_input` is a two-sample debounce**, derived bit by bit:
+  `[X] = ((N XOR C) AND T) + (N AND C)`, so a bit only moves once two
+  consecutive samples agree. The `add` works as an OR because the terms are
+  disjoint per bit. This is also why `var_io_input1`/`2` have no direct store
+  site - they are written here through `X`.
+- **`write_rB_nv_ram` maintains a per-entry check byte** at `[X+1]`
+  accumulating `(old - new)`, written together with the value in one 16-bit
+  store so the pair cannot be torn by an interrupt. Same value/complement
+  idea as `clear_nv_ram`'s 0x6699 seed, and it is what the startup validity
+  check tests before deciding to wipe NV RAM.
+- **The `divide_rD_N_saturate` family does not actually saturate** - it
+  performs exactly the same shifts as the plain family. The separate labels
+  are a readability convention marking call sites that follow a saturating
+  multiply. Noted in the header so nobody infers behavior from the name.
+- `add_d_base_offset` and `inj_overrun_end_2` are further instances of the
+  fall-through / shared-tail code-reuse pattern already documented for
+  `set_knock_sensor_err_flag`.
+
 ---
 
 ## Previously completed (prior sessions)
