@@ -7,6 +7,7 @@
 
 #include <sam.h>
 
+#include "config.h"
 #include "mem.h"
 #include "dmac.h"
 #include "clk.h"
@@ -149,7 +150,7 @@ void TestTask2(void)
 void ECU_DmaData1(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSize)
 {
 	ECU_DmaData1_t *EcuData = (ECU_DmaData1_t *)RxBuffer;
-	if (RxSize == 38)
+	if (RxSize == TOYOTUNE_DMA_FRAME_SIZE)
 	{
 		ECU_CanFrame1001_t Frame1001;
 		Frame1001.ECT = EcuData->ECT;
@@ -157,12 +158,12 @@ void ECU_DmaData1(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSiz
 		Frame1001.THA = EcuData->THA;
 		Frame1001.THAM = EcuData->THAM;
 		Frame1001.TPS = EcuData->TPS;
-		CAN_Tx(0x1001, &Frame1001, sizeof(Frame1001));
+		CAN_Tx(TOYOTUNE_CAN_ID_TELEMETRY_1, &Frame1001, sizeof(Frame1001));
 
 		ECU_CanFrame1002_t Frame1002;
 		memcpy(Frame1002.KnockBands, EcuData->KnockBands, 3);
 		Frame1002.Knock = EcuData->Knock;
-		CAN_Tx(0x1002, &Frame1002, sizeof(Frame1002));		
+		CAN_Tx(TOYOTUNE_CAN_ID_TELEMETRY_2, &Frame1002, sizeof(Frame1002));		
 	}
 	//Debug("%d %u %02x %02x\n", Timer, RxSize, RxBuffer[12], RxBuffer[14]);
 }

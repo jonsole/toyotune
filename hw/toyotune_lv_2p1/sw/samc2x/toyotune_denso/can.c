@@ -7,11 +7,12 @@
 
 
 #include <sam.h>
+#include "config.h"
 #include "pio.h"
 #include <stdalign.h>
 #include <string.h>
 
-#define CAN_FILTER_ID         0x45a
+#define CAN_FILTER_ID         TOYOTUNE_CAN_ID_FILTER
 
 // Nominal bit rate. The time quanta is 48 MHz / (5+1) = 8MHz.
 // And each bit is (1 + NTSEG1 + 1 + NTSEG2 + 1) = 16 time quanta
