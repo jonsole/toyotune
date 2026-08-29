@@ -25,3 +25,41 @@ __pycache__/
 /roms/d8x_assembler/D151803-9651.lst
 /roms/d8x_assembler/D151804-0461_DIAG16_32K_JS.ASM
 /roms/d8x_assembler/D151804-0461_DIAG16_32K_JS.BIN
+
+# Atmel Studio / Visual Studio build output and per-user state (hw/*/sw/*)
+Debug/
+Release/
+.vs/
+*.atsuo
+*.studiobackup
+
+# Eagle CAD rolling backups (.brd/.sch/.lbr -> .b#N/.s#N/.l#N); the live files are kept
+*.b#[0-9]
+*.s#[0-9]
+*.l#[0-9]
+
+# Eagle CAM output: gerbers, drill files, and photoplotter/drill logs.
+# Regenerate from the .cam jobs against the current .brd -- the .cam job files,
+# .dru design rules and .gvp viewer projects are deliberately NOT ignored.
+# NB: Excellon drill output is sometimes written as .txt; that pattern is
+# intentionally omitted here because it would swallow roms/3S-GTE/roms.txt
+# and output/build.txt. Rename such drill files to .drl instead.
+*.G[0-9]L
+*.GL[0-9]
+*.GTL
+*.GTO
+*.GTS
+*.GTP
+*.GBL
+*.GBO
+*.GBS
+*.GBP
+*.GKO
+*.GML
+*.GM[0-9]
+*.drd
+*.drl
+*.xln
+*.exc
+*.dri
+*.gpi
