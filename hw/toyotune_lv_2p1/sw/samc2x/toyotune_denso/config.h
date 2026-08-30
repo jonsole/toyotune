@@ -43,12 +43,23 @@
 
 #if defined(TOYOTUNE_CPU1)
 
-/* Size in bytes of one complete DMA block from this CPU on the inter-CPU
-   USART.  The sdl.c callback compares the captured length against this to
-   confirm it caught a whole frame: a short capture (sniffer started
-   mid-burst, or a clipped burst) must be dropped rather than parsed, because
-   parsing one would silently misalign every field after the truncation. */
-#define TOYOTUNE_DMA_FRAME_SIZE      (38)
+/* Sizes in bytes of the two DMA blocks on the inter-CPU USART.  Named from
+   the attached Denso CPU's point of view, matching the ROM's own dmatx_ /
+   dmarx_ convention:
+
+     TX - what this CPU sends to the other one    (CPU1 RAM 0x1FA..0x21F)
+     RX - what this CPU receives back from it     (CPU1 RAM 0x220..0x241)
+
+   The RX size is taken from copy_dma_rx in the D151804-0461 disassembly,
+   which copies 16 bits at a time until the destination pointer reaches
+   0x242: 0x242 - 0x220 = 0x22 = 34 bytes.
+
+   The sdl.c callbacks compare each captured length against these to confirm
+   they caught a whole frame.  A short capture (sniffer started mid-burst, or
+   a clipped burst) must be dropped rather than parsed, because parsing one
+   would silently misalign every field after the truncation. */
+#define TOYOTUNE_DMA_TX_FRAME_SIZE   (38)
+#define TOYOTUNE_DMA_RX_FRAME_SIZE   (34)
 
 /* CAN identifiers.  Each transmitting node needs identifiers of its own:
    two nodes sending the same ID cannot be separated by arbitration, so both
@@ -69,7 +80,7 @@
 
      - CPU2's ROM image in image.c.  The image active there today is CPU1's,
        so image.c needs to select on TOYOTUNE_CPU1 / TOYOTUNE_CPU2 too.
-     - CPU2's DMA block size as TOYOTUNE_DMA_FRAME_SIZE here, plus a layout
+     - CPU2's DMA block sizes as TOYOTUNE_DMA_TX/RX_FRAME_SIZE here, plus
        for it in main.c.  CPU2's block is NOT ECU_DmaData1_t - that struct
        describes what CPU1 sends - so it needs its own struct and its own
        repacking into the telemetry frames above.

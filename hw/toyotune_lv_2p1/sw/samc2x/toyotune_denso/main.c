@@ -21,6 +21,7 @@
 #include "debug.h"
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
 
@@ -57,6 +58,65 @@ typedef struct
 	uint8_t LimiterFlags;
 	uint8_t IoFlags[3];	
 } ECU_DmaData1_t;
+
+
+// D151804-0461  DMA
+// RX 34 bytes - what CPU1 receives back from CPU2, copied by copy_dma_rx
+// into CPU1 RAM 0x220..0x241.  The first five fields are 16-bit (the copy
+// loop moves 16 bits at a time from an even address); the rest are bytes.
+typedef struct
+{
+	uint16_t Unknown220;
+	uint16_t Unknown222;
+	uint16_t Unknown224;
+	uint16_t ScaledVe;
+	uint16_t Unknown228;			/* probably rpm_x_5p12 - see note below */
+	uint8_t WarmupEnrichment;
+	uint8_t Unknown22B;
+	uint8_t Unknown22C;
+	uint8_t Unknown22D;
+	uint8_t EnrichUnknown22E;
+	uint8_t ThamEnrichUnknown;
+	uint8_t Unknown230;
+	uint8_t FuelEnrich;
+	uint8_t Unknown232;
+	uint8_t Unknown233;
+	uint8_t Unknown234;
+	uint8_t Unknown235;
+	uint8_t Unknown236;
+	uint8_t IgnTiming;
+	uint8_t IgnTimingFallback1;
+	uint8_t Unknown239;
+	uint8_t Unknown23A;
+	uint8_t Unknown23B;
+	uint8_t Unknown23C;
+	uint8_t Unknown23D;
+	uint8_t Unknown23E;
+	uint8_t Unknown23F;
+	uint8_t Unknown240;
+	uint8_t Unknown241;
+} ECU_DmaData2_t;
+
+/* These two structs are wire layouts: they must match the ECU's DMA blocks
+   byte for byte.  Compilers are free to insert padding, which would silently
+   shift every field past the padding, so fail the build instead.  (C99 has no
+   _Static_assert; a negative array size is the portable equivalent.) */
+typedef char ECU_DmaData1_SizeCheck[(sizeof(ECU_DmaData1_t) == TOYOTUNE_DMA_TX_FRAME_SIZE) ? 1 : -1];
+typedef char ECU_DmaData2_SizeCheck[(sizeof(ECU_DmaData2_t) == TOYOTUNE_DMA_RX_FRAME_SIZE) ? 1 : -1];
+
+/* The Denso CPU is big-endian (D = A:B with A the high byte, M68HC11 style)
+   while the SAMC21 is little-endian, so every 16-bit field in the two structs
+   above arrives byte swapped.  Pass one through this before using it as a
+   number - e.g. RPM from Unknown228 would be ECU_Be16(Rx.Unknown228) / 5.12.
+
+   NOTE the existing 0x1001 telemetry frame copies ECT/PIM/TPS straight
+   through without swapping, so those 16-bit values are byte swapped on the
+   bus as things stand.  Left alone deliberately rather than silently changing
+   what any existing tooling already decodes. */
+static __inline uint16_t ECU_Be16(uint16_t Value)
+{
+	return (uint16_t)((Value >> 8) | (Value << 8));
+}
 
 typedef struct  
 {
@@ -146,11 +206,61 @@ void TestTask2(void)
 	}
 }
 
+/* Latest complete copy of each direction of the inter-CPU link.  Written by
+   the sdl.c callbacks, which run in TC interrupt context, so anything reading
+   these from a task must take a consistent copy with interrupts masked -
+   ECU_GetDmaSnapshot() does that.  Valid flags stay clear until a first whole
+   frame has been seen, so a consumer can tell 'no data yet' from 'all zero'. */
+static struct
+{
+	ECU_DmaData1_t Tx;			/* CPU1 -> CPU2, 38 bytes */
+	ECU_DmaData2_t Rx;			/* CPU2 -> CPU1, 34 bytes */
+	volatile bool TxValid;
+	volatile bool RxValid;
+	volatile uint32_t TxCount;	/* whole frames captured, for link health */
+	volatile uint32_t RxCount;
+} ECU_Dma;
+
+
+bool ECU_GetDmaSnapshot(ECU_DmaData1_t *Tx, ECU_DmaData2_t *Rx)
+{
+	bool Valid;
+
+	OS_InterruptDisable();
+	Valid = ECU_Dma.TxValid && ECU_Dma.RxValid;
+	if (Tx)
+		*Tx = ECU_Dma.Tx;
+	if (Rx)
+		*Rx = ECU_Dma.Rx;
+	OS_InterruptEnable();
+
+	return Valid;
+}
+
+
+/* CPU2 -> CPU1 direction, SERCOM1 / DMA channel 0. */
+void ECU_DmaData2(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSize)
+{
+	/* Only a whole frame is usable; a partial capture would misalign every
+	   field after the truncation. */
+	if (RxSize != TOYOTUNE_DMA_RX_FRAME_SIZE)
+		return;
+
+	ECU_Dma.Rx = *(const ECU_DmaData2_t *)RxBuffer;
+	ECU_Dma.RxValid = true;
+	ECU_Dma.RxCount += 1;
+}
+
+
 void ECU_DmaData1(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSize)
 {
 	ECU_DmaData1_t *EcuData = (ECU_DmaData1_t *)RxBuffer;
-	if (RxSize == TOYOTUNE_DMA_FRAME_SIZE)
+	if (RxSize == TOYOTUNE_DMA_TX_FRAME_SIZE)
 	{
+		ECU_Dma.Tx = *EcuData;
+		ECU_Dma.TxValid = true;
+		ECU_Dma.TxCount += 1;
+
 		ECU_CanFrame1001_t Frame1001;
 		Frame1001.ECT = EcuData->ECT;
 		Frame1001.PIM = EcuData->PIM;
@@ -213,7 +323,8 @@ int main(void)
 	DMCU_ResetDisable();
 
 	/* Initialise serial data logger, DMA Channel 0, SERCOM1 with Rx on pad 2 */
-	//SDL_Init(&Sdl[0], 0, 1, 2, 64, SDL_Callback, NULL);
+	/* D151804-0461 RX - 34 bytes, the CPU2 -> CPU1 direction */
+	SDL_Init(&Sdl[0], 0, 1, 2, 64, ECU_DmaData2, NULL);
 
 	/* Initialise serial data logger, DMA Channel 1, SERCOM2 with Rx on pad 0 */
 	/* D151804-0471 TX - 38 bytes */
