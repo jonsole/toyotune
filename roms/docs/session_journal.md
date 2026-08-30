@@ -1678,6 +1678,48 @@ is compared at 0x0F/0x1F/0x3D/0x5C/0x7A = 480 ms, 1.0 s, 2.0 s, 2.9 s and
 3.9 s after start; `var_cnt_E9`'s 0x17/0x26/0x99 work out to 6.3, 10.4 and
 41.8 minutes, which is what that two-stage prescaler exists to reach.
 
+### Counter PURPOSE pass (follows the rate/threshold pass above)
+
+Jon's follow-up was the right challenge: documenting a counter's *rate* is
+not the same as saying what it is *for*. The rate pass left 52 counters still
+purely address-named with no stated purpose. **60 of 85 now have a meaningful
+name or an explicit PURPOSE note**; 25 remain.
+
+Method: for each counter, find where it is CLEARED (which gives "counting
+since what") and what its threshold comparison GATES (which gives the
+consequence). Those two together are the purpose.
+
+Renamed where the purpose is crisp:
+
+| was | now | what it gates |
+|---|---|---|
+| `var_cnt_CB` | `var_cnt_knock_decay` | retard bleeds 2 counts per 256ms |
+| `var_cnt_EE` | `var_cnt_lambda_stuck` | 2.9s -> `var_error_flags2.6` |
+| `var_cnt_ED` | `var_cnt_o2_heater_dwell` | 320ms settle before the heater check |
+| `var_cnt_D8` | `var_cnt_cyl_rough_dwell` | 2.9s before roughness is trusted |
+| `var_cnt_D5` | `var_cnt_trim_settle` | 2.0s before closed-loop trim learning |
+| `var_cnt_D3` | `var_cnt_closed_loop_dwell` | ~1s of open loop after a reset |
+| `var_cnt_DB` | `var_cnt_iscv_table_dwell` | 2.9s switches ISC RPM table C357->C361 |
+| `var_cnt_DD` | `var_cnt_idle_trim_dwell` | 2.9s, restarted by any disturbance |
+| `var_4ms_cnt_B8` | `var_cnt_startup_grace` | 196ms -> `var_ignition_flags.6` |
+
+Purpose notes added without renaming where the consequence is real but not
+crisp enough to name: `var_cnt_CF`, `D2`, `D7`, `DC`, `EA`, `C7`, `C8`, `CC`,
+`DE`, `E1`, `4ms_cnt_AF`, `B1`, `B5`, `B6`/`B7`, `C4`, `ne_C2`.
+
+**One that is not a counter at all.** `var_cnt_DA` sits inside
+`COUNTER_ARG(var_cnt_CD, 0x14)` so it is auto-incremented, but it is also
+explicitly OVERWRITTEN with computed values beside `var_cyl_rpm_filtered`.
+The increments are just a floor between those writes - it holds a value, not
+an elapsed time, and its name is misleading. Flagged at its declaration.
+
+Some purposes are worth knowing on their own: `var_cnt_knock_decay` shows
+knock retard bleeds off at a fixed 2 counts per 256ms no matter how often
+`knock_retard_decay` is called; `var_4ms_cnt_ne_C2` is a 252ms NE-signal
+timeout driving the sync-error and IGF-reset paths; and `var_cnt_CC` paces
+the knock-MCU strobe on PORTB.2 rather than measuring anything about the
+engine.
+
 ---
 
 ## Pending work (next targets)

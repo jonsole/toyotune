@@ -620,7 +620,7 @@ var_ignition_flags:		.block 1			; DATA XREF: divide_d_by_x+44E↓r
 								; 45.6 - Single-writer flag, set/cleared
 								;   only in divide_d_by_x's early startup
 								;   dispatch (loc_C9E0 area) once
-								;   var_4ms_cnt_B8 exceeds 0x31 (49 ticks
+								;   var_cnt_startup_grace exceeds 0x31 (49 ticks
 								;   = ~196ms) - reads as a "post-startup-
 								;   grace-period elapsed" latch. Tested
 								;   (read-only) both there and,
@@ -854,7 +854,7 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								; 4C.6 - Lambda/O2 sensor "stuck" error:
 								;   set when var_adc_lambda has read
 								;   persistently rich (positive) for
-								;   var_cnt_EE >= 0x5A (90 ticks) under
+								;   var_cnt_lambda_stuck >= 0x5A (90 ticks) under
 								;   qualifying ECT/nv_diag_errors_1
 								;   conditions (~loc_DEC1-DEF7) - also
 								;   raises var_diag_errors_4.6 and
@@ -1556,6 +1556,10 @@ var_4ms_cnt_sta:		.block 1			; DATA XREF: init_ne_on_start+7↓r
 								; init_ne_on_start+19↓w
 								; Incremented when starter is running
 var_4ms_cnt_AF:			.block 1			; DATA XREF: divide_d_by_x+45B↓w
+								; PURPOSE: 196ms dwell (0x31) in the periodic-dispatch
+								; entry at loc_CA1B, cleared on two paths there.
+								; Consequence not established.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1571,6 +1575,14 @@ var_4ms_cnt_B0:			.block 1
 								; Its increments therefore never mention this symbol -
 								; a per-symbol search will only ever find the clears.
 var_4ms_cnt_B1:			.block 1			; DATA XREF: divide_d_by_x+E6↓r
+								; PURPOSE: throttle-closed debounce. Compared against a
+								; computed threshold at loc_C98x to set or clear
+								; var_flags_46.2 (the 'throttle has been closed long
+								; enough' flag), reloaded to 0xFE on one path and
+								; cleared on the other. A second test at 0x0C (48ms)
+								; gates an ISC step alongside a road-speed check.
+								; Seeded to 0xFF at reset.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1607,6 +1619,12 @@ var_4ms_cnt_B4:			.block 1			; DATA XREF: divide_d_by_x+13F5↓r
 								; Compared against: 0x18 (96ms)
 								; divide_d_by_x:loc_D998↓w
 var_4ms_cnt_B5:			.block 1			; DATA XREF: divide_d_by_x:loc_DA10↓r
+								; PURPOSE: dwell in the injector-PW blend region
+								; (loc_DA17/DA60). Tested against 0x7A (488ms) and
+								; cleared under var_trim_state conditions. The
+								; consequence is not crisply established, so the name is
+								; left address-based deliberately.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1616,6 +1634,14 @@ var_4ms_cnt_B5:			.block 1			; DATA XREF: divide_d_by_x:loc_DA10↓r
 								; Compared against: 0x7A (488ms)
 								; divide_d_by_x:loc_DA17↓w
 var_4ms_cnt_B6:			.block 1			; DATA XREF: divide_d_by_x+100↓r
+								; PURPOSE: one of a PAIR with var_4ms_cnt_B7 - the two
+								; are seeded to 0xFF together at reset and thereafter
+								; always tested together against the same 0x18 (96ms)
+								; threshold, at loc_CAD4, loc_CB49 and loc_D446, all on
+								; fuel-cut / overrun entry paths. So the pair is a
+								; 96ms dwell requirement on those conditions; which of
+								; the two tracks which condition is not established.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1625,6 +1651,9 @@ var_4ms_cnt_B6:			.block 1			; DATA XREF: divide_d_by_x+100↓r
 								; Compared against: 0x18 (96ms)
 								; divide_d_by_x+503↓r ...
 var_4ms_cnt_B7:			.block 1			; DATA XREF: divide_d_by_x+103↓r
+								; PURPOSE: see var_4ms_cnt_B6 - always tested with it,
+								; same 0x18 (96ms) threshold.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1633,7 +1662,13 @@ var_4ms_cnt_B7:			.block 1			; DATA XREF: divide_d_by_x+103↓r
 								;
 								; Compared against: 0x18 (96ms)
 								; divide_d_by_x+508↓r ...
-var_4ms_cnt_B8:			.block 1			; DATA XREF: divide_d_by_x+442↓w
+var_cnt_startup_grace:			.block 1			; DATA XREF: divide_d_by_x+442↓w
+								; PURPOSE: post-startup grace timer. The only test,
+								; 0x31 (196ms) at loc_C9DF, is what sets
+								; var_ignition_flags.6 - the 'startup grace period has
+								; elapsed' latch that gates TRAC TPS handling and the
+								; early-startup dispatch.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1722,6 +1757,13 @@ var_4ms_cnt_igf_timer:		.block 1			; DATA XREF: int_vector_9_ignition+4B↓w
 								; Compared against: 0x3F (252ms)
 								; int_vector_9_ignition+55↓r
 var_4ms_cnt_ne_C2:		.block 1			; DATA XREF: divide_d_by_x+17C6↓w
+								; PURPOSE: NE-signal timeout. Tested against 0x3F
+								; (252ms) in int_vector_e_ne and again in the IGF
+								; monitor; exceeding it means no NE edge has arrived in
+								; a quarter second, which drives the sync-error and IGF
+								; reset paths. Cleared whenever the DD59 diagnostic
+								; phase sees a healthy signal.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1740,6 +1782,12 @@ var_4ms_boost_cut_cnt:		.block 1			; DATA XREF: divide_d_by_x+763↓r
 								; divide_d_by_x:loc_CD07↓w
 								; Counter of how long boost cut	has been active
 var_4ms_cnt_C4:			.block 1			; DATA XREF: divide_d_by_x+127↓r
+								; PURPOSE: DMA re-arm interval. Seeded to 0xFE at reset
+								; alongside var_4ms_cnt_C5; once it exceeds 0x04 (16ms)
+								; the serial/DMA path at loc_F8Ex reloads
+								; var_asr0n_shadow_1DD and clears this. So it paces how
+								; often the DMA engine is re-armed.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
 								; called from iv6_4ms_process.
@@ -1760,6 +1808,19 @@ var_4ms_cnt_C5:			.block 1			; DATA XREF: divide_d_by_x+12A↓r
 var_cnt_C6:			.block 1			; DATA XREF: iv6_4ms_process+5F↓w
 								; iv6_4ms_process+63↓r
 var_cnt_C7:			.block 1			; DATA XREF: divide_d_by_x+F0↓r
+								; PURPOSE: general since-start elapsed timer, seeded to
+								; 0xFF at reset and used as a readiness gate in at least
+								; five unrelated places - 0x3D (244ms) before the
+								; background calc at loc_C8B4, before an ISC step at
+								; loc_D3BD and before setting var_ignition_flags.2;
+								; 0x07 (28ms) in the DD51 diagnostic phase; and 0xFF
+								; (saturated, ~1.0s) as one of the conditions arming
+								; var_flags_47.0 for the PIM NV-trim write.
+								; 
+								; Note loc_FBE2 does `xch a, var_cnt_C7` - an exchange,
+								; not a read - so it is also used as a scratch swap
+								; there.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
 								; called from iv6_4ms_process.
@@ -1769,6 +1830,11 @@ var_cnt_C7:			.block 1			; DATA XREF: divide_d_by_x+F0↓r
 								; Compared against: 0x07 (28ms), 0x3D (244ms), 0xFF (1.0s)
 								; divide_d_by_x+2E9↓r ...
 var_cnt_C8:			.block 1			; DATA XREF: divide_d_by_x:loc_D1FD↓r
+								; PURPOSE: 488ms (0x7A) window in the D1DD periodic
+								; chunk. When it expires the code clears it and runs
+								; the var_cnt_EA counter block, so it paces that
+								; slower group.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
 								; called from iv6_4ms_process.
@@ -1791,7 +1857,14 @@ var_cnt_CA:			.block 1			; DATA XREF: divide_d_by_x:loc_DCCD↓r
 								; Its increments therefore never mention this symbol -
 								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x+1742↓w ...
-var_cnt_CB:			.block 1			; DATA XREF: ROM:F644↓r
+var_cnt_knock_decay:			.block 1			; DATA XREF: ROM:F644↓r
+								; PURPOSE: knock-retard decay interval. knock_retard_decay
+								; is called every 4ms but only acts when this reaches
+								; 0x40 (256ms), at which point it is cleared and
+								; var_knock_retard is reduced by 2. So retard bleeds off
+								; at 2 counts per 256ms regardless of how often the
+								; caller runs.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
 								; called from iv6_4ms_process.
@@ -1801,6 +1874,11 @@ var_cnt_CB:			.block 1			; DATA XREF: ROM:F644↓r
 								; Compared against: 0x40 (256ms)
 								; ROM:loc_F64C↓w
 var_cnt_CC:			.block 1			; DATA XREF: knock_retard_decay:loc_F6E5↓w
+								; PURPOSE: knock-MCU handshake timer. Cleared at
+								; loc_F6E7 and, once past 0x06 (24ms), drives PORTB.2 -
+								; the knock MCU strobe - so it paces that handshake
+								; rather than measuring an engine condition.
+								;
 								; Saturating counter, advanced every 4ms by
 								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
 								; called from iv6_4ms_process.
@@ -1825,6 +1903,11 @@ var_cnt_CE:			.block 1			; DATA XREF: divide_d_by_x+53C↓w
 								; Its increments therefore never mention this symbol -
 								; a per-symbol search will only ever find the clears.
 var_cnt_CF:			.block 1			; DATA XREF: divide_d_by_x:loc_CBBD↓w
+								; PURPOSE: 7.8s dwell (0xF4) that sets var_flags_4E.4,
+								; in the rev-limit/boost region around loc_CBCA. What
+								; flags_4E.4 then selects is not established - see that
+								; bit's own entry, which notes it is reused.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1849,6 +1932,10 @@ var_cnt_D1:			.block 1			; DATA XREF: divide_d_by_x+3BF↓w
 								; Its increments therefore never mention this symbol -
 								; a per-symbol search will only ever find the clears.
 var_cnt_D2:			.block 1			; DATA XREF: divide_d_by_x+980↓w
+								; PURPOSE: 2.0s dwell (0x3D) gating a var_rpm_unk_74
+								; step in calc_4ms_corrections at loc_ECBE. The
+								; consequence is not established.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1857,7 +1944,13 @@ var_cnt_D2:			.block 1			; DATA XREF: divide_d_by_x+980↓w
 								;
 								; Compared against: 0x3D (2.0s)
 								; calc_4ms_corrections+283↓r
-var_cnt_D3:			.block 1			; DATA XREF: divide_d_by_x:check_open_or_closed_loop↓w
+var_cnt_closed_loop_dwell:			.block 1			; DATA XREF: divide_d_by_x:check_open_or_closed_loop↓w
+								; PURPOSE: dwell before closed loop is permitted. Tested
+								; against 0x1F (992ms) at two sites, both of which fall
+								; through to open_loop_CF51 when it has not been
+								; reached - so the ECU stays open-loop for roughly a
+								; second after whatever cleared it.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1873,7 +1966,13 @@ var_cnt_D4:			.block 1			; DATA XREF: divide_d_by_x+862↓r
 								; Its increments therefore never mention this symbol -
 								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x+88A↓w ...
-var_cnt_D5:			.block 1			; DATA XREF: divide_d_by_x:loc_D228↓w
+var_cnt_trim_settle:			.block 1			; DATA XREF: divide_d_by_x:loc_D228↓w
+								; PURPOSE: settling dwell before closed-loop trim
+								; learning. Cleared at loc_D22A when the O2 vote window
+								; restarts; closed_loop_control requires it to have
+								; reached 0x3D (2.0s) as one of its entry gates, so the
+								; trim cannot learn immediately after a reset.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1890,6 +1989,10 @@ var_cnt_D6:			.block 1			; DATA XREF: divide_d_by_x+58E↓w
 								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x+5DC↓r
 var_cnt_D7:			.block 1			; DATA XREF: divide_d_by_x+E9↓r
+								; PURPOSE: TPS-related dwell. Seeded to 0xFF at reset
+								; and tested against 0x1F (992ms) alongside a var_tps
+								; threshold at loc_CE80. Consequence not established.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1898,7 +2001,14 @@ var_cnt_D7:			.block 1			; DATA XREF: divide_d_by_x+E9↓r
 								;
 								; Compared against: 0x1F (992ms)
 								; divide_d_by_x+8E3↓w ...
-var_cnt_D8:			.block 1			; DATA XREF: calc_4ms_corrections:loc_ED09↓w
+var_cnt_cyl_rough_dwell:			.block 1			; DATA XREF: calc_4ms_corrections:loc_ED09↓w
+								; PURPOSE: dwell before per-cylinder roughness
+								; measurement is trusted. Cleared alongside
+								; reset_cyl_rpm_dev/reset_cyl_proc_idx, and
+								; update_cyl_rpm_dev only engages once it exceeds 0x5C
+								; (2.9s); a second gate at 0x06 (192ms) guards an
+								; earlier stage.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1908,6 +2018,13 @@ var_cnt_D8:			.block 1			; DATA XREF: calc_4ms_corrections:loc_ED09↓w
 								; Compared against: 0x06 (192ms), 0x5C (2.9s)
 								; calc_4ms_corrections:loc_ED6E↓r ...
 var_cnt_D9:			.block 1			; DATA XREF: calc_4ms_corrections+C9↓w
+								; PURPOSE: dwell in calc_4ms_corrections' ignition-
+								; correction path. Cleared together with
+								; var_flags_4E.1; at 0x1F (992ms) it sets
+								; var_flags_4E.3, and a second threshold at 0x99 (4.9s)
+								; gates a later stage. What the two stages compute is
+								; not established - only the timing is.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1917,6 +2034,14 @@ var_cnt_D9:			.block 1			; DATA XREF: calc_4ms_corrections+C9↓w
 								; Compared against: 0x1F (992ms), 0x99 (4.9s)
 								; calc_4ms_corrections+105↓r ...
 var_cnt_DA:			.block 1			; DATA XREF: calc_4ms_corrections+128↓w
+								; NOT a tick counter, despite the name and despite
+								; sitting inside COUNTER_ARG(var_cnt_CD, 0x14). It is
+								; explicitly OVERWRITTEN with computed values (`st a,`
+								; and `st b,`) beside var_cyl_rpm_filtered in the
+								; cylinder-RPM path, so the automatic increments are
+								; just a floor between those writes. Tested against
+								; 0x14. Treat as a value, not an elapsed time.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1925,7 +2050,12 @@ var_cnt_DA:			.block 1			; DATA XREF: calc_4ms_corrections+128↓w
 								;
 								; Compared against: 0x14 (640ms)
 								; calc_ign_timing_min+5A↓w	...
-var_cnt_DB:			.block 1			; DATA XREF: divide_d_by_x:loc_D34B↓w
+var_cnt_iscv_table_dwell:			.block 1			; DATA XREF: divide_d_by_x:loc_D34B↓w
+								; PURPOSE: ISC table-selection dwell. Cleared at
+								; loc_D34D; once past 0x5C (2.9s) calc_iscv switches
+								; from table_iscv_rpm_C357 to table_iscv_rpm_C361, i.e.
+								; from the startup RPM schedule to the settled one.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1935,6 +2065,12 @@ var_cnt_DB:			.block 1			; DATA XREF: divide_d_by_x:loc_D34B↓w
 								; Compared against: 0x5C (2.9s)
 								; calc_iscv+14F↓r ...
 var_cnt_DC:			.block 1			; DATA XREF: divide_d_by_x+D7A↓w
+								; PURPOSE: idle-trim-adjacent dwell, cleared beside
+								; var_nv_idle_trim at loc_D317 and tested against 0x1F
+								; (992ms) at loc_D908. Distinct from
+								; var_cnt_idle_trim_dwell, which uses a 2.9s threshold;
+								; what separates the two is not established.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1943,7 +2079,13 @@ var_cnt_DC:			.block 1			; DATA XREF: divide_d_by_x+D7A↓w
 								;
 								; Compared against: 0x1F (992ms)
 								; calc_iscv:loc_D900↓r
-var_cnt_DD:			.block 1			; DATA XREF: divide_d_by_x+DB5↓w
+var_cnt_idle_trim_dwell:			.block 1			; DATA XREF: divide_d_by_x+DB5↓w
+								; PURPOSE: idle-trim learning dwell. Cleared at four
+								; separate sites, all adjacent to var_nv_idle_trim, and
+								; tested against 0x5C (2.9s) at loc_D718 before the
+								; var_idle_trim_flags path is entered. Any disturbance
+								; to the idle-trim conditions restarts the 2.9s wait.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1953,6 +2095,12 @@ var_cnt_DD:			.block 1			; DATA XREF: divide_d_by_x+DB5↓w
 								; Compared against: 0x5C (2.9s)
 								; calc_iscv+170↓w ...
 var_cnt_DE:			.block 1			; DATA XREF: calc_iscv+12B↓w
+								; PURPOSE: ISC target-settling dwell. Cleared at three
+								; sites, all beside var_iscv_target_rpm or the idle-trim
+								; reset, and tested against 0x5C (2.9s) twice in
+								; calc_iscv - once before re-evaluating the target and
+								; once before the var_iscv_idle_upd_cnt path.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
 								; called from loc_D1DD (32ms slot).
@@ -1995,6 +2143,11 @@ var_cnt_E0:			.block 1
 								; effectively dead - but as spare counter
 								; capacity, not as untouched memory.
 var_cnt_E1:			.block 1			; DATA XREF: divide_d_by_x+70C↓r
+								; PURPOSE: 512ms (0x08 at 64ms) window around loc_CCB1,
+								; cleared at loc_CCB5. Note this byte is ALSO the base
+								; of the COUNTER_ARG(var_cnt_E1, 7) block, so it names a
+								; group as well as being a counter in its own right.
+								;
 								; Saturating counter, advanced every 64ms by
 								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
 								; called from bg_64ms_dispatch.
@@ -2148,6 +2301,12 @@ var_cnt_E9:			.block 1			; DATA XREF: divide_d_by_x:loc_D3B1↓w
 								; Compared against: 0x17 (6 min), 0x26 (10 min), 0x99 (42 min)
 								; divide_d_by_x+E3F↓r ...
 var_cnt_EA:			.block 1			; DATA XREF: divide_d_by_x+3CE↓w
+								; PURPOSE: general post-event dwell, cleared at
+								; loc_C96B. Two thresholds: 0x1E (960ms) and 0x3C
+								; (1.9s). Also forwarded to CPU2 verbatim as
+								; dmatx_cnt_unk_20F, so its value is consumed on both
+								; sides of the DMA link.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_EA, 5)
 								; called from loc_D1DD (32ms slot).
@@ -2165,7 +2324,13 @@ var_cnt_EB:			.block 1			; DATA XREF: divide_d_by_x:loc_CB45↓w
 								; divide_d_by_x:loc_CB63↓w ...
 var_o2_heater_current_error_cnt:.block 1			; DATA XREF: ROM:loc_DE08↓w
 								; ROM:loc_DE0A↓r
-var_cnt_ED:			.block 1			; DATA XREF: ROM:DE22↓r
+var_cnt_o2_heater_dwell:			.block 1			; DATA XREF: ROM:DE22↓r
+								; PURPOSE: O2-heater measurement dwell. The heater
+								; current check at loc_DE1C only proceeds once this
+								; passes 0x0A (320ms), giving the reading time to
+								; settle before it is judged against the 0x48/0x8F
+								; window.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_EA, 5)
 								; called from loc_D1DD (32ms slot).
@@ -2174,7 +2339,13 @@ var_cnt_ED:			.block 1			; DATA XREF: ROM:DE22↓r
 								;
 								; Compared against: 0x0A (320ms)
 								; ROM:DE56↓w
-var_cnt_EE:			.block 1			; DATA XREF: ROM:loc_DEE3↓w
+var_cnt_lambda_stuck:			.block 1			; DATA XREF: ROM:loc_DEE3↓w
+								; PURPOSE: lambda-stuck fault dwell. Cleared while the
+								; O2 reading still looks alive; once it survives to 0x5A
+								; (2.9s) loc_DEE5 sets var_error_flags2.6 - the
+								; 'O2 persistently rich' fault - and raises the
+								; matching diagnostic codes.
+								;
 								; Saturating counter, advanced every 32ms by
 								; increment_counters via COUNTER_ARG(var_cnt_EA, 5)
 								; called from loc_D1DD (32ms slot).
@@ -6436,10 +6607,10 @@ locret_C9D9:							; CODE XREF: update_tps_closed_ref+3C↑j
 loc_C9DA:							; CODE XREF: divide_d_by_x:loc_C994↑j
 				tbbs	bit2, var_io_input1, loc_C9DF
 
-				clr	var_4ms_cnt_B8
+				clr	var_cnt_startup_grace
 
 loc_C9DF:							; CODE XREF: divide_d_by_x:loc_C9DA↑j
-				cmp	#31h, var_4ms_cnt_B8
+				cmp	#31h, var_cnt_startup_grace
 				bcs	loc_C9E7
 
 				setb	bit6, var_ignition_flags
@@ -7898,7 +8069,7 @@ loc_CF13:							; CODE XREF: divide_d_by_x+971↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 check_open_or_closed_loop:					; CODE XREF: divide_d_by_x+97E↑j
-				clr	var_cnt_D3
+				clr	var_cnt_closed_loop_dwell
 				tbbs	bit7, var_flags_46, open_loop_CF51
 
 				tbbs	bit0, var_flags_46, open_loop_CF51
@@ -7907,7 +8078,7 @@ check_open_or_closed_loop:					; CODE XREF: divide_d_by_x+97E↑j
 				cmpb	a, #40h
 				bne	open_loop_CF51
 
-				cmp	#1Fh, var_cnt_D3
+				cmp	#1Fh, var_cnt_closed_loop_dwell
 				bcc	open_loop_CF51
 
 				cmp	#0C4h, var_ect
@@ -8137,7 +8308,7 @@ loc_D03B:							; CODE XREF: divide_d_by_x+A93↑j
 
 
 loc_D041:							; CODE XREF: divide_d_by_x:loc_D03B↑j
-				cmp	#1Fh, var_cnt_D3
+				cmp	#1Fh, var_cnt_closed_loop_dwell
 				bcs	loc_D062
 
 
@@ -8544,13 +8715,13 @@ locret_D1DC:							; CODE XREF: read_nv_afr_trim+2↑j
 ;     calc_4ms_corrections' write-up) and inc_cnt_187 (not deep-dived).
 ;  2) (D20C-D23E) If var_schedule_flag_41.2 is set, skip straight to
 ;     loc_D2D2 (injection already scheduled this cycle - same guard pattern
-;     as calc_4ms_corrections). Otherwise a var_cnt_D5 readiness gate is
+;     as calc_4ms_corrections). Otherwise a var_cnt_trim_settle readiness gate is
 ;     maintained (cleared unless var_limiter_flags upper bits are clear,
 ;     var_ign_blend_out is near a fixed threshold, and dmarx_iscv_duty == 0x40).
 ;  3) (closed_loop_control, D23E-D2BC) A SECOND closed-loop lambda trim
 ;     system, distinct from the RPM/MAP-zone nv_afr_trim_base system in
 ;     calc_4ms_corrections' chunk CE6C. Gated on ECT 83-104C, off-idle,
-;     RPM<3200, battery >=11.4V, var_cnt_D5 readiness, and
+;     RPM<3200, battery >=11.4V, var_cnt_trim_settle readiness, and
 ;     var_trim_state == 4. Accumulates O2 sensor polarity into
 ;     var_o2_vote_accum over 17 samples (var_o2_vote_cnt), then nudges
 ;     var_nv_trim_unk_96 by +/-1 based on a majority-style threshold
@@ -8615,7 +8786,7 @@ loc_D213:							; CODE XREF: divide_d_by_x+C73↑j
 
 loc_D228:							; CODE XREF: divide_d_by_x+C7C↑j
 								; divide_d_by_x+C84↑j
-				clr	var_cnt_D5
+				clr	var_cnt_trim_settle
 
 loc_D22A:							; CODE XREF: divide_d_by_x+C8B↑j
 				ld	a, var_o2_vote_cnt
@@ -8666,7 +8837,7 @@ closed_loop_control:						; CODE XREF: divide_d_by_x:loc_D23E↑j
 				cmp	#93h, var_adc_battery	; 11.4v
 				bcs	loc_D2BC		; Jump if battery voltage too low
 
-				cmp	#3Dh, var_cnt_D5
+				cmp	#3Dh, var_cnt_trim_settle
 				bcs	loc_D2BC
 
 				tbbs	bit2, var_error_flags2,	loc_D2BC ; Jump	if ??? error flag set
@@ -8885,12 +9056,12 @@ loc_D33D:							; CODE XREF: divide_d_by_x:loc_D323↑j
 
 loc_D34B:							; CODE XREF: divide_d_by_x+DA4↑j
 								; divide_d_by_x+DA7↑j ...
-				clr	var_cnt_DB
+				clr	var_cnt_iscv_table_dwell
 
 loc_D34D:							; CODE XREF: divide_d_by_x+DAD↑j
 				tbbc	bit0, var_flags_46, loc_D361
 
-				clr	var_cnt_DD
+				clr	var_cnt_idle_trim_dwell
 				ld	a, var_nv_idle_trim
 				tbbs	bit0, var_flags_42, loc_D359 ; Jump if idle trim valid
 
@@ -9375,7 +9546,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     saturated - i.e. the idle RPM error
 ;
 ; SECTION 2 (D612..D67F): var_iscv_target_base update
-;   - At idle with var_cnt_DB elapsed: look up var_iscv_rpm_cmp_197 in
+;   - At idle with var_cnt_iscv_table_dwell elapsed: look up var_iscv_rpm_cmp_197 in
 ;     table_iscv_rpm_C357 (linear search, ascending bands) and derive a
 ;     candidate baseline from the matched entry + var_iscv_target_base
 ;   - Otherwise: candidate baseline is var_nv_idle_trim (or 0x66 default)
@@ -9395,7 +9566,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ; SECTION 4 (D6C9..D815): Idle trim (var_nv_idle_trim) learning
 ;   - Mirrors the AFR trim learning pattern (see nv_afr_trim_base in
 ;     calc_4ms_corrections): when idle has been stable long enough
-;     (var_cnt_DD/var_cnt_DE counters), var_idle_trim is nudged via
+;     (var_cnt_idle_trim_dwell/var_cnt_DE counters), var_idle_trim is nudged via
 ;     idle_trim_limits and written back to NV RAM (var_nv_idle_trim) via
 ;     write_rB_nv_ram, so the ISCV baseline adapts over time
 ;   - var_idle_trim_flags appears to gate/flag the direction or validity of a pending
@@ -9738,7 +9909,7 @@ loc_D612:							; CODE XREF: calc_iscv+13F↑j
 
 				tbbc	bit2, var_flags_4E, loc_D637	; Not at idle: use fallback baseline
 
-				cmp	#5Ch, var_cnt_DB
+				cmp	#5Ch, var_cnt_iscv_table_dwell
 				bcs	loc_D637			; Idle not yet stable long enough: fallback
 
 				ld	y, #table_iscv_rpm_C357	; Search RPM-error band table
@@ -9765,7 +9936,7 @@ loc_D637:							; CODE XREF: calc_iscv:loc_D612↑j
 								; calc_iscv+14C↑j ...
 ; Fallback path: not at stable idle, or sensor error/limp mode
 				clr	var_cnt_DE
-				clr	var_cnt_DD
+				clr	var_cnt_idle_trim_dwell
 				tbbs	bit0, var_flags_46, loc_D64F	; Still cranking/stall RPM band: leave baseline
 
 				ld	a, var_nv_idle_trim
@@ -9817,7 +9988,7 @@ loc_D66F:							; CODE XREF: calc_iscv+19D↑j
 				cmp	d, var_temp_w
 				ble	loc_D67C			; Ceiling <= band candidate: use ceiling as-is
 
-				clr	var_cnt_DD
+				clr	var_cnt_idle_trim_dwell
 ; Ceiling > band candidate: re-derive from the stashed pre-offset value (X)
 ; rather than clamping to the candidate outright - D = X here (mov is
 ; src,dest), so this OVERWRITES the just-computed ceiling with the stashed
@@ -9871,7 +10042,7 @@ loc_D6A5:							; CODE XREF: calc_iscv:loc_D67F↑j
 
 				tbbc	bit2, var_flags_4E, loc_D6C6	; Not at idle: use previous var_iscv_idle_base
 
-				cmp	#5Ch, var_cnt_DB
+				cmp	#5Ch, var_cnt_iscv_table_dwell
 				bcs	loc_D6C6			; Idle not yet stable: use previous var_iscv_idle_base
 
 				ld	y, #table_iscv_rpm_C361	; Same search pattern as table_iscv_rpm_C357
@@ -9956,12 +10127,12 @@ loc_D712:							; CODE XREF: calc_iscv+241↑j
 
 loc_D716:							; CODE XREF: calc_iscv+233↑j
 								; calc_iscv+239↑j ...
-				clr	var_cnt_DD
+				clr	var_cnt_idle_trim_dwell
 
 loc_D718:							; CODE XREF: calc_iscv+24B↑j
-; Idle trim has been out of range/invalid long enough (var_cnt_DD): reset it
+; Idle trim has been out of range/invalid long enough (var_cnt_idle_trim_dwell): reset it
 ; to the 0x66 default and persist to NV RAM
-				cmp	#5Ch, var_cnt_DD
+				cmp	#5Ch, var_cnt_idle_trim_dwell
 				bcs	loc_D730
 
 				ld	a, var_idle_trim_flags
@@ -9972,7 +10143,7 @@ loc_D718:							; CODE XREF: calc_iscv+24B↑j
 				ld	x, #var_nv_idle_trim
 				jsr	write_rB_nv_ram		; Update idle trim value
 
-				clr	var_cnt_DD
+				clr	var_cnt_idle_trim_dwell
 
 loc_D730:							; CODE XREF: calc_iscv+252↑j
 				tbbs	bit7, var_flags_46, loc_D752
@@ -11729,7 +11900,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; var_flags_4F_saved, var_inj_battery_adjust, var_inj_pw_inj1,
 ; var_io_input1, var_iscv_pwm, var_pim2, var_rpm_x_5p12, var_speed_kph
 ; Writes: dmatx_obd_inj, dmatx_obd_iscv, var_o2_heater_unk_185, var_cnt_187,
-; unk_1CF_alias, var_cnt_ED, var_diag_errors_4, var_diag_errors_5,
+; unk_1CF_alias, var_cnt_o2_heater_dwell, var_diag_errors_4, var_diag_errors_5,
 ; var_error_flags1, var_error_flags2, var_flags_40, var_flags_4D,
 ; var_flags_4F, var_o2_heater_current_error_cnt
 ; Calls: clear_diag_error_bits
@@ -11881,7 +12052,7 @@ loc_DE1C:							; CODE XREF: ROM:DE0D↑j
 				tbbc	bit1, var_flags_46, loc_DE50 ; Jump if open loop mode
 
 				ld	b, var_o2_heater_unk_185
-				cmp	#0Ah, var_cnt_ED
+				cmp	#0Ah, var_cnt_o2_heater_dwell
 				bcc	loc_DE42
 
 				ld	a, var_adc_o2_heater
@@ -11924,7 +12095,7 @@ loc_DE50:							; CODE XREF: ROM:loc_DE1C↑j
 				clr	b
 				st	b, var_o2_heater_unk_185
 				clrb	bit1, unk_1CF_alias
-				clr	var_cnt_ED
+				clr	var_cnt_o2_heater_dwell
 
 loc_DE58:							; CODE XREF: ROM:DE32↑j
 								; ROM:DE34↑j ...
@@ -12062,10 +12233,10 @@ loc_DEC1:							; CODE XREF: ROM:DE80↑j
 
 loc_DEE3:							; CODE XREF: ROM:loc_DEC1↑j
 								; ROM:DEC7↑j ...
-				clr	var_cnt_EE
+				clr	var_cnt_lambda_stuck
 
 loc_DEE5:							; CODE XREF: ROM:DEE1↑j
-				cmp	#5Ah, var_cnt_EE
+				cmp	#5Ah, var_cnt_lambda_stuck
 				bcs	loc_DEF7
 
 				setb	bit6, var_error_flags2
@@ -15780,7 +15951,7 @@ loc_ED01:							; CODE XREF: calc_4ms_corrections:loc_ECE2↑j
 
 loc_ED09:							; CODE XREF: calc_4ms_corrections+2C3↑j
 								; calc_4ms_corrections+2C9↑j ...
-				clr	var_cnt_D8
+				clr	var_cnt_cyl_rough_dwell
 				bsr	reset_cyl_rpm_dev
 
 				bsr	reset_cyl_proc_idx
@@ -15896,7 +16067,7 @@ loc_ED68:							; CODE XREF: calc_4ms_corrections+343↑j
 
 loc_ED6E:							; CODE XREF: calc_4ms_corrections+2ED↑j
 								; calc_4ms_corrections+306↑j ...
-				ld	a, var_cnt_D8
+				ld	a, var_cnt_cyl_rough_dwell
 				bne	loc_ED85
 
 				di
@@ -15918,7 +16089,7 @@ loc_ED7E:							; CODE XREF: calc_4ms_corrections+358↑j
 
 loc_ED85:							; CODE XREF: calc_4ms_corrections+34E↑j
 				ld	b, var_temp_w
-				cmp	#06h, var_cnt_D8
+				cmp	#06h, var_cnt_cyl_rough_dwell
 				bcs	loc_EDC1
 
 				clr	a
@@ -15976,7 +16147,7 @@ loc_EDC1:							; CODE XREF: calc_4ms_corrections+368↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_lambda_trim, va_ne_count_2, var_cnt_D8, var_cyl_rpm_dev,
+; Reads: dmarx_lambda_trim, va_ne_count_2, var_cnt_cyl_rough_dwell, var_cyl_rpm_dev,
 ; var_flags_42, var_flags_46, var_flags_4E, var_ign_advance_trim,
 ; var_limiter_flags, var_ne_sum3, var_rpm_div_25
 ; Writes: var_cyl_proc_idx, var_flags_4E_temp, var_ign_corr_combined,
@@ -15986,7 +16157,7 @@ loc_EDC1:							; CODE XREF: calc_4ms_corrections+368↑j
 ; update_cyl_rpm_dev (was update_cyl_rpm_dev): per-cylinder crank-speed deviation,
 ; called once per NE event from iv6_ne_process.
 ;
-; Gated on var_cnt_D8 >= 0x5C. Indexes var_cyl_rpm_dev by cylinder - the
+; Gated on var_cnt_cyl_rough_dwell >= 0x5C. Indexes var_cyl_rpm_dev by cylinder - the
 ; index is va_ne_count_2 >> 4 masked to 2 bits, i.e. the cylinder field of
 ; the NE counter - scales the stored deviation by 7, and differences
 ; var_ne_sum3 against var_ne_sum3_prev, which is the change in the
@@ -16001,7 +16172,7 @@ loc_EDC1:							; CODE XREF: calc_4ms_corrections+368↑j
 ; treat the ignition-correction half as still open.
 ; ---------------------------------------------------------------------------
 update_cyl_rpm_dev:							; CODE XREF: iv6_ne_process+36D↓p
-				cmp	#5Ch, var_cnt_D8
+				cmp	#5Ch, var_cnt_cyl_rough_dwell
 				bcs	loc_EE03
 
 				ld	x, #var_cyl_rpm_dev
@@ -18162,7 +18333,7 @@ locret_F529:							; CODE XREF: knock_mcu_update+1E↑j
 ;   dmarx_knock_retard_cpu2, var_knock_gate_168
 ; Writes: PORTB, var_knock_retard, var_knock_retard_max,
 ;   var_knock_retard_prev, var_knock_retard_prev2, var_knock_cyl_idx,
-;   var_knock_event_cnt, var_cnt_CB, var_cnt_CC, var_diag_errors_5,
+;   var_knock_event_cnt, var_cnt_knock_decay, var_cnt_CC, var_diag_errors_5,
 ;   dmatx_ign_corr_cpu2, unk_E3, var_knock_retard_latch
 ; ---------------------------------------------------------------------------
 
@@ -18414,7 +18585,7 @@ loc_F63E:							; CODE XREF: ROM:loc_F634↑j
 loc_F641:							; CODE XREF: ROM:F60F↑j
 								; ROM:F639↑j ...
 				st	a, dmatx_ign_corr_cpu2
-				cmp	#40h, var_cnt_CB
+				cmp	#40h, var_cnt_knock_decay
 				bcc	loc_F64C
 
 				jmp	locret_F6C4
@@ -18422,7 +18593,7 @@ loc_F641:							; CODE XREF: ROM:F60F↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_F64C:							; CODE XREF: ROM:F647↑j
-				clr	var_cnt_CB
+				clr	var_cnt_knock_decay
 				ld	a, var_knock_retard
 				sub	a, #02h
 				bcc	loc_F656
