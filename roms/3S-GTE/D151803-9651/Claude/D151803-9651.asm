@@ -3612,6 +3612,10 @@ map_fuel_scale_rpm:		.dw 0280h			; DATA XREF: divide_d_by_x+86F↓o
 
 
 table_ect_C112:			.db 18h				; DATA XREF: divide_d_by_x:loc_E3B2↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Result -> var_temp_7A, in the
+								; loc_E3B2 fuel path.
 				.db 10h, 67h
 				.db 20h, 5Ch
 				.db 2Fh, 4Bh
@@ -3640,6 +3644,11 @@ table_rpm_C12D:			.dw 0280h			; DATA XREF: divide_d_by_x+1E21↓o
 
 
 table_ect_C137:			.db 9Ch, 40h			; DATA XREF: divide_d_by_x+1E28↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Its result is compared against a
+								; pushed value rather than stored - a threshold,
+								; not a term.
 				.db 0FFh
 				.db 0A0h
 				.db 40h
@@ -3662,6 +3671,10 @@ table_inj_battery_adjust:	.db 53h, 80h			; DATA XREF: adc_handler_battery+14↓o
 
 
 table_ect_unk_C147:		.db 26h, 0C0h			; DATA XREF: calc_ect_unk_148↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Read by calc_ect_unk_148; result ->
+								; var_ect_unk_148.
 				.db 60h
 				.db 50h
 				.db 44h
@@ -3752,6 +3765,11 @@ table_ign_rpm_neg:			.dw 0080h			; DATA XREF: divide_d_by_x+223A↓o
 
 
 table_ect_C17C:			.db 1Fh, 0C0h			; DATA XREF: divide_d_by_x+2252↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. One of the two ECT terms summed into
+								; var_ign_ect_term on update_ign_timing_blend's
+								; init path; the other is table_ect_C185.
 				.db 30h
 				.db 30h
 				.db 64h
@@ -3762,6 +3780,11 @@ table_ect_C17C:			.db 1Fh, 0C0h			; DATA XREF: divide_d_by_x+2252↓o
 
 
 table_ect_C185:			.db 1Fh, 0C0h			; DATA XREF: divide_d_by_x+2248↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Scaled through scale_by_nv_trim_o2
+								; before being added to table_ect_C17C's result to
+								; seed var_ign_ect_term.
 				.db 00h
 				.db 00h
 				.db 00h
@@ -3772,6 +3795,10 @@ table_ect_C185:			.db 1Fh, 0C0h			; DATA XREF: divide_d_by_x+2248↓o
 
 
 table_ect_C18E:			.db 0Eh				; DATA XREF: divide_d_by_x:loc_E7FD↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Result -> var_temp_w in the
+								; ignition-blend chain at loc_E7FD.
 				.db 1Fh, 80h
 				.db 3Eh, 80h
 				.db 5Dh, 60h
@@ -3783,6 +3810,11 @@ table_ect_C18E:			.db 0Eh				; DATA XREF: divide_d_by_x:loc_E7FD↓o
 
 
 table_ect_C19F:			.db 0Eh				; DATA XREF: divide_d_by_x+227F↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Read immediately after
+								; var_ign_blend_pos is stored, in the same blend
+								; chain.
 				.db 1Fh, 6Ch
 				.db 3Eh, 6Ah
 				.db 5Dh, 54h
@@ -3794,6 +3826,11 @@ table_ect_C19F:			.db 0Eh				; DATA XREF: divide_d_by_x+227F↓o
 
 
 table_ect_C1B0:			.db 0Eh				; DATA XREF: divide_d_by_x+226A↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Its result is passed through
+								; scale_by_nv_trim_o2, so the O2-learned NV trim
+								; scales this ECT term.
 				.db 1Fh, 00h
 				.db 3Eh, 00h
 				.db 5Dh, 00h
@@ -3824,6 +3861,10 @@ table_rpm_unk_C1D2:		.db 38h, 60h			; DATA XREF: injector_warmup+C↓o
 				.db 7Dh
 ;2-D Map
 table_ect_unk_C1D8:		.db 06h				; DATA XREF: injector_warmup:loc_CD7E↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Read at loc_CD7E in the injector
+								; cold-start / warm-up path.
 				.db 038, 000
 				.db 081, 000
 				.db 134, 000
@@ -3831,6 +3872,10 @@ table_ect_unk_C1D8:		.db 06h				; DATA XREF: injector_warmup:loc_CD7E↓o
 
 
 table_rpm_unk_C1E1:		.db 18h				; DATA XREF: divide_d_by_x+618↓o
+								; RPM-indexed via table_rB_fixed_32_interpolate;
+								; the result is compared against var_pim2, so it
+								; is a PIM threshold that varies with engine
+								; speed. What it gates is not established.
 				.db 60h
 				.db 66h
 				.db 2Ah
@@ -3868,6 +3913,10 @@ table_boost_limit_time:		.dw 0200h			; DATA XREF: check_boost_limit:loc_CCE9↓o
 
 
 table_ect_inj_throttle_pump:	.db 02h				; DATA XREF: async_throttle_inject+1B↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. The result is halved; part of the
+								; transient throttle-pump injection at loc_CDB6.
 				.db 51h, 26h
 				.db 0E4h, 26h
 
@@ -3907,13 +3956,26 @@ table_accel_enrich_tps:		.db 12h				; DATA XREF: divide_d_by_x+934↓o
 
 
 table_lambda_step:			.dw 0A05h, 0A05h		; DATA XREF: divide_d_by_x:loc_CF78↓o
+								; Lambda correction step sizes, read five bytes at
+								; a time into var_lambda_step. The pointer is
+								; advanced past the first group when the value is
+								; negative, so rich and lean use different step
+								; schedules - see loc_CFC9.
 								; divide_d_by_x+A4B↓o
 
 
 table_unk_C22D:			.dw 1A1Ah, 1A1Ah		; DATA XREF: divide_d_by_x+9CC↓o
+								; Selected at loc_CF78 against road speed (0x1E)
+								; and further thresholds in the lambda/closed-loop
+								; path; walked by pointer rather than
+								; interpolated. Purpose not established.
 
 
 table_rpm_unk_C231:		.db 2Bh, 16h			; DATA XREF: divide_d_by_x+9F8↓o
+								; Selected at loc_CF91 against a var_pim2
+								; threshold of 0x39, with table_rpm_unk_C23D as
+								; the alternative - a low-load / high-load pair in
+								; the lambda path.
 								; divide_d_by_x+A67↓o
 				.db 10h, 40h, 41h, 61h
 				.db 97h, 10h, 40h, 41h
@@ -3921,15 +3983,25 @@ table_rpm_unk_C231:		.db 2Bh, 16h			; DATA XREF: divide_d_by_x+9F8↓o
 
 
 table_rpm_unk_C23D:		.db 2Bh, 16h			; DATA XREF: divide_d_by_x+A00↓o
+								; The high-load counterpart of table_rpm_unk_C231,
+								; selected when var_pim2 is at or above 0x39.
 				.db 10h, 40h, 41h
 
 
 table_rpm_unk_C242:		.db 6Ch, 0A1h
+								; No #reference anywhere - reached only by falling
+								; off the end of table_rpm_unk_C23D, so it is the
+								; continuation of that table's data rather than a
+								; separate table. Treat the two as one block.
 				.db 10h, 40h, 41h, 56h
 				.db  61h ; a
 
 
 table_adc_lambda_C249:		.db 09h, 09h, 06h, 10h,	0Bh	; DATA XREF: adc_handler_o2_heater+E↓o
+								; Indexed by var_adc_lambda. Walked with pointer
+								; arithmetic rather than an interpolate call, and
+								; selected against var_flags_4E.2 in the O2-heater
+								; path at loc_FC66.
 				.db 0FEh, 0FEh,	0FEh, 0FEh, 0FEh
 
 
@@ -3940,12 +4012,26 @@ table_rpm_unk_C253:		.db 40h, 50h			; DATA XREF: divide_d_by_x+3E4↓o
 
 
 table_inj_pw_adj_C25B:		.db 00h, 00h, 00h, 00h		; DATA XREF: divide_d_by_x+215E↓o
+								; Per-injector pulse-width trim table, four
+								; entries, one per injector. Selected when
+								; var_flags_4E.1 is CLEAR (RPM below ~2240);
+								; table_inj_pw_adj_C25F is used above ~2450.
+								; Applied at loc_E6F6 as PW + (trim*PW)/256 - see
+								; the pulse-width chain in
+								; fuel_calculation_system.md.
 
 
 table_inj_pw_adj_C25F:		.db 08h, 00h, 00h, 00h		; DATA XREF: divide_d_by_x+2164↓o
+								; The high-RPM counterpart of
+								; table_inj_pw_adj_C25B - selected when
+								; var_flags_4E.1 is SET.
 
 
 table_inj_phase_trim:			.db  0Dh			; DATA XREF: calc_inj_phase_lead+16↓o
+								; Injector phase trim, read with inc y stepping
+								; rather than interpolation; var_flags_46.2
+								; (throttle closed) selects which pair of entries
+								; is used.
 				.db  0Dh
 				.db  0Dh
 				.db  0Dh
@@ -3961,6 +4047,9 @@ table_dwell_battery:		.db 08h				; DATA XREF: calc_4ms_corrections:loc_EA2D↓o
 
 
 table_dwell_rpm:		.db 08h				; DATA XREF: calc_4ms_corrections+16↓o
+								; RPM-indexed dwell factor. Multiplied by
+								; table_dwell_battery's result and divided by 32
+								; to give var_ign_dwell_offset - see loc_EA2D.
 				.db 0Ah, 0FFh
 				.db 20h, 0CBh
 				.db 3Ch, 0A1h
@@ -3969,12 +4058,19 @@ table_dwell_rpm:		.db 08h				; DATA XREF: calc_4ms_corrections+16↓o
 
 
 table_dwell_min_rpm:		.db 04h				; DATA XREF: calc_4ms_corrections+24↓o
+								; RPM-indexed minimum dwell, stored straight to
+								; var_ign_dwell_min at loc_EA2D.
 				.db 28h, 0FAh
 				.db 50h, 7Dh
 				.db 0A0h, 5Eh
 
 
 table_unk_C284:			.db 0Eh				; DATA XREF: calc_4ms_corrections+242↓o
+								; One of the two endpoint tables blended by
+								; var_pim2 at loc_EC62 - its result goes to
+								; var_temp_7C, table_unk_C295's to var_temp_7A,
+								; and the pair are then interpolated between.
+								; Units not established.
 				.db 1Fh, 0ABh
 				.db 3Eh, 9Eh
 				.db 5Dh, 95h
@@ -3998,6 +4094,10 @@ table_unk_C295:			.db 0Eh				; DATA XREF: calc_4ms_corrections+24C↓o
 
 
 table_unk_C2A6:			.db 0Eh				; DATA XREF: calc_4ms_corrections:loc_EC8A↓o
+								; Read via table_rA_pair_interpolate at loc_EC8A,
+								; immediately followed by the 0x8C opcode trick
+								; that swallows the next instruction. Purpose not
+								; established.
 				.db 1Fh, 0ABh
 				.db 3Eh, 9Eh
 				.db 5Dh, 95h
@@ -4009,6 +4109,8 @@ table_unk_C2A6:			.db 0Eh				; DATA XREF: calc_4ms_corrections:loc_EC8A↓o
 
 
 table_unk_C2B7:			.db 00h, 0C0h			; DATA XREF: calc_4ms_corrections+296↓o
+								; Read after divide_rD_2_saturate at loc_ECBE,
+								; result into var_temp_w. Purpose not established.
 				.db 33h
 				.db 40h
 				.db 48h
@@ -4025,6 +4127,10 @@ table_rpm_unk_C2C0:		.db 08h, 60h			; DATA XREF: calc_4ms_corrections+41A↓o
 
 
 table_unk_C2C9:			.db 05h, 11h, 05h, 11h		; DATA XREF: calc_4ms_corrections+422↓o
+								; Loaded into X (a pointer, not an interpolate
+								; target) after an RPM lookup, then selected by
+								; var_flags_46.6 at loc_EE4B. Purpose not
+								; established.
 
 
 table_gearing_unk_C2CD:		.db 1Ah, 80h			; DATA XREF: calc_4ms_corrections+9E↓o
@@ -4046,6 +4152,9 @@ table_idle_ramp_from_knock:		.db 56h, 80h			; DATA XREF: calc_ign_timing_min+6�
 
 
 table_unk_C2DB:			.db 00h, 80h			; DATA XREF: calc_ign_timing_min:loc_EBBC↓o
+								; First of a pair read at loc_EBBC - its result is
+								; pushed before a second table is read, so the two
+								; are combined. Purpose not established.
 				.db 00h, 1Eh, 33h, 40h
 				.db 40h
 
@@ -4101,6 +4210,10 @@ table_overrun_advance:			.db  04h			; DATA XREF: calc_4ms_corrections+69↓o
 
 
 table_idle_C2FE:		.dw 0600h			; DATA XREF: calc_iscv:loc_D87F↓o
+								; The main 2-D idle map, read bilinearly by
+								; map_rD_rX_interpolate at loc_D87F - calc_iscv's
+								; Phase 6 primary lookup, producing var_iscv_19D.
+								; See idle_control_system.md.
 				.db  04h
 				.dw 0200h
 				.db  04h
@@ -4114,6 +4227,9 @@ table_idle_C2FE:		.dw 0600h			; DATA XREF: calc_iscv:loc_D87F↓o
 table_rpm_c31d:			.db 50h, 30h			; DATA XREF: calc_iscv+454↓o
 								; Indexed by var_rpm_div_25 via table_rB_fixed_16_interpolate.
 byte_C31F:			.db 00h, 66h, 9Ah, 0CDh
+								; No #reference - data continuing from the block
+								; above it rather than an independently addressed
+								; table.
 
 
 table_ect_idle_C323:		.db 12h				; DATA XREF: calc_ect_iscv↓o
@@ -4148,6 +4264,9 @@ table_tha_idle_flare:		.db 02h				; DATA XREF: calc_iscv+C↓o
 
 
 table_unk_C34A:			.db 1Fh, 0Ah			; DATA XREF: calc_iscv:loc_D8C4↓o
+								; Selected by var_flags_46.6 with an inc y step at
+								; loc_D8C4, in calc_iscv's final blend. Purpose
+								; not established.
 
 
 table_idle_pim:			.db 21h, 30h			; DATA XREF: calc_iscv+4B↓o
@@ -4156,23 +4275,50 @@ table_idle_pim:			.db 21h, 30h			; DATA XREF: calc_iscv+4B↓o
 
 
 byte_C352:			.db 1Ah, 20h			; DATA XREF: calc_iscv+1C1↓o
+								; Base of a small byte array indexed by a computed
+								; offset (clr a / add y, a) alongside
+								; var_iscv_diag_term in calc_iscv.
 byte_C354:			.db 92h, 40h, 00h		; DATA XREF: calc_iscv+1B9↓o
+								; ECT-indexed - the table_ect_* interpolators load
+								; var_ect themselves, so no index appears at the
+								; call site. Read via table_ect_fixed4_interpolate
+								; in calc_iscv.
 
 
 table_iscv_rpm_C357:		.db 00h, 6Ah, 7Ah, 85h,	95h	; DATA XREF: calc_iscv+154↓o
+								; ISC RPM schedule used during startup. calc_iscv
+								; switches to table_iscv_rpm_C361 once
+								; var_cnt_iscv_table_dwell passes 0x5C (2.9s).
+								; Walked with inc y against var_iscv_rpm_cmp_197
+								; rather than interpolated.
 				.db 0FFh, 83h, 81h, 80h, 7Fh
 
 
 table_iscv_rpm_C361:		.db 7Dh, 6Ah, 7Ah, 85h,	95h	; DATA XREF: calc_iscv+1E7↓o
+								; The settled-engine ISC RPM schedule - see
+								; table_iscv_rpm_C357 for the switch-over.
 				.db 0FFh, 83h, 81h, 80h, 7Fh
 				.db 7Dh
 
 
 byte_C36C:			.db 70h, 90h			; DATA XREF: calc_iscv+D5↓o
+								; ISC set-point byte stepped by inc_rX_if, one of
+								; the byte_C36C/C36E/C370 group selected by
+								; var_flags_4F.1. The result feeds
+								; var_iscv_unk_1AD's ramp.
 byte_C36E:			.db 0A0h, 0B0h			; DATA XREF: calc_iscv+E1↓o
+								; Alternate ISC set-point, selected against
+								; byte_C370 by var_flags_4F.1 - see byte_C36C.
 byte_C370:			.db 70h, 90h			; DATA XREF: calc_iscv+E7↓o
+								; Alternate ISC set-point - see byte_C36C.
 byte_C372:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
+								; ISC set-point pair with byte_C374, selected by
+								; var_flags_4F.1 and reached only when
+								; var_flags_46.6 is set. idle_control_system.md
+								; describes these as var_iscv_unk_1AD's
+								; load-dependent set-point.
 byte_C374:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
+								; The var_flags_4F.1 counterpart of byte_C372.
 
 
 table_ect_corr_194:			.db 0Ch				; DATA XREF: calc_ect_unk_194↓o
@@ -4194,13 +4340,30 @@ table_iscv_adc_2:		.db 73h, 60h, 36h, 33h,	31h, 2Ch
 								; Indexed by var_adc_battery via table_rB_fixed_32_interpolate.
 								; DATA XREF: calc_idle_batt2+2↓o
 table_iscv_C391:		.db 00h, 08h, 10h, 20h		; DATA XREF: calc_iscv+112↓o
+								; ISC load-compensation selection, chosen by
+								; var_io_input2 bits 6/7 - two inputs whose
+								; physical signal names are not identified (unlike
+								; bit 0 = ECO and bit 3 = PS/IDUP).
 table_knock_retard_step:		.db 02h, 04h, 06h		; DATA XREF: ROM:F583↓t
+								; Base knock retard step, indexed by the low two
+								; bits of var_knock_info (the decoded knock
+								; level). Reached as table_knock_retard_step-1
+								; plus the level, so level 0 is not a valid entry.
+								; Doubled while var_knock_event_cnt is low - see
+								; loc_F57C.
 table_knock_retard_inc:		.db  01h			; DATA XREF: ROM:F67D↓o
+								; Per-cylinder knock retard increment, indexed by
+								; var_knock_cyl_idx with pointer arithmetic (add
+								; y, a). The value is added to the previous retard
+								; and clamped at 0xAB.
 				.db  01h
 				.db  02h
 
 
 table_knock_rpm_bands:		.db 70h, 0C0h			; DATA XREF: ROM:loc_F6A3↓o
+								; Per-cylinder knock RPM bands, indexed by
+								; var_knock_cyl_idx doubled (two bytes per
+								; cylinder).
 				.db 68h, 0C0h			; 2800,	4800
 				.db 68h, 0B8h			; 2600,	4800
 								; 2600,	4600
@@ -12897,6 +13060,11 @@ loc_E0CD:							; CODE XREF: check_diag_flags+18↑j
 ;Offset	1 - Address of byte containing above bit to check.
 ;Offset	2 - Error code with nibbles swapped.
 table_diag:			.db nv_diag_errors_1		; DATA XREF: check_diag_flags↑t
+								; The diagnostic code table, walked by
+								; check_diag_flags in 3-byte records - each
+								; holding the flag byte address, its mask, and the
+								; two-digit code. Bounded by the 0x42 limit in
+								; that function.
 				.db 01h
 				.db 21h				; 12 RPM signal	1 (G1 or G2)
 				.db nv_diag_errors_1
@@ -12953,6 +13121,9 @@ table_diag:			.db nv_diag_errors_1		; DATA XREF: check_diag_flags↑t
 				.db var_diag_errors_5
 				.db 20h
 byte_E107:			.db 15h				; 51 Air-con switch signal
+								; No #reference - a continuation of the table_diag
+								; records above it. check_diag_flags walks that
+								; block in 3-byte steps and runs past this label.
 				.db nv_diag_errors_2
 				.db 01h
 				.db 25h				; 52 Knock signal
@@ -20219,6 +20390,10 @@ loc_FAD1:							; CODE XREF: ROM:FACC↑j
 ; ADC result dispatch table: indexed by ADC command byte (channel number)
 ; Each entry is the address of the handler for that channel's result
 table_adc_handler:		.dw adc_handler_pim		; [00] MAP / turbo pressure
+								; Jump table of ADC completion handlers, indexed
+								; by the channel number doubled and masked to
+								; 0x1E. The entry is loaded into Y and called
+								; indirectly - see adc_system.md.
 				.dw adc_handler_tps		; [01] Throttle position (primary)
 				.dw adc_handler_o2_heater	; [02] O2 sensor heater
 				.dw adc_handler_battery		; [03] Battery voltage
@@ -20237,17 +20412,25 @@ table_adc_handler:		.dw adc_handler_pim		; [00] MAP / turbo pressure
 ; 8 slots per cycle (indexed by var_adc_idx & 0x07):
 ; 0x82=SKIP, 0x80=DIAG(0xDA), 0x81=LOW-PRI lookup, 0xNN=direct command
 table_adc_ch_normal:		.db 82h, 02h, 81h, 80h		; slots 0..3: SKIP, O2-heater, LOW-PRI, DIAG
+								; ADC channel schedule for normal running, indexed
+								; by the low 3 bits of the slot counter.
+								; table_adc_ch_trac is used instead when
+								; var_flags_40 bits 0/1 select the TRAC variant.
 				.db 82h, 08h, 01h, 80h		; slots 4..7: SKIP, TRAC-TPS, TPS, DIAG
 
 ; Phase 2 ADC schedule - TRAC mode (SIN2 = A/T or TRAC active)
 ; Slot 1 differs: Battery voltage instead of O2 heater
 table_adc_ch_trac:		.db 82h, 03h, 81h, 80h		; slots 0..3: SKIP, Battery, LOW-PRI, DIAG
+								; The TRAC variant of table_adc_ch_normal.
 				.db 82h, 08h, 01h, 80h		; slots 4..7: SKIP, TRAC-TPS, TPS, DIAG
 
 ; Low-priority channel table: 4 groups x 4 entries
 ; Indexed by (var_adc_idx >> 3) & 0x0F = group (cycles through all 4 every 32 ISR calls)
 ; Each group is sampled at slot 2 of every 8-slot cycle
 table_adc_ch_low_pri:	.db 04h, 0Ah, 03h, 06h		; group 0: ECT, THAM, Battery, unk[06]
+								; Low-priority ADC channel schedule, indexed by
+								; the slot counter halved and masked to 0x0F - so
+								; these channels are sampled half as often.
 				.db 04h, 05h, 03h, 07h		; group 1: ECT, THA,  Battery, unk[07]
 				.db 04h, 0Ah, 03h, 09h		; group 2: ECT, THAM, Battery, unk[09]
 				.db 04h, 0Dh, 03h, 0Ch		; group 3: ECT, unk[0D], Battery, O2-sensor
@@ -21716,6 +21899,10 @@ adc_handler_complete:						; DATA XREF: ROM:table_adc_handler↑o
 				.db  5Fh ; _
 				.dw 5FC4h
 word_FFDC:			.dw 8288h			; DATA XREF: ROM:FAB0↑o
+								; A constant loaded as an immediate address (ld d,
+								; #word_FFDC) and then shifted - used as a value,
+								; not read as a table. Sits at the very top of ROM
+								; near the vectors.
 				.dw IV0				; External interrupt 0
 				.dw int_vector_1_serial_rx	; External interrupt 1
 				.dw IVf				; External interrupt 2

@@ -1904,6 +1904,42 @@ analysis is reliable for positive structural facts and unreliable the moment
 it has to pick between candidates.** Spot-check anything of the latter kind
 against a case whose answer is already known.
 
+### Table pass complete: 91 of 91 data blocks described
+
+Every table, map and data block in CPU1 now carries a description. The
+mechanical call-site analysis only reached about a third of them; the rest
+needed three other routes:
+
+**1. The ECT family resolves by construction.** `table_ect_pair_interpolate`,
+`table_ect_fixed4_interpolate` and `table_ect_fixed_32_interpolate` all load
+`var_ect` *themselves*, so no index appears at any call site - which is
+exactly why the call-site scan found nothing for eleven ECT tables. They are
+ECT-indexed by definition.
+
+**2. Several were already understood elsewhere.** `table_inj_pw_adj_C25B`/
+`C25F` are documented in the pulse-width chain, `table_iscv_rpm_C357`/`C361`
+in the counter pass, the `table_adc_*` family in `adc_system.md`, the knock
+tables in `knock_sensor_system.md`. The knowledge existed; it just was not on
+the declaration where a reader of the disassembly would find it.
+
+**3. Four are not independent tables at all.** `table_rpm_unk_C242`,
+`byte_C31F` and `byte_E107` have no `#reference` anywhere - they are
+continuations of the block above, reached by running off its end.
+`byte_E107` in particular is part of the `table_diag` records, which
+`check_diag_flags` walks in 3-byte steps straight through the label. And
+`word_FFDC` is loaded as an immediate value, not read as a table at all.
+Naming those as separate tables was always misleading.
+
+Ten remain honestly marked "purpose not established" - `table_unk_C284`/
+`C2A6`/`C2B7`/`C2DB` and the `table_rpm_unk_C1E1`/`C231`/`C23D` group - each
+with its index and structure recorded even where the meaning is not.
+
+Useful specifics that fell out: `table_rpm_unk_C231`/`C23D` are a low-load /
+high-load PAIR selected against a `var_pim2` threshold of 0x39;
+`table_rpm_unk_C1E1`'s result is compared against `var_pim2`, making it an
+RPM-varying boost threshold; and `table_knock_retard_step` is reached as
+`table-1` plus the knock level, so level 0 is not a valid entry.
+
 ---
 
 ## Pending work (next targets)
