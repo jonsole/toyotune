@@ -62,6 +62,11 @@ typedef struct Diag
 
 } Diag_t;
 
+/* The one and only instance, defined in diag.c. Declared here so other
+   translation units (main.c's SysTick handler, for one) can reach it
+   without making a second tentative definition of their own. */
+extern Diag_t Diag;
+
 
 static __inline bool DIAG_IsCommand(const uint16_t RxData)
 {

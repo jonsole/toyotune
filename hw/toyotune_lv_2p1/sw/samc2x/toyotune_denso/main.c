@@ -109,7 +109,6 @@ RAM:021E ?? ??       dmatx_io_flags_2:               .block 2                   
 
 
 
-Diag_t Diag;
 SDL_t Sdl[2];
 
 volatile int count1 = 0;
