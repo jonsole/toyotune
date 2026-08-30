@@ -50,10 +50,11 @@ typedef struct
 	uint8_t Obd1Injection;
 	uint8_t Obd1Ignition;
 	uint8_t ObjIscv;
-	uint8_t FuelTrim;			/* NOTE: the two ROMs disagree on this slot -
-							   the ST205 calls it fuel trim, the MR2 calls the same
-							   offset dmatx_obd_o2_sensor.  One annotation is wrong;
-							   confirm before relying on it. */
+	uint8_t ObdO2Sensor;		/* MR2 dmatx_obd_o2_sensor.  The ST205 disassembly
+							   annotates this slot as fuel trim; that annotation is
+							   wrong, the MR2's is correct.  Note the RAM listing
+							   below is pasted from the ST205 ROM and so still shows
+							   the old name at 0x214. */
 	uint8_t Knock;				/* MR2 dmatx_knock_retard */
 	uint8_t Unknown216;
 	uint8_t dmatx_tps_delta;
@@ -164,7 +165,7 @@ RAM:0210 ??          byte_210:                       .block 1                   
 RAM:0211 ??          dmatx_obd1_inj:                 .block 1                        ; DATA XREF: ROM:DD2Ew
 RAM:0212 ??          dmatx_obd_ign:                  .block 1                        ; DATA XREF: iv6_ne_process+99w iv6_ne_process+13Cw
 RAM:0213 ??          dmatx_obd_iscv:                 .block 1                        ; DATA XREF: ROM:DD37w
-RAM:0214 ??          dmatx_fuel_trim:                .block 1                        ; DATA XREF: sub_C57A:loc_D12Bw
+RAM:0214 ??          dmatx_fuel_trim:  <- misnamed, is obd_o2_sensor                        ; DATA XREF: sub_C57A:loc_D12Bw
 RAM:0215 ??          dmatx_knock:                    .block 1                        ; DATA XREF: sub_E996:loc_EE50w iv6_ne_process+F9r
 RAM:0216 ??          dmatx_unk_216:                  .block 1                        ; DATA XREF: dma_tx_copy+38w
 RAM:0217 ??          dmatx_tps_delta:                .block 1                        ; DATA XREF: dma_tx_copy+3Dw
