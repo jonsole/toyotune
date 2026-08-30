@@ -2004,7 +2004,13 @@ var_enrich_unk_138:		.block 1			; DATA XREF: apply_enrich_and_trims+61↓w
 var_scaled_ve_tham:		.block 1			; DATA XREF: apply_enrich_and_trims↓r
 								; divide_d_by_x+1F65↓w
 				.block 1
-unk_13C:			.block 1			; DATA XREF: divide_d_by_x+2242↓w
+var_ign_rpm_term:			.block 1			; DATA XREF: divide_d_by_x+2242↓w
+								; RPM-table lookup result feeding the ignition blend:
+								; table_rD_fixed64_interpolate over var_rpm_x_5p12
+								; against table_rpm_C168 or table_rpm_C172 (whichever
+								; var_ign_blend_accum's sign selected), stored here at
+								; loc_E7D8 and consumed later in
+								; update_ign_timing_blend.
 								; update_ign_timing_blend+115↓r
 								; Written by loc_E7D8; read by loc_E978. Purpose
 								; not established - left named unk_ deliberately
@@ -2154,7 +2160,14 @@ var_ign_timing_min:		.block 1			; DATA XREF: divide_d_by_x+13F↓w
 								; calc_ign_timing_min:loc_EBEF↓w ...
 var_idle_timing_ramp:			.block 1			; DATA XREF: divide_d_by_x+142↓w
 								; calc_4ms_corrections+112↓w ...
-unk_15F:			.block 1			; DATA XREF: divide_d_by_x+145↓w
+var_ign_min_cand:			.block 1			; DATA XREF: divide_d_by_x+145↓w
+								; Candidate minimum ignition timing, produced inside
+								; calc_ign_timing_min: the negated working value is
+								; stored here at loc_EBD6 and then clamped against
+								; var_idle_timing_ramp, the smaller of the two winning.
+								; Initialised to 0xFF at reset alongside
+								; var_ign_timing_min and var_idle_timing_ramp - i.e. to
+								; 'no limit yet'.
 								; calc_ign_timing_min+80↓w
 								; WRITE-ONLY in this file: written by loc_C67A,
 								; loc_EBD6, but no read site exists anywhere
@@ -2173,7 +2186,23 @@ var_rpm_ne_sum3_prev:			.block 1			; DATA XREF: calc_ign_timing_min+1D↓r
 				.block 1
 var_rpm_div25_prev:			.block 1			; DATA XREF: calc_4ms_corrections+12F↓w
 								; calc_ign_timing_min+2A↓w	...
-unk_168:			.block 1			; DATA XREF: divide_d_by_x+314↓w
+var_knock_gate_168:			.block 1			; DATA XREF: divide_d_by_x+314↓w
+								; PERMANENTLY ZERO, and therefore a dead gate.
+								;
+								; Both explicit writes CLEAR it (loc_C8B7's RPM-low path
+								; and loc_DCB5), there is no site that ever sets it, and
+								; the two indirect write mechanisms that have caught
+								; this analysis out before cannot reach it either: 0x168
+								; lies outside every COUNTER_ARG range (all of which end
+								; by 0x0EE), and no pointer constant in the ROM bases an
+								; array within reach of it. Checked explicitly rather
+								; than assumed.
+								;
+								; Consequence: at loc_F5F4 the `ld b, var_knock_gate_168 / bne`
+								; never branches, so control always falls through to the
+								; var_knock_retard_max comparison. Reads like a knock
+								; path that was disabled by zeroing rather than removed
+								; - the same shape as unk_14A in the rev limiter.
 								; divide_d_by_x+176D↓w ...
 								; Written by loc_C880, loc_DD02; read by
 								; loc_F5F4. Purpose not established - left named
@@ -2247,7 +2276,15 @@ var_cyl_rough_cnt_hi:			.block 1			; DATA XREF: calc_4ms_corrections+2E4↓w
 diag_code_delay:		.block 1			; DATA XREF: ROM:DFD9↓r
 								; ROM:E016↓w ...
 				.block 1
-unk_185:			.block 1			; DATA XREF: ROM:DE1F↓r
+var_o2_heater_unk_185:			.block 1			; DATA XREF: ROM:DE1F↓r
+								; Running value in the O2-heater current monitor
+								; (~loc_DE1C-DE50): read at the head of the closed-loop
+								; branch and rewritten on two paths out of it, alongside
+								; var_adc_o2_heater's 0x48/0x8F sanity window and
+								; var_o2_heater_current_error_cnt's 0x3C fault
+								; threshold. Domain is certain; the exact quantity it
+								; holds - a filtered current, or a learned reference -
+								; is not, hence the unk_ kept in the name.
 								; ROM:loc_DE3B↓w ...
 								; Written by loc_DE3B, loc_DE50; read by
 								; loc_DE1C. Purpose not established - left named
@@ -2279,7 +2316,12 @@ var_cnt_187:			.block 1			; DATA XREF: divide_d_by_x+151↓w
 								; CLAUDE.md (rename only on confirmed
 								; understanding).
 				.block 1
-unk_189:			.block 1			; DATA XREF: ROM:EFBE↓r
+var_g1g2_err_cnt:			.block 1			; DATA XREF: ROM:EFBE↓r
+								; G1/G2 crank-sync error accumulator, maintained in
+								; int_vector_e_ne: incremented on each qualifying ASR2
+								; edge (IRQL.6) and clamped at 0xFF by the inc/bne/dec
+								; idiom rather than being allowed to wrap. Feeds the
+								; sync-error threshold checks in that vector.
 								; ROM:int_vector_e_ne_EFD9↓w
 								; Written by int_vector_e_ne_EFD9; read by
 								; int_vector_e_ne. Purpose not established -
@@ -2330,7 +2372,12 @@ var_iscv_rpm_cmp_197:		.block 1			; DATA XREF: calc_iscv+13C↓w
 								; calc_iscv+157↓r ...
 var_iscv_pwm:			.block 2			; DATA XREF: drive_dout1_iscv+3↓r
 								; divide_d_by_x:loc_D483↓w ...
-unk_19A:			.block 1			; DATA XREF: calc_iscv+22C↓r
+var_iscv_idle_upd_cnt:			.block 1			; DATA XREF: calc_iscv+22C↓r
+								; Counts how many times calc_iscv has recomputed
+								; var_iscv_idle_base - incremented at loc_D6F2 right
+								; after that store, and consulted in the idle-trim
+								; learning path that follows (gated on var_flags_42.0
+								; and var_nv_idle_trim).
 								; calc_iscv+230↓w ...
 								; Written by loc_D6F2; read by loc_D6F2,
 								; loc_D7BF. Purpose not established - left named
@@ -2426,7 +2473,13 @@ unk_1AF:			.block 1			; DATA XREF: divide_d_by_x+162↓w
 var_knock_retard:		.block 1			; DATA XREF: ROM:F56D↓r
 								; ROM:loc_F59D↓r ...
 				.block 1
-unk_1B5:			.block 1			; DATA XREF: ROM:F570↓w
+var_knock_retard_latch:			.block 1			; DATA XREF: ROM:F570↓w
+								; Latched copy of var_knock_retard, taken at loc_F56A
+								; only when var_diag_errors_5.7 is set - i.e. when
+								; persistent knock has coincided with a G1/G2 error.
+								; Read back at loc_F61E. A snapshot of the retard in
+								; force at the moment that fault combination was
+								; detected.
 								; ROM:F629↓r
 								; Written by loc_F56A; read by loc_F61E. Purpose
 								; not established - left named unk_ deliberately
@@ -2605,13 +2658,23 @@ var_flags_4F_copy2:			.block 1			; DATA XREF: divide_d_by_x+D42↓r
 								; confirmed understanding).
 var_flags_4F_saved:			.block 1			; DATA XREF: divide_d_by_x:loc_CEF5↓r
 								; divide_d_by_x+C49↓w ...
-unk_1DA:			.block 1			; DATA XREF: divide_d_by_x+16E1↓r
+var_flags_4F_copy3:			.block 1			; DATA XREF: divide_d_by_x+16E1↓r
+								; Third save slot for var_flags_4F, used across the
+								; DC77/DCB5 diagnostic phase alongside
+								; var_flags_4F_copy2 and var_flags_4F_copy4: loc_DCB5
+								; saves the live value here and loc_DC77 restores from
+								; it. The phase juggles several snapshots of the same
+								; byte, which is why so many copies of it exist.
 								; divide_d_by_x+171C↓w
 								; Written by loc_DCB5; read by loc_DC77. Purpose
 								; not established - left named unk_ deliberately
 								; per CLAUDE.md (rename only on confirmed
 								; understanding).
-unk_1DB:			.block 1			; DATA XREF: divide_d_by_x+171F↓r
+var_flags_4F_copy4:			.block 1			; DATA XREF: divide_d_by_x+171F↓r
+								; Fourth save slot for var_flags_4F - loc_DCB5 restores
+								; the live value FROM here immediately after saving the
+								; previous one into var_flags_4F_copy3. See that
+								; declaration.
 								; divide_d_by_x+1769↓w
 								; Written by loc_DD02; read by loc_DCB5. Purpose
 								; not established - left named unk_ deliberately
@@ -5176,7 +5239,7 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				ld	a, #0FFh
 				st	a, var_ign_timing_min	; Min timing limit = 0xFF (no minimum yet)
 				st	a, var_idle_timing_ramp
-				st	a, unk_15F
+				st	a, var_ign_min_cand
 				ld	a, #80h
 				st	a, var_open_loop_ign_corr
 				dec	diag_code_index		; Initialise diagnostic code index
@@ -5539,7 +5602,7 @@ loc_C880:							; CODE XREF: divide_d_by_x+2E1↑j
 				ei
 				clr	a
 				clr	b
-				st	a, unk_168
+				st	a, var_knock_gate_168
 				bra	loc_C8B7
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -9443,9 +9506,9 @@ loc_D6EF:							; CODE XREF: calc_iscv+203↑j
 loc_D6F2:							; CODE XREF: calc_iscv+221↑j
 								; calc_iscv+224↑j
 				st	d, var_iscv_idle_base
-				ld	a, unk_19A
+				ld	a, var_iscv_idle_upd_cnt
 				inc	a
-				st	a, unk_19A
+				st	a, var_iscv_idle_upd_cnt
 				tbbc	bit0, var_flags_42, loc_D716 ; Jump if idle trim not valid
 
 				cmp	#66h, var_nv_idle_trim
@@ -9596,7 +9659,7 @@ loc_D7BF:							; CODE XREF: calc_iscv+2EF↑j
 				cmp	#5Ch, var_cnt_DE
 				bcs	loc_D815
 
-				ld	b, unk_19A
+				ld	b, var_iscv_idle_upd_cnt
 				beq	loc_D7D3
 
 				shl	b
@@ -9963,7 +10026,7 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ;     (not var_inj_pw_base - see ramp_limit_inj_pw_simple's header) is
 ;     below 0x4D.
 ;  5) Hands off to loc_DC77 (next chunk, not deep-dived - appears to start
-;     a new phase: restores var_flags_4F from unk_1DA, and computes an
+;     a new phase: restores var_flags_4F from var_flags_4F_copy3, and computes an
 ;     RPM-based flag unrelated to fuel calculation).
 ;
 ; Renames: unk_1BE -> var_inj_pw_base (high confidence: the clamp table
@@ -10949,7 +11012,7 @@ loc_DC74:							; CODE XREF: ramp_limit_inj_pw_simple+32↑j
 ;
 ; Commits the working var_flags_4E (still holding var_trim_state's value -
 ; see the aliasing note above calc_inj_pw_base) back into var_trim_state, then
-; restores var_flags_4F from unk_1DA (a different snapshot than the one
+; restores var_flags_4F from var_flags_4F_copy3 (a different snapshot than the one
 ; calc_inj_pw_base took into var_flags_4F_copy2 - these two snapshots are used by different
 ; downstream consumers, not a matched save/restore pair). var_flags_4E
 ; itself is NOT restored here and remains aliased to var_trim_state until a
@@ -11007,7 +11070,7 @@ loc_DC77:							; CODE XREF: divide_d_by_x+13F0↑j
 								; divide_d_by_x:loc_DA60↑j
 				ld	a, var_trim_state_alias
 				st	a, var_trim_state
-				ld	a, unk_1DA
+				ld	a, var_flags_4F_copy3
 				st	a, var_flags_4F
 				cmp	#34h, var_rpm_x_5p12
 				bcc	loc_DC88
@@ -11055,8 +11118,8 @@ loc_DC9E:							; CODE XREF: divide_d_by_x+16F9↑j
 loc_DCB5:							; CODE XREF: divide_d_by_x:loc_DC9E↑j
 								; divide_d_by_x+1706↑j ...
 				ld	a, var_flags_4F
-				st	a, unk_1DA
-				ld	a, unk_1DB
+				st	a, var_flags_4F_copy3
+				ld	a, var_flags_4F_copy4
 				st	a, var_flags_4F
 				cmp	#34h, var_rpm_x_5p12
 				bcc	loc_DCC6
@@ -11113,9 +11176,9 @@ loc_DCDF:							; CODE XREF: divide_d_by_x+1737↑j
 loc_DD02:							; CODE XREF: divide_d_by_x+1749↑j
 								; divide_d_by_x+174F↑j ...
 				ld	a, var_flags_4F
-				st	a, unk_1DB
+				st	a, var_flags_4F_copy4
 				clr	a
-				st	a, unk_168
+				st	a, var_knock_gate_168
 				ld	a, unk_1CF
 				st	a, unk_1CF_alias
 				cmp	#8Dh, var_adc_battery
@@ -11238,7 +11301,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; Reads: dmarx_iscv_duty, unk_1CF, var_adc_o2_heater, var_flags_46,
 ; var_flags_4F_saved, var_inj_battery_adjust, var_inj_pw_inj1,
 ; var_io_input1, var_iscv_pwm, var_pim2, var_rpm_x_5p12, var_speed_kph
-; Writes: dmatx_obd_inj, dmatx_obd_iscv, unk_185, var_cnt_187,
+; Writes: dmatx_obd_inj, dmatx_obd_iscv, var_o2_heater_unk_185, var_cnt_187,
 ; unk_1CF_alias, var_cnt_ED, var_diag_errors_4, var_diag_errors_5,
 ; var_error_flags1, var_error_flags2, var_flags_40, var_flags_4D,
 ; var_flags_4F, var_o2_heater_current_error_cnt
@@ -11390,7 +11453,7 @@ loc_DE1C:							; CODE XREF: ROM:DE0D↑j
 								; ROM:DE11↑j
 				tbbc	bit1, var_flags_46, loc_DE50 ; Jump if open loop mode
 
-				ld	b, unk_185
+				ld	b, var_o2_heater_unk_185
 				cmp	#0Ah, var_cnt_ED
 				bcc	loc_DE42
 
@@ -11412,7 +11475,7 @@ loc_DE30:							; CODE XREF: ROM:DE2C↑j
 				dec	b
 
 loc_DE3B:							; CODE XREF: ROM:DE38↑j
-				st	b, unk_185
+				st	b, var_o2_heater_unk_185
 				clrb	bit1, unk_1CF_alias
 				bra	loc_DE58
 
@@ -11432,7 +11495,7 @@ loc_DE42:							; CODE XREF: ROM:DE25↑j
 loc_DE50:							; CODE XREF: ROM:loc_DE1C↑j
 								; ROM:DE44↑j ...
 				clr	b
-				st	b, unk_185
+				st	b, var_o2_heater_unk_185
 				clrb	bit1, unk_1CF_alias
 				clr	var_cnt_ED
 
@@ -13935,7 +13998,7 @@ loc_E7D8:							; CODE XREF: divide_d_by_x+2238↑j
 				ld	d, var_rpm_x_5p12
 				jsr	table_rD_fixed64_interpolate
 
-				st	a, unk_13C
+				st	a, var_ign_rpm_term
 				tbbs	bit5, var_flags_44, loc_E7FD
 
 				ld	y, #table_ect_C185
@@ -14155,7 +14218,7 @@ locret_E864:							; CODE XREF: scale_by_dmarx_167+10↑j
 ; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, var_ign_blend_hist2,
 ;   var_ign_blend_hist0, dmarx_ign_timing_unk_166, dmarx_ign_timing_fallback2,
 ;   var_ign_blend_accum, var_limiter_flags, var_fuelcut_recovery_cnt, var_flags_46, dmarx_ign_timing,
-;   dmarx_ign_timing_fallback1, unk_13C, var_ign_blend_pos, var_ign_blend_neg
+;   dmarx_ign_timing_fallback1, var_ign_rpm_term, var_ign_blend_pos, var_ign_blend_neg
 ; Writes: var_ign_blend_hist0, var_ign_blend_hist1, var_ign_blend_hist2, var_ign_blend_accum, var_ign_blend_out, var_fuelcut_recovery_cnt,
 ;   var_diag_errors_5, var_temp_w, var_temp_7A, var_temp_b, var_temp_7B,
 ;   var_temp_7C
@@ -14390,7 +14453,7 @@ loc_E95B:							; CODE XREF: update_ign_timing_blend+F1↑j
 loc_E978:							; CODE XREF: update_ign_timing_blend+10E↑j
 				mov	d, x
 				push	d
-				ld	a, unk_13C
+				ld	a, var_ign_rpm_term
 				push	a
 				mul	a, #80h
 				shr	d
@@ -14880,7 +14943,7 @@ loc_EB54:							; CODE XREF: calc_4ms_corrections+121↑j
 ; Reads: var_cnt_D9, var_ect_unk_160, var_flags_46, var_flags_4E,
 ; var_gearing, var_ign_knock_retard_base, var_rpm_div_25, var_rpm_x_5p12,
 ;    var_tps
-; Writes: unk_15F, var_cnt_DA, var_cyl_rpm_delta, var_cyl_rpm_filtered,
+; Writes: var_ign_min_cand, var_cnt_DA, var_cyl_rpm_delta, var_cyl_rpm_filtered,
 ; var_idle_timing_ramp, var_ign_timing_min, var_rpm_div25_prev,
 ; var_rpm_ne_sum3, var_rpm_ne_sum3_prev
 ; Calls: calc_rpm, mult_rBrX2, table_rB_fixed4_interpolate,
@@ -14981,7 +15044,7 @@ loc_EBBC:							; CODE XREF: calc_ign_timing_min+62↑j
 
 loc_EBD6:							; CODE XREF: calc_ign_timing_min+7C↑j
 				neg	a
-				st	a, unk_15F
+				st	a, var_ign_min_cand
 				cmp	a, var_idle_timing_ramp
 				ble	loc_EBE2
 
@@ -15022,7 +15085,7 @@ loc_EBEF:							; CODE XREF: calc_ign_timing_min+94↑j
 ;
 ; When active: var_idle_timing_ramp += 4 per 4ms, saturated at 0xFF.
 ; This ramp is used by calc_ign_timing_min to compute var_ign_timing_min:
-;   var_ign_timing_min = min(var_idle_timing_ramp, unk_15F) + var_ect_unk_160
+;   var_ign_timing_min = min(var_idle_timing_ramp, var_ign_min_cand) + var_ect_unk_160
 ;   Higher ramp = higher minimum timing = more advance enforced at idle.
 ; The effect is that ignition advance is progressively raised during stable
 ; idle until the idle speed stabilises (ISCV closes, ramp stops or decays).
@@ -16010,7 +16073,7 @@ int_vector_e_ne:						; DATA XREF: ROM:FFFA↓o
 				bcs	int_vector_e_ne_EFD8	; Skip if 4ms count < 0x3F
 
 ; G1/G2 sync error detection
-				ld	a, unk_189			; A = G1/G2 error accumulator
+				ld	a, var_g1g2_err_cnt			; A = G1/G2 error accumulator
 				tbbc	bit6, IRQL, int_vector_e_ne_EFC8 ; If ASR2 edge not set in IRQL, skip increment
 
 				inc	a				; Increment error accumulator
@@ -16043,7 +16106,7 @@ int_vector_e_ne_EFD8:						; CODE XREF: ROM:EFB7↑j
 
 int_vector_e_ne_EFD9:						; CODE XREF: ROM:int_vector_e_ne_EFC8↑j
 ; G1 high path: update error accumulator and proceed to counter update
-				st	a, unk_189			; Save updated error accumulator
+				st	a, var_g1g2_err_cnt			; Save updated error accumulator
 				clrb	bit6, IRQL			; Clear ASR2 interrupt latch
 
 ; Read ne_count and check G1/G2 sync signals
@@ -17669,11 +17732,11 @@ locret_F529:							; CODE XREF: knock_mcu_update+1E↑j
 ;
 ; Reads: va_ne_count_2, var_knock_info, var_ign_knock_retard_base,
 ;   var_rpm_x_5p12, var_rpm_div_25, var_rpm_delta, var_ect, var_flags_46,
-;   dmarx_knock_retard_cpu2, unk_168
+;   dmarx_knock_retard_cpu2, var_knock_gate_168
 ; Writes: PORTB, var_knock_retard, var_knock_retard_max,
 ;   var_knock_retard_prev, var_knock_retard_prev2, var_knock_cyl_idx,
 ;   var_knock_event_cnt, var_cnt_CB, var_cnt_CC, var_diag_errors_5,
-;   dmatx_ign_corr_cpu2, unk_E3, unk_1B5
+;   dmatx_ign_corr_cpu2, unk_E3, var_knock_retard_latch
 ; ---------------------------------------------------------------------------
 
 knock_processing:							; CODE XREF: iv6_ne_process:bg_ne_process_F3AF↑p
@@ -17737,7 +17800,7 @@ loc_F56A:							; CODE XREF: ROM:F54B↑j
 				tbbc	bit7, var_diag_errors_5, loc_F573
 
 				ld	a, var_knock_retard
-				st	a, unk_1B5
+				st	a, var_knock_retard_latch
 
 loc_F573:							; CODE XREF: ROM:F54F↑j
 								; ROM:F551↑j ...
@@ -17857,7 +17920,7 @@ loc_F5F2:							; CODE XREF: ROM:F5EE↑j
 
 loc_F5F4:							; CODE XREF: ROM:F5DB↑j
 								; ROM:F5E0↑j ...
-				ld	b, unk_168
+				ld	b, var_knock_gate_168
 				bne	loc_F600
 
 				cmp	a, var_knock_retard_max
@@ -17897,7 +17960,7 @@ loc_F61E:							; CODE XREF: ROM:F618↑j
 				cmp	#90h, var_rpm_x_5p12
 				bcs	loc_F631
 
-				ld	a, unk_1B5
+				ld	a, var_knock_retard_latch
 				sub	a, nv_table_knock_info+2
 				bra	loc_F634
 

@@ -1503,7 +1503,7 @@ actual code (comments stripped) gives the true figures:
 
 | | real `unk_` symbols in code |
 |---|---|
-| CPU1 | **27** (was 35 two passes ago) |
+| CPU1 | **18** |
 | CPU2 | **6** |
 
 Of those, a good share are deliberately left: the ramp-limiter cluster
@@ -1610,6 +1610,40 @@ the disassembly no longer has to know the docs exist:
 Remaining bare declarations are mostly named counters and scratch where the
 name is the documentation. Worth revisiting opportunistically rather than as
 a sweep.
+
+### `unk_` pass 4: the MR2 tail is done
+
+CPU1 is down to **18**, and **all 18 are deliberately unnamed** with the
+reason recorded at each declaration:
+
+| kept as `unk_` | why |
+|---|---|
+| `unk_1C0/1C2/1C4/1C6/1C8` | the ramp-limiter cluster - no single fixed identity by design |
+| `unk_1CF` | the short-lived alias |
+| `unk_C000` | ROM signature bytes, not a variable |
+| `unk_7F` | RAM-region boundary sentinel |
+| `unk_1C`, `unk_1D` | reserved-range hardware registers |
+| `unk_223` | factory-self-test scratch |
+| `unk_14A` | permanently zero - a disabled rev-limiter offset |
+| `unk_100`, `unk_145`, `unk_1AF`, `unk_E3`, `unk_FC`, `damrx_unk_244` | single-site, write-only or read-only; noted as such |
+
+Named this pass: `var_g1g2_err_cnt`, `var_knock_retard_latch`,
+`var_flags_4F_copy3`/`_copy4`, `var_iscv_idle_upd_cnt`, `var_ign_rpm_term`,
+`var_ign_min_cand`, `var_knock_gate_168`, `var_o2_heater_unk_185`.
+
+**A second permanently-zero gate found.** `var_knock_gate_168` is only ever
+CLEARED - two sites, no setter - so `ld b, .. / bne` at `loc_F5F4` never
+branches and control always reaches the `var_knock_retard_max` comparison.
+Given three earlier wrong "dead" calls in this effort, this one was checked
+properly before being claimed: 0x168 lies outside every `COUNTER_ARG` range
+(all end by 0x0EE) **and** no pointer constant in the ROM bases an array
+within reach of it. It reads as a knock path disabled by zeroing rather than
+removed - the same shape as `unk_14A` in the rev limiter.
+
+Also worth noting: `var_flags_4F` now has **four** save slots
+(`_copy2/_copy3/_copy4` plus `var_flags_4F_saved`). The DC77/DCB5 diagnostic
+phase juggles several snapshots of that one byte, which is why so many
+copies of it exist and why they had looked like unrelated variables.
 
 ---
 
