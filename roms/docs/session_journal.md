@@ -1,5 +1,13 @@
 # D151803-9651 Reverse Engineering Session Journal
 
+> **On annotations.** This file is a chronological log and entries are left
+> as written, including the ones that turned out to be wrong — the mistakes
+> and how they were caught are part of what it records. Where a later session
+> contradicted an earlier claim, the original text stands and a **⚠** note is
+> added beneath it pointing to the entry that corrects it. So: a **⚠** block
+> is always a later addition, and an entry without one has not been
+> revisited — which is not the same as having been confirmed.
+
 ## Session overview
 Reverse engineering of Toyota 3S-GTE ECU CPU1 ROM (Toshiba D8X / Denso 8X MCU).
 Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
@@ -78,6 +86,10 @@ feature exists in 9651. Next place to look is inline in the main loop
 address (e.g. `dmarx_max_retard_23B_161`). Resolving the CPU2 half needs
 0461's sibling CPU2 ROM, and the CPU1_addr = CPU2_addr + 0xDA offset should
 be re-confirmed for that pair rather than assumed from the 9651/9661 pair.
+
+> **⚠ That offset is direction-specific.** 0xDA is the CPU2→CPU1 direction
+> only; CPU1→CPU2 is `CPU1 = CPU2 + 0x13B`. See the annotation under
+> "CPU1<->CPU2 DMA cross-reference" below.
 Two naming conflicts also need reconciling: 0461's
 `check_batch_inj_limiters` / `check_inj_limiters` are exact signature matches
 for 9651's `check_limiters_active` / `check_limiters_active_2`.
@@ -135,6 +147,12 @@ reference, inside TVSV's dead diagnostic gate), `dmatx_unk_15F`/`167`
 (cross-referenced to CPU1 where applicable, but the CPU1 side is equally
 unresolved). Verified via verify_assembly_match.py after every rename -
 0 real edit regions throughout (pure renames, no byte changes).
+
+> **⚠ `dmarx_unk_D2` is not padding.** It is `dmarx_nv_trim_pim`, CPU1's
+> barometric NV trim, and it *is* written — by the bulk `dmarx` copy loop,
+> which names no symbol and so is invisible to a per-symbol search. What it
+> lacks is a reader: CPU1 sends the trim and CPU2 ignores it. See "the
+> reason is 'no reader', not 'untouched memory'" below.
 
 ---
 
@@ -861,6 +879,13 @@ the numeric formula) - there's likely a single padding/alignment byte
 somewhere in the buffer between the two regions used to confirm the
 formula. Worth re-deriving per-region if this matters for other variables.
 
+> **⚠ Corrected later — this offset is direction-specific.** `CPU1 = CPU2 +
+> 0xDA` holds only for the **CPU2→CPU1** direction (CPU2 `dmatx_*` = CPU1
+> `dmarx_*`), which is all this entry examined. The **CPU1→CPU2** direction
+> is `CPU1 = CPU2 + 0x13B`. Applying 0xDA to a `dmatx` address lands inside
+> CPU2's `var_serbus_rx` buffer, not its DMA block. See "Resolve the third
+> fuel trim across both CPUs" below.
+
 **Resolved: `dmarx_word_226`/`228`/`22A`'s identities** (was open in
 fuel_calculation_system.md) - matched by structural position (three
 consecutive word-sized DMA slots on both sides, CPU2 at 0x14D/0x14F/0x151):
@@ -1121,6 +1146,9 @@ Main 4ms ignition and fuel correction function. 202 references. 6 IDA chunks.
 Sections:
 1. Dwell: var_ign_dwell_offset = battery * RPM / 32, var_ign_dwell_min from RPM table
 2. Closed loop enable: 368ms post-start, RPM>1000, speed>3kph, ECT>70C, battery>8.6V
+   > **⚠ `368ms` is wrong by 16x — it is ~2.9 s** (`var_cnt_startup` 0x5C on a
+   > 32 ms tick, not 4 ms). See "Counter documentation: tick rates and real
+   > durations" below.
 3. Idle/overrun detection via IDL signal, gear ratio, RPM slope
 4. Open-loop ignition correction (var_open_loop_ign_corr) integrates toward 0x80
 5. Per-cylinder RPM deviation -> var_ign_advance_trim (misfire detection)
@@ -1309,6 +1337,15 @@ rather than guessed at.
 - **`unk_E0` is completely unreferenced** - a genuinely unused RAM byte.
 - Eight more are write-only in this file (written, never read here) - either
   consumed by CPU2 over the DMA buffer or vestigial; each is marked as such.
+
+> **⚠ Both bullets are wrong, for the same reason.** They were derived from
+> per-symbol searches, and `increment_counters` advances a whole address
+> RANGE from a packed `COUNTER_ARG` — none of its writes name the symbol, so
+> they are invisible to that method. `unk_E0` is the last byte of
+> `COUNTER_ARG(var_cnt_CD, 0x14)` and is incremented every tick (now
+> `var_cnt_E0`); several of the "write-only" eight are counters whose
+> explicit writes are *resets* and whose reads are elapsed-time tests. See
+> "CPU1: loc_DA63 is the O2 jump-and-ramp controller" below.
 - **`var_flags_4D.2` was documented wrongly** by an earlier pass as
   "acceleration enrichment... opposite direction" to `var_flags_44.2`. It is
   actually the *second* derivative of throttle position (`var_tps_delta_rate`)
@@ -1411,6 +1448,8 @@ Full documentation in knock_sensor_system.md
 - Positions 0/1: read knock data bits. Position 2: decode via 3xshr+rorc
 - V clear=knock, V+C set=no knock, V+C clear=borderline
 - knock_retard_decay: -2 per 4ms, resets nv_table_knock_info to 0x9A9A on error
+  > **⚠ The rate is -2 per 256 ms.** The function is *called* every 4 ms but
+  > only acts once `var_cnt_knock_decay` reaches 0x40.
 - Per-cylinder retard in nv_table_knock_info[3] (PRAM)
 
 Key renames:
@@ -1529,6 +1568,10 @@ nobody looked.
 | `var_inj_pw_unk_1CA` | `var_inj_pw_unk_1CA` | intermediate on the injector-PW path; domain certain, quantity not |
 | `var_cnt_sta_active` | `var_cnt_sta_active` | starter-engaged tick counter; >0x1F (~124ms) debounces the STA fault |
 
+> **⚠ `~124ms` is wrong by 16x — it is ~2.0 s.** This counter is in the
+> 64 ms block, not the 4 ms one. See "Counter documentation: tick rates and
+> real durations" below.
+
 **`var_asr0n_shadow_1DD` is the notable one.** CPU1 maintains an ASR0N write
 shadow using the identical idiom to CPU2's `var_asr0n_shadow_126`, for the
 identical reason: ASR0 write configures DMA while ASR0 read returns the
@@ -1626,6 +1669,10 @@ reason recorded at each declaration:
 | `unk_223` | factory-self-test scratch |
 | `unk_14A` | permanently zero - a disabled rev-limiter offset |
 | `unk_100`, `unk_145`, `unk_1AF`, `unk_E3`, `unk_FC`, `damrx_unk_244` | single-site, write-only or read-only; noted as such |
+
+> **⚠ `unk_E3` is misclassified here** — it is a counter in an
+> `increment_counters` range, so its explicit write is a reset, not its only
+> access. Same blind spot as the `unk_E0` claim annotated above.
 
 Named this pass: `var_g1g2_err_cnt`, `var_knock_retard_latch`,
 `var_flags_4F_copy3`/`_copy4`, `var_iscv_idle_upd_cnt`, `var_ign_rpm_term`,
