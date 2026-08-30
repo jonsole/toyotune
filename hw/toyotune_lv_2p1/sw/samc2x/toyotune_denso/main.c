@@ -129,20 +129,32 @@ static __inline uint16_t ECU_Be16(uint16_t Value)
 	return (uint16_t)((Value >> 8) | (Value << 8));
 }
 
-typedef struct  
-{
-	uint16_t PIM;
-	uint16_t TPS;
-	uint16_t ECT;
-	uint8_t THA;
-	uint8_t THAM;
-} ECU_CanFrame1001_t;
+/* CAN telemetry is packed byte by byte in Motorola (big-endian) order, the
+   automotive convention and what a DBC signal declared @0+ expects.
 
-typedef struct
+   Explicit packing rather than memcpy of a struct: a struct's layout is the
+   compiler's business and a wire format is not, so relying on the two lining
+   up is how padding silently corrupts a frame.
+
+   Note the conversion pair used at the call sites - ECU_Be16() in, then
+   Can_PutBe16() out - is a no-op on the bytes, because the ECU is big-endian
+   and so is the wire.  Nothing changes on the bus versus the previous code.
+   It is spelled out anyway so the value in between is a genuine number:
+   anything that later wants to scale, filter or range-check a signal is then
+   already correct, rather than quietly working on a byte-swapped value. */
+static __inline uint8_t *Can_PutBe16(uint8_t *Buffer, uint16_t Value)
 {
-	uint8_t KnockBands[3];
-	uint8_t Knock;
-} ECU_CanFrame1002_t;
+	*Buffer++ = (uint8_t)(Value >> 8);
+	*Buffer++ = (uint8_t)Value;
+	return Buffer;
+}
+
+
+static __inline uint8_t *Can_PutU8(uint8_t *Buffer, uint8_t Value)
+{
+	*Buffer++ = Value;
+	return Buffer;
+}
 
 /*
 Both blocks as declared in the MR2 CPU1 disassembly,
@@ -295,9 +307,22 @@ void ECU_DmaCpu2ToCpu1(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t 
 	if (RxSize != TOYOTUNE_DMA_CPU2_TO_CPU1_SIZE)
 		return;
 
-	ECU_Dma.Cpu2ToCpu1 = *(const ECU_DmaData2_t *)RxBuffer;
+	const ECU_DmaData2_t *EcuData = (const ECU_DmaData2_t *)RxBuffer;
+
+	ECU_Dma.Cpu2ToCpu1 = *EcuData;
 	ECU_Dma.Cpu2ToCpu1Valid = true;
 	ECU_Dma.Cpu2ToCpu1Count += 1;
+
+	/* Frame 3: what CPU2 computes and sends back.  RPM first, as the signal
+	   everything wants; the rest are the headline fuel and ignition outputs. */
+	uint8_t Frame3[8];
+	uint8_t *p = Frame3;
+	p = Can_PutBe16(p, ECU_Be16(EcuData->RpmX5p12));	/* RPM * 5.12 */
+	p = Can_PutU8(p, EcuData->IgnTiming);
+	p = Can_PutU8(p, EcuData->IscvDuty);
+	p = Can_PutU8(p, EcuData->LambdaTrim);
+	p = Can_PutU8(p, EcuData->KnockRetardCpu2);
+	CAN_Tx(TOYOTUNE_CAN_ID_TELEMETRY_3, Frame3, (uint32_t)(p - Frame3));
 }
 
 
@@ -311,18 +336,26 @@ void ECU_DmaCpu1ToCpu2(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t 
 		ECU_Dma.Cpu1ToCpu2Valid = true;
 		ECU_Dma.Cpu1ToCpu2Count += 1;
 
-		ECU_CanFrame1001_t Frame1001;
-		Frame1001.ECT = EcuData->Ect;
-		Frame1001.PIM = EcuData->Pim;
-		Frame1001.THA = EcuData->Tha;
-		Frame1001.THAM = EcuData->Tham;
-		Frame1001.TPS = EcuData->Tps;
-		CAN_Tx(TOYOTUNE_CAN_ID_TELEMETRY_1, &Frame1001, sizeof(Frame1001));
+		/* Frame 1: PIM, TPS, ECT as 16-bit Motorola, then THA and THAM.
+		   Byte order and field order are unchanged from before. */
+		uint8_t Frame1[8];
+		uint8_t *p = Frame1;
+		p = Can_PutBe16(p, ECU_Be16(EcuData->Pim));
+		p = Can_PutBe16(p, ECU_Be16(EcuData->Tps));
+		p = Can_PutBe16(p, ECU_Be16(EcuData->Ect));
+		p = Can_PutU8(p, EcuData->Tha);
+		p = Can_PutU8(p, EcuData->Tham);
+		CAN_Tx(TOYOTUNE_CAN_ID_TELEMETRY_1, Frame1, (uint32_t)(p - Frame1));
 
-		ECU_CanFrame1002_t Frame1002;
-		memcpy(Frame1002.KnockBands, EcuData->KnockRetardInfo, 3);
-		Frame1002.Knock = EcuData->KnockRetard;
-		CAN_Tx(TOYOTUNE_CAN_ID_TELEMETRY_2, &Frame1002, sizeof(Frame1002));		
+		/* Frame 2: the three per-cylinder knock retard values, then the
+		   current retard. */
+		uint8_t Frame2[4];
+		p = Frame2;
+		p = Can_PutU8(p, EcuData->KnockRetardInfo[0]);
+		p = Can_PutU8(p, EcuData->KnockRetardInfo[1]);
+		p = Can_PutU8(p, EcuData->KnockRetardInfo[2]);
+		p = Can_PutU8(p, EcuData->KnockRetard);
+		CAN_Tx(TOYOTUNE_CAN_ID_TELEMETRY_2, Frame2, (uint32_t)(p - Frame2));
 	}
 	//Debug("%d %u %02x %02x\n", Timer, RxSize, RxBuffer[12], RxBuffer[14]);
 }

@@ -114,6 +114,7 @@
    bit error.  Keep CPU1 and CPU2 disjoint. */
 #define TOYOTUNE_CAN_ID_TELEMETRY_1  (0x1001)
 #define TOYOTUNE_CAN_ID_TELEMETRY_2  (0x1002)
+#define TOYOTUNE_CAN_ID_TELEMETRY_3  (0x1003)
 #define TOYOTUNE_CAN_ID_FILTER       (0x45a)
 
 #else /* TOYOTUNE_CPU2 */
@@ -121,6 +122,7 @@
 /* CPU2 identifiers, chosen to be disjoint from CPU1's above. */
 #define TOYOTUNE_CAN_ID_TELEMETRY_1  (0x1011)
 #define TOYOTUNE_CAN_ID_TELEMETRY_2  (0x1012)
+#define TOYOTUNE_CAN_ID_TELEMETRY_3  (0x1013)
 #define TOYOTUNE_CAN_ID_FILTER       (0x45b)
 
 /* CPU2 is not supported yet, but only one thing is actually missing: its ROM
