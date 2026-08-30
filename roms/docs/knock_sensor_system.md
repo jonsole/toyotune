@@ -6,7 +6,7 @@ The knock control system spans both CPUs and uses a dedicated knock detection MC
 
 The system has three layers:
 
-1. **Hardware** — a dedicated knock MCU (SDIP64 D8X) connected to the piezo knock sensors, communicating knock level to CPU1 via PORTB
+1. **Hardware** — a dedicated knock-processing MCU connected to the piezo knock sensors, communicating knock level to CPU1 via PORTB. **It is not a D8X** — it is a different architecture from the two main CPUs, and the disassembly cannot identify it: CPU1 only ever sees the three data bits, two strobes and a reset line described below.
 2. **CPU1** — reads knock level every NE pulse, integrates per-cylinder retard, stores learned values in PRAM, and transmits to CPU2 via DMA
 3. **CPU2** — receives knock retard from CPU1 and applies it to the ignition timing calculation
 

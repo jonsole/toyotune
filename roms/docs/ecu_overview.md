@@ -16,17 +16,18 @@ line numbers are not, so search by label.
 
 ## The short version
 
-It is a **three-processor** engine controller built from 8-bit Toshiba/Denso
-8X parts, running speed-density fuelling with dual-rate adaptive fuel trim,
-per-cylinder adaptive knock retard, and crank-angle-domain ignition
-scheduling done in hardware compare registers.
+It is a **three-processor** engine controller. The two main CPUs are 8-bit
+Toshiba/Denso 8X parts; the third, a dedicated knock processor, is a
+different architecture. Together they run speed-density fuelling with
+dual-rate adaptive fuel trim, per-cylinder adaptive knock retard, and
+crank-angle-domain ignition scheduling done in hardware compare registers.
 
 Strip away the resolution and that is the same functional architecture a
 modern ECU uses. What separates them is bits, cells and clock — not concept.
 
 | | |
 |---|---|
-| Processors | 3 — CPU1, CPU2, and a dedicated knock MCU |
+| Processors | 3 — CPU1, CPU2 (both D8X), and a knock MCU of another architecture |
 | ROM | 16 KB per CPU |
 | Core | Toshiba/Denso 8X, "enhanced" variant (8 compare registers, serial DMA) |
 | Timer | 19-bit, 4 µs per count (TIMERC/8) |
@@ -44,7 +45,7 @@ Most 1993 ECUs were a single MCU. This one is three.
 ```
         ┌──────────────┐   knock level (3-bit, PORTB)   ┌───────────┐
         │  Knock MCU   │ ─────────────────────────────► │           │
-        │  (D8X SDIP64)│ ◄───────────────────────────── │           │
+        │  (not a D8X) │ ◄───────────────────────────── │           │
         └──────────────┘   clock + TDC ref, DOUT.2 rst  │   CPU1    │
                                                         │  -9651    │
    piezo knock sensors ──►                              │           │
@@ -76,11 +77,16 @@ datastream (`update_odb_flags`). It runs no lambda control of its own — it
 only receives CPU1's O2 reading to pack a rich/lean bit into a diagnostic
 byte.
 
-**The knock MCU** is a third D8X in an SDIP64 package wired to the piezo
-sensors. It hands CPU1 a 3-bit knock level over `PORTB` — bits 3 and 4 active
-low, bit 5 active high — clocked against the crank. `PORTB.1` carries the TDC
-cylinder-1 reference out to it, and CPU1 can hard-reset it by pulsing
-`DOUT.2` low for about 12 µs.
+**The knock MCU** is a dedicated knock-processing device wired to the piezo
+sensors — **not** a third D8X, but a different architecture entirely. It
+hands CPU1 a 3-bit knock level over `PORTB` — bits 3 and 4 active low, bit 5
+active high — clocked against the crank. `PORTB.1` carries the TDC cylinder-1
+reference out to it, and CPU1 can hard-reset it by pulsing `DOUT.2` low for
+about 12 µs.
+
+What the disassembly establishes is CPU1's *side* of that interface, in full.
+The device on the other end is not identified by any code in this repo — only
+its protocol is.
 
 The split is the most consequential design decision in the box. One 8-bit
 part could not do speed-density arithmetic *and* hold hard real-time
