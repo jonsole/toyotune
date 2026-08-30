@@ -1720,6 +1720,40 @@ timeout driving the sync-error and IGF-reset paths; and `var_cnt_CC` paces
 the knock-MCU strobe on PORTB.2 rather than measuring anything about the
 engine.
 
+### What "done" actually means here - a calibration
+
+Several entries above say the MR2 pair is "complete". That claim is about
+**naming and structure**, and it is easy to read as more than it is. Measured
+on CPU1:
+
+| metric | value |
+|---|---|
+| call targets with a meaningful name | **150 / 150** |
+| `unk_` variables outstanding | **18**, all deliberate |
+| counters with a stated purpose | **60 / 85** |
+| instruction lines with an explanatory comment nearby | **38%** |
+| instructions in blocks with *no* header prose and *no* meaningful inline comments | **48%** |
+| explicit "not traced / not established" admissions in the file | **58** |
+
+So **yes, there is still untraced code** - about half the individual basic
+blocks have never been walked line by line. What is *not* true is that any
+large region is dark: the biggest such block is 29 instructions
+(`bg_ne_process_F2D2`), and they are all small branch targets sitting inside
+functions that do have headers.
+
+The accurate summary is: **the architecture and the interfaces are
+understood; roughly half the basic blocks are not.** Every subsystem's
+control flow, every variable's role, and every function's boundary and
+footprint are established. What remains is the interior arithmetic of
+individual blocks - the kind of detail that matters when changing behaviour,
+not when understanding it.
+
+Where the remaining dark blocks cluster: `bg_ne_process_F2D2`, `loc_CE8C`,
+`loc_ED91`, `loc_F933`, `loc_EA2D`, `loc_E47B`, `loc_E328`, `loc_D8D8`,
+`loc_CFC9` - each 20-29 instructions. The 25 counters still lacking a stated
+purpose mostly gate into exactly these blocks, which is why they resisted the
+purpose pass.
+
 ---
 
 ## Pending work (next targets)
