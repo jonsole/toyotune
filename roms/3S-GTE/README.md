@@ -23,8 +23,7 @@ tracks what the application needs:
 
 So a second CPU is a standard option across Denso's range of the period,
 fitted where the work justifies it, rather than something special to this
-engine. Every ECU documented here is turbocharged, so every one of them is a
-two-CPU design.
+engine.
 
 Each CPU has its own 16 KB ROM, and the pair exchange a 38-byte frame every
 4 ms over a serial DMA link. Both halves are needed to understand — or to
@@ -34,6 +33,23 @@ The two part numbers differ by **+10 in the last two digits**: `-9651`/`-9661`,
 `-0461`/`-0471`, `-0481`/`-0491`. The lower number is CPU1 (real-time I/O:
 ignition, injection, ADC, idle, knock, lambda); the higher is CPU2
 (arithmetic: VE maps, load calculation, boost, diagnostics).
+
+---
+
+## Two different fuelling architectures
+
+The ECUs here do not all measure load the same way, and this is the single
+most important thing to know before assuming one generation's documentation
+applies to another:
+
+| | Load measurement |
+|---|---|
+| SW20 MR2, **Gen 1 and Gen 2** | **Air flow meter** — airflow is measured directly |
+| SW20 MR2 **Gen 3**, and the **ST205** | **Speed density** — airflow is inferred from manifold pressure, RPM and a volumetric-efficiency map |
+
+Everything in [`gen3/`](gen3/) describes a speed-density ECU. Its fuelling,
+its load term, and the DMA traffic that carries them do not transfer to Gen 1
+or Gen 2.
 
 ---
 
@@ -58,10 +74,11 @@ Notes on the gaps:
 - **`D151804-0491`** has an IDA database but no `.bin`. Its CPU1 partner
   `-0481` is complete, so the UK ST205 pair cannot currently be built or
   cross-referenced in full.
-- **Gen 1 and Gen 2** appear as single part numbers. Since both are turbo,
-  the pattern above suggests a partner ROM exists and is simply absent from
-  this collection rather than those ECUs being single-CPU — but that has not
-  been confirmed for these two specifically.
+- **Gen 1 and Gen 2** appear as single part numbers, and it is genuinely
+  open whether that reflects a missing partner or a single-CPU design. They
+  measure airflow directly (see below), so the speed-density arithmetic that
+  occupies CPU2 in the Gen 3 ECU is not work they have to do — the second CPU
+  may simply not be warranted. Not established either way.
 - **`D151804-7720`** has no partner listed in `roms.txt`, so which CPU it is
   has not been confirmed. It has no disassembly either — only the ROM image
   and an IDA database.

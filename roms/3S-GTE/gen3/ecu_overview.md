@@ -33,7 +33,7 @@ modern ECU uses. What separates them is bits, cells and clock — not concept.
 | Timer | 19-bit, 4 µs per count (TIMERC/8) |
 | Crank resolution | 24 NE pulses/rev, 15° apart |
 | Inter-CPU link | 1 MHz synchronous serial, DMA, 38-byte frame every 4 ms |
-| Fuelling | Speed-density (VE × MAP × RPM), no MAF |
+| Fuelling | Speed-density (VE × MAP × RPM) — no air flow meter, unlike Gen 1/2 |
 | Instruction set | M68HC11-derived, Denso-specific extensions |
 
 ---
@@ -176,6 +176,9 @@ group.
 ---
 
 ## Fuelling
+
+Speed density arrived with this generation: the Gen 1 and Gen 2 SW20 ECUs
+measure airflow directly with an air flow meter, while this one infers it.
 
 CPU2 computes the load term — the base VE map (`map_c006_ve`) indexed by RPM
 and MAP, multiplied by RPM and by MAP again, i.e. the classic
