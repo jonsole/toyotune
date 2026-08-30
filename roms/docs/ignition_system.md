@@ -33,7 +33,7 @@ ne_sum3 = time for 45 crank degrees (3 NE pulses × 15°/pulse) in 4 µs units
 timing_offset_units = timing_degrees × ne_sum3 / 45
 ```
 
-This conversion is performed by `ignition_timing_to_cpr` (formerly `sub_F263`).
+This conversion is performed by `ignition_timing_to_cpr`.
 
 **Timing offset reference points:**
 | Value | Meaning |
@@ -172,7 +172,7 @@ cpr_fire = var_asr2_time + ne_sum3 - 0x35 + cpr_offset
 
 Where `var_asr2_time` is the ASR2 timestamp of the current NE pulse.
 
-This is passed to `ignition_schedule_off` (formerly `sub_F229`) which arms CPR0 for the spark event and sets DOUT.0 = 1 (DOM-latched at CPR0 match).
+This is passed to `ignition_schedule_off` which arms CPR0 for the spark event and sets DOUT.0 = 1 (DOM-latched at CPR0 match).
 
 ---
 
@@ -387,12 +387,11 @@ accumulates, and the counters decay by 9 per pass so old events fade.
 
 ---
 
-## `update_ign_timing_blend` — the advance-trim blend (was `sub_E865`)
+## `update_ign_timing_blend` — the advance-trim blend
 
-This function was untraced when the rest of this document was written. It is
-a self-contained stage that produces an advance-trim term consumed *outside*
-the ignition path as well as inside it, so it is worth understanding
-separately from the scheduling above.
+A self-contained stage producing an advance-trim term that is consumed
+*outside* the ignition path as well as inside it, so it is worth
+understanding separately from the scheduling above.
 
 **When it runs.** Gated on `var_schedule_flag_41.3` through the `tbs`
 self-re-arming one-shot: `iv6_4ms_process`'s 32 ms sub-slot clears the bit,
@@ -406,8 +405,8 @@ immediately. So this executes at 32 ms, not per NE event.
 | CLEAR | init/seed — seeds the delay line and zeroes the accumulators |
 | SET | normal per-tick blend |
 
-(The polarity is easy to get backwards and was documented wrongly for a
-while: `tbbs` branches *if set*, and all three gates in the function agree.)
+(The polarity is easy to get backwards: `tbbs` branches *if set*, and all
+three gates in the function agree on the table above.)
 
 ### The delay line
 
@@ -438,7 +437,7 @@ term = (256 - timing) * |clamp excursion| / 512
 - The `/512` is the subtle part: `mult_rDrX` leaves `D = D*X/256` and
   `X = MSW`, and the code takes **X**, discarding `D`. That is a `>>16`,
   which with the preceding `mul a,#80h` nets `/512` rather than `/256`.
-  Misreading `mov x, d` here changes the scale by 2x.
+  Note `mov x, d` means `D = X` — misreading it changes the scale by 2x.
 
 `var_ign_blend_accum` accumulates the term with **signed** saturation: on
 overflow it loads `0x7FFF`, then if the sign flag is set an `inc a`/`inc b`

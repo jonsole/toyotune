@@ -138,8 +138,8 @@ shr  d                     ; halve the pulse width
 
 So the bit means **"the value in `var_inj_pw_inj*` must be halved before
 use"** — it distinguishes a full-cycle value from an already-per-event one.
-Two inline comments used to call it an "injector pulsewidth updated flag";
-that was wrong and is corrected in the disassembly.
+It is *not* an "updated" flag, which is what its position among the other
+status bits suggests.
 
 ### (6)-(7) Firing — `injector_update` / `injector_drive`
 
@@ -184,17 +184,12 @@ implementation only makes sense with this direction (e.g. its first `mov x, d`
 must move the divisor from X into D for the normalization loop that follows,
 not the reverse).
 
-This is very easy to misread — it was misread in this session's own
-`calc_iscv` comments (now corrected) before being caught while re-examining
-the VE-map candidate calculation below. **Pre-existing comments elsewhere in
-this ROM's disassembly (from earlier sessions) also show a consistent
-reversed-notation pattern** — e.g. `mov s, x` is commented "SP = X" in
-several places in the shared math library (`table_rB_fixed_rA_interpolate`
-and others), when the correct reading is "X = SP(+1)". These weren't
-corrected this session (out of scope - a dedicated pass would be needed to
-find and fix every instance across the ROM), but any future work should
-double-check `mov` direction rather than trusting an existing comment at
-face value.
+**Some comments in this ROM's disassembly still carry the reversed reading**
+— e.g. `mov s, x` is commented "SP = X" in several places in the shared math
+library (`table_rB_fixed_rA_interpolate` and others), when the correct
+reading is "X = SP(+1)". These have not been swept and fixed. Re-derive `mov`
+direction from the instruction table rather than trusting an existing comment
+at face value.
 
 ---
 
@@ -290,11 +285,10 @@ Multiplies CPU2's DMA'd VE-map words - `dmarx_word_226`, `dmarx_word_228`,
 unsigned multiply, `D = D*X/256`, `X` = the product's high word/overflow
 indicator).
 
-**Corrected understanding** (the original pass here misread `mov`'s
-direction - see the note above): at several points the code deliberately
-substitutes a multiply's high word (from `X`, via `mov x, d` meaning
-`D = X`) in place of the normal `/256`-scaled result, rather than simply
-saving a copy of the scaled result as originally described. Specifically:
+At several points the code deliberately substitutes a multiply's high word
+(from `X`, via `mov x, d` meaning `D = X`) in place of the normal
+`/256`-scaled result. Reading `mov` the wrong way round here makes it look
+like a harmless copy of the scaled result instead. Specifically:
 after the second `mult_rDrX` (by `dmarx_word_22A`), the high word is
 compared against `dmarx_word_228`; if it exceeds it, the excess is scaled
 by a `0xC8/256` (~78%) factor via `mult_rArX` and divided into
@@ -305,7 +299,7 @@ by a `0xC8/256` (~78%) factor via `mult_rArX` and divided into
 final candidate stored in `unk_1C0`. The `0xC8`/`200` value doubles as a
 tag carried in `var_pw_loop_mode` for the two paths.
 
-**Why the high-word substitution (resolved):** `mult_rDrX` doesn't just
+**Why the high-word substitution:** `mult_rDrX` doesn't just
 return an overflow indicator in `X` - it **auto-saturates its own `D`
 output to `0xFFFF`** whenever the high word is nonzero (confirmed by
 reading its body: it checks the MSW and clips `D` before returning). The
@@ -315,9 +309,9 @@ information lost), the code recovers the true proportional value from the
 high word - a coarser but still-meaningful scale - whenever the fine-scale
 (`/256`) result would otherwise have pinned to max. This is a deliberate,
 sensible fixed-point technique (falling back to a wider/coarser scale to
-preserve dynamic range), not an oddity - reasonably confident in this now.
+preserve dynamic range), not an oddity.
 
-**Resolved - which DMA word is which:** cross-referenced against CPU2's ROM
+**Which DMA word is which:** cross-referenced against CPU2's ROM
 (`D151803-9661`, working copy now at `3S-GTE/D151803-9661/Claude/`). CPU1
 and CPU2 share the same physical DMA buffer at a fixed address offset
 (CPU1_addr = CPU2_addr + `0xDA`, confirmed via three independent
@@ -330,32 +324,28 @@ used instead of the numeric formula):
 
 | CPU1 name | CPU2 name | CPU2 computation |
 |---|---|---|
-| `dmarx_word_226` | `dmatx_ve_corr_map` (was `dmatx_map_table_unk_14D`, renamed in a later CPU2 session) | `table_ve_corr_map` lookup indexed by `dmarx_pim2` (MAP, received from CPU1), `/32` - a MAP-only VE/fuel correction table. Computed inside `calc_ignition_timing`, not `calc_params` - see that ASM's own header comments |
-| `dmarx_word_228` | `dmatx_ve_corr_map_tps` (was `dmatx_unk_14F`) | `map_ve_corr_map_tps` bilinear lookup indexed by `dmarx_pim2` (MAP) and `dmarx_tps` (TPS, from CPU1), `/32` - forced to 0 when `dmarx_var_flags_46.2` is set (CPU1's idle-debounce flag, relayed back to CPU2 via DMA). Also computed inside `calc_ignition_timing` |
-| `dmarx_word_22A` | `dmatx_ve_x_pim_x_rpm` (was `dmatx_unk_151`, = `var_ve_x_pim_x_rpm`, saturated) | `var_map_ve` (CPU2's base VE map, `map_c006_ve`, indexed by RPM and MAP) multiplied by `var_rpm_x_5p12` and by `dmarx_pim2/16`, i.e. **VE × MAP × RPM** - the classic speed-density airflow/load term |
+| `dmarx_word_226` | `dmatx_ve_corr_map` | `table_ve_corr_map` lookup indexed by `dmarx_pim2` (MAP, received from CPU1), `/32` - a MAP-only VE/fuel correction table. Computed inside `calc_ignition_timing`, not `calc_params` - see that ASM's own header comments |
+| `dmarx_word_228` | `dmatx_ve_corr_map_tps` | `map_ve_corr_map_tps` bilinear lookup indexed by `dmarx_pim2` (MAP) and `dmarx_tps` (TPS, from CPU1), `/32` - forced to 0 when `dmarx_var_flags_46.2` is set (CPU1's idle-debounce flag, relayed back to CPU2 via DMA). Also computed inside `calc_ignition_timing` |
+| `dmarx_word_22A` | `dmatx_ve_x_pim_x_rpm` (= `var_ve_x_pim_x_rpm`, saturated) | `var_map_ve` (CPU2's base VE map, `map_c006_ve`, indexed by RPM and MAP) multiplied by `var_rpm_x_5p12` and by `dmarx_pim2/16`, i.e. **VE × MAP × RPM** - the classic speed-density airflow/load term |
 
-**Also resolved (separate from the three DMA words above):** CPU1's
+**Separate from the three DMA words above:** CPU1's
 `dmarx_scaled_ve` (`0x022C`) = CPU2's `dmatx_scaled_ve` (`0x0153`, verified
 via the `0xDA` offset formula) - `mult_rDrX_saturate(var_map_ve + 0x51,
-0x200F)`, a differently-rescaled copy of the base VE map. This was
-previously mis-cross-referenced in `calc_params`'s own header comment as
-"= CPU1's `dmarx_word_226`" (a genuine inconsistency, since two CPU2
-outputs can't both equal one CPU1 variable) - corrected there. Consumed
+0x200F)`, a differently-rescaled copy of the base VE map. Consumed
 on CPU1's side in chunk `CE6C`'s accel/idle-enrichment scaling
 (`divide_d_by_x:loc_E4EB`, as a `mult_rDrX` operand), not by
 `calc_inj_pw_base` at all - i.e. it's unrelated to the speed-density base
 fuel load calculation this section otherwise covers.
 
-**Also resolved:** `calc_params`'s five single-byte ignition-timing/ISCV
-DMA outputs (the group its own header previously marked "not examined,
-out of scope") all match CPU1 counterparts exactly via the `0xDA` offset
-formula (no padding discrepancy for these, unlike the three words above):
+`calc_params`'s five single-byte ignition-timing/ISCV DMA outputs all match
+CPU1 counterparts exactly via the `0xDA` offset formula (no padding
+discrepancy for these, unlike the three words above):
 
 | CPU1 name | CPU2 name | CPU2 computation |
 |---|---|---|
-| `dmarx_ign_timing_fallback1` | `dmatx_ign_timing_fallback1` | `table_ign_rpm1(RPM)` - substituted for `dmatx_ign_timing` by CPU1's `update_ign_timing_blend` when `var_diag_errors_5.0` is set at that point in its own computation - **not** a knock-sensor fault despite the flag's name; see the correction below |
-| `dmarx_ign_timing_fallback2` | `dmatx_ign_timing_fallback2` (was `dmatx_ign_timing_unk_165`) | `table_ign_rpm2(RPM)` - same fallback role, substituted for `dmatx_ign_timing_unk_166` |
-| `dmarx_iscv_duty` (CPU1 originally named it `dmarx_unk_242_168`, embedding this address) | `dmatx_iscv_duty` (was `dmatx_unk_168`) | `table_C376_rpm(RPM)/32` - base/nominal ISCV duty, refined by CPU1's own idle control loop (see `idle_control_system.md`) |
+| `dmarx_ign_timing_fallback1` | `dmatx_ign_timing_fallback1` | `table_ign_rpm1(RPM)` - substituted for `dmatx_ign_timing` by CPU1's `update_ign_timing_blend` when `var_diag_errors_5.0` is set at that point in its own computation - **not** a knock-sensor fault despite the flag's name; the flag is a generic abs() remember-bit, see `knock_sensor_system.md` |
+| `dmarx_ign_timing_fallback2` | `dmatx_ign_timing_fallback2` | `table_ign_rpm2(RPM)` - same fallback role, substituted for `dmatx_ign_timing_unk_166` |
+| `dmarx_iscv_duty` | `dmatx_iscv_duty` | `table_C376_rpm(RPM)/32` - base/nominal ISCV duty, refined by CPU1's own idle control loop (see `idle_control_system.md`) |
 | `dmarx_ign_timing_unk_166` | `dmatx_ign_timing_unk_166` | `(table_C356_rpm(RPM) * table_C36A_ect(ECT))/64`, saturated |
 | `dmarx_unk_241_167` | `dmatx_unk_167` | `(table_C360_rpm(RPM) * table_C370_ect(ECT))/64`, saturated |
 
@@ -365,7 +355,7 @@ session_journal.md): a PIM-table-baseline-vs-clamp update involving
 `var_ign_blend_accum`/`12B`/`12D`/`12F` state, self-re-armed to run once per ~32ms via
 `var_schedule_flag_41.3`'s `tbs`-based one-shot gate (see that variable's
 ASM declaration comment for the mechanism).
-**Correction:** the fallback-vs-primary selection is **not** knock-sensor
+The fallback-vs-primary selection is **not** knock-sensor
 fault handling despite `var_diag_errors_5.0`'s name and the function's
 proximity to real knock code - `set_knock_sensor_err_flag`/
 `check_knock_sensor_err_flag` are a repo-wide reused negate/abs() idiom
@@ -394,8 +384,7 @@ sign, clamped via `ram_1BE_limits` (range `0x0000`-`0x0500`, i.e.
 `injector_cold_start`'s `0x04E2`/`0x09C4`). In closed-loop mode
 (`var_pw_loop_mode == 0xC8`) also overwrites `unk_1C0` with `var_adc_lambda` itself.
 Then calls `ramp_limit_inj_pw_simple` when `var_adc_lambda` (**not**
-`var_inj_pw_base` - see the correction under "The ramp-limiter cluster"
-below) is below `0x4D`.
+`var_inj_pw_base` - see "The ramp-limiter cluster" below) is below `0x4D`.
 
 **Confirmed: the `var_lambda_integrator` threshold checks (`cmp #66h,
 var_lambda_integrator` / `cmp #76h, var_lambda_integrator`) are high-byte-only
@@ -426,8 +415,8 @@ header comment above `loc_DC77` in the ASM; summary:
 - `update_diag_obd` (reached via `jsr` from a *different*, later point in the main
   loop - the short second `var_trim_state`-alias instance that also calls
   `update_lambda_stft`) wraps a long run of O2-heater/lambda/coolant-sensor
-  diagnostic checks in its own `unk_1CF` alias instance, and resolves two
-  previously-unexamined helpers: `check_cnt_187_window` (resets `var_cnt_187`, sets
+  diagnostic checks in its own `unk_1CF` alias instance, and uses two
+  helpers: `check_cnt_187_window` (resets `var_cnt_187`, sets
   `var_flags_4F.7` if outside `[3, 0x131)`) and `inc_cnt_187` (saturating
   increment of `var_cnt_187`).
 
@@ -486,18 +475,17 @@ steps causing driveability issues.
 - **`ramp_limit_inj_pw`**: the main blend step, called every ~488ms from
   `calc_inj_pw_base`'s continuation, and once more directly from
   `calc_inj_pw_base` itself in a "diagnostic only" mode (see `trim_state.4`
-  below). **Fully traced this session** (branch-by-branch, with `mov`
-  direction re-verified at every step) - see "Branch-by-branch trace"
-  below for the complete walkthrough.
+  below). Fully traced - see "Branch-by-branch trace" below for the
+  complete walkthrough.
 - **`ramp_limit_inj_pw_simple`**: a shorter, single-path variant of the same
   pattern: `D = var_inj_pw_base / (unk_1C4 - 0xCCCD)` via `divide_d_by_x`,
   then `+/-0xCCCD`-adjusted (sign depending on whether the divide's error
   flag fired) and stored to `unk_1C2`. Also sets/clears `var_trim_state.2`
   (via the alias) based on a `0xC7AE` threshold.
 
-  **Correction to a prior-session claim:** this is called from `loc_DA58`
-  when **`var_adc_lambda` (signed lambda sensor voltage) is below `0x4D`**,
-  not `var_inj_pw_base` as previously stated. `X` is loaded from
+  It is called from `loc_DA58` when **`var_adc_lambda` (signed lambda sensor
+  voltage) is below `0x4D`** — note the gate tests lambda, not
+  `var_inj_pw_base`. `X` is loaded from
   `var_adc_lambda` at `loc_DA17` and never reloaded before the `loc_DA58`
   gate - `var_inj_pw_base` is loaded into `D` in that same block for an
   unrelated small lambda-driven nudge (`+0x0C`/`-0x02`, clamped via
@@ -573,7 +561,7 @@ deviation input, always a ratio nominally around `0xCCCD`.
 **`unk_1C8`'s producer - RESOLVED:** its immediate write site is `loc_E6A8`
 (`st d, unk_1C8`), fed by a `dmatx_pim`/`var_pim2`-linked computation, which
 confirms the "MAP/PIM-pressure-linked" characterization used above. That
-computation sits at the tail of **`calc_dmatx_pim`** (was `sub_E551`,
+computation sits at the tail of **`calc_dmatx_pim`** (
 `~E551`-`E6B0`+, 350+ bytes).
 
 An earlier pass guessed that function was a "knock/PIM-linked limiting
@@ -677,7 +665,7 @@ RAM, never written to NV, forced back to its `0x8000` neutral on reset
 events (`loc_D04F`). This is what swings cycle to cycle as the sensor
 crosses rich/lean.
 
-Its controller is **`update_lambda_stft`** (was `loc_DA63`), a textbook
+Its controller is **`update_lambda_stft`**, a textbook
 **jump-and-ramp** (proportional + integral) O2 control law:
 
 - **Jump** - proportional, large, on a rich/lean transition (`loc_DABF`):
@@ -762,14 +750,14 @@ only adapt once the fast and slow pressure estimates reconverge.
 
 | Variable | Description |
 |---|---|
-| `var_inj_pw_base` | Working base injector pulse-width (was `unk_1BE`), clamped to 0x0000-0x0500 via `ram_1BE_limits` |
+| `var_inj_pw_base` | Working base injector pulse-width, clamped to 0x0000-0x0500 via `ram_1BE_limits` |
 | `var_pw_loop_mode` | Open-loop (0) vs closed-loop (0xC8) path selector, set by `init_pw_open_loop`/`init_pw_closed_loop` |
 | `unk_1C0` | The VE-map candidate, but reused as scratch: also overwritten with `var_adc_lambda` (DA10-DA60, closed-loop), the `unk_1C8` ceiling-driven divide result (`ramp_limit_inj_pw`'s `loc_DBF1`), or `var_inj_pw_base` (`loc_DC24`, closed-loop). No single fixed identity - see `ramp_limit_inj_pw`'s branch trace |
 | `unk_1C2` | Ratio value nominally `0xCCCD` (~0.8 in Q16) - `ramp_limit_inj_pw_simple`'s output, `ramp_limit_inj_pw`'s deviation input. The one variable in this cluster with a stable role |
 | `unk_1C4` | Carried-forward PW-scale value at `ramp_limit_inj_pw`'s entry, but overwritten with the `unk_1C8` ceiling in `loc_DBF1` when `trim_state.0` clear, or with the ratio-deviation result by `calc_inj_pw_base`'s diagnostic-only call. No single fixed identity |
 | `unk_1C6` | The final per-call output register of `ramp_limit_inj_pw` - ends up holding the ceiling (`unk_1C8`) on the `loc_DBF1` path, or the candidate/blend value on the `loc_DC24`/`loc_DC35` paths |
 | `unk_1C8` | A PIM/MAP-pressure-linked bound compared against PW-scale values in `ramp_limit_inj_pw`. Producer partially traced to `loc_E665` (~`E620`-`E6B0`), which folds `var_pim2`-derived `dmatx_pim` into it - the rest of that computation isn't traced (see Open Questions) |
-| `var_cnt_6A` | Reset by `calc_inj_pw_base`'s entry gate; consumer not traced this session |
+| `var_cnt_6A` | Reset by `calc_inj_pw_base`'s entry gate; consumer not traced |
 | `dmarx_word_226` | CPU2's MAP-only VE/fuel correction table (`table_ve_corr_map`, indexed by MAP) |
 | `dmarx_word_228` | CPU2's MAP+TPS bilinear VE correction (`map_ve_corr_map_tps`), zeroed during idle debounce |
 | `dmarx_word_22A` | CPU2's VE×MAP×RPM speed-density load term (`var_ve_x_pim_x_rpm`, saturated) |
@@ -777,7 +765,7 @@ only adapt once the fast and slow pressure estimates reconverge.
 
 ---
 
-## Open Questions (not resolved this session)
+## Open Questions
 
 - `unk_1C8`'s full producer chain: traced as far as `loc_E665`
   (~`E620`-`E6B0`) and confirmed it folds in `var_pim2`-derived
@@ -790,13 +778,6 @@ only adapt once the fast and slow pressure estimates reconverge.
 - `loc_DC77`'s body past its entry commit, and chunks `DD38`/`DD59`/`E112`/
   start-of-`E363` - all still under the `var_flags_4E`-is-`var_trim_state`
   alias (confirmed), not yet read/traced or renamed.
-- `update_lambda_stft`'s body (traced and renamed this session, called from a short
-  second alias instance later in the main loop) touches
-  `var_lambda_avg`/`var_lambda_integrator` in ways that look like another,
-  separate lambda-trim adjustment mechanism (distinct from both the
-  zone-based `nv_afr_trim_base` system and chunk D1DD's
-  `var_nv_trim_unk_96` system) - not fully characterized, just renamed for
-  the alias.
 
 ---
 

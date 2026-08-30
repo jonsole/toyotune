@@ -190,7 +190,7 @@ On each NE cycle:
 
 ### `knock_retard_decay` — Called Every 4ms
 
-Called every 4ms, but only ACTS once `var_cnt_knock_decay` reaches 0x40 - so `var_knock_retard` is reduced by 2 every **256ms**, not every 4ms, however often the function runs. If knock error flag is set, `nv_table_knock_info` is reset to `0x9A9A` (both bytes). Also computes `dmatx_ign_corr_cpu2` (the retard command sent to CPU2, at 0x216 - the doc previously called it `dmatx_unk_216` after its address) from the ECT-corrected retard value and `nv_table_knock_info`.
+Called every 4ms, but only ACTS once `var_cnt_knock_decay` reaches 0x40 - so `var_knock_retard` is reduced by 2 every **256ms**, not every 4ms, however often the function runs. If knock error flag is set, `nv_table_knock_info` is reset to `0x9A9A` (both bytes). Also computes `dmatx_ign_corr_cpu2` (the retard command sent to CPU2) from the ECT-corrected retard value and `nv_table_knock_info`.
 
 ---
 
@@ -223,55 +223,41 @@ and only then is retard reduced by 2 — so recovery proceeds at 2 counts per
 
 ---
 
-## Names that look like knock but are not
+## `var_diag_errors_5.0` is not a knock flag
 
-Several symbols in this ROM carry "knock" in their names purely as an
-artefact of early guesswork, and reading them as knock data leads directly
-to wrong conclusions. Recording them here because the trap has caught this
-effort more than once.
-
-**`set_knock_sensor_err_flag` / `check_knock_sensor_err_flag` are a generic
-abs() idiom.** The pair works by deliberate fall-through into `negate_rD`:
+`set_knock_sensor_err_flag` and `check_knock_sensor_err_flag` are a **generic
+abs() idiom**, not knock handling. The pair works by deliberate fall-through
+into `negate_rD`:
 
 - `set_knock_sensor_err_flag` sets `var_diag_errors_5.0` **and**
   unconditionally negates `D`;
 - `check_knock_sensor_err_flag` negates `D` only if that flag is set.
 
 The pattern at each call site is: compute a difference that may have
-underflowed, call `set_` to take its magnitude while remembering the flip,
-do further arithmetic on the positive value, then call `check_` to restore
-the sign. **`var_diag_errors_5.0` is a "did we negate" remember-bit**, not a
-knock-sensor fault. It is genuinely knock-related only at knock-subsystem
-call sites such as `knock_mcu_update`; in `calc_iscv`, `ramp_limit_inj_pw`
-and `update_ign_timing_blend` it is borrowed purely for the negate.
+underflowed, call `set_` to take its magnitude while remembering the flip, do
+further arithmetic on the positive value, then call `check_` to restore the
+sign.
 
-**Variables renamed once this was understood:**
+So **`var_diag_errors_5.0` is a "did we negate" remember-bit.** It is
+genuinely knock-related only at knock-subsystem call sites such as
+`knock_mcu_update`; in `calc_iscv`, `ramp_limit_inj_pw` and
+`update_ign_timing_blend` it is borrowed purely for the negate.
 
-| old name | now | what it actually is |
-|---|---|---|
-| `var_unk_knk_133`/`135` | `var_pim_est_fast`/`slow` | manifold-pressure filter pair |
-| `var_unk_knock_12B` | `var_ign_blend_hist0` | ignition-blend delay line |
-| `knock_unk_E79E` | `update_pim_est_fast` | MAP estimate filter |
-| `some_knock_averaging_calc` | `update_pim_est_slow` | its slower stage |
-| `sub_E551` | `calc_dmatx_pim` | MAP transient compensation |
+This matters beyond the flag itself: `calc_dmatx_pim` was long assumed to be
+a knock or boost limiter *because* it calls these two functions. It is
+manifold-pressure transient compensation — its single exit stores to
+`dmatx_pim`. A call to either function is no evidence of knock involvement.
 
-`sub_E551` is the cautionary one: it was believed for several sessions to be
-a knock/boost limiter, purely because it called the two functions above. Its
-single exit stores to `dmatx_pim` — it is manifold-pressure transient
-compensation and has nothing to do with knock.
-
-**Genuinely knock-related and confirmed:** `var_knock_retard`,
-`var_knock_retard_max`, `var_knock_retard_prev`/`prev2`,
-`var_knock_cyl_idx`, `var_knock_event_cnt`, `var_knock_info`,
-`var_g1g2_err_cnt`, and `var_knock_retard_latch` — the last being a snapshot
-of `var_knock_retard` taken only when persistent knock coincides with a
-G1/G2 sync error.
+**Genuinely knock-related:** `var_knock_retard`, `var_knock_retard_max`,
+`var_knock_retard_prev`/`prev2`, `var_knock_cyl_idx`, `var_knock_event_cnt`,
+`var_knock_info`, `var_g1g2_err_cnt`, and `var_knock_retard_latch` — the last
+being a snapshot of `var_knock_retard` taken only when persistent knock
+coincides with a G1/G2 sync error.
 
 **One dead gate:** `var_knock_gate_168` is only ever cleared and has no
-setter — verified against both indirect-write mechanisms — so the `bne` at
-`loc_F5F4` never branches and control always reaches the
-`var_knock_retard_max` comparison. A knock path disabled by zeroing rather
-than removed.
+setter, so the `bne` at `loc_F5F4` never branches and control always reaches
+the `var_knock_retard_max` comparison. A knock path disabled by zeroing
+rather than removed.
 
 ---
 

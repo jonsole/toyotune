@@ -23,9 +23,13 @@ Two functions cooperate:
 - Otherwise: `DOUT.1 = 1`, `CPR1 = TIMER + var_iscv_pwm` (pulse ends at the
   next CPR1 match, `DOM.1` latched to track the pending event)
 
-`calc_iscv` itself is only called when `var_flags_44.1` is clear (gate at
-`divide_d_by_x:loc_D380`) — the exact condition this bit tracks was not
-pinned down this session.
+`calc_iscv` itself is only called when `var_flags_44.1` is clear. The gate is
+`tbs bit1, var_flags_44` at `divide_d_by_x:loc_D380`, and `tbs` is a
+destructive test-and-set — the test itself re-locks the bit, so there is no
+separate setter. `bg_ne_process_F3BE` clears ("unlocks") it every 8th NE
+tooth, the same periodic point that clears `var_schedule_flag_41.0` beside
+it, so `calc_iscv` recomputes once per that fixed-angle window rather than on
+every 4 ms tick.
 
 ---
 
@@ -93,19 +97,19 @@ bits 2/3). **Hypothesis (unconfirmed):** `var_flags_4F` bits 1-4 consolidate
 debounced Air-Con (`var_diag_errors_5.5`) and PS/IDUP (`var_io_input2.3`)
 switch state specifically for idle-up compensation, since those are the only
 two "extra electrical/mechanical load" switches documented elsewhere in the
-ROM. The raw bits were not traced back to their source this session.
+ROM. The raw bits have not been traced back to their source.
 
 A separate threshold check (`byte_C36C`/`C36E`/`C370`, also switch-selected)
 sets `var_diag_errors_5.0` and feeds both `check_knock_sensor_err_flag` and
-an accumulator `var_iscv_diag_term`. **Resolved**: `set_knock_sensor_err_flag`/
+an accumulator `var_iscv_diag_term`. `set_knock_sensor_err_flag`/
 `check_knock_sensor_err_flag` share one fall-through tail with `negate_rD`
-(see their own header comment in `D151803-9651.asm`) - `var_diag_errors_5.0`
-isn't knock-sensor-specific here, it's reused as a generic "did we negate
-D" remember-bit for a disguised abs()/restore-sign idiom. So this site is
-computing a delta that may go negative, taking its magnitude (recording
-that via the flag), summing it into `var_iscv_diag_term`, then presumably restoring
-the sign later via `check_knock_sensor_err_flag` wherever `var_iscv_diag_term`
-resurfaces in Phase 3 - not independently re-traced this session.
+(see their own header comment in `D151803-9651.asm`), so `var_diag_errors_5.0`
+isn't knock-sensor-specific here — it's reused as a generic "did we negate D"
+remember-bit for a disguised abs()/restore-sign idiom. This site computes a
+delta that may go negative, takes its magnitude (recording the flip via the
+flag), sums it into `var_iscv_diag_term`, and presumably restores the sign
+later via `check_knock_sensor_err_flag` wherever `var_iscv_diag_term`
+resurfaces in Phase 3. That last step has not been traced directly.
 
 The five terms are summed, plus a `table_iscv_C391` entry (values `0x00, 0x08,
 0x10, 0x20`) selected by `var_io_input2` bits 6/7 (undocumented elsewhere in
@@ -129,18 +133,17 @@ downstream.
 
 A second computation (always run) derives a ceiling from `nv_idle_trim`
 offset by a P/N-switch-selected range (`var_flags_4F.2`: `+0x148` or
-`-0x33+0x17B`). **Correction:** this was originally described as a clean
-"clamp the RPM-band candidate to this ceiling" — re-examined and that's not
-quite right. The `mov` instruction is **src, dest** (opposite of `ld`/`st`,
-easy to misread — see `fuel_calculation_system.md`'s "mov direction" note),
-which changes the register tracking here: when the ceiling exceeds the
-band candidate, the code re-derives from a value stashed *before* the
-ceiling's final offset was added (`nv_idle_trim*16` or `nv_idle_trim*16-0x33`,
+`-0x33+0x17B`). This is **not** the clean "clamp the RPM-band candidate to
+this ceiling" it first appears to be. Tracking the registers with `mov` read
+correctly as **src, dest** (opposite of `ld`/`st` — see
+`fuel_calculation_system.md`'s "mov direction" note): when the ceiling
+exceeds the band candidate, the code re-derives from a value stashed
+*before* the ceiling's final offset was added (`nv_idle_trim*16` or `nv_idle_trim*16-0x33`,
 depending on the P/N-switch branch), not from the ceiling itself. The final
 result is then either that stashed value or the band candidate — the
 ceiling as computed is never actually used in that branch. Net effect on
-`var_iscv_target_base` not fully understood beyond this corrected
-mechanical trace; flagged as an open question below.
+`var_iscv_target_base` not fully understood beyond this mechanical trace;
+flagged as an open question below.
 
 ### Phase 3 — ECT and secondary RPM-band terms
 
@@ -296,30 +299,18 @@ for roughly 10 seconds first.
 
 ---
 
-## Open Questions (not resolved this session)
+## Open Questions
 
-- ~~`var_flags_44.1`~~ **Resolved.** Its setter was never found because
-  **there isn't a separate one**: the gate is `tbs bit1, var_flags_44` at
-  `loc_D380`, and `tbs` is a destructive test-and-set — the test itself
-  re-locks the bit. `bg_ne_process_F3BE` clears ("unlocks") it every 8th NE
-  tooth, the same periodic point that clears `var_schedule_flag_41.0`
-  beside it, so `calc_iscv` recomputes once per that fixed-angle window
-  rather than on every 4 ms tick.
-- ~~`var_flags_46.6`~~ **Resolved** (see "Fixed-Opening Override" above): it
-  gates whether the ISCV runs `calc_iscv`'s closed-loop target or a fixed
-  override pulse, and is debounced from `var_io_input1` bits 2/3 plus
-  startup timing in `divide_d_by_x` chunk `C9DA`. The two undocumented
-  `var_io_input1` bits driving it remain unidentified.
+- The two `var_io_input1` bits (2/3) that `divide_d_by_x` chunk `C9DA`
+  debounces into `var_flags_46.6` have no identified signal name.
 - `var_io_input2` bits 6/7 — feed `table_iscv_C391`'s load-compensation
   selection but have no documented signal name (unlike bit 0 = ECO, bit 3 =
   PS/IDUP).
-- ~~`var_iscv_diag_term`, `var_idle_trim_flags`, `var_cnt_idle_dwell`~~
-  **Resolved and renamed** (see "The idle-trim gate" below).
 - `table_iscv_rpm_C357`/`C361`'s exact byte layout (why a 5-byte stride, what
-  the other 4 bytes per entry hold beyond the one step value read) wasn't
-  fully reverse-engineered.
-- Phase 2's ceiling-vs-band-candidate logic (`loc_D651`-`loc_D67C`): after
-  correcting the `mov` direction, the ceiling computed there is discarded
+  the other 4 bytes per entry hold beyond the one step value read) is not
+  established.
+- Phase 2's ceiling-vs-band-candidate logic (`loc_D651`-`loc_D67C`): the
+  ceiling computed there is discarded
   in the branch where it would matter (ceiling > band candidate), and a
   stashed pre-offset value is compared against the band candidate instead.
   Why the code is written this way - whether it's intentional or the

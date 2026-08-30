@@ -107,10 +107,9 @@ var_pim2 = mPIM * 1.285156      ; scale by 329/256 (converts sensor units to pre
 ```
 
 **`var_pim2` is an ABSOLUTE pressure scale whose zero is hard vacuum, not
-atmospheric.** (An earlier revision of this file claimed "`var_pim2 = 0` at
-atmospheric pressure. Increases linearly with boost." That was wrong, and it
-is worth stating the correction loudly because it invites the conclusion that
-the ECU cannot represent vacuum at all - which it plainly can.)
+atmospheric.** This matters: reading it as zero-at-atmospheric leads directly
+to the conclusion that the ECU cannot represent vacuum, which it plainly
+can.
 
 Derivation, from the conversion TunerPro uses for the Boost Limit table in
 `D151803-9651_32K.XDF`:
