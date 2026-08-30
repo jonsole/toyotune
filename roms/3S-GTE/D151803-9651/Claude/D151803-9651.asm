@@ -3861,7 +3861,7 @@ table_rpm_unk_C209:		.db 08h				; DATA XREF: divide_d_by_x+928↓o
 				.db 78h, 7Fh
 
 
-table_rpm_unk_C214:		.db 12h				; DATA XREF: divide_d_by_x+934↓o
+table_accel_enrich_tps:		.db 12h				; DATA XREF: divide_d_by_x+934↓o
 				.db 0Ah, 0FDh
 				.db 14h, 0FDh
 				.db 1Fh, 0FDh
@@ -4012,7 +4012,7 @@ table_C2E2:			.db 02h				; DATA XREF: calc_ect_unk_160↓o
 				.dw 0E400h
 
 
-table_gearing_unk_C2E7:		.db 1Ah, 80h			; DATA XREF: calc_4ms_corrections:loc_EB0B↓o
+table_gear_correction:		.db 1Ah, 80h			; DATA XREF: calc_4ms_corrections:loc_EB0B↓o
 				.db 06h, 0Ah, 19h, 25h,	25h
 
 
@@ -8023,10 +8023,25 @@ loc_CECA:							; CODE XREF: divide_d_by_x+8F2↑j
 								; divide_d_by_x+8F5↑j ...
 				st	b, var_overrun_fuel_mult
 
+; ---------------------------------------------------------------------------
+; ACCELERATION ENRICHMENT.
+;
+;   var_accel_enrich = table_accel_enrich_tps(var_tps) * var_overrun_fuel_mult
+;
+; so the enrichment is a throttle-position lookup scaled by a multiplier
+; that DECAYS - the tail subtracts 0x13 from var_overrun_fuel_mult each
+; pass. That is what makes the enrichment a transient pulse that fades
+; rather than a steady offset.
+;
+; It also consumes var_flags_1DC bit 1 under `di`/`ei`: the byte is read,
+; bit 1 cleared, and the ORIGINAL value tested for being exactly 0x02. That
+; is the 'injector_update ran since I last looked, and nothing else touched
+; this byte' handshake described at var_flags_1DC's declaration.
+; ---------------------------------------------------------------------------
 loc_CECD:							; CODE XREF: divide_d_by_x+90C↑j
 								; divide_d_by_x+911↑j ...
 				ld	a, var_tps
-				ld	y, #table_rpm_unk_C214
+				ld	y, #table_accel_enrich_tps
 				jsr	table_rA_pair_interpolate
 
 				mul	a, var_overrun_fuel_mult
@@ -10887,6 +10902,17 @@ loc_DA10:							; CODE XREF: divide_d_by_x+13FA↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
+; ---------------------------------------------------------------------------
+; Rate-limited blend entry in the D931 fuel chunk. Clears var_4ms_cnt_B5
+; (restarting its 488ms window), then requires var_trim_state bit 0 clear
+; and bit 5 set before proceeding.
+;
+; From there the path forks on the O2 sensor's SIGN (var_adc_lambda) and on
+; whether var_lambda_integrator has reached its 0x76 rail, with
+; var_pw_loop_mode's 0xC8 marking the closed-loop case. So this is where the
+; blend decides whether to move the base pulse width toward the lambda
+; feedback or hold it.
+; ---------------------------------------------------------------------------
 loc_DA17:							; CODE XREF: divide_d_by_x+1478↑j
 				clr	var_4ms_cnt_B5
 				tbbs	bit0, var_trim_state_alias, loc_DA60
@@ -12261,6 +12287,17 @@ loc_DEB6:							; CODE XREF: ROM:DEB2↑j
 				and	a, #0FBh
 				st	a, var_diag_errors_4
 
+; ---------------------------------------------------------------------------
+; Entry gate for the LAMBDA-STUCK check, i.e. the conditions under which a
+; non-switching O2 sensor is treated as a fault rather than as a legitimately
+; steady mixture. All must hold:
+;   var_flags_4F.5 set (diagnostic mode)
+;   RPM at or above 0x1E, road speed below 0x64, ECT at or above 0xDC
+;   nv_diag_errors_1 matching specific values
+;
+; Only then does var_cnt_lambda_stuck accumulate toward its 0x5A (2.9s)
+; threshold - see that counter's declaration for the consequence.
+; ---------------------------------------------------------------------------
 loc_DEC1:							; CODE XREF: ROM:DE80↑j
 								; ROM:DEB9↑j
 				tbbc	bit5, var_flags_4F, loc_DEE3
@@ -12506,6 +12543,17 @@ loc_DFCE:							; CODE XREF: ROM:DFC8↑j
 
 ;Start of diagnostic MIL flashing code?
 
+; ---------------------------------------------------------------------------
+; The DIAGNOSTIC CODE OUTPUT state machine - what blinks fault codes out of
+; the MIL. Three variables drive it:
+;   diag_code_index  which code in the table is being emitted
+;   diag_code_delay  the inter-blink timer
+;   diag_code_digit  how many blinks remain for the current digit
+;
+; Each is incremented or decremented and tested for its terminal value, with
+; the 0xFF wrap (`inc a` / `beq`) used as the end-of-sequence marker rather
+; than an explicit count.
+; ---------------------------------------------------------------------------
 loc_DFD4:							; CODE XREF: ROM:loc_DFCE↑j
 				ld	a, diag_code_index
 				inc	a
@@ -15590,9 +15638,18 @@ loc_EAF8:							; CODE XREF: calc_4ms_corrections:loc_EAEF↑j
 				clr	var_4ms_cnt_BD
 				setb	bit2, var_flags_4E
 
+; ---------------------------------------------------------------------------
+; GEAR-DEPENDENT correction in calc_4ms_corrections: table_gear_correction
+; indexed by var_gearing, with the result compared against var_4ms_cnt_BD so
+; the correction only applies once that dwell has elapsed.
+;
+; Further gated on var_flags_4E bits 0 and 1 and on two magnitude checks
+; (0x09 signed, 0x4D). What the correction ultimately adjusts is not
+; established - only that it is selected by gear and dwell-limited.
+; ---------------------------------------------------------------------------
 loc_EB0B:							; CODE XREF: calc_4ms_corrections+DA↑j
 								; calc_4ms_corrections+DF↑j	...
-				ld	y, #table_gearing_unk_C2E7
+				ld	y, #table_gear_correction
 				ld	b, var_gearing
 				jsr	table_rB_fixed_32_interpolate
 
@@ -15937,6 +15994,16 @@ loc_EC5C:							; CODE XREF: calc_4ms_corrections+236↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
+; ---------------------------------------------------------------------------
+; A PIM-BLENDED PAIR of lookups. The same index (var_temp_w) is run through
+; two different tables - table_unk_C284 into var_temp_7C and table_unk_C295
+; into var_temp_7A - and those two results are then used as the two
+; endpoints of a 2-entry table_pair_interpolate driven by var_pim2.
+;
+; So the correction blends between a low-load and a high-load schedule
+; according to manifold pressure, rather than switching between them. The
+; two tables' units are not established, but the blend structure is.
+; ---------------------------------------------------------------------------
 loc_EC62:							; CODE XREF: calc_4ms_corrections+229↑j
 				st	a, var_temp_w
 				ld	y, #table_unk_C284
@@ -17407,6 +17474,17 @@ loc_F1DD:							; CODE XREF: iv6_ne_process+180↑j
 
 				setb	bit0, var_ignition_flags
 
+; ---------------------------------------------------------------------------
+; Multi-pulse ignition scheduling. var_ign_nr_pulses is decremented each
+; call and nothing happens until it reaches zero, so this fires once per N
+; NE events rather than on every one.
+;
+; When it does fire it converts the timing through ignition_timing_to_cpr,
+; then divides by 3 TWICE with an xch of var_ign_temp between the halves -
+; splitting the NE interval into thirds to get finer angular resolution than
+; the 24-pulses-per-revolution NE signal alone provides. A fixed 0x35 is
+; subtracted and var_asr2_time added before ignition_schedule_on arms CPR0.
+; ---------------------------------------------------------------------------
 loc_F1E7:							; CODE XREF: iv6_ne_process+BB↑j
 				ld	d, var_ign_nr_pulses
 				dec	a
@@ -18581,6 +18659,21 @@ loc_F577:							; CODE XREF: ROM:F568↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
+; ---------------------------------------------------------------------------
+; KNOCK RETARD STEP SELECTION - how much timing to pull for this event.
+;
+; The base step comes from table_knock_retard_step indexed by the low two
+; bits of var_knock_info (the decoded knock level). It is then scaled by how
+; many events have already occurred:
+;   var_knock_event_cnt > 4   use the base step as-is
+;   otherwise                 double it (shl a)
+;   and if the count is also <= 1, a further branch applies
+;
+; So the FIRST knock event gets the largest retard and repeated events get
+; progressively smaller steps - retard hard and fast on the first sign of
+; knock, then trim finely. dmatx_ign_corr_cpu2 is consulted on the way
+; through, so CPU2's own correction participates in the decision.
+; ---------------------------------------------------------------------------
 loc_F57C:							; CODE XREF: ROM:F562↑j
 				ld	a, var_knock_info
 				and	a, #03h

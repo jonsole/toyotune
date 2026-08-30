@@ -1819,6 +1819,43 @@ injector more slowly and charges the coil more slowly, so both get longer.
 
 Tables named: `table_inj_battery_comp` (adds to the four named last pass).
 
+### Dark-block pass 3
+
+Eight more blocks; coverage **44% -> 42%**. Largest remaining is now 15
+instructions, so this is well into diminishing returns as a bulk exercise -
+but the findings are still substantive.
+
+| block | what it is |
+|---|---|
+| `loc_F57C` | **knock retard step selection** |
+| `loc_CECD` | **acceleration enrichment** |
+| `loc_F1E7` | multi-pulse ignition scheduling |
+| `loc_EC62` | a PIM-blended pair of lookups |
+| `loc_DFD4` | the diagnostic-code blink state machine |
+| `loc_DEC1` | entry gate for the lambda-stuck check |
+| `loc_DA17` | rate-limited blend entry in the D931 fuel chunk |
+| `loc_EB0B` | gear-dependent correction |
+
+**Three worth knowing.**
+
+`loc_F57C` shows knock response is **front-loaded**: the base step from
+`table_knock_retard_step` is DOUBLED while `var_knock_event_cnt` is low and
+used as-is once it exceeds 4. The first sign of knock gets the biggest
+retard; repeated events trim progressively more finely.
+
+`loc_CECD` shows acceleration enrichment is a **decaying pulse**, not an
+offset: `table_accel_enrich_tps(var_tps) * var_overrun_fuel_mult`, with the
+multiplier reduced by 0x13 every pass. It also consumes `var_flags_1DC` bit 1
+under `di`/`ei` using the exact-value test (`== 0x02`) described at that
+variable's declaration - a rare confirmation of that handshake in use.
+
+`loc_F1E7` divides the NE interval into **thirds** (two `div d,#03h` with an
+`xch` between the halves) to get finer angular resolution than the
+24-pulse-per-revolution NE signal provides on its own.
+
+Tables named: `table_gear_correction`, `table_accel_enrich_tps` (bringing
+this cluster's total to seven).
+
 ---
 
 ## Pending work (next targets)
