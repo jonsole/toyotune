@@ -13,17 +13,25 @@ the best entry point to everything else in this directory.
 ## One CPU or two, depending on the application
 
 How many D8X CPUs an ECU carries is **not a generational progression** — it
-tracks what the application needs:
+tracks how much work the application asks for:
 
 | Application | CPUs |
 |---|---|
 | Naturally aspirated, manual transmission | **one** |
 | Automatic transmission | **two** |
-| Turbo (all the ECUs in this directory) | **two** |
+| Turbo (every ECU in this directory) | **two** |
 
-So a second CPU is a standard option across Denso's range of the period,
-fitted where the work justifies it, rather than something special to this
-engine.
+The sharpest comparison is within Gen 3 itself: the naturally-aspirated
+Gen 3 ECU does **everything in a single CPU**, including the same class of
+fuelling calculation. So it is not speed density on its own that needs a
+second processor — it is the extra load the turbo application piles on top.
+Larger maps, boost control, and the additional corrections that come with
+them are the plausible drivers, though the precise trigger has not been
+established.
+
+A second CPU is therefore a standard option across Denso's range of the
+period, fitted where the work justifies it, rather than something special to
+this engine.
 
 Each CPU has its own 16 KB ROM, and the pair exchange a 38-byte frame every
 4 ms over a serial DMA link. Both halves are needed to understand — or to

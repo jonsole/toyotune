@@ -90,11 +90,16 @@ about 12 µs.
 The disassembly characterises CPU1's *side* of that interface in full. The
 device on the other end is known only by its protocol.
 
-The split answers a real constraint: one 8-bit part could not do
-speed-density arithmetic *and* hold hard real-time deadlines. What makes it
-interesting is that the answer was **modular** — a second MCU, a second ROM
-and an inter-CPU protocol, deployed across the range wherever an application
-needed the headroom, rather than engineered specially for this ECU.
+What the split is *not* is a consequence of speed density by itself: the
+naturally-aspirated Gen 3 ECU runs the same class of calculation in a single
+CPU. It is the turbo application's additional load — larger maps, boost
+control, and the corrections that come with them — that exhausts one 8-bit
+part trying to hold hard real-time deadlines at the same time.
+
+What makes the answer interesting is that it was **modular**: a second MCU, a
+second ROM and an inter-CPU protocol, deployed across the range wherever an
+application needed the headroom, rather than engineered specially for this
+ECU.
 
 > → `knock_sensor_system.md` § *Hardware Interface* for the PORTB pinout and
 > reset timing; `session_journal.md` § *Architecture notes* for the CPU split.
