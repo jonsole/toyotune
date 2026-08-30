@@ -1552,6 +1552,7 @@ ram_end:			.block 1			; D271↓o ...
 				;.segment ROM
 				.org 0C000h
 rom_start:			.db 5Fh, 5Fh, 5Fh		; D28A↓o
+								; The ROM origin marker, not a table.
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
@@ -1581,12 +1582,18 @@ int_vector_unhandled:						; int_vector_unhandled↓j
 ;	      6.66,   9.03,   11.41, 13.78
 ;*******************************************************************************
 map_c006_ve:			.dw 0200h			; CC53↓o
+								; The main VE map. Indexed by dmarx_pim (divided
+								; by 16) against RPM - this is the primary fuel
+								; map CPU2 exists to evaluate, and its output
+								; feeds the scaled-VE value sent back to CPU1.
 								; map_x	base
 				.db 17h				; map_x	limit (1700h)
 				.dw 0113h			; map_y	base
 				.db 0Bh				; map_y_limit (0B00h)
 				;   400	 600  800 1000 1200 1400 1600 1800 2000	2200 2400 2600 2800 3200 3600 4000 4400	4800 5200 5600 6000 6400 6800 7200
 byte_C00C:			.db 064, 065, 096, 091,	101, 108, 097, 137, 104, 106, 105, 119,	127, 094, 102, 099, 114, 137, 137, 124,	116, 110, 096, 084 ; -12.32
+								; No #reference - the data body of map_c006_ve
+								; above it, not a separate table.
 				.db 090, 093, 116, 128,	127, 143, 127, 151, 137, 136, 136, 145,	144, 132, 132, 136, 148, 163, 158, 161,	158, 151, 144, 135 ; -9.94
 				.db 102, 108, 134, 137,	142, 153, 145, 159, 153, 151, 152, 156,	156, 151, 151, 151, 157, 172, 177, 178,	177, 177, 170, 158 ; -7.57
 				.db 112, 112, 144, 147,	149, 159, 153, 164, 160, 158, 156, 163,	163, 160, 160, 154, 162, 182, 182, 187,	185, 188, 176, 164 ; -5.20
@@ -1609,6 +1616,9 @@ byte_C00C:			.db 064, 065, 096, 091,	101, 108, 097, 137, 104, 106, 105, 119,	127
 ;	      6.66,   9.03,   11.41, 13.78
 ;*******************************************************************************
 map_ignition_C12C:		.dw 0200h			; CD00↓o
+								; The main ignition map, read straight after the
+								; VE map with the same divided PIM index against
+								; var_rpm_x_5p12.
 								; map_x	base
 				.db 17h				; map_x	limit (1700h)
 				.dw 0113h			; map_y	base
@@ -1637,6 +1647,8 @@ map_ignition_C12C:		.dw 0200h			; CD00↓o
 ;	      6.66,   9.03,   11.41, 13.78
 ;*******************************************************************************
 map_fuel_enrichment_C252:	.dw 0400h			; CA4F↓o
+								; Fuel enrichment map, gated by var_enrich_flags.0
+								; and paced by var_cnt64ms_map_enrichment.
 								; map_x	base
 				.db 0Eh				; map_x	limit (0E00h)
 				.dw 0113h			; map_y	base
@@ -1662,6 +1674,9 @@ map_fuel_enrichment_C252:	.dw 0400h			; CA4F↓o
 ;Y = TPS
 ;*******************************************************************************
 map_3d_C30C:			.dw 00C0h			; CA80↓o
+								; 3-D map read in the knock-enrichment path,
+								; immediately after var_knock_error_enrichment is
+								; stored.
 								; map_x	base
 				.db 07h				; 8
 				.dw 0100h			; map_y	base
@@ -1677,27 +1692,43 @@ map_3d_C30C:			.dw 00C0h			; CA80↓o
 ;RPM table
 
 table_ign_rpm1:			.dw 0080h			; CBFE↓o
+								; RPM-indexed; result becomes
+								; dmatx_ign_timing_fallback1, one of the two
+								; fallback timing values CPU1 selects between when
+								; its clamp has moved a value.
 				.db 06h
 				.db 33h, 53h, 66h, 66h,	6Dh, 80h, 0C0h
 
 ; RPM table
 
 table_ign_rpm2:			.dw 0080h			; CC09↓o
+								; RPM-indexed; result becomes
+								; dmatx_ign_timing_fallback2 - the partner of
+								; table_ign_rpm1.
 				.db 06h
 				.db 33h, 33h, 80h, 0C0h, 0C0h, 0C0h, 0C0h
 
 
 table_C356_rpm:			.dw 0080h			; CC25↓o
+								; RPM-indexed via table_rD_fixed16_interpolate.
 				.db  06h
 				.db 13h, 20h, 26h, 33h,	66h, 66h, 9Ah
 
 
 table_C360_rpm:			.dw 0080h			; CC40↓o
+								; RPM-indexed. Its result multiplied by
+								; table_C370_ect's and divided by 64 gives
+								; dmatx_unk_167, which CPU1 consumes in
+								; scale_by_dmarx_167.
 				.db  06h
 				.db 13h, 20h, 26h, 33h,	26h, 26h, 26h
 
 
 table_C36A_ect:			.db  1Fh			; CC1D↓o
+								; ECT-indexed - the table_rb_fixed_*_ect_interp
+								; wrappers load dmarx_ect themselves, so no index
+								; appears at the call site. Result ->
+								; var_map_temp_x.
 				.db 0C0h ; └
 				.db  80h ; Ç
 				.db  80h ; Ç
@@ -1706,6 +1737,11 @@ table_C36A_ect:			.db  1Fh			; CC1D↓o
 
 
 table_C370_ect:			.db  1Fh			; CC38↓o
+								; ECT-indexed - the table_rb_fixed_*_ect_interp
+								; wrappers load dmarx_ect themselves, so no index
+								; appears at the call site. Pairs with
+								; table_C360_rpm to form dmatx_unk_167 (product /
+								; 64, saturated).
 				.db 0C0h ; └
 				.db  40h ; @
 				.db  40h ; @
@@ -1715,6 +1751,9 @@ table_C370_ect:			.db  1Fh			; CC38↓o
 ; RPM table
 
 table_C376_rpm:			.dw 0080h			; CC12↓o
+								; RPM-indexed; the result becomes dmatx_iscv_duty,
+								; the ISC duty CPU1 cross-checks against DOUT.3 in
+								; its relay health monitor.
 				.db  02h
 				.db  80h ; Ç			; 800 rpm
 				.db  80h ; Ç			; 2400 rpm
@@ -1722,6 +1761,9 @@ table_C376_rpm:			.dw 0080h			; CC12↓o
 
 
 table_C37C_ect:			.db  18h			; CB14↓o
+								; ECT-indexed - the table_rb_fixed_*_ect_interp
+								; wrappers load dmarx_ect themselves, so no index
+								; appears at the call site.
 				.db 0C0h ; └
 				.db 0CDh ; ═
 				.db  48h ; H
@@ -1733,6 +1775,8 @@ table_C37C_ect:			.db  18h			; CB14↓o
 
 
 table_C385_ect:			.db  10h			; CB45↓o
+								; Indexed by dmarx_ect; result ->
+								; var_enrichment_unk_FE.
 				.db 0B0h ; ░
 				.db  98h ; ÿ
 				.db  8Eh ; Ä
@@ -1749,6 +1793,12 @@ table_C385_ect:			.db  10h			; CB45↓o
 
 
 table_C393:			.db  18h			; CB8D↓o
+								; ECT-indexed - the table_rb_fixed_*_ect_interp
+								; wrappers load dmarx_ect themselves, so no index
+								; appears at the call site. Multiplied by
+								; dmarx_nv_trim_o2 to form var_enrichment_unk_100,
+								; the warm-up enrichment that
+								; decay_enrichment_unk_100 then bleeds away.
 				.db 0A0h ; á
 				.db  00h
 				.db  00h
@@ -1759,22 +1809,34 @@ table_C393:			.db  18h			; CB8D↓o
 
 
 table_C39B_tha:			.db 99h, 50h			; CBDB↓o
+								; Indexed by dmarx_tha (intake air temp); result
+								; -> var_enrichment_unk_103.
 				.db 0Dh, 0Dh, 0Dh, 13h,	26h, 26h
 
 
 table_C3A3_ect:			.db 11h, 80h			; CBAA↓o
+								; ECT-indexed, read by decay_enrichment_unk_100 -
+								; the value it produces is the threshold that
+								; decides whether var_enrichment_unk_100 decays
+								; this tick.
 				.db 4Bh, 3Eh, 35h, 2Eh,	28h, 1Eh, 14h, 0Ah, 00h
 
 
 table_C3AE_ect:			.db 18h, 0C0h			; main_continue_3↓o
+								; ECT-indexed - the table_rb_fixed_*_ect_interp
+								; wrappers load dmarx_ect themselves, so no index
+								; appears at the call site.
 				.db 66h, 34h, 28h, 1Bh,	0Eh, 06h, 00h
 
 
 table_C3B7_rpm:			.db 50h, 20h			; CAFC↓o
+								; Indexed by var_rpm_div_25.
 				.db 80h, 40h
 
 
 table_C3BB_tham:		.db 1Dh, 0C0h			; CD89↓o
+								; Indexed by dmarx_tham (manifold air temp);
+								; result -> var_tham_enrich_unk.
 				.db 0F1h, 0C9h,	0ACh, 92h, 78h,	5Fh, 3Ch
 
 ; ***************************************************
@@ -1782,6 +1844,9 @@ table_C3BB_tham:		.db 1Dh, 0C0h			; CD89↓o
 ; Indexed by RPM
 ; *****************************************************
 table_rpm_no_knock_map_enrich:	.dw 0200h			; CA1B↓o
+								; RPM-indexed enrichment used when no knock is
+								; present; table_rpm_knock_map_enrich is the
+								; knocking counterpart.
 								; table_base (800rpm)
 				.db 017				; table_limit (1100h)
 				.db 097				; 800	-0.48
@@ -1808,6 +1873,9 @@ table_rpm_no_knock_map_enrich:	.dw 0200h			; CA1B↓o
 ; Indexed by RPM
 ; *****************************************************
 table_rpm_knock_map_enrich:	.dw 0200h			; CA21↓o
+								; The knock-present counterpart of
+								; table_rpm_no_knock_map_enrich - so knock changes
+								; which enrichment schedule applies.
 								; table_base (800rpm)
 				.db 017				; table_limit (1100h)
 				.db 097				; 800	-0.48
@@ -1834,11 +1902,17 @@ table_rpm_knock_map_enrich:	.dw 0200h			; CA21↓o
 ; index	= knock	 0, 32,	64, 96,	128
 ;*******************************************************************************
 table_knock_enrichment:		.db 00h				; CA12↓o
+								; Indexed by dmarx_knock (CPU1's knock level);
+								; result -> var_knock_enrichment.
 				.db 80h
 				.db 00h, 0Eh, 16h, 1Fh,	28h
 
 
 table_ect_C3F5:			.db  1Fh			; update_ect_enrich_clamp↓o
+								; ECT-indexed - the table_rb_fixed_*_ect_interp
+								; wrappers load dmarx_ect themselves, so no index
+								; appears at the call site. Result ->
+								; var_unk_ect_table_10A.
 				.db 0C0h ; └
 				.db  4Dh ; M
 				.db  4Dh ; M
@@ -1847,13 +1921,20 @@ table_ect_C3F5:			.db  1Fh			; update_ect_enrich_clamp↓o
 
 
 table_ignition_retard:		.db 00h, 09h, 11h, 1Ah		; CD16↓o
+								; Ignition retard table, selected by a
+								; var_flags_45 bit and reached only when b < 0x3A.
 
 
 table_rpm_ignition_retard:	.dw 0000h			; CD57↓o
+								; RPM-indexed ignition retard, selected against
+								; table_ignition_retard by var_flags_40.0 /
+								; var_flags_45.0.
 				.dw 001Ah
 
 
 map_C403_tvsv_tps_rpm:		.dw 0400h			; CF28↓o
+								; TVSV map indexed by RPM against TPS; result ->
+								; var_tvsv_scale_tps_rpm.
 				.db 0Eh				; 15
 				.dw 028Fh
 				.db 08h				; 9
@@ -1869,6 +1950,8 @@ map_C403_tvsv_tps_rpm:		.dw 0400h			; CF28↓o
 
 
 map_C490_tvsv_tps_gear:		.dw 0100h			; CF3A↓o
+								; TVSV map over TPS and gear; result ->
+								; var_tvsv_scale_tps_x_gear.
 				.db 03h				; 4
 				.dw 0148h
 				.db 04h				; 5
@@ -1880,15 +1963,22 @@ map_C490_tvsv_tps_gear:		.dw 0100h			; CF3A↓o
 
 
 table_C4AA_rpm:			.db 20h				; CF04↓o
+								; RPM-indexed; result -> var_tvsv_scale_base_11E,
+								; the TVSV base value.
 								; Table	minimum	value
 				.db 70h				; Table	maximum	value
 				.db 28h, 28h, 50h, 5Ah,	64h, 6Eh, 78h, 78h
 table_C4B4_knock_tvsv:		.db 11h, 22h, 33h, 44h,	55h, 66h, 0FFh
+								; No #reference - a continuation of the block
+								; above it rather than an independently addressed
+								; table.
 								; loc_CF5C↓t
 				.db 80h, 80h, 80h, 80h,	80h, 80h, 80h
 
 
 table_tvsv_C4C2:		.db 032				; CFC7↓o
+								; Read through table_pair_interpolate_rpm_entry in
+								; the TVSV chain.
 								; (20h + 2) / 2	= 17 entries
 				.db 000, 050
 				.db 012, 050
@@ -1910,6 +2000,8 @@ table_tvsv_C4C2:		.db 032				; CFC7↓o
 
 
 table_tha_tvsv:			.db 010				; CF69↓o
+								; Indexed by dmarx_tha; result ->
+								; var_tvsv_scale_tha.
 				.db 056, 115			; -10.2c
 				.db 067, 128			; -5.8c
 				.db 179, 128			; 40.9c
@@ -1919,6 +2011,7 @@ table_tha_tvsv:			.db 010				; CF69↓o
 
 
 table_C4F2:			.db 002				; D00A↓o
+								; RPM-indexed via table_rD_fixed16_interpolate.
 				.db 000
 				.db 007
 				.db 200
@@ -1932,18 +2025,25 @@ table_C4F2:			.db 002				; D00A↓o
 
 
 table_C4FD_rpm_div_25:		.db 080, 160			; CF9A↓o
+								; Read immediately after var_tvsv_scale_total is
+								; stored; indexed by var_rpm_div_25.
 				.db 062, 062, 062, 034,	034, 034
 
 
 table_C505_rpm_div_25:		.db 080, 160			; CFAA↓o
+								; Indexed by var_rpm_div_25.
 				.db 146, 056, 056, 056,	056, 056
 
 
 table_C50D_rpm_div_25:		.db 080, 160			; CFA3↓o
+								; Indexed by var_rpm_div_25.
 				.db 146, 085, 085, 085,	085, 085
 
 
 table_C515:			.db  02h			; D04A↓o
+								; Indexed by dmarx_pim2 through
+								; table_pair_interpolate_rpm_entry; pairs with
+								; table_C51A.
 				.db  11h
 				.db  96h ; û
 				.db  88h ; ê
@@ -1951,6 +2051,8 @@ table_C515:			.db  02h			; D04A↓o
 
 
 table_C51A:			.db  02h			; D052↓o
+								; Indexed by dmarx_pim2 - the partner of
+								; table_C515.
 				.db  11h
 				.db  82h ; é
 				.db  75h ; u
@@ -1958,6 +2060,7 @@ table_C51A:			.db  02h			; D052↓o
 
 
 map_ve_corr_map_tps:		.dw 0000h			; CE5E↓o
+								; VE correction map indexed by dmarx_tps.
 				.db 03h				; 4
 				.dw 0113h
 				.db 05h				; 6
@@ -1970,6 +2073,8 @@ map_ve_corr_map_tps:		.dw 0000h			; CE5E↓o
 
 
 table_ve_corr_map:		.db  01h			; CE45↓o
+								; Indexed by dmarx_pim2; result ->
+								; dmatx_ve_corr_map, sent back to CPU1.
 				.db  13h
 				.db  05h
 				.db 0AEh ; «
@@ -1981,6 +2086,9 @@ table_ve_corr_map:		.db  01h			; CE45↓o
 
 
 map_max_knock_retard_C546:	.dw 0200h			; CD6D↓o
+								; RPM-indexed map giving the maximum permitted
+								; knock retard; result -> var_max_retard_unk,
+								; which reaches CPU1 as dmatx_max_retard_161.
 				.db 0Fh				; 16
 				.dw 0313h
 				.db 09h				; 10
@@ -1997,14 +2105,22 @@ map_max_knock_retard_C546:	.dw 0200h			; CD6D↓o
 
 
 table_clamp_C5EC:		.dw 00520			; CCC3↓o
+								; One of three clamp-limit pairs (with
+								; table_clamp_C5F0 and table_clamp_C5F4) selected
+								; by road speed (var_spd vs 3) and
+								; dmarx_flags_1.3.
 				.dw 00504
 
 
 table_clamp_C5F0:		.dw 00614			; CCCB↓o
+								; Clamp limits selected when road speed is at or
+								; above 3 - see table_clamp_C5EC.
 				.dw 00512
 
 
 table_clamp_C5F4:		.dw 00614			; CCD1↓o
+								; Clamp limits selected by dmarx_flags_1.3 - see
+								; table_clamp_C5EC.
 				.dw 00410
 
 
@@ -3130,6 +3246,7 @@ loc_C995:							; C99A↓j
 				shl	d
 				bra	loc_C995
 table_c99c:			.db 0A4h ; ñ
+								; No #reference anywhere - unreached data.
 				.db  84h ; ä
 				.db  6Ah ; j
 				.db  55h ; U
@@ -4894,6 +5011,10 @@ loc_D135:							; D129↑j
 locret_D138:							; D108↑j ...
 				ret
 table_odb:			.dw var_ne_table+1, dmarx_obd_inj, dmarx_obd_ign, dmarx_obd_iscv
+								; Table of ADDRESSES the OBD datastream
+								; serializes, walked two bytes at a time by
+								; next_odb_byte. See the list in its own comment
+								; above.
 								; D10D↑o
 ; table_odb: the 11 values next_odb_byte serializes out over the OBD
 ; diagnostic datastream, in order: an NE period sample, injector/ignition/
@@ -6779,7 +6900,14 @@ loc_D694:							; D690↑j
 
 			.org 0FFDAh
 rom_checksum:			.dw 148Eh
+								; The ROM checksum word, patched by checksum.exe after
+								; assembly - see the build steps in CLAUDE.md. Not a
+								; table.
 rom_version:			.dw 8646h			; D653↑o
+								; The software version word. serial_debug_check returns
+								; this instead of a computed RAM address when the debug
+								; protocol asks for index 0x1F - the 'identify device'
+								; query.
 
 			.org 0FFDEh
 				.dw int_vector_0		; External interrupt 0
