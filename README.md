@@ -1,37 +1,36 @@
-## Welcome to GitHub Pages
+# toyotune
 
-You can use the [editor on GitHub](https://github.com/jonsole/toyotune/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+Reverse engineering and ROM tuning for Toyota ECUs built on the Toshiba/Denso
+8X (D8X) microcontroller — a proprietary part with an instruction set derived
+from the Motorola 68HC11.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+The best entry point is
+**[Inside the 3S-GTE ECU](roms/3S-GTE/gen3/ecu_overview.md)**, an
+architectural tour of the 1993 SW20 MR2 turbo ECU: three processors, adaptive
+fuel trim and per-cylinder knock learning in 16 KB of ROM.
 
-### Markdown
+## What's here
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+- **[`roms/`](roms/)** — disassembly, annotation and tuned-ROM production.
+  One directory per engine family (1G-GTE, 1G-GZE, 1JZ-GTE, 1UZ-FE, 3S-GE,
+  3S-GTE, 3VZ-FE, 4A-GE), each holding one subdirectory per ECU part number.
+  - [`roms/3S-GTE/`](roms/3S-GTE/) is the most thoroughly documented family —
+    its [README](roms/3S-GTE/README.md) maps every part number to market,
+    vehicle and CPU, and [`gen3/`](roms/3S-GTE/gen3/) holds the subsystem
+    write-ups.
+  - [`roms/docs/`](roms/docs/) documents the D8X MCU itself — instruction
+    set, opcode matrix, registers — which every family here shares.
+  - [`roms/d8x_assembler/`](roms/d8x_assembler/) is a Python reimplementation
+    of the D8X assembler, and what the Makefiles actually build with.
+- **[`hw/`](hw/)** — the Toyotune interface board: PCB, CPLD and host-MCU
+  firmware for reading and rewriting these ECUs, including live access while
+  the engine is running.
+- **`sw/`** — IDA Pro installs used to open the `.idb` databases.
 
-```markdown
-Syntax highlighted code block
+## Status
 
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/jonsole/toyotune/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+Ongoing and incomplete. The 3S-GTE Gen 3 pair is the furthest along; other
+families are largely raw disassembly. Coverage is stated honestly in each
+document — see
+[session_journal.md](roms/3S-GTE/gen3/session_journal.md) for what is done
+and what is pending.
