@@ -3642,7 +3642,7 @@ table_ect_C137:			.db 9Ch, 40h			; DATA XREF: divide_d_by_x+1E28↓o
 				.db 40h
 
 
-table_battery_unk_C13C:		.db 46h, 10h			; DATA XREF: divide_d_by_x+1E48↓o
+table_inj_battery_comp:		.db 46h, 10h			; DATA XREF: divide_d_by_x+1E48↓o
 				.db 0A9h
 				.db 94h
 
@@ -9682,6 +9682,15 @@ loc_D4EA:							; CODE XREF: calc_iscv+3↑j
 				clr	a			; Reset	rD to 0
 				clr	b
 
+; ---------------------------------------------------------------------------
+; Commits var_iscv_startup_flare, then decides whether to set
+; var_flags_4E.4 - a gate requiring ALL of: var_4ms_cnt_B1 at or past 0x0C
+; (48ms), road speed below 5, RPM at or above 0x50, and var_rpm_delta below
+; 138 (i.e. deviation near its 0x80 neutral, so RPM is steady).
+;
+; In short: a warm, stationary, steady-RPM idle. ECT is then checked against
+; 0xDC to pick the follow-on path.
+; ---------------------------------------------------------------------------
 loc_D4F4:							; CODE XREF: calc_iscv+1F↑j
 								; calc_iscv+27↑j
 				st	d, var_iscv_startup_flare ; Store modified startup flare value
@@ -12653,6 +12662,18 @@ loc_E05F:							; CODE XREF: ROM:loc_E03E↑j
 				tbbs	bit1, var_flags_4D, loc_E092
 
 
+; ---------------------------------------------------------------------------
+; DIAGNOSTIC-CODE ELIGIBILITY - every condition must be clean before a code
+; is emitted; any failure jumps to loc_E092 with the default 0xB4.
+;
+; Checked: var_temp_w masked with 0xEF must be zero, var_temp_b bit 0 clear,
+; var_flags_4E_copy_2 exactly 0x80, var_error_flags_6D exactly 1, and
+; var_diag_errors_5.4 (knock-management error) clear.
+;
+; Note two of these are whole-byte EQUALITY tests rather than bit tests, so
+; any other flag set in those bytes suppresses the code - worth knowing if a
+; expected diagnostic code never appears.
+; ---------------------------------------------------------------------------
 loc_E067:							; CODE XREF: ROM:loc_E05F↑j
 				ld	b, #0B4h
 				ld	a, var_temp_w
@@ -13564,6 +13585,19 @@ loc_E3CE:							; CODE XREF: divide_d_by_x+1E30↑j
 
 				ld	b, #1Ah
 
+; ---------------------------------------------------------------------------
+; BATTERY COMPENSATION on the injector pulse width.
+;
+; Scales the running value by a factor read from table_inj_battery_comp,
+; indexed by var_adc_battery. Remember that variable runs INVERSELY to
+; voltage (see its declaration), so a larger index means a weaker supply -
+; and a weaker supply opens the injector more slowly, needing a longer
+; pulse. This is the correction that compensates for that.
+;
+; The tail then branches on var_flags_46.7 (sub-CPU error) and on the
+; starter signal, both of which substitute fixed pulse widths at
+; loc_E405/loc_E423 rather than trusting the computed one.
+; ---------------------------------------------------------------------------
 loc_E3D9:							; CODE XREF: divide_d_by_x:loc_E3CE↑j
 								; divide_d_by_x+1E3A↑j
 				clr	a
@@ -13572,7 +13606,7 @@ loc_E3D9:							; CODE XREF: divide_d_by_x:loc_E3CE↑j
 
 				st	d, var_temp_7A
 				ld	b, var_adc_battery
-				ld	y, #table_battery_unk_C13C
+				ld	y, #table_inj_battery_comp
 				jsr	table_rB_fixed_16_interpolate
 
 				mov	a, b
@@ -13726,22 +13760,26 @@ no_enrichment:							; CODE XREF: apply_enrich_and_trims+6↑j
 				jsr	mult_rBrX2
 
 
+; ---------------------------------------------------------------------------
+; THE FUEL TRIM APPLICATION - stage 2 of the injector pulse-width chain, and
+; the only place both trims are applied. See fuel_calculation_system.md.
+; ---------------------------------------------------------------------------
 loc_E47B:							; CODE XREF: apply_enrich_and_trims+22↑j
-				push	x
-				jsr	read_nv_afr_trim
+				push	x			; Save the incoming pulse width
+				jsr	read_nv_afr_trim	; B = LTFT for this load cell (0x80 = neutral)
 
 				clr	a
-				add	b, var_lambda_integrator
-				addc	a, #00h
-				add	d, #0100h
+				add	b, var_lambda_integrator	; + STFT, the fast O2 integrator
+				addc	a, #00h				; carry into the high byte
+				add	d, #0100h			; + 0x100 unity, so D = 1.0 + LTFT + STFT
 				st	d, var_temp_w
-				mov	s, x
-				ld	x, x + 00h
-				jsr	mult_rDrX_saturate
+				mov	s, x			; X = SP (src,dest) - X now addresses the stack
+				ld	x, x + 00h		; X = the saved pulse width
+				jsr	mult_rDrX_saturate	; PW * (unity + LTFT + STFT)
 
-				jsr	divide_rD_32_saturate
+				jsr	divide_rD_32_saturate	; rescale after the multiply
 
-				st	b, var_inj_pw_unk_1CA
+				st	b, var_inj_pw_unk_1CA	; low byte carried on to loc_E69E
 				ld	a, var_trim_state
 				st	a, var_flags_4E
 				jsr	ramp_limit_inj_pw
@@ -15171,6 +15209,16 @@ loc_E9BC:							; CODE XREF: update_ign_timing_blend+14D↑j
 				jsr	set_knock_sensor_err_flag
 
 
+; ---------------------------------------------------------------------------
+; The blend's ENDPOINT INTERPOLATION. Builds a two-entry table on the stack
+; scratch - var_temp_w = 2 (the count), var_temp_7A = var_ign_blend_neg,
+; var_temp_7C = var_ign_blend_pos - and interpolates D through it with
+; table_pair_interpolate.
+;
+; Only taken when D >= 0x20; below that loc_E9F0 selects one endpoint
+; outright instead of interpolating, using var_diag_errors_5.0. So small
+; values snap to an endpoint and larger ones are blended between the two.
+; ---------------------------------------------------------------------------
 loc_E9C8:							; CODE XREF: update_ign_timing_blend+15E↑j
 				push	d
 				cmp	d, #0020h
@@ -17293,6 +17341,19 @@ loc_F191:							; CODE XREF: iv6_ne_process+133↑j
 				clr	a
 				clr	b
 
+; ---------------------------------------------------------------------------
+; RPM-dependent limiting of the raw ignition advance, inside iv6_ne_process.
+;
+; Stores var_ign_advance_raw, then derives var_ign_temp as
+; var_rpm_x_5p12 * 0xE9 (taking the high byte), and uses it as a ceiling:
+; a fixed 0x56 is halved and compared against it, and the advance is walked
+; down (dec a) until it fits, clamping at zero.
+;
+; The effect is an RPM-scaled cap on how much advance can be requested -
+; the faster the engine turns, the less crank angle the scheduler has to
+; work with before the next event. The exact units of the 0xE9 scale factor
+; are not established.
+; ---------------------------------------------------------------------------
 loc_F1A1:							; CODE XREF: iv6_ne_process+144↑j
 				st	d, var_ign_advance_raw
 				mov	y, d
@@ -18718,6 +18779,19 @@ loc_F656:							; CODE XREF: ROM:F653↑j
 
 				ld	a, #1Ah
 
+; ---------------------------------------------------------------------------
+; PER-CYLINDER KNOCK RETARD INCREMENT - the step that adds retard after a
+; knock event, in knock_processing.
+;
+; Commits var_knock_retard, then requires a previous retard to exist
+; (var_knock_retard_prev non-zero) and RPM to be inside a 0x18..0x8C window -
+; below or above that band no further retard is added.
+;
+; The increment itself is per-cylinder: table_knock_retard_inc is indexed by
+; var_knock_cyl_idx and added to the previous value, then clamped at 0xAB.
+; A separate guard subtracts 0x11 from var_knock_retard_max first, so the
+; per-cylinder value cannot run far ahead of the global ceiling.
+; ---------------------------------------------------------------------------
 loc_F661:							; CODE XREF: ROM:F659↑j
 								; ROM:F65D↑j
 				st	a, var_knock_retard

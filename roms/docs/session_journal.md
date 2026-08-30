@@ -1789,6 +1789,36 @@ comments within three lines of an instruction, and this pass added *header*
 prose. The metric measures inline density, not understanding. The
 no-header/no-inline region figure is the better one, and that is what moved.
 
+### Dark-block pass 2
+
+Seven more blocks documented; no-header/no-inline coverage **48% -> 46% ->
+44%**. The largest remaining are now all 15-17 instructions, so the tail is
+genuinely flattening.
+
+| block | what it is |
+|---|---|
+| `loc_E47B` | **the fuel trim application** - annotated INLINE, not just headed, since it is the single most important block in the PW chain |
+| `loc_E3D9` | **battery compensation on injector PW** - names `table_inj_battery_comp` |
+| `loc_F661` | per-cylinder knock retard increment, `table_knock_retard_inc` indexed by cylinder, clamped at 0xAB |
+| `loc_F1A1` | RPM-scaled cap on requested ignition advance |
+| `loc_E9C8` | the blend's endpoint interpolation - values below 0x20 snap to an endpoint, above it they interpolate |
+| `loc_E067` | diagnostic-code eligibility chain |
+| `loc_D4F4` | commits the ISC startup flare, then a warm/stationary/steady-RPM gate on `var_flags_4E.4` |
+
+**Two things worth knowing from this pass.**
+
+`loc_E067`'s eligibility chain uses whole-byte **equality** tests on
+`var_flags_4E_copy_2` and `var_error_flags_6D`, not bit tests - so any other
+flag set in those bytes silently suppresses the diagnostic code. Useful if an
+expected code never appears.
+
+`loc_E3D9` is the injector-side counterpart of the dwell compensation found
+last pass: both correct for battery voltage, and both index a table with
+`var_adc_battery`, which runs INVERSELY to voltage. A weaker supply opens the
+injector more slowly and charges the coil more slowly, so both get longer.
+
+Tables named: `table_inj_battery_comp` (adds to the four named last pass).
+
 ---
 
 ## Pending work (next targets)
