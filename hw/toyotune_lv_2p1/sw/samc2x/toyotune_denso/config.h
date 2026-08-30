@@ -27,14 +27,17 @@
    Define exactly one.
    --------------------------------------------------------------------------- */
 
-#define TOYOTUNE_CPU1
-
 #if defined(TOYOTUNE_CPU1) && defined(TOYOTUNE_CPU2)
 #error "Define exactly one of TOYOTUNE_CPU1 / TOYOTUNE_CPU2, not both."
 #endif
 
+/* Default used when the build system passes neither. The Atmel Studio
+   project does not pass one, so it lands here; the CMake build passes
+   -DTOYOTUNE_CPU1 or -DTOYOTUNE_CPU2 on the command line, which takes
+   precedence over this. Edit this line to point the Studio build at the
+   other CPU. */
 #if !defined(TOYOTUNE_CPU1) && !defined(TOYOTUNE_CPU2)
-#error "Define one of TOYOTUNE_CPU1 / TOYOTUNE_CPU2."
+#define TOYOTUNE_CPU1
 #endif
 
 

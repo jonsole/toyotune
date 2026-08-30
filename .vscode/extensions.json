@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    // Drives the CMake/Ninja build and supplies IntelliSense configuration.
+    "ms-vscode.cmake-tools",
+    "ms-vscode.cpptools",
+    // On-chip debugging of the SAMC21 over CMSIS-DAP/EDBG, if a probe is used.
+    "marus25.cortex-debug"
+  ]
+}

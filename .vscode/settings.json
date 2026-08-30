@@ -1,0 +1,28 @@
+{
+  // The workspace root is the repo root so that roms/ and hw/ are open
+  // together, but the CMake project lives further down. Point CMake Tools at
+  // it explicitly, otherwise it finds no CMakeLists.txt and stays idle.
+  "cmake.sourceDirectory": "${workspaceFolder}/hw/toyotune_lv_2p1/sw/samc2x/toyotune_denso",
+
+  // Build presets (CPU1/CPU2, Debug/Release) come from CMakePresets.json in
+  // that directory and are selectable from the status bar.
+  "cmake.useCMakePresets": "always",
+
+  // Let CMake Tools feed IntelliSense from compile_commands.json, so include
+  // paths and defines never have to be duplicated into c_cpp_properties.json.
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+
+  // NOTE ON .ASM ENCODING - deliberately not configured here.
+  //
+  // Most .ASM/.asm files in roms/ are CP437 (IDA's DOS codepage): bytes >= 0x80
+  // are box-drawing banner characters, and 0x18/0x19 are the up/down arrows in
+  // xref comments. Opening and saving one as UTF-8 silently corrupts every one
+  // of those bytes - this has already happened twice in this repo.
+  //
+  // A blanket "files.encoding": "cp437" would protect those but corrupt
+  // D151803-9651.asm and D151803-9661.asm under Claude/, which have since been
+  // converted to real UTF-8. VS Code sets encoding per-language, not per-path,
+  // and both sets are the same language - so no single setting is correct for
+  // both. Check the encoding indicator in the status bar before saving an
+  // .ASM, and use "Reopen with Encoding" if it is wrong. See CLAUDE.md.
+}

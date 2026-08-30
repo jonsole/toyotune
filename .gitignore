@@ -5,8 +5,14 @@ output/
 __pycache__/
 *.pyc
 
-# Editor config
+# Editor config. Nested .vscode dirs stay ignored - they hold machine-specific
+# paths from other machines. Only the repo-root shared config is tracked, so a
+# workspace opened at the repo root can find the CMake project under hw/.
 .vscode/
+!/.vscode/
+/.vscode/*
+!/.vscode/settings.json
+!/.vscode/extensions.json
 
 # Profiler output
 *.prof
@@ -63,3 +69,12 @@ Release/
 *.exc
 *.dri
 *.gpi
+
+# CMake/Ninja out-of-tree build output and the IntelliSense database it emits
+build/
+compile_commands.json
+CMakeUserPresets.json
+
+# Unzipped device packs (SAMC21 DFP, CMSIS) - ~108MB of third-party headers,
+# freely re-downloadable from packs.download.microchip.com. See INSTALL.md.
+/hw/toyotune_lv_2p1/sw/packs/

@@ -1,0 +1,56 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+
+        "ARM_TOOLCHAIN_DIR": ""
+      }
+    },
+
+    {
+      "name": "cpu1-debug",
+      "displayName": "CPU1 (Debug)",
+      "description": "D151804-0461 / D151803-9651, -O0 -g3",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TOYOTUNE_CPU": "1"
+      }
+    },
+    {
+      "name": "cpu1-release",
+      "displayName": "CPU1 (Release)",
+      "description": "D151804-0461 / D151803-9651, -Os",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "TOYOTUNE_CPU": "1"
+      }
+    },
+    {
+      "name": "cpu2-debug",
+      "displayName": "CPU2 (Debug) - not yet implemented",
+      "description": "Expected to fail: config.h raises #error until CPU2's ROM image and DMA layout exist",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TOYOTUNE_CPU": "2"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    { "name": "cpu1-debug",   "configurePreset": "cpu1-debug" },
+    { "name": "cpu1-release", "configurePreset": "cpu1-release" },
+    { "name": "cpu2-debug",   "configurePreset": "cpu2-debug" }
+  ]
+}
