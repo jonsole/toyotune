@@ -2,14 +2,14 @@
 
 **Toyota part 89861-17460 · Denso `D151803-9651` + `D151803-9661` · JDM SW20 MR2, 1993–94**
 
-This is the front door to the rest of `roms/docs/`. It describes what the ECU
-is, how it is put together, and which parts are worth a second look. The
-per-subsystem write-ups go deeper; this one is meant to be read start to
-finish, and every section ends with a pointer into them.
+This is the front door to the Gen 3 documentation in this directory. It
+describes what the ECU is, how it is put together, and which parts are worth
+a second look. The per-subsystem write-ups go deeper; this one is meant to be
+read start to finish, and every section ends with a pointer into them.
 
 Code shown here is quoted from the annotated working copies —
-`roms/3S-GTE/D151803-9651/Claude/D151803-9651.asm` (CPU1) and
-`.../D151803-9661/Claude/D151803-9661.asm` (CPU2). Symbol names are stable;
+`../D151803-9651/Claude/D151803-9651.asm` (CPU1) and
+`../D151803-9661/Claude/D151803-9661.asm` (CPU2). Symbol names are stable;
 line numbers are not, so search by label.
 
 ---
@@ -168,7 +168,7 @@ group.
 
 > → `ignition_system.md` § *Timing Units* and § *`iv6_ne_process`*;
 > `adc_system.md` § *ADC Channel Map* and § *Scan Phases*;
-> `toshiba-8x-technical-reference.md` for the ASR0 asymmetry.
+> `../../docs/toshiba-8x-technical-reference.md` for the ASR0 asymmetry.
 
 ---
 
@@ -418,7 +418,7 @@ opposite of `ld`/`st`. `mov x, d` means `D = X`, and the scale factors in
 
 > → `fuel_calculation_system.md` § *Critical: `mov` operand direction* and
 > § *Critical: the `var_flags_4E` / `var_trim_state` alias`*;
-> `toshiba-8x-technical-reference.md` § *`tbs` instruction*.
+> `../../docs/toshiba-8x-technical-reference.md` § *`tbs` instruction*.
 
 ---
 
@@ -467,16 +467,26 @@ starting new work.
 
 ## Where to go next
 
+In this directory:
+
 | Document | Covers |
 |---|---|
-| `fuel_calculation_system.md` | Pulse-width chain, the trims, DMA load terms, the `mov` and aliasing traps |
-| `ignition_system.md` | CPR scheduling, dwell, advance blending, misfire detection |
-| `knock_sensor_system.md` | Knock MCU protocol, per-cylinder retard, the abs() idiom |
-| `idle_control_system.md` | ISCV target calculation, fixed-opening override, idle trim |
-| `adc_system.md` | Channel map, scan phases, sensor scaling, counter tick rates |
-| `toshiba-8x-technical-reference.md` | Instruction set, opcode matrix, registers, ASR0 asymmetry |
-| `knock_mcu_update.ASM` | A fully-annotated routine kept as the annotation-style reference |
-| `session_journal.md` | Chronological log, pending work, and corrections to earlier claims |
+| [fuel_calculation_system.md](fuel_calculation_system.md) | Pulse-width chain, the trims, DMA load terms, the `mov` and aliasing traps |
+| [ignition_system.md](ignition_system.md) | CPR scheduling, dwell, advance blending, misfire detection |
+| [knock_sensor_system.md](knock_sensor_system.md) | Knock MCU protocol, per-cylinder retard, the abs() idiom |
+| [idle_control_system.md](idle_control_system.md) | ISCV target calculation, fixed-opening override, idle trim |
+| [adc_system.md](adc_system.md) | Channel map, scan phases, sensor scaling, counter tick rates |
+| [knock_mcu_update.ASM](knock_mcu_update.ASM) | A fully-annotated routine kept as the annotation-style reference |
+| [session_journal.md](session_journal.md) | Chronological log and pending work |
+
+The MCU itself is documented repo-wide, since every engine family here uses
+the same core:
+
+| Document | Covers |
+|---|---|
+| [toshiba-8x-technical-reference.md](../../docs/toshiba-8x-technical-reference.md) | Instruction set, opcode matrix, registers, ASR0 asymmetry |
+| [toshiba-8x-reference-part1.md](../../docs/toshiba-8x-reference-part1.md) | Extended reference material |
+| [toshiba-8x-reference-part2-appendix.md](../../docs/toshiba-8x-reference-part2-appendix.md) | Appendix |
 
 ---
 

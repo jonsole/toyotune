@@ -15,7 +15,7 @@ address column of the .lst file instead, so a single genuine edit shows up
 as exactly one edit region, and everything downstream that merely shifted
 in address is correctly treated as unchanged.
 
-See docs/session_journal.md for the incident this was built to diagnose:
+See 3S-GTE/gen3/session_journal.md for the incident this was built to diagnose:
 a stray extra `ret` in divide_rD_2_saturate that broke an intentional
 fall-through into clamp_rD_FF.
 """
