@@ -6,6 +6,7 @@
  */ 
 #include "sercom.h"
 #include "pio.h"
+#include "clk.h"
 
 void SERCOM_EnableClock(uint8_t Instance)
 {

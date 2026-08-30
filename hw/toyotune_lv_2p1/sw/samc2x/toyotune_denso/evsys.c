@@ -6,6 +6,7 @@
  */ 
 
 #include "evsys.h"
+#include "clk.h"
 
 void EVSYS_Init(void)
 {
