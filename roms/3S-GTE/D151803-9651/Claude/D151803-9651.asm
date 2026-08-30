@@ -3874,7 +3874,7 @@ table_rpm_unk_C214:		.db 12h				; DATA XREF: divide_d_by_x+934↓o
 				.db 66h, 00h
 
 
-table_unk_c229:			.dw 0A05h, 0A05h		; DATA XREF: divide_d_by_x:loc_CF78↓o
+table_lambda_step:			.dw 0A05h, 0A05h		; DATA XREF: divide_d_by_x:loc_CF78↓o
 								; divide_d_by_x+A4B↓o
 
 
@@ -3918,7 +3918,7 @@ table_inj_phase_trim:			.db  0Dh			; DATA XREF: calc_inj_phase_lead+16↓o
 				.db  0Dh
 
 
-table_battery_unk_C267:		.db 08h				; DATA XREF: calc_4ms_corrections:loc_EA2D↓o
+table_dwell_battery:		.db 08h				; DATA XREF: calc_4ms_corrections:loc_EA2D↓o
 				.db 80h, 0FFh
 				.db 9Ah, 0D7h
 				.db 0B3h, 0BBh
@@ -3926,7 +3926,7 @@ table_battery_unk_C267:		.db 08h				; DATA XREF: calc_4ms_corrections:loc_EA2D�
 				.db 0E6h, 8Fh
 
 
-table_rpm_unk_C272:		.db 08h				; DATA XREF: calc_4ms_corrections+16↓o
+table_dwell_rpm:		.db 08h				; DATA XREF: calc_4ms_corrections+16↓o
 				.db 0Ah, 0FFh
 				.db 20h, 0CBh
 				.db 3Ch, 0A1h
@@ -3934,7 +3934,7 @@ table_rpm_unk_C272:		.db 08h				; DATA XREF: calc_4ms_corrections+16↓o
 				.db 0A0h, 7Eh
 
 
-table_rpm_unk_C27D:		.db 04h				; DATA XREF: calc_4ms_corrections+24↓o
+table_dwell_min_rpm:		.db 04h				; DATA XREF: calc_4ms_corrections+24↓o
 				.db 28h, 0FAh
 				.db 50h, 7Dh
 				.db 0A0h, 5Eh
@@ -7959,6 +7959,25 @@ loc_CE80:							; CODE XREF: divide_d_by_x:loc_CE7B↑j
 loc_CE8A:							; CODE XREF: divide_d_by_x+8E8↑j
 				clrb	bit3, var_flags_4E
 
+; ---------------------------------------------------------------------------
+; Overrun (decel) fuel-cut entry conditions - a straight chain of gates, all
+; of which must pass. Two exits: loc_CECA is the reject path, loc_CECD the
+; accept path.
+;
+; Rejected unless ALL of:
+;   starter not running          (var_io_input1.0 clear)
+;   RPM above the cranking band  (var_flags_46.0 clear)
+;   var_flags_4E.2 set           (ECT above ~75C)
+;   throttle-closed debounce met (var_flags_46.2 clear here)
+;   road speed >= 0x19 (25 kph)
+;   var_limiter_flags == 10011111b exactly - note this is an equality test
+;     on the whole byte, not a bit test, so ANY other limiter state blocks
+;     overrun cut
+;
+; Then a second group of thresholds decides between the two accept paths:
+; road speed vs 0xFA, RPM vs 0x2C, var_tps_delta vs 0xF6 (signed, i.e. a
+; closing throttle), var_tps vs 0x48, and dmatx_pim vs 0x61.
+; ---------------------------------------------------------------------------
 loc_CE8C:							; CODE XREF: divide_d_by_x+8ED↑j
 				clr	b
 				tbbs	bit0, var_io_input1, loc_CECA ;	Jump if	STA high (starter running)
@@ -8138,7 +8157,7 @@ loc_CF74:							; CODE XREF: divide_d_by_x+9D2↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_CF78:							; CODE XREF: divide_d_by_x+9C7↑j
-				ld	y, #table_unk_c229
+				ld	y, #table_lambda_step
 				tbbc	bit3, var_flags_4F, loc_CF86
 
 				inc	y
@@ -8204,6 +8223,19 @@ loc_CFC0:							; CODE XREF: divide_d_by_x:loc_CFBA↑j
 
 				mov	b, a
 
+; ---------------------------------------------------------------------------
+; LAMBDA STEP SELECTION - picks the size of the next closed-loop correction.
+;
+; Sets var_flags_4F.3, then (unless var_temp_b already holds 0x10) advances
+; the housekeeping: check_cnt_187_window and update_lambda_avg, and marks
+; var_flags_4E_copy2 bit 0.
+;
+; The step itself comes from table_lambda_step, read into var_lambda_step
+; five bytes at a time. The sign of var_temp_w selects WHICH set of five -
+; the pointer is incremented past the first group when the value is
+; negative - so rich and lean get different step schedules, which is what
+; makes the closed-loop response asymmetric.
+; ---------------------------------------------------------------------------
 loc_CFC9:							; CODE XREF: divide_d_by_x+A2B↑j
 				st	a, var_temp_7B
 				setb	bit3, var_flags_4F
@@ -8221,7 +8253,7 @@ loc_CFC9:							; CODE XREF: divide_d_by_x+A2B↑j
 				clr	var_temp_7B
 				tbbc	bit4, var_flags_4F, loc_D026
 
-				ld	x, #table_unk_c229
+				ld	x, #table_lambda_step
 				ld	y, #var_lambda_step
 				ld	b, #05h
 				ld	a, var_temp_w
@@ -10481,6 +10513,20 @@ loc_D8D5:							; CODE XREF: calc_iscv:loc_D8CB↑j
 				ld	b, y + 00h
 				shl	d
 
+; ---------------------------------------------------------------------------
+; calc_iscv's FINAL SUMMATION - where the separate flare/ramp/compensation
+; terms are combined into one ISC figure.
+;
+; The contributions are weighted by shifting rather than multiplying:
+; var_iscv_ect_unk_191 is shifted left twice (x4), var_iscv_pim_flare is
+; added and the running total shifted again (x2), then var_temp_w is added
+; back and the result halved. var_iscv_unk_19F is added separately and a
+; fixed 0x0050 subtracted.
+;
+; ECT then gates the tail: above 0xE4 one path, below 0xDF another, with
+; var_flags_4E.3 selecting between them in the band - so the final blend
+; differs between a warm and a warming engine.
+; ---------------------------------------------------------------------------
 loc_D8D8:							; CODE XREF: calc_iscv+3F8↑j
 				add	d, var_temp_w
 				st	d, var_temp_w
@@ -13332,6 +13378,17 @@ loc_E31C:							; CODE XREF: factory_self_test+1F5↑j
 
 				ld	a, dmarx_rpm_x_5p12
 
+; ---------------------------------------------------------------------------
+; factory_self_test's SENSOR-SELECT ladder. B carries a selector byte and
+; this is a threshold chain - 0x92, 0xA9, 0xBC, 0xCB, 0xDC, 0xEA ... - each
+; rung loading a different reading into A before falling out at loc_E35D:
+; var_tps_raw, var_adc_o2_heater, a fixed 0xB8, var_speed_kph,
+; var_adc_o2_sensor, var_tham and so on.
+;
+; So the self-test can stream out any sensor on request rather than a fixed
+; set - which is what a production-line tester needs. The selector's own
+; source is part of that mode's protocol and is not traced.
+; ---------------------------------------------------------------------------
 loc_E328:							; CODE XREF: factory_self_test+20D↑j
 				cmp	b, #92h
 				bcs	loc_E35D
@@ -15285,21 +15342,38 @@ calc_4ms_corrections:							; CODE XREF: divide_d_by_x:loc_D2D2↑p
 				clrb	bit4, var_ignition_flags
 				clrb	bit0, var_ignition_flags
 
+; ---------------------------------------------------------------------------
+; IGNITION DWELL calculation - the head of calc_4ms_corrections.
+;
+;   var_ign_dwell_offset = table_dwell_battery(var_adc_battery)
+;                          * table_dwell_rpm(RPM) / 32
+;   var_ign_dwell_min    = table_dwell_min_rpm(RPM)
+;
+; Dwell is compensated for BOTH battery voltage and engine speed, which is
+; the expected shape: a weaker battery charges the coil more slowly and so
+; needs longer dwell, and the available window shrinks with RPM. Remember
+; var_adc_battery runs INVERSELY to voltage (see its declaration), so a
+; larger ADC byte means a lower supply.
+;
+; It then restores var_flags_4E from var_flags_4E_saved and takes a third
+; lookup, table_unk_C2F2 indexed by var_rpm_div_25, into var_temp_7A for the
+; correction stages that follow.
+; ---------------------------------------------------------------------------
 loc_EA2D:							; CODE XREF: calc_4ms_corrections+3↑j
-				ld	y, #table_battery_unk_C267
+				ld	y, #table_dwell_battery
 				ld	a, var_adc_battery
 				clr	b
 				jsr	table_pair_interpolate
 
 				st	a, var_temp_w
-				ld	y, #table_rpm_unk_C272
+				ld	y, #table_dwell_rpm
 				jsr	table_rpm_pair_interpolate
 
 				mul	a, var_temp_w
 				jsr	divide_rD_32
 
 				st	d, var_ign_dwell_offset
-				ld	y, #table_rpm_unk_C27D
+				ld	y, #table_dwell_min_rpm
 				jsr	table_rpm_pair_interpolate
 
 				st	a, var_ign_dwell_min
@@ -16096,6 +16170,23 @@ loc_ED85:							; CODE XREF: calc_4ms_corrections+34E↑j
 				clr	b
 				ld	y, #var_cyl_rough_cnt
 
+; ---------------------------------------------------------------------------
+; MISFIRE DETECTION - compares one cylinder's roughness count against the
+; average of all four.
+;
+; The loop sums the whole var_cyl_rough_cnt array (walking to
+; #diag_code_delay, its upper bound) and divides by 4, so var_temp_b holds
+; the MEAN roughness across the cylinders.
+;
+; It then selects one cylinder with ((var_ne_count >> 4) + 2) & 3 - the
+; cylinder field of the NE counter, offset by two firing events, which is
+; the cylinder whose combustion corresponds to the crank interval just
+; measured - and forms (var_temp_w + that cylinder's count) - mean.
+;
+; A cylinder materially worse than the mean is the misfire signal. Using the
+; mean rather than a fixed threshold makes the test self-calibrating: it
+; detects one BAD cylinder, not a generally rough engine.
+; ---------------------------------------------------------------------------
 loc_ED91:							; CODE XREF: calc_4ms_corrections+377↓j
 				add	b, y + 00h
 				addc	a, #00h
@@ -17569,6 +17660,24 @@ bg_ne_process_F2C6:						; CODE XREF: iv6_ne_process+242↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
+; ---------------------------------------------------------------------------
+; The SEQUENTIAL injection dispatcher - fires one injector per crank event,
+; round-robin, when the crank reaches that injector's scheduled position.
+;
+; Entry checks, all of which skip the fire:
+;   var_inj_sched_ne > 0x35            schedule out of range
+;   (var_inj_sched_ne & 0x0F) > 5      position field out of range
+;   var_inj_sched_ne != va_ne_count_2  not this injector's crank position yet
+;
+; When it does fire, the cylinder index is var_inj_active & 3, used to index
+; BOTH table_injector_control (the port/bit for that injector) and
+; var_inj_pw_inj1 (stepped by 2 because the pulse widths are words). The PW
+; goes to injector_update, then var_inj_active advances mod 4 - so the four
+; injectors are driven in strict rotation rather than being selected by
+; cylinder identity.
+;
+; The tail then derives the NEXT schedule from var_inj_pw_next.
+; ---------------------------------------------------------------------------
 bg_ne_process_F2D2:						; CODE XREF: iv6_ne_process+223↑j
 				ld	b, var_inj_sched_ne
 				mov	b, a
@@ -19403,6 +19512,10 @@ loc_F929:							; CODE XREF: copy_dma_tx+2↑j
 
 				ld	a, #00h
 
+; The straight-line marshalling body of copy_dma_tx - each field is loaded
+; from its source variable and stored to its dmatx_ slot. See that
+; function's header for which fields are substituted when the trims are not
+; valid, and for the packed dmatx_flags_1 byte built at the tail.
 loc_F933:							; CODE XREF: copy_dma_tx+C↑j
 				st	a, dmatx_nv_trim_o2
 				ld	a, var_cnt_startup

@@ -1754,6 +1754,41 @@ Where the remaining dark blocks cluster: `bg_ne_process_F2D2`, `loc_CE8C`,
 purpose mostly gate into exactly these blocks, which is why they resisted the
 purpose pass.
 
+### Dark-block pass: the eight largest are now documented
+
+Following the calibration above, the largest unexplained basic blocks have
+headers. Coverage moved from **48% to 46%** of instructions in
+no-header/no-inline regions - a small number, because these blocks are small;
+the point is that the *biggest* unexplained ones are gone and several turned
+out to matter.
+
+| block | what it turned out to be |
+|---|---|
+| `bg_ne_process_F2D2` | the **sequential injection dispatcher** - fires one injector per crank event in strict rotation via `var_inj_active & 3`, not by cylinder identity |
+| `loc_ED91` | **misfire detection** - sums `var_cyl_rough_cnt`, divides by 4, and compares ONE cylinder (offset two firing events) against that mean |
+| `loc_EA2D` | the **ignition dwell calculation** at the head of `calc_4ms_corrections` |
+| `loc_CE8C` | the **overrun fuel-cut** entry-condition chain |
+| `loc_CFC9` | **lambda step selection** - rich and lean read different halves of the step table |
+| `loc_D8D8` | `calc_iscv`'s **final summation**, weighting terms by shifts |
+| `loc_E328` | `factory_self_test`'s **sensor-select ladder** |
+| `loc_F933` | `copy_dma_tx`'s marshalling body (covered by that function's header) |
+
+**Two are worth calling out.** `loc_ED91` compares a cylinder against the
+*mean* of all four rather than a fixed threshold, which makes misfire
+detection self-calibrating - it finds one bad cylinder, not a generally rough
+engine. And `loc_EA2D` shows dwell is compensated for **both** battery
+voltage and RPM, which is the expected shape once you remember
+`var_adc_battery` runs inversely to voltage.
+
+**Tables named as a side effect:** `table_dwell_battery`, `table_dwell_rpm`,
+`table_dwell_min_rpm`, `table_lambda_step`.
+
+**A note on the metric.** The "instruction lines with an explanatory comment
+nearby" figure did not move (38% before and after) because it only counts
+comments within three lines of an instruction, and this pass added *header*
+prose. The metric measures inline density, not understanding. The
+no-header/no-inline region figure is the better one, and that is what moved.
+
 ---
 
 ## Pending work (next targets)
