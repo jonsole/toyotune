@@ -526,6 +526,7 @@ var_enrich_flags:		.block 1			; CA29↓r ...
 								;   file.
 								;
 var_rpm_div_25:			.block 1			; C985↓w ...
+								; Engine speed / 25, the coarser RPM index.
 ; var_rpm_deviation_51: written by update_rpm_smooth_filter, but only ever read
 ; externally via serial_debug_check's generic RAM-word debug protocol
 ; (see its header comment) - not dead code, just not consumed by any
@@ -785,12 +786,27 @@ var_cnt_C2:			.block 1
 								; Its increments never mention this symbol, so a
 								; per-symbol search finds only the clears.
 var_rpm_x_5p12:			.block 2			; C615↓r ...
+								; Engine speed x 5.12 - the same scaling CPU1
+								; uses, and the index for every table_*_rpm lookup
+								; in this ROM.
 								; RPM
 dmarx_pim2:			.block 2			; loc_CA31↓r ...
+								; Manifold pressure from CPU1, ABSOLUTE with zero
+								; at hard vacuum - NOT zero at atmospheric.
+								; Atmospheric is about 0x6443 and the boost-cut
+								; point 0xDA00 is +17.5 psi. See var_pim2 in CPU1
+								; for the full derivation.
 								; DMARX00: Normalized PIM reading
 dmarx_tps:			.block 2			; CA83↓r ...
+								; Throttle position from CPU1, 16-bit. CPU1 forces
+								; it to 0x0000 on a sensor fault, so zero here
+								; means FAULT rather than closed throttle.
 								; DMARX02: TPS
 dmarx_ect:			.block 2			; C611↓r ...
+								; Engine coolant temperature from CPU1. Also
+								; inverted relative to raw sensor voltage, so
+								; higher = hotter. The table_rb_fixed_*_ect_interp
+								; wrappers load this variable themselves.
 								; DMARX04: ECT
 dmarx_inj_pw_inj1:		.block 2			; D05F↓r
 								; = CPU1's var_inj_pw_inj1 (injector 1 pulse
@@ -798,12 +814,28 @@ dmarx_inj_pw_inj1:		.block 2			; D05F↓r
 								; 0x206, offset 0x13B).
 								; DMARX06:
 dmarx_pim:			.block 2			; CC56↓r ...
+								; The TRANSIENT-COMPENSATED manifold pressure -
+								; CPU1's calc_dmatx_pim output, not the raw sensor
+								; value. It is var_pim2 plus a lead/lag correction
+								; that anticipates manifold filling during
+								; throttle transients, so it leads dmarx_pim2 on
+								; tip-in.
 								; DMARX08:
 dmarx_tha:			.block 1			; CB1F↓r ...
+								; Intake air temperature from CPU1 - **INVERTED**.
+								; CPU1's adc_handler_tha stores B XOR 0xFF because
+								; the NTC gives high voltage when cold, so in this
+								; variable HIGH = HOT. Every threshold compare
+								; against it must be read that way.
 								; DMARX0A:
 dmarx_tham:			.block 1			; CD8C↓r ...
+								; Manifold air temperature - **INVERTED**, exactly
+								; as dmarx_tha above.
 								; DMARX0B:
 dmarx_battery:			.block 1			; D040↓r ...
+								; Raw battery ADC byte from CPU1, and INVERSELY
+								; related to voltage - 13.92V is 0x1E and 16.40V
+								; is 0x11, so a LOWER byte means a HIGHER supply.
 								; DMARX0C:
 dmarx_nv_trim_pim:		.block 1
 								; = CPU1's var_nv_trim_unk_98, its learned
@@ -913,15 +945,35 @@ dmarx_nv_trim_o2:		.block 1			; CB94↓r
 								; multiplier.
 								;
 dmarx_lambda_state:			.block 1			; C9BE↓r ...
+								; CPU1's O2 loop state byte, 0x80 neutral. Forced
+								; to 0x80 when fuel cut engages and 0x66 on the
+								; overrun path.
 dmarx_adc_lambda:		.block 1			; loc_D0E2↓r ...
+								; Raw O2 sensor reading from CPU1, signed.
 dmarx_knock_info:		.block 3			; CF43↓r ...
+								; CPU1's 3-byte knock info block
+								; (nv_table_knock_info), copied verbatim across
+								; the link.
 dmarx_add_enrichment_DB:			.block 1			; loc_D0D3↓r
 dmarx_obd_inj:			.block 1			; table_odb↓o
+								; OBD injection snapshot from CPU1 - one of the
+								; addresses table_odb serializes onto the
+								; diagnostic stream.
 dmarx_obd_ign:			.block 1			; table_odb↓o
+								; OBD ignition snapshot from CPU1 - serialized via
+								; table_odb.
 dmarx_obd_iscv:			.block 1			; table_odb↓o
+								; OBD ISCV snapshot from CPU1 - serialized via
+								; table_odb.
 dmarx_obd_o2_sensor:		.block 1			; table_odb↓o ...
+								; OBD O2 snapshot from CPU1 - serialized via
+								; table_odb.
 dmarx_knock:			.block 1			; CA10↓r
+								; CPU1's knock level; indexes
+								; table_knock_enrichment here to give
+								; var_knock_enrichment.
 dmarx_dout0_duty_E1:			.block 2			; CE79↓r
+								; CPU1's DOUT0 duty value.
 var_spd_edge_count:		.block 1			; D580↓o ...
 								; Count	of speed signal	edges
 				.block 1
@@ -942,6 +994,9 @@ var_ne_sum:			.block 2			; calc_rpm↓r ...
 var_asr2_count:			.block 2			; D408↓w
 var_asr2_count2:		.block 2			; D429↓r ...
 var_map_ve:			.block 1			; CC69↓w ...
+								; The volumetric-efficiency value read out of
+								; map_c006_ve - the primary fuel-map result this
+								; MCU exists to produce.
 var_warmup_enrichment_FD:	.block 1			; CB07↓w ...
 var_enrichment_unk_FE:		.block 1			; loc_CB4D↓w ...
 				.block 1
@@ -968,6 +1023,9 @@ var_knock_unk_112:			.block 1			; CE3D↓w
 var_vf:				.block 1			; D1BE↓w ...
 								; VF signal (0 to 11), converted externally to analogue	voltage
 var_max_retard_unk:		.block 1			; CD73↓w ...
+								; Maximum permitted knock retard from
+								; map_max_knock_retard_C546; sent to CPU1 as
+								; dmatx_max_retard_161.
 var_unk_115:			.block 1			; drive_DOUT0↓r	...
 var_tvsv_cnt:			.block 1			; drive_DOUT2_tvsv↓r ...
 var_tvsv_117:			.block 1			; CFCF↓r ...
@@ -1014,6 +1072,13 @@ var_odb_shift_reg:		.block 1			; D105↓r ...
 				.block 1
 var_odb_byte_count:		.block 1			; C8B1↓w ...
 var_asr0n_shadow_126:			.block 1			; C8A6↓w ...
+								; Software shadow of the ASR0N register. ASR0
+								; write configures the DMA engine while ASR0 read
+								; returns the latched I/O-transition timer value,
+								; so the register cannot be read-modify-written
+								; and this copy of what was last written is
+								; required. See the ASR0 note in
+								; docs/toshiba-8x-technical-reference.md.
 var_serbus_rx:			.block 23h			; C839↓t ...
 dmarx_flags1:			.block 1			; D222↓r ...
 dmarx_flags2:			.block 1			; D1FB↓r ...
@@ -1022,6 +1087,9 @@ dmatx_ve_corr_map:	.block 2			; C83E↓t ...
 dmatx_ve_corr_map_tps:			.block 2			; loc_CE67↓w
 dmatx_ve_x_pim_x_rpm:			.block 2			; loc_CCA0↓w
 dmatx_scaled_ve:		.block 2			; CC76↓w
+								; The scaled VE value sent to CPU1, where it
+								; enters calc_inj_pw_base as the base of the
+								; injector pulse-width chain.
 dmatx_rpm_x_5p12:		.block 2			; C97F↓w
 dmatx_warmup_enrichment_157:	.block 1			; CB09↓w
 dmatx_enrichment_unk_158:			.block 1			; CB29↓w ...
@@ -1038,8 +1106,13 @@ dmatx_unk_15F:			.block 1			; CE39↓w
 								; CPU1's corresponding address not checked.
 dmatx_knock_unk_160:		.block 1			; CE40↓w
 dmatx_max_retard_161:		.block 1			; CD76↓w
+								; Maximum knock retard, from var_max_retard_unk.
+								; CPU1 receives it as dmarx_max_retard_23B_161.
 dmatx_lambda_trim_162:			.block 1			; loc_CCDA↓w
 dmatx_ign_timing:		.block 1			; loc_CD27↓w
+								; Primary ignition timing sent to CPU1, selected
+								; there against dmatx_ign_timing_fallback1 by
+								; update_ign_timing_blend.
 dmatx_ign_timing_fallback1:	.block 1			; CC04↓w
 								; = CPU1's dmarx_ign_timing_fallback1 (0xDA offset formula,
 								; exact byte match). table_ign_rpm1(RPM). Used by CPU1's
@@ -1051,6 +1124,9 @@ dmatx_ign_timing_fallback2:	.block 1			; CC0F↓w
 								; as fallback1 above, substituted for dmatx_ign_timing_unk_166
 								; in sub_E865. Was dmatx_ign_timing_unk_165.
 dmatx_ign_timing_unk_166:	.block 1			; CC35↓w
+								; Secondary ignition timing value; CPU1 chooses
+								; between this and dmatx_ign_timing_fallback2
+								; using its clamp-direction flag.
 dmatx_unk_167:			.block 1			; CC50↓w
 								; = CPU1's dmarx_unk_241_167 (0xDA offset,
 								; exact match) - the CPU1 name is equally
@@ -1478,7 +1554,11 @@ word_16F:			.block 2
 				.block 1
 				.block 1
 stack_top:			.block 1			; C8D6↓o
+								; Top of the stack - the initial SP value, not a
+								; variable.
 ram_end:			.block 1			; D271↓o ...
+								; End-of-RAM marker used as a loop bound, not a
+								; variable.
 				.block 1
 				.block 1
 				.block 1

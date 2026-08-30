@@ -1979,6 +1979,32 @@ That last row closes a loop from several passes back: CPU1 learns that trim
 very slowly under cruise, sends it across, and CPU2 spends it scaling
 warm-up enrichment. Both ends now say so.
 
+### CPU2 sensor/DMA variables: the receive side now states its own units
+
+The `dmarx_*` variables were the sharpest remaining gap. They ARE CPU1's
+sensor values arriving over the link, and CPU1's declarations had by this
+point acquired full scaling and polarity notes - but CPU2's copies carried
+none of it. Anyone reading CPU2 alone saw `dmarx_tha` with no hint that it is
+inverted.
+
+Those facts are now stated on the receive side too:
+
+| variable | the trap |
+|---|---|
+| `dmarx_tha`, `dmarx_tham`, `dmarx_ect` | **INVERTED** - stored as `B XOR 0xFF`, so HIGH = HOT |
+| `dmarx_battery` | **inverse to voltage** - 13.92V is 0x1E, 16.40V is 0x11 |
+| `dmarx_pim2` | **absolute**, zero at hard vacuum, not at atmospheric |
+| `dmarx_tps` | zero means **sensor fault**, not closed throttle |
+
+**`dmarx_pim` vs `dmarx_pim2` is worth separating explicitly**, because the
+names give no clue: `dmarx_pim2` is the raw measured pressure, while
+`dmarx_pim` is `calc_dmatx_pim`'s **transient-compensated** output - raw plus
+a lead/lag correction that anticipates manifold filling, so it *leads* the
+raw value on tip-in. Using the wrong one would be a subtle fuelling error.
+
+Variable coverage now: **CPU1 73%, CPU2 68%**. The remainder is dominated by
+names that already document themselves.
+
 ---
 
 ## Pending work (next targets)
