@@ -372,7 +372,7 @@ proximity to real knock code - `set_knock_sensor_err_flag`/
 (see their own header comment and session_journal.md's architecture notes),
 and `update_ign_timing_blend` uses that bit purely as its own local "did the clamped
 PIM-baseline value drop since last tick" signal. The middle blend's exact
-arithmetic (the `mul`/`mult_rDrX`/`mov` sequence around `table_C163`) wasn't
+arithmetic (the `mul`/`mult_rDrX`/`mov` sequence around `table_ign_blend_weight`) wasn't
 fully re-derived with confidence and is still open CPU1 work.
 
 So this calculation is confirmed to be a **speed-density base fuel
@@ -770,9 +770,9 @@ only adapt once the fast and slow pressure estimates reconverge.
 | `unk_1C6` | The final per-call output register of `ramp_limit_inj_pw` - ends up holding the ceiling (`unk_1C8`) on the `loc_DBF1` path, or the candidate/blend value on the `loc_DC24`/`loc_DC35` paths |
 | `unk_1C8` | A PIM/MAP-pressure-linked bound compared against PW-scale values in `ramp_limit_inj_pw`. Producer partially traced to `loc_E665` (~`E620`-`E6B0`), which folds `var_pim2`-derived `dmatx_pim` into it - the rest of that computation isn't traced (see Open Questions) |
 | `var_cnt_6A` | Reset by `calc_inj_pw_base`'s entry gate; consumer not traced this session |
-| `dmarx_word_226` | CPU2's MAP-only VE/fuel correction table (`table_map_unk_C53D`, indexed by MAP) |
-| `dmarx_word_228` | CPU2's MAP+TPS bilinear VE correction (`map_map_tps_C51F`), zeroed during idle debounce |
-| `dmarx_word_22A` | CPU2's VE×MAP×RPM speed-density load term (`var_ve_x_pim_x_rpm_unk_10C`, saturated) |
+| `dmarx_word_226` | CPU2's MAP-only VE/fuel correction table (`table_ve_corr_map`, indexed by MAP) |
+| `dmarx_word_228` | CPU2's MAP+TPS bilinear VE correction (`map_ve_corr_map_tps`), zeroed during idle debounce |
+| `dmarx_word_22A` | CPU2's VE×MAP×RPM speed-density load term (`var_ve_x_pim_x_rpm`, saturated) |
 | `var_trim_state` | Persistent trim-state value; aliased into `var_flags_4E` for a large span of the main loop (see above) |
 
 ---

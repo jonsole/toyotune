@@ -419,7 +419,7 @@ hist2 <- hist1 <- hist0 <- new
 ```
 
 The init path seeds all three to the *same* PIM-table baseline
-(`table_pim_unk_C154(dmatx_pim)/2`), which is how you start a delay line so
+(`table_pim_blend_seed(dmatx_pim)/2`), which is how you start a delay line so
 it emits no false derivative on the first tick. Differences taken across
 those stages are what make this a rate-of-change structure — the same idiom
 as `calc_dmatx_pim`'s filter pair and `calc_iscv`'s smoothed-RPM pair.
@@ -443,7 +443,7 @@ term = (256 - timing) * |clamp excursion| / 512
 `var_ign_blend_accum` accumulates the term with **signed** saturation: on
 overflow it loads `0x7FFF`, then if the sign flag is set an `inc a`/`inc b`
 carries that to `0x8000`, i.e. −32768. Its *sign* later selects
-`table_rpm_C168` vs `table_rpm_C172`.
+`table_ign_rpm_pos` vs `table_ign_rpm_neg`.
 
 ### The crossfade and the output
 

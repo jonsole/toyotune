@@ -57,7 +57,7 @@ Idle position is adaptively trimmed and persisted the same way AFR trim is
 (see `nv_afr_trim_base` in the ignition/fuel docs): a running `var_idle_trim`
 value is nudged toward a target and written back to NV RAM
 (`var_nv_idle_trim`) via `write_rB_nv_ram` once the idle condition has held
-stable for long enough (`var_cnt_DD`/`var_cnt_DE`, ~368ms thresholds). If
+stable for long enough (`var_cnt_idle_trim_dwell`/`var_cnt_DE`, both 0x5C at 32ms = **~2.9s** - an earlier figure here said ~368ms, which assumed a 4ms tick). If
 `var_flags_42.0` (idle trim valid) is clear, a default of `0x66` is used
 instead of the NV value throughout.
 
@@ -83,11 +83,11 @@ RPM** (`var_iscv_target_rpm`, in `var_rpm_x_5p12` units):
 |---|---|
 | `var_iscv_startup_flare` | Decays -1/tick once the startup window (`var_cnt_startup` ≥ 0x3D ≈ 244ms) has passed; before that, held at whatever `max(ECT, THA)/16` was on entry |
 | `var_iscv_pim_flare` | Set from a PIM-indexed table on throttle lift-off/deceleration (`var_flags_4E.4`, gated on RPM > 2000, speed < 5kph, small RPM delta); decays -8/tick otherwise |
-| `unk_1A9` | Fixed at `0x300` during the startup window, then decays -4/tick |
-| `unk_1AB` | `0x200` for the first 15 ticks if CPU2 cold-enrichment (`dmarx_idle_enrich`) is active, else cleared once `var_cnt_EA` elapses |
-| `unk_1AD` | Ramps ±2/tick toward a load-dependent set-point (see below) |
+| `var_iscv_unk_1A9` | Fixed at `0x300` during the startup window, then decays -4/tick |
+| `var_iscv_unk_1AB` | `0x200` for the first 15 ticks if CPU2 cold-enrichment (`dmarx_idle_enrich`) is active, else cleared once `var_cnt_EA` elapses |
+| `var_iscv_unk_1AD` | Ramps ±2/tick toward a load-dependent set-point (see below) |
 
-`unk_1AD`'s set-point is selected from `byte_C372`/`byte_C374` based on
+`var_iscv_unk_1AD`'s set-point is selected from `byte_C372`/`byte_C374` based on
 `var_flags_4F.1`, further offset via `inc_rX_if` (gated on `var_flags_4F`
 bits 2/3). **Hypothesis (unconfirmed):** `var_flags_4F` bits 1-4 consolidate
 debounced Air-Con (`var_diag_errors_5.5`) and PS/IDUP (`var_io_input2.3`)
@@ -119,7 +119,7 @@ downstream.
 
 `var_iscv_target_base` is the persistent baseline duty level. Two paths:
 
-- **At stable idle** (`var_cnt_DB` elapsed, idle flag set, no fault flag):
+- **At stable idle** (`var_cnt_iscv_table_dwell` elapsed, idle flag set, no fault flag):
   search `table_iscv_rpm_C357` for the band containing `var_iscv_rpm_cmp_197`
   (ascending linear scan, 5-byte-stride entries — a step value at `entry+5`),
   add the step to the *current* `var_iscv_target_base`, bias-center by
@@ -155,11 +155,11 @@ mechanical trace; flagged as an open question below.
 
 ### Phase 4 — Idle trim learning
 
-Once idle has been stable long enough (`var_cnt_DD`/`var_cnt_DE`, ~368ms):
+Once idle has been stable long enough (`var_cnt_idle_trim_dwell`/`var_cnt_DE`, both 0x5C at 32ms = **~2.9s**):
 `var_idle_trim` is nudged via `idle_trim_limits` (min/max clamp table,
 `0x78`/`0x45`) and written back to NV RAM. Conditions gating the nudge
 include ECT, battery voltage, fuel/idle DMA trim state, and whether recent
-flare terms (`unk_1AB`, `var_iscv_startup_flare`) are still active — i.e.
+flare terms (`var_iscv_unk_1AB`, `var_iscv_startup_flare`) are still active — i.e.
 the trim is only allowed to adapt once the engine is warm, stable, and not
 mid-flare. `var_idle_trim_flags` appears to record which direction/validity state the
 last nudge left the system in, but wasn't fully traced.
@@ -248,7 +248,7 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 | `var_iscv_rpm_droop` | Stall-recovery/derivative-like term from RPM slope (Phase 5) |
 | `var_rpm_smoothed` | Low-pass filtered ("smoothed") RPM reference (Phase 5) |
 | `var_iscv_diag_term` | Diagnostic-linked accumulator from the `byte_C36C` threshold check (Phase 1), reused in Phase 3 |
-| `unk_1A9` | Post-start decaying flare term (Phase 1) |
+| `var_iscv_unk_1A9` | Post-start decaying flare term (Phase 1) |
 | `var_iscv_unk_1AB` | Cold/CPU2-enrichment-linked flare term (Phase 1) |
 | `var_iscv_unk_1AD` | AC/PS-load-dependent ramp term (Phase 1, hypothesis) |
 | `var_idle_trim_flags` | Idle trim nudge direction/validity state (Phase 4, not fully confirmed) |

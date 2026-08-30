@@ -190,7 +190,7 @@ On each NE cycle:
 
 ### `knock_retard_decay` — Called Every 4ms
 
-Decays `var_knock_retard` by 2 counts each 4ms period (allowing retard to recover when knock clears). If knock error flag is set, `nv_table_knock_info` is reset to `0x9A9A` (both bytes). Also computes `dmatx_ign_corr_cpu2` (the retard command sent to CPU2, at 0x216 - the doc previously called it `dmatx_unk_216` after its address) from the ECT-corrected retard value and `nv_table_knock_info`.
+Called every 4ms, but only ACTS once `var_cnt_knock_decay` reaches 0x40 - so `var_knock_retard` is reduced by 2 every **256ms**, not every 4ms, however often the function runs. If knock error flag is set, `nv_table_knock_info` is reset to `0x9A9A` (both bytes). Also computes `dmatx_ign_corr_cpu2` (the retard command sent to CPU2, at 0x216 - the doc previously called it `dmatx_unk_216` after its address) from the ECT-corrected retard value and `nv_table_knock_info`.
 
 ---
 
@@ -288,7 +288,7 @@ than removed.
 | `var_knock_cyl_idx` | RAM | Active cylinder group index (0..2), selected by RPM |
 | `var_cnt_knock_signal` | RAM | Count of consecutive knock signals (threshold = 3) |
 | `nv_table_knock_info[3]` | PRAM | Per-cylinder learned knock retard (persists over ignition off) |
-| `dmatx_knock_info[3]` | DMA TX | Copy of `nv_table_knock_info` sent to CPU2 every 4ms |
+| `dmatx_knock_retard_info[3]` | DMA TX | Copy of `nv_table_knock_info` sent to CPU2 every 4ms |
 | `dmarx_knock_retard_cpu2` | DMA RX | Knock retard contribution received from CPU2 |
 
 ---
@@ -321,7 +321,7 @@ nv_table_knock_info[3]  [PRAM]                    │
   │  (RPM-selected cylinder group)         (DOUT.2 pulse ~12µs)
   │  Persists over ignition off
   ▼
-dmatx_knock_info[3]  [DMA TX buffer]
+dmatx_knock_retard_info[3]  [DMA TX buffer]
   │  Sent to CPU2 every 4ms
   ▼
 CPU2 → ignition timing calculation → dmatx_ign_timing → back to CPU1

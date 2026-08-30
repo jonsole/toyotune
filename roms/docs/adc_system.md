@@ -160,7 +160,7 @@ and would not run.
 
 **PIM trim (PRAM):** `var_nv_trim_unk_98` is a calibration trim stored in battery-backed PRAM. It is updated during stable idle conditions and used to adjust the MAP reading.
 
-**Boost pressure index:** `unk_144 = var_pim2 / 2 / 97` — used as a lookup index in `check_boost_limit`.
+**Boost pressure index:** `var_pim_trim_scale = var_pim2 / 2 / 97` — used as a lookup index in `check_boost_limit`.
 
 **Outputs:** `var_pim2` (local), `dmatx_pim2` (→ CPU2), calls `check_boost_limit`
 
