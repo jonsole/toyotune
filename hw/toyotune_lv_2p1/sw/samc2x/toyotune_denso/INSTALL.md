@@ -100,22 +100,33 @@ need duplicating.
 ## 4. Building from a terminal
 
 ```
-cmake --preset cpu1-debug
-cmake --build --preset cpu1-debug
+cmake --preset mr2-cpu1-debug
+cmake --build --preset mr2-cpu1-debug
 ```
 
-Presets available:
+Presets are named `<car>-cpu<n>-<config>`:
 
 | Preset | Build |
 |---|---|
-| `cpu1-debug` | CPU1, `-O0 -g3` |
-| `cpu1-release` | CPU1, `-Os` |
-| `cpu2-debug` | CPU2 — **expected to fail**, see below |
+| `mr2-cpu1-debug` | MR2 (D151803-9651), `-O0 -g3` |
+| `mr2-cpu1-release` | MR2 (D151803-9651), `-Os` |
+| `mr2-cpu2-debug` | MR2 CPU2 — **expected to fail**, see below |
+| `st205-cpu1-debug` | ST205 (D151804-0461) — **expected to fail**, see below |
 
-`cpu2-debug` deliberately stops at an `#error` in `config.h`: CPU2 still needs
-its own ROM image in `image.c` and its own DMA layout struct, and failing the
-build is better than silently producing a CPU2 binary that parses CPU1's frame
-layout.
+Two of these stop at a deliberate `#error` in `config.h`, because failing the
+build beats silently flashing something wrong into a running ECU:
+
+- **`mr2-cpu2-debug`** — CPU2 needs its own ROM image in `image.c` and its own
+  DMA layout struct. Without them a CPU2 binary would parse CPU1's frames.
+- **`st205-cpu1-debug`** — the *frame handling* is family-independent and
+  already works for both cars, but `image.c` currently holds only an MR2 build,
+  and this firmware writes that image into the SRAM the Denso CPU executes
+  from. Building it today would run MR2 code on an ST205 ECU. Add the ST205
+  image to `image.c`, selected on `TOYOTUNE_ECU_ST205`, then delete the
+  `#error`.
+
+The two axes are independent cache variables, so any combination is reachable
+without editing presets: `-DTOYOTUNE_CPU=1|2` and `-DTOYOTUNE_ECU=MR2|ST205`.
 
 ### Machine-specific paths
 
@@ -152,17 +163,17 @@ In `build/<preset>/`:
 - `toyotune_denso.lss` — disassembly listing
 - `toyotune_denso.map` — link map
 
-A size summary is printed after each build. A known-good `cpu1-debug` build is:
+A size summary is printed after each build. A known-good `mr2-cpu1-debug` build is:
 
 ```
    text    data     bss     dec     hex
-  47368    1124   15760   64252    fafc
+  47524    1124   15848   64496    fbf0
 ```
 
-That is 48,492 bytes of flash (18.5% of 256K) and 16,884 bytes of RAM (51.5%
+That is 48,648 bytes of flash (18.6% of 256K) and 16,972 bytes of RAM (51.8%
 of 32K). Note 32,768 of the flash figure is the `DMCU_Image` ROM array in
-`image.c`, leaving roughly 15.7 KB of actual code. `cpu1-release` (`-Os`) comes
-out at 39,948 text.
+`image.c`, leaving roughly 15.9 KB of actual code. `mr2-cpu1-release` (`-Os`)
+comes out at 40,048 text.
 
 Verified working: DFP 1.2.176 + CMSIS 6.3.0, GNU Arm Embedded 10.3.1,
 CMake 4.4.3, Ninja 1.13.2.

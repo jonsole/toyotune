@@ -25,8 +25,10 @@
 #include <string.h>
 
 
-// D151804-0461  DMA
-// TX 38 bytes
+// Inter-CPU DMA, TX direction: what CPU1 sends to CPU2.
+// 38 bytes - MR2 at CPU1 RAM 0x200..0x225, ST205 at 0x1FA..0x21F.  Same
+// size and same slots in both families, so one struct serves both; the
+// address map below is the ST205's.
 typedef struct
 {
 	uint16_t PIM2;  
@@ -48,8 +50,11 @@ typedef struct
 	uint8_t Obd1Injection;
 	uint8_t Obd1Ignition;
 	uint8_t ObjIscv;
-	uint8_t FuelTrim;
-	uint8_t Knock;
+	uint8_t FuelTrim;			/* NOTE: the two ROMs disagree on this slot -
+							   the ST205 calls it fuel trim, the MR2 calls the same
+							   offset dmatx_obd_o2_sensor.  One annotation is wrong;
+							   confirm before relying on it. */
+	uint8_t Knock;				/* MR2 dmatx_knock_retard */
 	uint8_t Unknown216;
 	uint8_t dmatx_tps_delta;
 	uint16_t ErrorFlags;
@@ -60,21 +65,27 @@ typedef struct
 } ECU_DmaData1_t;
 
 
-// D151804-0461  DMA
-// RX 34 bytes - what CPU1 receives back from CPU2, copied by copy_dma_rx
-// into CPU1 RAM 0x220..0x241.  The first five fields are 16-bit (the copy
-// loop moves 16 bits at a time from an even address); the rest are bytes.
+// Inter-CPU DMA, RX direction: what CPU1 receives back from CPU2.
+// 34 bytes, copied by copy_dma_rx - ST205 into CPU1 RAM 0x220..0x241,
+// MR2 into 0x226..0x247.  Same size and same slots in both, so one struct
+// serves both families.  The first five fields are 16-bit because the copy
+// loop moves 16 bits at a time from an even address; the rest are bytes.
+//
+// Names are taken from whichever ROM annotates a slot best; the MR2
+// (D151803-9651) is further along than the ST205 (D151804-0461), so most
+// come from there.  Slots neither ROM resolves keep the ST205 address in
+// the name, matching the convention in the TX struct above.
 typedef struct
 {
 	uint16_t Unknown220;
 	uint16_t Unknown222;
 	uint16_t Unknown224;
 	uint16_t ScaledVe;
-	uint16_t Unknown228;			/* probably rpm_x_5p12 - see note below */
+	uint16_t RpmX5p12;			/* RPM = value / 5.12; MSB * 50 is a good approximation */
 	uint8_t WarmupEnrichment;
-	uint8_t Unknown22B;
-	uint8_t Unknown22C;
-	uint8_t Unknown22D;
+	uint8_t FuelTrim;			/* MR2 dmarx_fuel_trim_231 */
+	uint8_t Enrich1;			/* MR2 dmarx_enrich_232 */
+	uint8_t Enrich2;			/* MR2 dmarx_enrich_233 */
 	uint8_t EnrichUnknown22E;
 	uint8_t ThamEnrichUnknown;
 	uint8_t Unknown230;

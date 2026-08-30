@@ -31,6 +31,15 @@ if(NOT TOYOTUNE_CPU MATCHES "^[12]$")
     message(FATAL_ERROR "TOYOTUNE_CPU must be 1 or 2, got '${TOYOTUNE_CPU}'")
 endif()
 
+# Which car. Both families share the inter-CPU frame geometry, so this mainly
+# selects the ROM image served from image.c. See config.h.
+set(TOYOTUNE_ECU "MR2" CACHE STRING "Target ECU family: MR2 or ST205")
+set_property(CACHE TOYOTUNE_ECU PROPERTY STRINGS MR2 ST205)
+
+if(NOT TOYOTUNE_ECU MATCHES "^(MR2|ST205)$")
+    message(FATAL_ERROR "TOYOTUNE_ECU must be MR2 or ST205, got '${TOYOTUNE_ECU}'")
+endif()
+
 # Defaults point at the packs unzipped under sw/packs/ (see INSTALL.md). They
 # are not committed - too large, and freely re-downloadable - so a fresh clone
 # must unzip them before building, or override these to point elsewhere (an
@@ -100,6 +109,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     __SAMC21J18A__
     OS_CPU_ID
     TOYOTUNE_CPU${TOYOTUNE_CPU}
+    TOYOTUNE_ECU_${TOYOTUNE_ECU}
     $<$<CONFIG:Debug>:DEBUG>
 )
 
@@ -143,6 +153,6 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "-- Generating ${PROJECT_NAME}.lss"
     COMMAND ${CMAKE_OBJDUMP} -h -S $<TARGET_FILE:${PROJECT_NAME}> > ${PROJECT_NAME}.lss
     COMMAND ${CMAKE_SIZE} $<TARGET_FILE:${PROJECT_NAME}>
-    COMMENT "Creating .bin/.hex/.lss and reporting size (CPU${TOYOTUNE_CPU})"
+    COMMENT "Creating .bin/.hex/.lss and reporting size (${TOYOTUNE_ECU} CPU${TOYOTUNE_CPU})"
     VERBATIM
 )

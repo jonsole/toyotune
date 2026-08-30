@@ -27,6 +27,47 @@
    Define exactly one.
    --------------------------------------------------------------------------- */
 
+/* --- Which car -----------------------------------------------------------
+
+   Orthogonal to the CPU selection above.  Two 3S-GTE ECU families are
+   supported, each a pair of Denso CPUs:
+
+     TOYOTUNE_ECU_MR2    - JDM Gen 3 SW20, D151803-9651 (CPU1) / -9661 (CPU2)
+     TOYOTUNE_ECU_ST205  - JDM ST205,      D151804-0461 (CPU1) / -0471 (CPU2)
+
+   Both families use the same inter-CPU frame geometry - 38 bytes out, 34
+   bytes back, with the same field slots - so ECU_DmaData1_t/ECU_DmaData2_t
+   serve both and only the base addresses in their comments differ (MR2 TX
+   starts at 0x200, ST205 at 0x1FA).  What this define really selects is the
+   ROM image served from image.c.
+
+   Define exactly one.  ------------------------------------------------- */
+
+#if defined(TOYOTUNE_ECU_MR2) && defined(TOYOTUNE_ECU_ST205)
+#error "Define exactly one of TOYOTUNE_ECU_MR2 / TOYOTUNE_ECU_ST205, not both."
+#endif
+
+/* Defaults to the MR2, because the image currently active in image.c is a
+   D151803-9651 build.  Selecting TOYOTUNE_ECU_ST205 needs a matching ST205
+   image added to image.c first - the frame layouts are shared, the ROM is
+   not. */
+#if !defined(TOYOTUNE_ECU_MR2) && !defined(TOYOTUNE_ECU_ST205)
+#define TOYOTUNE_ECU_MR2
+#endif
+
+#if defined(TOYOTUNE_ECU_ST205)
+/* The frame handling is family-independent, so the sniffing and parsing side
+   is ready for the ST205.  The ROM image is not: image.c currently holds only
+   a D151803-9651 (MR2) build, and this firmware writes that image into the
+   SRAM the Denso CPU executes from.  Building ST205 today would therefore
+   run MR2 code on an ST205 ECU.
+
+   To finish ST205 support, add its image to image.c selected on this define,
+   then delete this #error. */
+#error "TOYOTUNE_ECU_ST205 needs its ROM image adding to image.c first - see above."
+#endif
+
+
 #if defined(TOYOTUNE_CPU1) && defined(TOYOTUNE_CPU2)
 #error "Define exactly one of TOYOTUNE_CPU1 / TOYOTUNE_CPU2, not both."
 #endif
