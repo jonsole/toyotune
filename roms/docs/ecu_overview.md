@@ -45,7 +45,7 @@ Most 1993 ECUs were a single MCU. This one is three.
 ```
         ┌──────────────┐   knock level (3-bit, PORTB)   ┌───────────┐
         │  Knock MCU   │ ─────────────────────────────► │           │
-        │  (not a D8X) │ ◄───────────────────────────── │           │
+        │ (other arch) │ ◄───────────────────────────── │           │
         └──────────────┘   clock + TDC ref, DOUT.2 rst  │   CPU1    │
                                                         │  -9651    │
    piezo knock sensors ──►                              │           │
@@ -77,16 +77,15 @@ datastream (`update_odb_flags`). It runs no lambda control of its own — it
 only receives CPU1's O2 reading to pack a rich/lean bit into a diagnostic
 byte.
 
-**The knock MCU** is a dedicated knock-processing device wired to the piezo
-sensors — **not** a third D8X, but a different architecture entirely. It
-hands CPU1 a 3-bit knock level over `PORTB` — bits 3 and 4 active low, bit 5
-active high — clocked against the crank. `PORTB.1` carries the TDC cylinder-1
+**The knock MCU** is a dedicated knock-processing device of a different
+architecture from the two D8X CPUs, wired to the piezo sensors. It hands CPU1
+a 3-bit knock level over `PORTB` — bits 3 and 4 active low, bit 5 active
+high — clocked against the crank. `PORTB.1` carries the TDC cylinder-1
 reference out to it, and CPU1 can hard-reset it by pulsing `DOUT.2` low for
 about 12 µs.
 
-What the disassembly establishes is CPU1's *side* of that interface, in full.
-The device on the other end is not identified by any code in this repo — only
-its protocol is.
+The disassembly characterises CPU1's *side* of that interface in full. The
+device on the other end is known only by its protocol.
 
 The split is the most consequential design decision in the box. One 8-bit
 part could not do speed-density arithmetic *and* hold hard real-time
@@ -111,12 +110,9 @@ base address**, and the offset depends on direction:
 | CPU2 → CPU1 (CPU2 `dmatx_*` = CPU1 `dmarx_*`) | `CPU1 = CPU2 + 0xDA` | `dmarx_max_retard_23B_161` / `dmatx_max_retard_161` and two more pairs |
 | CPU1 → CPU2 (CPU1 `dmatx_*` = CPU2 `dmarx_*`) | `CPU1 = CPU2 + 0x13B` | `dmatx_tps`/`dmarx_tps`, `dmatx_ect`/`dmarx_ect`, `dmatx_pim2`/`dmarx_pim2`, battery |
 
-Getting these the wrong way round is the single easiest mistake to make when
-cross-referencing the two disassemblies: applying `0xDA` to a `dmatx` address
-lands inside CPU2's `var_serbus_rx` buffer rather than its DMA block, and
-produces a confident-looking answer about an unrelated variable. It has
-happened in this repo, and was caught only because the result was obvious
-nonsense.
+The two offsets are not interchangeable: applied to a `dmatx` address,
+`0xDA` lands inside CPU2's `var_serbus_rx` buffer rather than its DMA block,
+resolving to an unrelated variable.
 
 Two further wrinkles. Word-sized variables in one region carry a **one-byte
 padding discrepancy** against the `0xDA` formula, so structural
@@ -198,9 +194,8 @@ CPU1 turns that into an injector pulse width through roughly seven stages:
 | 6 | Optional halving of a full-cycle value | `var_ignition_flags.7` |
 | 7 | Battery dead-time compensation (additive, per firing) | `var_inj_battery_adjust` |
 
-Stage 6 is a good example of how easily a bit gets mislabelled. It is not an
-"updated" flag, as its position among the status bits suggests — it means
-*this value is a full-cycle width and must be halved before use*:
+Stage 6's flag means *this value is a full-cycle width and must be halved
+before use*:
 
 ```asm
         tbbc    bit7, var_ignition_flags, loc_F2BE
@@ -293,9 +288,8 @@ ECT-indexed table to build the warm-up enrichment that
 `decay_enrichment_unk_100` then bleeds away. That is exactly why it never
 appears in CPU1's own multiplier.
 
-That sampling discipline — throwing away the settling window, requiring a
-majority, moving one step at a time — is the detail that most changed my read
-of this ROM. Somebody thought hard about not learning garbage.
+Throwing away the settling window, requiring a majority, and moving one step
+at a time is real statistical care: the loop is built not to learn garbage.
 
 > → `fuel_calculation_system.md` § *Short-term vs long-term fuel trim*.
 
@@ -313,10 +307,8 @@ per-cylinder retard, indexed by `var_knock_cyl_idx`, and the result is sent to
 CPU2 as `dmatx_ign_corr_cpu2` to be applied to the timing calculation.
 
 Recovery is deliberately slow: `knock_retard_decay` reduces `var_knock_retard`
-by 2 counts every **256 ms**. The function is *called* every 4 ms but only
-acts once `var_cnt_knock_decay` reaches `0x40` — precisely the kind of
-construction that reads as a much faster re-advance than it is, and one this
-repo got wrong for a while.
+by 2 counts every **256 ms**. The function is *called* every 4 ms but acts
+only once `var_cnt_knock_decay` reaches `0x40`.
 
 One knock path is disabled rather than removed: `var_knock_gate_168` is only
 ever cleared and has no setter, so the branch guarding it can never be taken.
@@ -374,9 +366,6 @@ it and re-locks it, and every later test in the same window correctly skips.
 No flag variable, no compare, no branch to clear it again. The `loc_D380`
 snippet above is the whole mechanism.
 
-Reading `tbs` as a non-destructive test — which this repo did for a while —
-makes such gates look like they can never fire.
-
 ### Function fall-through
 
 `set_knock_sensor_err_flag`, `check_knock_sensor_err_flag` and `negate_rD` are
@@ -402,9 +391,9 @@ So "set the flag" also unconditionally negates D, and "check the flag"
 negates D only if an earlier call in the same computation set it. The result
 is a disguised abs()-and-restore-sign idiom, reused all over the ROM — which
 means **`var_diag_errors_5.0` is usually a "did we negate" remember-bit**, not
-anything to do with the knock sensor. `calc_dmatx_pim` was long mistaken for a
-knock or boost limiter purely because it calls these two functions; it is
-manifold-pressure transient compensation.
+anything to do with the knock sensor. A call to either function is no evidence
+of knock involvement: `calc_dmatx_pim` calls both, and is manifold-pressure
+transient compensation.
 
 ### Variable aliasing
 
@@ -423,9 +412,9 @@ high word instead — trading a coarser scale for keeping *some* magnitude
 information rather than a flat pinned maximum. It is a hand-rolled substitute
 for floating point, and it is used carefully.
 
-Note the direction trap in that last one: **`mov` is `src, dest`**, the
-opposite of `ld`/`st`. `mov x, d` means `D = X`. Misreading it changes
-`update_ign_timing_blend`'s scale factor by 2×.
+Note the operand order in that last one: **`mov` is `src, dest`**, the
+opposite of `ld`/`st`. `mov x, d` means `D = X`, and the scale factors in
+`update_ign_timing_blend` and the VE-map candidate calculation depend on it.
 
 > → `fuel_calculation_system.md` § *Critical: `mov` operand direction* and
 > § *Critical: the `var_flags_4E` / `var_trim_state` alias`*;
@@ -438,7 +427,8 @@ opposite of `ld`/`st`. `mov x, d` means `D = X`. Misreading it changes
 Not in the architecture — in the arithmetic and the resolution.
 
 Everything is hand-managed fixed point with manual scale tracking, and the
-scale factors are load-bearing: misread one multiply and a term is out by 2×.
+scale factors are load-bearing — a single multiply's operand order is worth a
+factor of two in the result.
 Tables are small; the long-term trim gets twelve cells to describe the whole
 load range. There is no MAF. And disabled features were switched off by
 zeroing a constant rather than removing the code — `unk_14A` is permanently
@@ -470,9 +460,8 @@ here comes from code that has actually been read, but "not documented" in
 this repo does not mean "not important" — it frequently means "not looked at
 yet."
 
-Read `session_journal.md` for current status before starting new work; it
-carries the pending list, and entries later found to be wrong are annotated
-in place rather than deleted.
+Read `session_journal.md` for current status and the pending list before
+starting new work.
 
 ---
 
