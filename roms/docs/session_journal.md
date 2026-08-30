@@ -1571,7 +1571,7 @@ gated to genuine idle by road speed < 2 and an RPM band.
 because it is manipulated with whole-byte `or`/`and` masks rather than
 `setb`/`clrb` - exactly like `var_flags_1DC`. Its bit 0 is set while
 diagnostic mode is active and cleared once `var_cnt_idle_dwell` shows idle
-settled for ~612ms, which is the gate on idle-trim learning that
+settled for ~9.8s, which is the gate on idle-trim learning that
 `calc_iscv`'s header had guessed at. `var_cnt_idle_dwell` is itself another
 `increment_counters` case - it appears only ever CLEARED here.
 
@@ -1644,6 +1644,39 @@ Also worth noting: `var_flags_4F` now has **four** save slots
 (`_copy2/_copy3/_copy4` plus `var_flags_4F_saved`). The DC77/DCB5 diagnostic
 phase juggles several snapshots of that one byte, which is why so many
 copies of it exist and why they had looked like unrelated variables.
+
+### Counter documentation: tick rates and real durations
+
+Jon pointed out the counters carry generic address-based names and no
+documentation. 65 of them are now annotated with their **tick source, real
+rate, and every threshold they are compared against converted to real time**.
+
+The rate is not obvious from any counter's own declaration, because
+`increment_counters` advances a whole address RANGE and the rate comes from
+*which dispatch slot calls it*:
+
+| block | rate | called from |
+|---|---|---|
+| `var_4m_cnt_AD` +0x19, `var_cnt_C7` +6 | **4 ms** | `iv6_4ms_process` |
+| `var_cnt_CD` +0x14, `var_cnt_EA` +5, `var_trim_stable_cnt` +2 | **32 ms** | `loc_D1DD`, gated on `var_schedule_flag_41.6` |
+| `var_cnt_E1` +7 | **64 ms** | `bg_64ms_dispatch`, gated on bit 7 |
+| `var_cnt_E9` +1 | **16.4 s** | same, but behind the 256x `var_64ms_prescale` |
+
+**CORRECTION this produced.** Two durations published earlier in this session
+were wrong by 16x, because I assumed the 0xE1-0xE7 block ticked at 4 ms when
+it is in the **64 ms** slot:
+
+- `var_cnt_idle_dwell`'s 0x99 threshold is **~9.8 s**, not ~612 ms. The
+  idle-trim learn needs idle stable for ten seconds, not half a second -
+  a materially different picture of how that gate behaves.
+- `var_cnt_sta_active`'s 0x1F threshold is **~2.0 s**, not ~124 ms.
+
+Both fixed in the disassembly and in `idle_control_system.md`.
+
+Some of the resulting figures are worth knowing on their own: `var_cnt_startup`
+is compared at 0x0F/0x1F/0x3D/0x5C/0x7A = 480 ms, 1.0 s, 2.0 s, 2.9 s and
+3.9 s after start; `var_cnt_E9`'s 0x17/0x26/0x99 work out to 6.3, 10.4 and
+41.8 minutes, which is what that two-stage prescaler exists to reach.
 
 ---
 

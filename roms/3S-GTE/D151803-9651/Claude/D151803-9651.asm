@@ -1196,12 +1196,24 @@ var_rev_limit_ramp:				.block 1			; DATA XREF: divide_d_by_x+655↓w
 								; nv_afr_trim system; see
 								; session_journal.md's CPU1 pending work.
 var_trim_stable_cnt:		.block 1			; DATA XREF: divide_d_by_x+B29↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_trim_stable_cnt, 2)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; Stability dwell for trim learning, advanced by
 								; increment_counters via COUNTER_ARG(var_trim_stable_cnt,
 								; 2) - so it is one of the counters whose increments are
 								; invisible to a per-symbol search.
 								; divide_d_by_x:loc_D108↓r ...
 var_cnt_6A:			.block 1			; DATA XREF: divide_d_by_x:loc_D954↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_trim_stable_cnt, 2)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x03 (96ms)
 								; ROM:DB3A↓r
 var_o2_vote_cnt:		.block 1			; DATA XREF: divide_d_by_x+10E↓w
 								; divide_d_by_x:loc_D22A↓r ...
@@ -1522,113 +1534,448 @@ var_iscv_relay_cnt:				.block 1			; DATA XREF: iv6_4ms_process+9↓r
 var_iscv_error_cnt:				.block 1			; DATA XREF: iv6_4ms_process:loc_F7E9↓w
 								; iv6_4ms_process:loc_F7FD↓w ...
 var_4m_cnt_AD:			.block 1			; DATA XREF: divide_d_by_x:loc_C749↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x18 (96ms)
 								; iv6_4ms_process↓t ...
 								; Counter initialised to 0 at ignition on, when	counter
 								; reaches 24 after 96ms	PORTA.0	starts to toggle every
 								; 4ms.
 var_4ms_cnt_sta:		.block 1			; DATA XREF: init_ne_on_start+7↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x0C (48ms)
 								; init_ne_on_start+19↓w
 								; Incremented when starter is running
 var_4ms_cnt_AF:			.block 1			; DATA XREF: divide_d_by_x+45B↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x31 (196ms)
 								; divide_d_by_x+46C↓r ...
 var_4ms_cnt_B0:			.block 1
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 var_4ms_cnt_B1:			.block 1			; DATA XREF: divide_d_by_x+E6↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x0C (48ms)
 								; divide_d_by_x:loc_C985↓r ...
 var_4ms_cnt_speed_update:	.block 1			; DATA XREF: iv6_4ms_process+6D↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x56 (344ms)
 								; iv6_4ms_process+72↓w
 var_4ms_cnt_B3:			.block 1			; DATA XREF: divide_d_by_x+FD↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x05 (20ms)
 								; int_vector_4_kph+F↓r ...
 var_4ms_cnt_B4:			.block 1			; DATA XREF: divide_d_by_x+13F5↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x18 (96ms)
 								; divide_d_by_x:loc_D998↓w
 var_4ms_cnt_B5:			.block 1			; DATA XREF: divide_d_by_x:loc_DA10↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x7A (488ms)
 								; divide_d_by_x:loc_DA17↓w
 var_4ms_cnt_B6:			.block 1			; DATA XREF: divide_d_by_x+100↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x18 (96ms)
 								; divide_d_by_x+503↓r ...
 var_4ms_cnt_B7:			.block 1			; DATA XREF: divide_d_by_x+103↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x18 (96ms)
 								; divide_d_by_x+508↓r ...
 var_4ms_cnt_B8:			.block 1			; DATA XREF: divide_d_by_x+442↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x31 (196ms)
 								; divide_d_by_x:loc_C9DF↓r
 var_4ms_cnt_B9:			.block 1			; DATA XREF: divide_d_by_x+451↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x18 (96ms)
 								; ROM:FE1B↓r
 var_4ms_cnt_starter:		.block 1			; DATA XREF: divide_d_by_x:loc_CD13↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x0C (48ms), 0x3D (244ms)
 								; divide_d_by_x+78A↓r ...
 								; Count	of 4ms periods of how long starter has been running
 var_4ms_cnt_lambda:		.block 1			; DATA XREF: divide_d_by_x+963↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x31 (196ms)
 								; divide_d_by_x+96E↓r
 var_4ms_boost_cnt:		.block 1			; DATA XREF: check_boost_limit+11↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; check_boost_limit+1B↓r
 								; Counter that increments if PIM is less than boost cut	limit
 var_4ms_cnt_BD:			.block 1			; DATA XREF: calc_4ms_corrections+E5↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; calc_4ms_corrections+F1↓r
 var_4ms_cnt_BE:			.block 1			; DATA XREF: divide_d_by_x+226↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x7A (488ms)
 								; ROM:DF45↓r ...
 var_4ms_cnt_BF:			.block 1			; DATA XREF: divide_d_by_x+218↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x7A (488ms)
 								; ROM:DF35↓r
 var_4ms_starter_cnt_C0:		.block 1			; DATA XREF: divide_d_by_x+22B↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x7A (488ms)
 								; ROM:DF4D↓r ...
 var_4ms_cnt_igf_timer:		.block 1			; DATA XREF: int_vector_9_ignition+4B↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x3F (252ms)
 								; int_vector_9_ignition+55↓r
 var_4ms_cnt_ne_C2:		.block 1			; DATA XREF: divide_d_by_x+17C6↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x3F (252ms)
 								; ROM:EFB9↓r ...
 								; Something to do with dwell
 var_4ms_boost_cut_cnt:		.block 1			; DATA XREF: divide_d_by_x+763↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x:loc_CD07↓w
 								; Counter of how long boost cut	has been active
 var_4ms_cnt_C4:			.block 1			; DATA XREF: divide_d_by_x+127↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x04 (16ms)
 								; start_dma+4A↓r ...
 var_4ms_cnt_C5:			.block 1			; DATA XREF: divide_d_by_x+12A↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_4m_cnt_AD, 25)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x04 (16ms)
 								; start_dma↓r ...
 var_cnt_C6:			.block 1			; DATA XREF: iv6_4ms_process+5F↓w
 								; iv6_4ms_process+63↓r
 var_cnt_C7:			.block 1			; DATA XREF: divide_d_by_x+F0↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x07 (28ms), 0x3D (244ms), 0xFF (1.0s)
 								; divide_d_by_x+2E9↓r ...
 var_cnt_C8:			.block 1			; DATA XREF: divide_d_by_x:loc_D1FD↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x7A (488ms)
 								; divide_d_by_x+C67↓w
 var_cnt_C9:			.block 1			; DATA XREF: divide_d_by_x:loc_DC8F↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x+1701↓w
 var_cnt_CA:			.block 1			; DATA XREF: divide_d_by_x:loc_DCCD↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x+1742↓w ...
 var_cnt_CB:			.block 1			; DATA XREF: ROM:F644↓r
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x40 (256ms)
 								; ROM:loc_F64C↓w
 var_cnt_CC:			.block 1			; DATA XREF: knock_retard_decay:loc_F6E5↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C7, 6)
+								; called from iv6_4ms_process.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x06 (24ms)
 								; knock_retard_decay:loc_F6E7↓r
 var_cnt_CD:			.block 1			; DATA XREF: divide_d_by_x+67A↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x3D (2.0s)
 								; divide_d_by_x+6A9↓r ...
 var_cnt_CE:			.block 1			; DATA XREF: divide_d_by_x+53C↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 var_cnt_CF:			.block 1			; DATA XREF: divide_d_by_x:loc_CBBD↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0xF4 (7.8s)
 								; divide_d_by_x:loc_CBC1↓r
 var_cnt_startup:		.block 1			; DATA XREF: divide_d_by_x:loc_C967↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x0F (480ms), 0x1F (992ms), 0x3D (2.0s), 0x5C (2.9s), 0x7A (3.9s)
 								; divide_d_by_x:loc_C9FA↓r ...
 var_cnt_D1:			.block 1			; DATA XREF: divide_d_by_x+3BF↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 var_cnt_D2:			.block 1			; DATA XREF: divide_d_by_x+980↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x3D (2.0s)
 								; calc_4ms_corrections+283↓r
 var_cnt_D3:			.block 1			; DATA XREF: divide_d_by_x:check_open_or_closed_loop↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x1F (992ms)
 								; divide_d_by_x+992↓r ...
 var_cnt_D4:			.block 1			; DATA XREF: divide_d_by_x+862↓r
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x+88A↓w ...
 var_cnt_D5:			.block 1			; DATA XREF: divide_d_by_x:loc_D228↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x3D (2.0s)
 								; divide_d_by_x+CD1↓r
 var_cnt_D6:			.block 1			; DATA XREF: divide_d_by_x+58E↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x+5DC↓r
 var_cnt_D7:			.block 1			; DATA XREF: divide_d_by_x+E9↓r
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x1F (992ms)
 								; divide_d_by_x+8E3↓w ...
 var_cnt_D8:			.block 1			; DATA XREF: calc_4ms_corrections:loc_ED09↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x06 (192ms), 0x5C (2.9s)
 								; calc_4ms_corrections:loc_ED6E↓r ...
 var_cnt_D9:			.block 1			; DATA XREF: calc_4ms_corrections+C9↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x1F (992ms), 0x99 (4.9s)
 								; calc_4ms_corrections+105↓r ...
 var_cnt_DA:			.block 1			; DATA XREF: calc_4ms_corrections+128↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x14 (640ms)
 								; calc_ign_timing_min+5A↓w	...
 var_cnt_DB:			.block 1			; DATA XREF: divide_d_by_x:loc_D34B↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x5C (2.9s)
 								; calc_iscv+14F↓r ...
 var_cnt_DC:			.block 1			; DATA XREF: divide_d_by_x+D7A↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x1F (992ms)
 								; calc_iscv:loc_D900↓r
 var_cnt_DD:			.block 1			; DATA XREF: divide_d_by_x+DB5↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x5C (2.9s)
 								; calc_iscv+170↓w ...
 var_cnt_DE:			.block 1			; DATA XREF: calc_iscv+12B↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x5C (2.9s)
 								; calc_iscv:loc_D637↓w ...
 var_cnt_sensor_error:		.block 1			; DATA XREF: adc_handler_pim+1A↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x0F (480ms)
 								; adc_handler_pim:loc_FBA8↓r ...
 var_cnt_E0:			.block 1
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_CD, 20)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; A periodic counter: it is the LAST byte of the
 								; COUNTER_ARG(var_cnt_CD, 0x14) range, so
 								; increment_counters saturating-increments it
@@ -1648,9 +1995,23 @@ var_cnt_E0:			.block 1
 								; effectively dead - but as spare counter
 								; capacity, not as untouched memory.
 var_cnt_E1:			.block 1			; DATA XREF: divide_d_by_x+70C↓r
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
+								; called from bg_64ms_dispatch.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x08 (512ms)
 								; divide_d_by_x:loc_CCB3↓w ...
 var_cnt_idle_dwell:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
-								; Idle-dwell counter, in 4ms ticks.
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
+								; called from bg_64ms_dispatch.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x99 (9.8s)
+								; Idle-dwell counter (64ms ticks - see below).
 								;
 								; Free-running - it sits at 0x0E2, inside
 								; COUNTER_ARG(var_cnt_E1, 7), so increment_counters
@@ -1659,10 +2020,10 @@ var_cnt_idle_dwell:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
 								; var_iscv_target_base. So it measures how long idle has
 								; been settled ABOVE the target.
 								;
-								; Once it reaches 0x99 (153 ticks, ~612ms) loc_D791
-								; clears the idle-trim flags' bit 0, releasing the
-								; idle-trim learn. A dwell requirement, so a momentary
-								; excursion cannot trigger learning.
+								; Once it reaches 0x99 - 153 ticks at 64ms, so ~9.8s,
+								; not the ~612ms an earlier note here claimed - loc_D791
+								; clears the idle-trim flags' bit 0, releasing the learn.
+								; A long dwell, so only genuinely stable idle qualifies.
 								; calc_iscv:loc_D791↓r
 								; ALSO auto-incremented every tick by
 								; increment_counters via COUNTER_ARG(var_cnt_E1,
@@ -1673,6 +2034,11 @@ var_cnt_idle_dwell:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
 								; elapsed-time test, not a plain value load.
 								; Purpose still not established.
 unk_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
+								; called from bg_64ms_dispatch.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; Explicitly written only at loc_F577 (in the
 								; knock area) with no read site in this file, BUT
 								; also auto-incremented every tick by
@@ -1684,6 +2050,13 @@ unk_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
 								; file (CPU2, or an elapsed-time test not yet
 								; traced).
 var_stft_dwell_cnt:		.block 1			; DATA XREF: ROM:loc_DA70↓w
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
+								; called from bg_64ms_dispatch.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x40 (4.1s)
 								; ROM:DA75↓r
 								; "Closed-loop conditions have held steady" dwell
 								; timer for update_lambda_stft.
@@ -1703,7 +2076,14 @@ var_stft_dwell_cnt:		.block 1			; DATA XREF: ROM:loc_DA70↓w
 								; not change mode until conditions have been
 								; stable for 0x40 ticks.
 var_cnt_sta_active:				.block 1			; DATA XREF: divide_d_by_x+1781↓w
-								; Starter-engaged duration counter, in 4ms ticks.
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
+								; called from bg_64ms_dispatch.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x1F (2.0s)
+								; Starter-engaged duration counter (64ms ticks).
 								;
 								; Free-running: it sits at 0x0E5, inside
 								; COUNTER_ARG(var_cnt_E1, 7), so increment_counters
@@ -1711,11 +2091,11 @@ var_cnt_sta_active:				.block 1			; DATA XREF: divide_d_by_x+1781↓w
 								; var_io_input1.0 says the starter is NOT running, so it
 								; only accumulates while cranking.
 								;
-								; Once it passes 0x1F (31 ticks, ~124ms) with
+								; Once it passes 0x1F - 31 ticks at 64ms, so ~2.0s, not
+								; the ~124ms an earlier note claimed - with
 								; unk_1CF_alias.0 also set, loc_DD1E raises
-								; var_error_flags1.0 - the STA signal error. So the
-								; 0x1F is a debounce: a brief starter blip cannot
-								; trigger the fault.
+								; var_error_flags1.0, the STA signal error. A debounce:
+								; a brief starter blip cannot trigger the fault.
 								; divide_d_by_x:loc_DD1E↓r ...
 								; ALSO auto-incremented every tick by
 								; increment_counters via COUNTER_ARG(var_cnt_E1,
@@ -1725,9 +2105,23 @@ var_cnt_sta_active:				.block 1			; DATA XREF: divide_d_by_x+1781↓w
 								; DC77/DD38/DD59 diagnostic phase; purpose not
 								; established.
 var_spd_cnt:			.block 1			; DATA XREF: ROM:loc_DEAD↓w
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
+								; called from bg_64ms_dispatch.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x7A (7.8s)
 								; ROM:loc_DEAF↓r
 								; Number of cycles with	no speed sensor	reading
 var_igt_timer:			.block 1			; DATA XREF: check_IGF_error+3↓w
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
+								; called from bg_64ms_dispatch.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x2E (2.9s)
 								; check_IGF_error+7↓r
 								; Number of ticks since	last IGT/IGF
 var_64ms_prescale:				.block 1			; DATA XREF: divide_d_by_x+1DD5↓r
@@ -1745,16 +2139,49 @@ var_64ms_prescale:				.block 1			; DATA XREF: divide_d_by_x+1DD5↓r
 								; per CLAUDE.md (rename only on confirmed
 								; understanding).
 var_cnt_E9:			.block 1			; DATA XREF: divide_d_by_x:loc_D3B1↓w
+								; Saturating counter, advanced every 16.4s by
+								; increment_counters via COUNTER_ARG(var_cnt_E9, 1)
+								; called from bg_64ms_dispatch, behind the 256x var_64ms_prescale.
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x17 (6 min), 0x26 (10 min), 0x99 (42 min)
 								; divide_d_by_x+E3F↓r ...
 var_cnt_EA:			.block 1			; DATA XREF: divide_d_by_x+3CE↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_EA, 5)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x1E (960ms), 0x3C (1.9s)
 								; divide_d_by_x+C69↓t ...
 var_cnt_EB:			.block 1			; DATA XREF: divide_d_by_x:loc_CB45↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_EA, 5)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
 								; divide_d_by_x:loc_CB63↓w ...
 var_o2_heater_current_error_cnt:.block 1			; DATA XREF: ROM:loc_DE08↓w
 								; ROM:loc_DE0A↓r
 var_cnt_ED:			.block 1			; DATA XREF: ROM:DE22↓r
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_EA, 5)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x0A (320ms)
 								; ROM:DE56↓w
 var_cnt_EE:			.block 1			; DATA XREF: ROM:loc_DEE3↓w
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt_EA, 5)
+								; called from loc_D1DD (32ms slot).
+								; Its increments therefore never mention this symbol -
+								; a per-symbol search will only ever find the clears.
+								;
+								; Compared against: 0x5A (2.9s)
 								; ROM:loc_DEE5↓r
 var_tps_closed_cnt:		.block 1			; DATA XREF: divide_d_by_x+C6F↓w
 								; ROM:FCF6↓w ...

@@ -288,11 +288,11 @@ condition:
   `or`/`and` masks rather than `setb`/`clrb` — which is why bit-level
   sweeps never surfaced it. Its **bit 0** is SET while `var_flags_4F.5`
   (diagnostic mode) is active, and CLEARED once `var_cnt_idle_dwell` reaches
-  `0x99` (153 ticks, ~612 ms).
+  `0x99` (153 ticks, ~9.8 s).
 
 Clearing that bit is what releases the idle-trim nudge. The effect is that a
 momentary excursion cannot trigger learning — idle must hold above target
-for roughly 0.6 s first.
+for roughly 10 seconds first.
 
 ---
 
