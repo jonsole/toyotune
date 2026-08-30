@@ -112,17 +112,29 @@
    two nodes sending the same ID cannot be separated by arbitration, so both
    run on into the data field and the first differing payload bit raises a
    bit error.  Keep CPU1 and CPU2 disjoint. */
-#define TOYOTUNE_CAN_ID_TELEMETRY_1  (0x1001)
-#define TOYOTUNE_CAN_ID_TELEMETRY_2  (0x1002)
-#define TOYOTUNE_CAN_ID_TELEMETRY_3  (0x1003)
+/* Telemetry occupies a block of 11-bit standard identifiers, one block
+   per board so the two never collide.  Kept well clear of 0x7DF/0x7E0/
+   0x7E8, which OBD2 needs. */
+#define TOYOTUNE_CAN_ID_TELEMETRY_BASE  (0x400)
+#define TOYOTUNE_CAN_ID_FAST     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 0)
+#define TOYOTUNE_CAN_ID_MEDIUM1  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 1)
+#define TOYOTUNE_CAN_ID_MEDIUM2  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 2)
+#define TOYOTUNE_CAN_ID_SLOW     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 3)
+#define TOYOTUNE_CAN_ID_RAW      (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 4)
 #define TOYOTUNE_CAN_ID_FILTER       (0x45a)
 
 #else /* TOYOTUNE_CPU2 */
 
 /* CPU2 identifiers, chosen to be disjoint from CPU1's above. */
-#define TOYOTUNE_CAN_ID_TELEMETRY_1  (0x1011)
-#define TOYOTUNE_CAN_ID_TELEMETRY_2  (0x1012)
-#define TOYOTUNE_CAN_ID_TELEMETRY_3  (0x1013)
+/* Telemetry occupies a block of 11-bit standard identifiers, one block
+   per board so the two never collide.  Kept well clear of 0x7DF/0x7E0/
+   0x7E8, which OBD2 needs. */
+#define TOYOTUNE_CAN_ID_TELEMETRY_BASE  (0x420)
+#define TOYOTUNE_CAN_ID_FAST     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 0)
+#define TOYOTUNE_CAN_ID_MEDIUM1  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 1)
+#define TOYOTUNE_CAN_ID_MEDIUM2  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 2)
+#define TOYOTUNE_CAN_ID_SLOW     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 3)
+#define TOYOTUNE_CAN_ID_RAW      (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 4)
 #define TOYOTUNE_CAN_ID_FILTER       (0x45b)
 
 /* CPU2 is not supported yet, but only one thing is actually missing: its ROM

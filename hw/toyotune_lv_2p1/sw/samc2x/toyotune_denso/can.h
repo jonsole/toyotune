@@ -13,5 +13,6 @@
 
 void CAN_Init(void);
 void CAN_Tx(uint32_t Id, const void *Data, uint32_t DataSize);
+void CAN_TxStandard(uint16_t Id, const void *Data, uint32_t DataSize);
 
 #endif /* CAN_H_ */

@@ -1,0 +1,117 @@
+VERSION "toyotune-v2.1"
+
+NS_ :
+
+BS_:
+
+BU_: TT_CPU1 TT_CPU2
+
+BO_ 1024 TT_Cpu1_Fast: 8 TT_CPU1
+ SG_ Rpm : 7|16@0+ (0.1953125,0) [0|12800] "rpm" Vector__XXX
+ SG_ Tps : 23|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ Pim2 : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ InjPw : 55|16@0+ (4,0) [0|262140] "us" Vector__XXX
+
+BO_ 1025 TT_Cpu1_Medium1: 8 TT_CPU1
+ SG_ Ect : 7|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ Tha : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Tham : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Battery : 39|8@0+ (0.0775,0) [0|19.7] "V" Vector__XXX
+ SG_ AdcLambda : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ IgnTiming : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ IscvDuty : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1026 TT_Cpu1_Medium2: 8 TT_CPU1
+ SG_ KnockRetardCyl1 : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetardCyl2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetardCyl3 : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetard : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetardCpu2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ MaxRetard : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ LambdaTrim : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ PwLoopMode : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1027 TT_Cpu1_Slow: 8 TT_CPU1
+ SG_ NvTrimPim : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ NvTrimO2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ FuelTrim : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ ErrorFlags1 : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ ErrorFlags2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Flags46 : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Flags1 : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ LimiterFlags : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1028 TT_Cpu1_Raw: 8 TT_CPU1
+ SG_ SliceIndex : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte0 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte1 : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte2 : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte3 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte4 : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte5 : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte6 : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1056 TT_Cpu2_Fast: 8 TT_CPU2
+ SG_ Rpm : 7|16@0+ (0.1953125,0) [0|12800] "rpm" Vector__XXX
+ SG_ Tps : 23|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ Pim2 : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ InjPw : 55|16@0+ (4,0) [0|262140] "us" Vector__XXX
+
+BO_ 1057 TT_Cpu2_Medium1: 8 TT_CPU2
+ SG_ Ect : 7|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ Tha : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Tham : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Battery : 39|8@0+ (0.0775,0) [0|19.7] "V" Vector__XXX
+ SG_ AdcLambda : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ IgnTiming : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ IscvDuty : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1058 TT_Cpu2_Medium2: 8 TT_CPU2
+ SG_ KnockRetardCyl1 : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetardCyl2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetardCyl3 : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetard : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ KnockRetardCpu2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ MaxRetard : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ LambdaTrim : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ PwLoopMode : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1059 TT_Cpu2_Slow: 8 TT_CPU2
+ SG_ NvTrimPim : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ NvTrimO2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ FuelTrim : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ ErrorFlags1 : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ ErrorFlags2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Flags46 : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Flags1 : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ LimiterFlags : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1060 TT_Cpu2_Raw: 8 TT_CPU2
+ SG_ SliceIndex : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte0 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte1 : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte2 : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte3 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte4 : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte5 : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ RawByte6 : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
+CM_ BO_ 1024 "Period 20 ms.";
+CM_ BO_ 1025 "Period 100 ms.";
+CM_ BO_ 1026 "Period 100 ms.";
+CM_ BO_ 1027 "Period 500 ms.";
+CM_ BO_ 1028 "Period 50 ms.";
+CM_ BO_ 1056 "Period 20 ms.";
+CM_ BO_ 1057 "Period 100 ms.";
+CM_ BO_ 1058 "Period 100 ms.";
+CM_ BO_ 1059 "Period 500 ms.";
+CM_ BO_ 1060 "Period 50 ms.";
+CM_ "Toyotune v2.1 board telemetry, sniffed from the ECU inter-CPU DMA link.
+All signals are raw ECU counts unless a factor is given. Ect, Tha and Tham are
+inverted ADC counts on a non-linear NTC curve and cannot be expressed as a
+linear DBC scaling - convert with the breakpoint table in roms/docs/adc_system.md.
+Pim2 is boost above a baseline and clamps to zero below it, so it carries no
+vacuum information. Rpm is rpm_x_5p12, hence the 1/5.12 factor. InjPw counts are
+4 us. Battery is well anchored at 0.0775 V per count.
+TT_Raw carries the two DMA blocks (38 bytes then 34) 7 bytes at a time, indexed
+by SliceIndex, for signals not yet broken out above.";

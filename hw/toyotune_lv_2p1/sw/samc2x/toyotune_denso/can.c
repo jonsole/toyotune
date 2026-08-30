@@ -119,6 +119,25 @@ void CAN_Init(void)
 }
 
 
+/* Transmit with an 11-bit standard identifier.  The M_CAN Tx element holds
+   the identifier left-aligned in a 29-bit field, so a standard ID goes in
+   bits 28:18 and XTD stays clear - getting this wrong is silent, the frame
+   simply goes out with a nonsense identifier. */
+void CAN_TxStandard(uint16_t Id, const void *Data, uint32_t DataSize)
+{
+	/* Wait if queue is full */
+	while (CAN0->TXFQS.bit.TFQF);
+
+	uint8_t Index = CAN0->TXFQS.bit.TFQPI;
+	CanMramTxbe *TxBufferElement = &CAN_TxBuffer[Index];
+	TxBufferElement->TXBE_0.reg = CAN_TXBE_0_ID((uint32_t)Id << 18);
+	TxBufferElement->TXBE_1.reg = CAN_TXBE_1_DLC(DataSize);
+	memcpy((void *)&TxBufferElement->TXBE_DATA, Data, DataSize);
+	CAN0->TXBAR.reg = 1UL << Index;
+}
+
+
+/* Transmit with a 29-bit extended identifier. */
 void CAN_Tx(uint32_t Id, const void *Data, uint32_t DataSize)
 {
 	/* Wait if queue is full */

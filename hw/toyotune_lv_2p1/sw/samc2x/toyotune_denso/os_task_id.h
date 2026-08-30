@@ -12,5 +12,6 @@
 #define IDLE_TASK_ID	(1)
 #define DIAG_TASK_ID	(2)
 #define ESP_TASK_ID		(3)
+#define CAN_TELEMETRY_TASK_ID	(4)
 
 #endif /* OS_TASK_ID_H_ */

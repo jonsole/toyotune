@@ -76,6 +76,7 @@ add_executable(${PROJECT_NAME}
     Device_Startup/startup_samc21.c
     Device_Startup/system_samc21.c
     can.c
+    can_telemetry.c
     clk.c
     debug.c
     debug_printf.c
