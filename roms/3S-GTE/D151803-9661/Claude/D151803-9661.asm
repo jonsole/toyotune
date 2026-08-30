@@ -558,40 +558,232 @@ var_ne_count:			.block 1			; C885↓o ...
 var_ne_count_dup:		.block 1			; D3E0↓w ...
 								; Copy of var_ne_count
 var_cnt4ms_obd_byte:		.block 1			; main_loop↓w ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x05 (20ms)
 var_cnt4ms_A3:			.block 1			; D3EA↓r ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x0C (48ms)
 var_cnt4ms_A4:			.block 1			; D480↓r ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 								; Counter used to trigger calculation of speed
 var_cnt4ms_A5:			.block 1			; C89B↓r ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x05 (20ms)
 var_cnt4ms_A6:			.block 1
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt4ms_A7:			.block 1			; CEA1↓w ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x18 (96ms)
 var_cnt4ms_A8:			.block 1			; CFB2↓r ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt4ms_A9:			.block 1			; D079↓w ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x08 (32ms)
 var_cnt4ms_AA:			.block 1			; C94A↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt4ms_AB:			.block 1			; C940↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt4ms_AC:			.block 1			; C94F↓w
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt4ms_AD:			.block 1			; C89E↓r ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x04 (16ms)
 var_cnt4ms_AE:			.block 1			; C8A1↓r ...
+								; Saturating counter, advanced every 4ms by
+								; increment_counters via COUNTER_ARG(var_cnt4ms_obd_byte, 13),
+								; called from the 4ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x04 (16ms)
 var_cnt8ms_AF:			.block 1			; C895↓r ...
+								; Saturating counter, advanced every 8ms by
+								; increment_counters via COUNTER_ARG(var_cnt8ms_AF, 2),
+								; called from the 8ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x3D (488ms)
 var_cnt8ms_B0:			.block 1			; loc_CDA1↓r ...
+								; Paces the ~1s tier: when it reaches 0x7A (122 ticks
+								; at 8ms = 976ms) it is cleared and var_cnt_C1's block
+								; is advanced.
+								; Saturating counter, advanced every 8ms by
+								; increment_counters via COUNTER_ARG(var_cnt8ms_AF, 2),
+								; called from the 8ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x7A (976ms)
 var_cnt16ms_B1:			.block 1			; CD9B↓t
+								; Saturating counter, advanced every 16ms by
+								; increment_counters via COUNTER_ARG(var_cnt16ms_B1, 1),
+								; called from the 16ms slot (var_flags_41.4 gate).
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt32ms_B2:			.block 1			; C92F↓w ...
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x3D (2.0s)
 var_cnt32ms_B3:			.block 1			; CDEB↓w ...
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x12 (576ms)
 var_cnt32ms_B4:			.block 1			; loc_D070↓w ...
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x5C (2.9s)
 var_cnt32ms_B5:			.block 1			; C8A9↓r ...
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x99 (4.9s)
 var_cnt32ms_B6:			.block 1
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt32ms_B7:			.block 1
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt32ms_B8:			.block 1
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 				.block 1
 				.block 1
 var_cnt32ms_tvsv_limiter:	.block 1			; C8AC↓r ...
+								; Saturating counter, advanced every 32ms by
+								; increment_counters via COUNTER_ARG(var_cnt32ms_B2, 10),
+								; called from the 32ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x1F (992ms)
 var_cnt64ms_BC:			.block 1			; loc_D31E↓t ...
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt64ms_BC, 3),
+								; called from the 64ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt64ms_map_enrichment:	.block 1			; CA35↓w ...
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt64ms_BC, 3),
+								; called from the 64ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x4C (4.9s)
 								; Counter to trigger map enrichment
 var_cnt64ms_BE:			.block 1			; D17F↓r ...
+								; Saturating counter, advanced every 64ms by
+								; increment_counters via COUNTER_ARG(var_cnt64ms_BC, 3),
+								; called from the 64ms slot.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
+								;
+								; Compared against: 0x08 (512ms)
 var_cnt_BF:			.block 1			; D324↓r ...
+								; The 256x prescaler on the 64ms block: incremented
+								; once per 64ms dispatch and, when it wraps to 1,
+								; advances var_cnt_C0 - giving a ~16.4s tier.
+								;
+								; The identical two-stage arrangement exists on CPU1 as
+								; var_64ms_prescale driving var_cnt_E9, so both MCUs
+								; reach their slowest timebase the same way.
 var_cnt_C0:			.block 1			; D32D↓t
+								; Saturating counter, advanced every 16.4s by
+								; increment_counters via COUNTER_ARG(var_cnt_C0, 1),
+								; called from the 64ms slot, behind var_cnt_BF as a 256x prescaler.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt_C1:			.block 1			; CDA8↓t
+								; Saturating counter, advanced every 976ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C1, 2),
+								; called from var_cnt8ms_B0 reaching 0x7A and being cleared.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_cnt_C2:			.block 1
+								; Saturating counter, advanced every 976ms by
+								; increment_counters via COUNTER_ARG(var_cnt_C1, 2),
+								; called from var_cnt8ms_B0 reaching 0x7A and being cleared.
+								; Its increments never mention this symbol, so a
+								; per-symbol search finds only the clears.
 var_rpm_x_5p12:			.block 2			; C615↓r ...
 								; RPM
 dmarx_pim2:			.block 2			; loc_CA31↓r ...

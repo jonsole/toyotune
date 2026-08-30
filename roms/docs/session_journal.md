@@ -1940,6 +1940,45 @@ high-load PAIR selected against a `var_pim2` threshold of 0x39;
 RPM-varying boost threshold; and `table_knock_retard_step` is reached as
 `table-1` plus the knock level, so level 0 is not a valid entry.
 
+### CPU2 brought up to CPU1's standard
+
+The table and counter passes applied to the other MCU:
+
+| | before | after |
+|---|---|---|
+| data blocks described | 4 / 50 | **49 / 49** |
+| counters described | 7 / 37 | **36 / 37** |
+
+CPU2's counter names already encode their rate (`var_cnt4ms_*`,
+`var_cnt8ms_*`, `var_cnt16ms_B1`, `var_cnt32ms_B2`, `var_cnt64ms_BC`), so
+the work was thresholds-to-real-time plus the two blocks whose rate is not
+in the name:
+
+- **`var_cnt_C1`** advances when `var_cnt8ms_B0` hits 0x7A and is cleared -
+  122 x 8ms, so a **~976ms** tier.
+- **`var_cnt_C0`** advances when `var_cnt_BF` wraps to 1 - a 256x prescaler
+  on the 64ms block, so **~16.4s**.
+
+**That second one is the same two-stage arrangement CPU1 uses** with
+`var_64ms_prescale` driving `var_cnt_E9`. Both MCUs reach their slowest
+timebase by prescaling the 64ms slot by 256, which is a nice confirmation
+that the two ROMs share design conventions and not just a protocol.
+
+**Cross-CPU links the table pass made explicit** - each was previously
+documented from one side only:
+
+| CPU2 table | produces | consumed by CPU1 as |
+|---|---|---|
+| `table_C360_rpm` x `table_C370_ect` / 64 | `dmatx_unk_167` | `scale_by_dmarx_167` |
+| `table_C376_rpm` | `dmatx_iscv_duty` | the ISC relay health monitor |
+| `map_max_knock_retard_C546` | `var_max_retard_unk` | `dmatx_max_retard_161` |
+| `table_ign_rpm1` / `2` | the two fallback timings | `update_ign_timing_blend`'s clamp path |
+| `table_C393` x `dmarx_nv_trim_o2` | `var_enrichment_unk_100` | **where CPU1's O2-learned NV trim is spent** |
+
+That last row closes a loop from several passes back: CPU1 learns that trim
+very slowly under cruise, sends it across, and CPU2 spends it scaling
+warm-up enrichment. Both ends now say so.
+
 ---
 
 ## Pending work (next targets)
