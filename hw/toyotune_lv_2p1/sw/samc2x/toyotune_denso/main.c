@@ -112,8 +112,8 @@ typedef struct
    byte for byte.  Compilers are free to insert padding, which would silently
    shift every field past the padding, so fail the build instead.  (C99 has no
    _Static_assert; a negative array size is the portable equivalent.) */
-typedef char ECU_DmaData1_SizeCheck[(sizeof(ECU_DmaData1_t) == TOYOTUNE_DMA_TX_FRAME_SIZE) ? 1 : -1];
-typedef char ECU_DmaData2_SizeCheck[(sizeof(ECU_DmaData2_t) == TOYOTUNE_DMA_RX_FRAME_SIZE) ? 1 : -1];
+typedef char ECU_DmaData1_SizeCheck[(sizeof(ECU_DmaData1_t) == TOYOTUNE_DMA_CPU1_TO_CPU2_SIZE) ? 1 : -1];
+typedef char ECU_DmaData2_SizeCheck[(sizeof(ECU_DmaData2_t) == TOYOTUNE_DMA_CPU2_TO_CPU1_SIZE) ? 1 : -1];
 
 /* The Denso CPU is big-endian (D = A:B with A the high byte, M68HC11 style)
    while the SAMC21 is little-endian, so every 16-bit field in the two structs
@@ -224,53 +224,54 @@ void TestTask2(void)
    frame has been seen, so a consumer can tell 'no data yet' from 'all zero'. */
 static struct
 {
-	ECU_DmaData1_t Tx;			/* CPU1 -> CPU2, 38 bytes */
-	ECU_DmaData2_t Rx;			/* CPU2 -> CPU1, 34 bytes */
-	volatile bool TxValid;
-	volatile bool RxValid;
-	volatile uint32_t TxCount;	/* whole frames captured, for link health */
-	volatile uint32_t RxCount;
+	ECU_DmaData1_t Cpu1ToCpu2;		/* 38 bytes */
+	ECU_DmaData2_t Cpu2ToCpu1;		/* 34 bytes */
+	volatile bool Cpu1ToCpu2Valid;
+	volatile bool Cpu2ToCpu1Valid;
+	volatile uint32_t Cpu1ToCpu2Count;	/* whole frames captured, for link health */
+	volatile uint32_t Cpu2ToCpu1Count;
 } ECU_Dma;
 
 
-bool ECU_GetDmaSnapshot(ECU_DmaData1_t *Tx, ECU_DmaData2_t *Rx)
+bool ECU_GetDmaSnapshot(ECU_DmaData1_t *Cpu1ToCpu2, ECU_DmaData2_t *Cpu2ToCpu1)
 {
 	bool Valid;
 
 	OS_InterruptDisable();
-	Valid = ECU_Dma.TxValid && ECU_Dma.RxValid;
-	if (Tx)
-		*Tx = ECU_Dma.Tx;
-	if (Rx)
-		*Rx = ECU_Dma.Rx;
+	Valid = ECU_Dma.Cpu1ToCpu2Valid && ECU_Dma.Cpu2ToCpu1Valid;
+	if (Cpu1ToCpu2)
+		*Cpu1ToCpu2 = ECU_Dma.Cpu1ToCpu2;
+	if (Cpu2ToCpu1)
+		*Cpu2ToCpu1 = ECU_Dma.Cpu2ToCpu1;
 	OS_InterruptEnable();
 
 	return Valid;
 }
 
 
-/* CPU2 -> CPU1 direction, SERCOM1 / DMA channel 0. */
-void ECU_DmaData2(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSize)
+/* The CPU2 -> CPU1 block, whichever SERCOM happens to carry it. */
+void ECU_DmaCpu2ToCpu1(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSize)
 {
 	/* Only a whole frame is usable; a partial capture would misalign every
 	   field after the truncation. */
-	if (RxSize != TOYOTUNE_DMA_RX_FRAME_SIZE)
+	if (RxSize != TOYOTUNE_DMA_CPU2_TO_CPU1_SIZE)
 		return;
 
-	ECU_Dma.Rx = *(const ECU_DmaData2_t *)RxBuffer;
-	ECU_Dma.RxValid = true;
-	ECU_Dma.RxCount += 1;
+	ECU_Dma.Cpu2ToCpu1 = *(const ECU_DmaData2_t *)RxBuffer;
+	ECU_Dma.Cpu2ToCpu1Valid = true;
+	ECU_Dma.Cpu2ToCpu1Count += 1;
 }
 
 
-void ECU_DmaData1(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSize)
+/* The CPU1 -> CPU2 block, whichever SERCOM happens to carry it. */
+void ECU_DmaCpu1ToCpu2(SDL_t *Sdl, void *Data, const uint8_t *RxBuffer, uint8_t RxSize)
 {
 	ECU_DmaData1_t *EcuData = (ECU_DmaData1_t *)RxBuffer;
-	if (RxSize == TOYOTUNE_DMA_TX_FRAME_SIZE)
+	if (RxSize == TOYOTUNE_DMA_CPU1_TO_CPU2_SIZE)
 	{
-		ECU_Dma.Tx = *EcuData;
-		ECU_Dma.TxValid = true;
-		ECU_Dma.TxCount += 1;
+		ECU_Dma.Cpu1ToCpu2 = *EcuData;
+		ECU_Dma.Cpu1ToCpu2Valid = true;
+		ECU_Dma.Cpu1ToCpu2Count += 1;
 
 		ECU_CanFrame1001_t Frame1001;
 		Frame1001.ECT = EcuData->ECT;
@@ -333,13 +334,20 @@ int main(void)
 	/* Release reset on Denso MCU */
 	DMCU_ResetDisable();
 
-	/* Initialise serial data logger, DMA Channel 0, SERCOM1 with Rx on pad 2 */
-	/* D151804-0461 RX - 34 bytes, the CPU2 -> CPU1 direction */
-	SDL_Init(&Sdl[0], 0, 1, 2, 64, ECU_DmaData2, NULL);
+	/* Both serial data loggers sniff the inter-CPU link: DMA channel 0 on
+	   SERCOM1 with Rx on pad 2, DMA channel 1 on SERCOM2 with Rx on pad 0.
 
-	/* Initialise serial data logger, DMA Channel 1, SERCOM2 with Rx on pad 0 */
-	/* D151804-0471 TX - 38 bytes */
-	SDL_Init(&Sdl[1], 1, 2, 0, 64, ECU_DmaData1, NULL);
+	   Which SERCOM carries which block depends on the CPU this board is
+	   plugged into, since it taps that CPU's own link pins.  The blocks
+	   themselves are identical either way - only the roles swap - so one
+	   binary serves both boards with just this binding reversed. */
+#if defined(TOYOTUNE_CPU1)
+	SDL_Init(&Sdl[0], 0, 1, 2, 64, ECU_DmaCpu2ToCpu1, NULL);	/* CPU1 receives */
+	SDL_Init(&Sdl[1], 1, 2, 0, 64, ECU_DmaCpu1ToCpu2, NULL);	/* CPU1 transmits */
+#else
+	SDL_Init(&Sdl[0], 0, 1, 2, 64, ECU_DmaCpu1ToCpu2, NULL);	/* CPU2 receives */
+	SDL_Init(&Sdl[1], 1, 2, 0, 64, ECU_DmaCpu2ToCpu1, NULL);	/* CPU2 transmits */
+#endif
 
 	/* Initialise diagnostics, SERCOM0 */
 	Diag_Init();
