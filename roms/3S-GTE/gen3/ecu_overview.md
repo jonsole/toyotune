@@ -40,7 +40,10 @@ modern ECU uses. What separates them is bits, cells and clock — not concept.
 
 ## Three processors, not two
 
-Most 1993 ECUs were a single MCU. This one is three.
+A second D8X was a standard option in Denso's range of the period rather than
+a special measure: naturally-aspirated manual-transmission ECUs use one CPU,
+while automatic-transmission and turbocharged ECUs use two. This one is
+turbocharged, so it gets the pair — and a third processor besides.
 
 ```
         ┌──────────────┐   knock level (3-bit, PORTB)   ┌───────────┐
@@ -87,11 +90,11 @@ about 12 µs.
 The disassembly characterises CPU1's *side* of that interface in full. The
 device on the other end is known only by its protocol.
 
-The split is the most consequential design decision in the box. One 8-bit
-part could not do speed-density arithmetic *and* hold hard real-time
-deadlines, so Toyota paid for a second MCU, a second ROM, and an inter-CPU
-protocol that has to be kept in sync. That is an expensive answer to a
-compute wall, and they paid it.
+The split answers a real constraint: one 8-bit part could not do
+speed-density arithmetic *and* hold hard real-time deadlines. What makes it
+interesting is that the answer was **modular** — a second MCU, a second ROM
+and an inter-CPU protocol, deployed across the range wherever an application
+needed the headroom, rather than engineered specially for this ECU.
 
 > → `knock_sensor_system.md` § *Hardware Interface* for the PORTB pinout and
 > reset timing; `session_journal.md` § *Architecture notes* for the CPU split.

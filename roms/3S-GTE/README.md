@@ -10,11 +10,25 @@ the best entry point to everything else in this directory.
 
 ---
 
-## From Gen 3 onward, an ECU is two ROMs
+## One CPU or two, depending on the application
 
-The Gen 3 and ST205 ECUs use **two D8X CPUs**, each with its own 16 KB ROM,
-exchanging a 38-byte frame every 4 ms over a serial DMA link. Both halves are
-needed to understand — or to modify — one ECU.
+How many D8X CPUs an ECU carries is **not a generational progression** — it
+tracks what the application needs:
+
+| Application | CPUs |
+|---|---|
+| Naturally aspirated, manual transmission | **one** |
+| Automatic transmission | **two** |
+| Turbo (all the ECUs in this directory) | **two** |
+
+So a second CPU is a standard option across Denso's range of the period,
+fitted where the work justifies it, rather than something special to this
+engine. Every ECU documented here is turbocharged, so every one of them is a
+two-CPU design.
+
+Each CPU has its own 16 KB ROM, and the pair exchange a 38-byte frame every
+4 ms over a serial DMA link. Both halves are needed to understand — or to
+modify — one ECU.
 
 The two part numbers differ by **+10 in the last two digits**: `-9651`/`-9661`,
 `-0461`/`-0471`, `-0481`/`-0491`. The lower number is CPU1 (real-time I/O:
@@ -44,9 +58,10 @@ Notes on the gaps:
 - **`D151804-0491`** has an IDA database but no `.bin`. Its CPU1 partner
   `-0481` is complete, so the UK ST205 pair cannot currently be built or
   cross-referenced in full.
-- **Gen 1 and Gen 2** appear as single part numbers. Whether those ECUs are
-  single-CPU or simply have an unpaired partner missing from the collection
-  is not established here.
+- **Gen 1 and Gen 2** appear as single part numbers. Since both are turbo,
+  the pattern above suggests a partner ROM exists and is simply absent from
+  this collection rather than those ECUs being single-CPU — but that has not
+  been confirmed for these two specifically.
 - **`D151804-7720`** has no partner listed in `roms.txt`, so which CPU it is
   has not been confirmed. It has no disassembly either — only the ROM image
   and an IDA database.
