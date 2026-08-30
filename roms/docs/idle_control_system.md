@@ -169,10 +169,17 @@ last nudge left the system in, but wasn't fully traced.
 - `var_rpm_smoothed`: a first-order low-pass filter tracking `var_rpm_x_5p12`,
   stepping 1/4 of the way to the current RPM each call (smoothed RPM
   reference, via `divide_rD_4_signed`).
-- `var_iscv_rpm_droop`: derived from the gap between current RPM and `var_rpm_smoothed` under a
-  low-speed gate (`var_speed_kph < 2`), doubled/saturated and generally
-  clamped to `0x400` — reads as a stall-recovery/derivative term, though the
-  exact RPM-band thresholds (`0x14`, `0x0D`) weren't fully resolved.
+- `var_iscv_rpm_droop`: `var_rpm_smoothed − actual RPM`, doubled and
+  saturated, clamped to `0x400`. It is pinned **straight to that `0x400`
+  maximum** when the droop exceeds `0x200`, or whenever RPM is *above* the
+  smoothed reference (the underflow branch at `loc_D84A`). Gated to genuine
+  idle by `var_speed_kph < 2` and an RPM band of `0x0D`..`0x14`.
+
+  The pair is an **idle-bog detector**: when RPM sags below where its own
+  smoothed history says it should be, this term grows. Structurally it is
+  the same smoothed-reference-plus-gap idiom as `calc_dmatx_pim`'s filter
+  pair and `update_ign_timing_blend`'s delay line — this firmware's house
+  style for measuring rate of change.
 
 ### Phase 6 — Final map lookup → `var_iscv_19D`
 
@@ -266,11 +273,38 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 
 ---
 
+## The idle-trim gate
+
+Phase 4's trim learning is released by a dwell requirement, not by a single
+condition:
+
+- **`var_cnt_idle_dwell`** is free-running — it sits at `0x0E2`, inside
+  `COUNTER_ARG(var_cnt_E1, 7)`, so `increment_counters` advances it every
+  tick. `calc_iscv` **clears** it (`loc_D784`) whenever the ISC value falls
+  to or below `var_iscv_target_base`. So it measures how long idle has been
+  settled *above* the target. (It appears only ever cleared in the
+  disassembly, which is why its increments are easy to miss.)
+- **`var_idle_trim_flags`** is a flags byte manipulated with whole-byte
+  `or`/`and` masks rather than `setb`/`clrb` — which is why bit-level
+  sweeps never surfaced it. Its **bit 0** is SET while `var_flags_4F.5`
+  (diagnostic mode) is active, and CLEARED once `var_cnt_idle_dwell` reaches
+  `0x99` (153 ticks, ~612 ms).
+
+Clearing that bit is what releases the idle-trim nudge. The effect is that a
+momentary excursion cannot trigger learning — idle must hold above target
+for roughly 0.6 s first.
+
+---
+
 ## Open Questions (not resolved this session)
 
-- `var_flags_44.1`'s exact meaning — it gates whether `calc_iscv` runs at all this
-  tick, and is cleared once per NE cycle at the TDC-ish position, but its
-  setter wasn't located.
+- ~~`var_flags_44.1`~~ **Resolved.** Its setter was never found because
+  **there isn't a separate one**: the gate is `tbs bit1, var_flags_44` at
+  `loc_D380`, and `tbs` is a destructive test-and-set — the test itself
+  re-locks the bit. `bg_ne_process_F3BE` clears ("unlocks") it every 8th NE
+  tooth, the same periodic point that clears `var_schedule_flag_41.0`
+  beside it, so `calc_iscv` recomputes once per that fixed-angle window
+  rather than on every 4 ms tick.
 - ~~`var_flags_46.6`~~ **Resolved** (see "Fixed-Opening Override" above): it
   gates whether the ISCV runs `calc_iscv`'s closed-loop target or a fixed
   override pulse, and is debounced from `var_io_input1` bits 2/3 plus
@@ -279,9 +313,8 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 - `var_io_input2` bits 6/7 — feed `table_iscv_C391`'s load-compensation
   selection but have no documented signal name (unlike bit 0 = ECO, bit 3 =
   PS/IDUP).
-- `var_iscv_diag_term`, `var_idle_trim_flags`, `var_cnt_idle_dwell` — participate in the flare/trim logic but
-  their precise roles weren't pinned down; left unrenamed rather than
-  guessed at.
+- ~~`var_iscv_diag_term`, `var_idle_trim_flags`, `var_cnt_idle_dwell`~~
+  **Resolved and renamed** (see "The idle-trim gate" below).
 - `table_iscv_rpm_C357`/`C361`'s exact byte layout (why a 5-byte stride, what
   the other 4 bytes per entry hold beyond the one step value read) wasn't
   fully reverse-engineered.

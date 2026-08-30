@@ -194,6 +194,58 @@ Decays `var_knock_retard` by 2 counts each 4ms period (allowing retard to recove
 
 ---
 
+## Names that look like knock but are not
+
+Several symbols in this ROM carry "knock" in their names purely as an
+artefact of early guesswork, and reading them as knock data leads directly
+to wrong conclusions. Recording them here because the trap has caught this
+effort more than once.
+
+**`set_knock_sensor_err_flag` / `check_knock_sensor_err_flag` are a generic
+abs() idiom.** The pair works by deliberate fall-through into `negate_rD`:
+
+- `set_knock_sensor_err_flag` sets `var_diag_errors_5.0` **and**
+  unconditionally negates `D`;
+- `check_knock_sensor_err_flag` negates `D` only if that flag is set.
+
+The pattern at each call site is: compute a difference that may have
+underflowed, call `set_` to take its magnitude while remembering the flip,
+do further arithmetic on the positive value, then call `check_` to restore
+the sign. **`var_diag_errors_5.0` is a "did we negate" remember-bit**, not a
+knock-sensor fault. It is genuinely knock-related only at knock-subsystem
+call sites such as `knock_mcu_update`; in `calc_iscv`, `ramp_limit_inj_pw`
+and `update_ign_timing_blend` it is borrowed purely for the negate.
+
+**Variables renamed once this was understood:**
+
+| old name | now | what it actually is |
+|---|---|---|
+| `var_unk_knk_133`/`135` | `var_pim_est_fast`/`slow` | manifold-pressure filter pair |
+| `var_unk_knock_12B` | `var_ign_blend_hist0` | ignition-blend delay line |
+| `knock_unk_E79E` | `update_pim_est_fast` | MAP estimate filter |
+| `some_knock_averaging_calc` | `update_pim_est_slow` | its slower stage |
+| `sub_E551` | `calc_dmatx_pim` | MAP transient compensation |
+
+`sub_E551` is the cautionary one: it was believed for several sessions to be
+a knock/boost limiter, purely because it called the two functions above. Its
+single exit stores to `dmatx_pim` — it is manifold-pressure transient
+compensation and has nothing to do with knock.
+
+**Genuinely knock-related and confirmed:** `var_knock_retard`,
+`var_knock_retard_max`, `var_knock_retard_prev`/`prev2`,
+`var_knock_cyl_idx`, `var_knock_event_cnt`, `var_knock_info`,
+`var_g1g2_err_cnt`, and `var_knock_retard_latch` — the last being a snapshot
+of `var_knock_retard` taken only when persistent knock coincides with a
+G1/G2 sync error.
+
+**One dead gate:** `var_knock_gate_168` is only ever cleared and has no
+setter — verified against both indirect-write mechanisms — so the `bne` at
+`loc_F5F4` never branches and control always reaches the
+`var_knock_retard_max` comparison. A knock path disabled by zeroing rather
+than removed.
+
+---
+
 ## Key Variables
 
 | Variable | Address | Description |

@@ -337,6 +337,98 @@ IGF monitoring
 
 ---
 
+## `update_ign_timing_blend` — the advance-trim blend (was `sub_E865`)
+
+This function was untraced when the rest of this document was written. It is
+a self-contained stage that produces an advance-trim term consumed *outside*
+the ignition path as well as inside it, so it is worth understanding
+separately from the scheduling above.
+
+**When it runs.** Gated on `var_schedule_flag_41.3` through the `tbs`
+self-re-arming one-shot: `iv6_4ms_process`'s 32 ms sub-slot clears the bit,
+the first call after each clear runs and re-locks it, later calls return
+immediately. So this executes at 32 ms, not per NE event.
+
+**Two paths, selected by `var_flags_44.5`:**
+
+| bit5 | path |
+|---|---|
+| CLEAR | init/seed — seeds the delay line and zeroes the accumulators |
+| SET | normal per-tick blend |
+
+(The polarity is easy to get backwards and was documented wrongly for a
+while: `tbbs` branches *if set*, and all three gates in the function agree.)
+
+### The delay line
+
+`var_ign_blend_hist0/1/2` are not three values but a **3-stage delay line**,
+shifted once per qualifying tick at `loc_E907`:
+
+```
+hist2 <- hist1 <- hist0 <- new
+```
+
+The init path seeds all three to the *same* PIM-table baseline
+(`table_pim_unk_C154(dmatx_pim)/2`), which is how you start a delay line so
+it emits no false derivative on the first tick. Differences taken across
+those stages are what make this a rate-of-change structure — the same idiom
+as `calc_dmatx_pim`'s filter pair and `calc_iscv`'s smoothed-RPM pair.
+
+### The blend arithmetic
+
+```
+term = (256 - timing) * |clamp excursion| / 512
+```
+
+- The **excursion** is how far a clamp moved `var_ign_blend_hist0`; a
+  `cmp d,#0100h` deadband discards small ones.
+- The **timing source** is `dmarx_ign_timing_unk_166`, or
+  `dmarx_ign_timing_fallback2` when the clamp pulled the value down.
+- `neg a` **inverts** the timing byte, so *less* timing gives *more* weight.
+- The `/512` is the subtle part: `mult_rDrX` leaves `D = D*X/256` and
+  `X = MSW`, and the code takes **X**, discarding `D`. That is a `>>16`,
+  which with the preceding `mul a,#80h` nets `/512` rather than `/256`.
+  Misreading `mov x, d` here changes the scale by 2x.
+
+`var_ign_blend_accum` accumulates the term with **signed** saturation: on
+overflow it loads `0x7FFF`, then if the sign flag is set an `inc a`/`inc b`
+carries that to `0x8000`, i.e. −32768. Its *sign* later selects
+`table_rpm_C168` vs `table_rpm_C172`.
+
+### The crossfade and the output
+
+`table_ign_blend_weight` is a two-entry linear ramp (`0x1A`→`0x80`). The
+first timing product is interpolated through it to give a weight, which
+multiplies the *second* timing source — `var_ign_blend_pos` or
+`var_ign_blend_neg`, selected by `var_diag_errors_5.0`. That crossfade is
+what the function is named for.
+
+The result lands in **`var_ign_blend_out`**, which is signed and has **two
+consumers**:
+
+1. the injector pulse-width chain, where it is added at stage 3 (see
+   `fuel_calculation_system.md`);
+2. an ISC/limiter gate near `loc_D228`, compared against `0xFFE7` (−25).
+
+So this is not purely an ignition quantity — a change here moves fuelling
+too, which is worth knowing before treating it as a timing-only adjustment.
+
+### `decay_ign_ect_term` — warm-up advance that fades
+
+`var_ign_ect_term` is seeded **once**, on the init path, from
+`table_ect_C185` (scaled through `scale_by_nv_trim_o2`, which folds in the
+O2-learned NV trim) plus `table_ect_C17C`. Thereafter
+`decay_ign_ect_term` subtracts 12 per qualifying tick down to 0, and the
+value is added into the timing sum. A warm-up ignition correction that
+bleeds out — the ignition-side counterpart of CPU2's enrichment decay, and
+the reason the seed and the decay sit on opposite sides of
+`var_flags_44.5`.
+
+**Not traced:** `table_ign_blend_weight`'s and `table_ect_C185`/`C17C`'s
+real-world units.
+
+---
+
 ## Variable Reference
 
 | Variable | Description |
