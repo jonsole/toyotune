@@ -78,3 +78,25 @@ CMakeUserPresets.json
 # Unzipped device packs (SAMC21 DFP, CMSIS) - ~108MB of third-party headers,
 # freely re-downloadable from packs.download.microchip.com. See INSTALL.md.
 /hw/toyotune_lv_2p1/sw/packs/
+
+# Host-side Python venv for the CAN/serial scripts
+.venv/
+
+# Firmware build output. These already sit under build/ or Debug/ above, but
+# ignore them by extension too so a build run from anywhere does not leave
+# artifacts staged. No tracked file uses any of these extensions.
+*.elf
+*.hex
+*.map
+*.lss
+*.srec
+*.eep
+*.o
+*.d
+
+# Flash dumps pulled off the SAMC21, e.g. before reflashing: device state
+# rather than source, and 256KB apiece.
+#
+# Deliberately NOT a blanket *.bin rule - roms/ tracks around 45 legitimate
+# ROM images with that extension, as do cpld/roms and test code/.
+flash_backup_*.bin
