@@ -337,6 +337,56 @@ IGF monitoring
 
 ---
 
+## Dwell calculation (`loc_EA2D`, head of `calc_4ms_corrections`)
+
+```
+var_ign_dwell_offset = table_dwell_battery(var_adc_battery)
+                       * table_dwell_rpm(RPM) / 32
+var_ign_dwell_min    = table_dwell_min_rpm(RPM)
+```
+
+Dwell is compensated for **both battery voltage and engine speed**, which is
+the expected shape: a weaker battery charges the coil more slowly and needs
+longer dwell, while the available window shrinks as RPM rises.
+
+Watch the polarity — `var_adc_battery` runs **inversely** to voltage
+(13.92 V → `0x1E`, 16.40 V → `0x11`), so a larger index means a *weaker*
+supply. There is a direct counterpart on the fuel side: `loc_E3D9` applies
+`table_inj_battery_comp` to the injector pulse width from the same variable,
+for the same reason. Coil charges slower, injector opens slower, both get
+longer.
+
+---
+
+## RPM cap on requested advance (`loc_F1A1`)
+
+Inside `iv6_ne_process`, after `var_ign_advance_raw` is stored, a ceiling is
+derived as `var_rpm_x_5p12 * 0xE9` (high byte) and the advance is walked down
+until it fits, clamping at zero. The faster the engine turns, the less crank
+angle remains before the next event — so the cap tightens with RPM. The units
+of the `0xE9` scale factor are not established.
+
+---
+
+## Misfire detection (`loc_ED91`)
+
+Not strictly ignition, but it lives in `calc_4ms_corrections` alongside the
+ignition corrections and feeds them.
+
+The loop sums the four-entry `var_cyl_rough_cnt` array and divides by 4, so
+it holds the **mean** roughness across the cylinders. It then selects one
+cylinder with `((var_ne_count >> 4) + 2) & 3` — the cylinder field of the NE
+counter, offset by two firing events, which is the cylinder whose combustion
+corresponds to the crank interval just measured — and compares that
+cylinder's count against the mean.
+
+Comparing against the mean rather than a fixed threshold makes the test
+**self-calibrating**: it detects one bad cylinder, not a generally rough
+engine. `update_cyl_rpm_dev` produces the per-cylinder deviation the array
+accumulates, and the counters decay by 9 per pass so old events fade.
+
+---
+
 ## `update_ign_timing_blend` — the advance-trim blend (was `sub_E865`)
 
 This function was untraced when the rest of this document was written. It is

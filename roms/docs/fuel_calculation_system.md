@@ -603,6 +603,64 @@ split should start from there.
 
 ---
 
+## Injection dispatch, enrichment and cut — the surrounding logic
+
+### Sequential dispatch (`bg_ne_process_F2D2`)
+
+One injector is fired per crank event, in **strict rotation**: the cylinder
+index is `var_inj_active & 3`, used to index both `table_injector_control`
+(the port and bit) and `var_inj_pw_inj1` (stepped by 2, since the pulse
+widths are words). `var_inj_active` then advances mod 4.
+
+Note this means injectors are driven **by rotation, not by cylinder
+identity** — worth knowing before assuming a fixed injector-to-cylinder map.
+The fire is skipped unless `var_inj_sched_ne` matches `va_ne_count_2`, and
+range-checked against `0x35` and a low-nibble limit of 5.
+
+### Acceleration enrichment (`loc_CECD`)
+
+```
+var_accel_enrich = table_accel_enrich_tps(var_tps) * var_overrun_fuel_mult
+```
+
+a throttle-position lookup scaled by a multiplier that **decays** — the tail
+subtracts `0x13` from `var_overrun_fuel_mult` every pass. So enrichment is a
+transient pulse that fades, not a steady offset.
+
+It also consumes `var_flags_1DC` bit 1 under `di`/`ei`, testing the original
+byte for exactly `0x02` — the "injector_update ran since I last looked, and
+nothing else touched this byte" handshake.
+
+### Overrun fuel cut (`loc_CE8C`)
+
+A chain of gates, all of which must pass: starter not running, RPM above the
+cranking band, `var_flags_4E.2` (ECT above ~75 °C), throttle-closed debounce
+met, road speed >= `0x19` (25 km/h), and **`var_limiter_flags == 10011111b`
+exactly**.
+
+That last one is an equality test on the whole byte, not a bit test, so *any*
+other limiter state blocks overrun cut. A second group of thresholds — speed,
+RPM, `var_tps_delta`, `var_tps`, `dmatx_pim` — then selects between the two
+accept paths.
+
+### Lambda step selection (`loc_CFC9`)
+
+The step comes from `table_lambda_step`, read five bytes at a time into
+`var_lambda_step`. The **sign of the error selects which group of five** —
+the pointer is advanced past the first group when the value is negative — so
+rich and lean use different step schedules. That asymmetry is deliberate: the
+loop responds differently to over- and under-fuelling.
+
+### Battery compensation (`loc_E3D9`)
+
+The pulse width is scaled by `table_inj_battery_comp`, indexed by
+`var_adc_battery`. Since that variable runs **inversely** to voltage, a
+larger index means a weaker supply — which opens the injector more slowly and
+so needs a longer pulse. The ignition side does exactly the same thing for
+dwell; see `ignition_system.md`.
+
+---
+
 ## Short-term vs long-term fuel trim
 
 Both exist, and both are applied at one place: `apply_enrich_and_trims`'s `loc_E47B`

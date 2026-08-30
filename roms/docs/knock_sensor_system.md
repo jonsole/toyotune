@@ -190,7 +190,36 @@ On each NE cycle:
 
 ### `knock_retard_decay` — Called Every 4ms
 
-Decays `var_knock_retard` by 2 counts each 4ms period (allowing retard to recover when knock clears). If knock error flag is set, `nv_table_knock_info` is reset to `0x9A9A` (both bytes). Also computes `dmatx_unk_216` (retard command to CPU2) based on ECT-corrected retard value and `nv_table_knock_info`.
+Decays `var_knock_retard` by 2 counts each 4ms period (allowing retard to recover when knock clears). If knock error flag is set, `nv_table_knock_info` is reset to `0x9A9A` (both bytes). Also computes `dmatx_ign_corr_cpu2` (the retard command sent to CPU2, at 0x216 - the doc previously called it `dmatx_unk_216` after its address) from the ECT-corrected retard value and `nv_table_knock_info`.
+
+---
+
+## Retard response is front-loaded (`loc_F57C`)
+
+The base step comes from `table_knock_retard_step`, indexed by the low two
+bits of `var_knock_info`. Note it is reached as `table_knock_retard_step-1`
+plus the level, so **level 0 is not a valid entry**.
+
+That base is then scaled by how many events have already occurred:
+
+| `var_knock_event_cnt` | step |
+|---|---|
+| > 4 | base step, unchanged |
+| <= 4 | **doubled** |
+| <= 1 | a further branch applies |
+
+So the **first** sign of knock gets the largest retard and repeated events
+trim progressively more finely — retard hard, then converge.
+`dmatx_ign_corr_cpu2` is consulted on the way through, so CPU2's own
+correction participates in the decision.
+
+The per-cylinder increment at `loc_F661` is separate: `table_knock_retard_inc`
+indexed by `var_knock_cyl_idx`, added to the previous value and clamped at
+`0xAB`, and only applied inside an `0x18`..`0x8C` RPM window.
+
+**Decay is fixed-rate.** `var_cnt_knock_decay` reaches `0x40` every 256 ms
+and only then is retard reduced by 2 — so recovery proceeds at 2 counts per
+256 ms regardless of how often `knock_retard_decay` is called.
 
 ---
 

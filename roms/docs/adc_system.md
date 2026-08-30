@@ -361,6 +361,35 @@ Channels 0x06, 0x07, 0x09, 0x0D are low-priority channels that store raw 8-bit A
 
 These are not transmitted to CPU2 via DMA and appear to be used locally in idle speed control calculations only.
 
+
+## Counter tick rates (why a threshold is not a duration)
+
+Several ADC-adjacent behaviours are paced by counters whose rate is **not**
+visible at the counter itself. `increment_counters` advances a whole address
+RANGE from a packed `COUNTER_ARG`, and the rate comes from which dispatch
+slot makes the call:
+
+| block | rate | called from |
+|---|---|---|
+| `var_4m_cnt_AD` +0x19, `var_cnt_C7` +6 | **4 ms** | `iv6_4ms_process` |
+| `var_cnt_CD` +0x14, `var_cnt_EA` +5, `var_trim_stable_cnt` +2 | **32 ms** | `loc_D1DD` (`var_schedule_flag_41.6`) |
+| `var_cnt_E1` +7 | **64 ms** | `bg_64ms_dispatch` (bit 7) |
+| `var_cnt_E9` +1 | **16.4 s** | same, behind the 256x `var_64ms_prescale` |
+
+Two consequences worth remembering when reading any threshold in this ROM:
+
+- A counter's increments **never mention its own symbol**, so a per-symbol
+  search finds only the clears. "No writer found" is not evidence a counter
+  is dead.
+- The same numeric threshold means very different things per block.
+  `var_cnt_sensor_error`'s `0x0F` is 480 ms at 32 ms, while
+  `var_cnt_sta_active`'s `0x1F` is 2.0 s at 64 ms.
+
+CPU2 uses the same scheme with the rate encoded in the name instead
+(`var_cnt4ms_*`, `var_cnt8ms_*`, `var_cnt16ms_B1`, `var_cnt32ms_B2`,
+`var_cnt64ms_BC`), and reaches its slowest tier by the identical trick — a
+256x prescaler (`var_cnt_BF`) on the 64 ms block driving `var_cnt_C0`.
+
 ---
 
 ## Variable Reference
