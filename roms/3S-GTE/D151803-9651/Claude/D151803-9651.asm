@@ -2538,8 +2538,8 @@ var_ign_blend_accum:			.block 1			; DATA XREF: divide_d_by_x+2235↓r
 								; saturation trick that pins it at +32767/-32768.
 								;
 								; Its SIGN is then used as a selector: at loc_E7CD
-								; `ld b, var_ign_blend_accum / bpz` chooses table_rpm_C168 when
-								; non-negative and table_rpm_C172 when negative.
+								; `ld b, var_ign_blend_accum / bpz` chooses table_ign_rpm_pos when
+								; non-negative and table_ign_rpm_neg when negative.
 								; update_ign_timing_blend+1F↓w	...
 								; Read/written by update_ign_timing_blend - see that
 								; function's Reads/Writes header.
@@ -2605,7 +2605,7 @@ var_scaled_ve_tham:		.block 1			; DATA XREF: apply_enrich_and_trims↓r
 var_ign_rpm_term:			.block 1			; DATA XREF: divide_d_by_x+2242↓w
 								; RPM-table lookup result feeding the ignition blend:
 								; table_rD_fixed64_interpolate over var_rpm_x_5p12
-								; against table_rpm_C168 or table_rpm_C172 (whichever
+								; against table_ign_rpm_pos or table_ign_rpm_neg (whichever
 								; var_ign_blend_accum's sign selected), stored here at
 								; loc_E7D8 and consumed later in
 								; update_ign_timing_blend.
@@ -3575,6 +3575,7 @@ map_transient_mag:			.dw 0200h			; DATA XREF: calc_transient_terms:loc_E787↓o
 
 
 map_transient_gain:			.dw 0080h			; DATA XREF: calc_transient_terms+27↓o
+								; Indexed by var_rpm_x_5p12 via map_rD_32_rX_map_interpolate.
 								; Stage 2: 3 cols x 11 rows, x-axis RPM (XDF
 								; entry 0xC0CD). Indexed by RPM against stage
 								; 1's output / 8; its result becomes the step
@@ -3599,6 +3600,7 @@ map_transient_gain:			.dw 0080h			; DATA XREF: calc_transient_terms+27↓o
 
 
 map_fuel_scale_rpm:		.dw 0280h			; DATA XREF: divide_d_by_x+86F↓o
+								; Indexed by var_rpm_x_5p12 via map_rD_16_rX_map_interpolate.
 				.db 05h				; 6 columns
 				.dw 0100h
 				.db 04h				; 5 rows
@@ -3626,6 +3628,7 @@ table_ect_C112:			.db 18h				; DATA XREF: divide_d_by_x:loc_E3B2↓o
 
 
 table_rpm_C12D:			.dw 0280h			; DATA XREF: divide_d_by_x+1E21↓o
+								; Indexed by var_rpm_x_5p12 via j_table_rD_fixed_interpolate.
 				.db 06h				; 7 entries
 				.db 0FFh
 				.db 92h
@@ -3643,11 +3646,14 @@ table_ect_C137:			.db 9Ch, 40h			; DATA XREF: divide_d_by_x+1E28↓o
 
 
 table_inj_battery_comp:		.db 46h, 10h			; DATA XREF: divide_d_by_x+1E48↓o
+								; Indexed by var_adc_battery via table_rB_fixed_16_interpolate.
 				.db 0A9h
 				.db 94h
 
 
 table_inj_battery_adjust:	.db 53h, 80h			; DATA XREF: adc_handler_battery+14↓o
+								; Indexed by var_adc_battery via table_rB_fixed_32_interpolate.
+								; Result -> var_inj_battery_adjust.
 				.db 0A9h			; 6.48v	 =
 				.db 4Eh				; 8.95v	 =
 				.db 2Ah				; 11.44v =
@@ -3663,6 +3669,7 @@ table_ect_unk_C147:		.db 26h, 0C0h			; DATA XREF: calc_ect_unk_148↓o
 
 
 table_rpm_unk_C14D:		.db 60h, 80h			; DATA XREF: divide_d_by_x+5D6↓o
+								; Indexed by var_rpm_div_25 via table_rB_fixed_32_interpolate.
 				.db 0Fh
 				.db 06h
 				.db 06h
@@ -3670,7 +3677,13 @@ table_rpm_unk_C14D:		.db 60h, 80h			; DATA XREF: divide_d_by_x+5D6↓o
 				.db 06h
 
 
-table_pim_unk_C154:		.dw 0113h			; DATA XREF: update_ign_timing_blend+A↓o
+table_pim_blend_seed:		.dw 0113h			; DATA XREF: update_ign_timing_blend+A↓o Its result, HALVED, is what
+								; Indexed by dmatx_pim via table_rD_fixed64_interpolate.
+								; Result -> var_ign_blend_hist0.
+								; update_ign_timing_blend's init path seeds all three
+								; delay-line stages with - so this table sets the
+								; starting point the blend converges from after a
+								; reset.
 				.db 0Bh				; 12 entries
 				.db 00h
 				.db 07h
@@ -3707,7 +3720,11 @@ table_ign_blend_weight:		.dw 0100h			; DATA XREF: update_ign_timing_blend+CB↓o
 				.db 80h
 
 
-table_rpm_C168:			.dw 0080h			; DATA XREF: divide_d_by_x:loc_E7CD↓o
+table_ign_rpm_pos:			.dw 0080h			; DATA XREF: divide_d_by_x:loc_E7CD↓o
+								; RPM-indexed (var_rpm_x_5p12), selected when
+								; var_ign_blend_accum is NON-NEGATIVE. Its partner
+								; table_ign_rpm_neg is used when the accumulator is
+								; negative. Result -> var_ign_rpm_term.
 				.db 06h				; 7 entries
 				.db 47h
 				.db 47h
@@ -3718,7 +3735,12 @@ table_rpm_C168:			.dw 0080h			; DATA XREF: divide_d_by_x:loc_E7CD↓o
 				.db 30h
 
 
-table_rpm_C172:			.dw 0080h			; DATA XREF: divide_d_by_x+223A↓o
+table_ign_rpm_neg:			.dw 0080h			; DATA XREF: divide_d_by_x+223A↓o
+								; Indexed by var_rpm_x_5p12 via table_rD_fixed64_interpolate.
+								; Result -> var_ign_rpm_term.
+								; Result -> var_ign_rpm_term.
+								; RPM-indexed, the NEGATIVE-accumulator counterpart of
+								; table_ign_rpm_pos - see that table.
 				.db 06h				; 7 entries
 				.db 42h
 				.db 42h
@@ -3795,6 +3817,7 @@ table_ect_C1C1:			.db 0Eh				; DATA XREF: divide_d_by_x+2287↓o
 
 
 table_rpm_unk_C1D2:		.db 38h, 60h			; DATA XREF: injector_warmup+C↓o
+								; Indexed by var_rpm_div_25 via table_rB_fixed_32_interpolate.
 				.db 7Dh
 				.db 7Dh
 				.db 7Dh
@@ -3816,6 +3839,7 @@ table_rpm_unk_C1E1:		.db 18h				; DATA XREF: divide_d_by_x+618↓o
 
 
 table_rpm_unk_C1E7:		.db 38h				; DATA XREF: divide_d_by_x:loc_CC75↓o
+								; Indexed by var_rpm_x_5p12 via table_rB_fixed_16_interpolate.
 				.db 50h
 				.db  02h
 				.db  03h
@@ -3826,6 +3850,7 @@ table_rpm_unk_C1E7:		.db 38h				; DATA XREF: divide_d_by_x:loc_CC75↓o
 
 
 table_boost_limit:		.dw 0200h			; DATA XREF: check_boost_limit↓o
+								; Indexed by var_rpm_x_5p12 via table_rD_fixed128_interpolate.
 								; Boost	cut lookup table
 				.db 02h
 				.db 0DAh			; 17.6 psi. Set	to FFh on TechTom ECUs
@@ -3834,6 +3859,7 @@ table_boost_limit:		.dw 0200h			; DATA XREF: check_boost_limit↓o
 
 
 table_boost_limit_time:		.dw 0200h			; DATA XREF: check_boost_limit:loc_CCE9↓o
+								; Indexed by var_rpm_x_5p12 via table_rD_fixed128_interpolate.
 								; Boost	cut time limit table
 				.db 02h
 				.db 098				; 98 * 4ms = 392ms
@@ -3847,13 +3873,17 @@ table_ect_inj_throttle_pump:	.db 02h				; DATA XREF: async_throttle_inject+1B↓
 
 
 table_tps_unk_C200:		.db 06h				; DATA XREF: divide_d_by_x+85A↓o
+								; Indexed by var_tps via table_pair_interpolate.
 				.db 29h, 7Ah
 				.db 52h, 5Ch
 				.db 7Bh, 3Dh
 				.db 0A4h, 3Dh
 
 
-table_rpm_unk_C209:		.db 08h				; DATA XREF: divide_d_by_x+928↓o
+table_overrun_fuel_mult:		.db 08h				; DATA XREF: divide_d_by_x+928↓o
+								; RPM-indexed; the result becomes
+								; var_overrun_fuel_mult, the decaying multiplier that
+								; scales acceleration enrichment (see loc_CECD).
 				.db 28h, 40h
 				.db 3Ch, 73h
 				.db 50h, 7Fh
@@ -3862,6 +3892,8 @@ table_rpm_unk_C209:		.db 08h				; DATA XREF: divide_d_by_x+928↓o
 
 
 table_accel_enrich_tps:		.db 12h				; DATA XREF: divide_d_by_x+934↓o
+								; Indexed by var_tps via table_rA_pair_interpolate.
+								; Result -> var_accel_enrich.
 				.db 0Ah, 0FDh
 				.db 14h, 0FDh
 				.db 1Fh, 0FDh
@@ -3902,6 +3934,7 @@ table_adc_lambda_C249:		.db 09h, 09h, 06h, 10h,	0Bh	; DATA XREF: adc_handler_o2_
 
 
 table_rpm_unk_C253:		.db 40h, 50h			; DATA XREF: divide_d_by_x+3E4↓o
+								; Indexed by var_rpm_div_25 via table_rB_fixed_16_interpolate.
 				.db 7Ah, 7Ah, 7Ah, 31h
 				.db 31h, 31h
 
@@ -3919,6 +3952,7 @@ table_inj_phase_trim:			.db  0Dh			; DATA XREF: calc_inj_phase_lead+16↓o
 
 
 table_dwell_battery:		.db 08h				; DATA XREF: calc_4ms_corrections:loc_EA2D↓o
+								; Indexed by var_adc_battery via table_pair_interpolate.
 				.db 80h, 0FFh
 				.db 9Ah, 0D7h
 				.db 0B3h, 0BBh
@@ -3952,6 +3986,7 @@ table_unk_C284:			.db 0Eh				; DATA XREF: calc_4ms_corrections+242↓o
 
 
 table_unk_C295:			.db 0Eh				; DATA XREF: calc_4ms_corrections+24C↓o
+								; Indexed by var_temp_w via table_rA_pair_interpolate.
 				.db 1Fh, 0ABh
 				.db 3Eh, 9Eh
 				.db 5Dh, 95h
@@ -3984,6 +4019,7 @@ table_unk_C2B7:			.db 00h, 0C0h			; DATA XREF: calc_4ms_corrections+296↓o
 
 
 table_rpm_unk_C2C0:		.db 08h, 60h			; DATA XREF: calc_4ms_corrections+41A↓o
+								; Indexed by var_rpm_div_25 via table_rB_fixed_16_interpolate.
 				.db 05h, 56h, 56h, 6Bh
 				.db 80h, 96h, 0CDh
 
@@ -3992,11 +4028,19 @@ table_unk_C2C9:			.db 05h, 11h, 05h, 11h		; DATA XREF: calc_4ms_corrections+422�
 
 
 table_gearing_unk_C2CD:		.db 1Ah, 80h			; DATA XREF: calc_4ms_corrections+9E↓o
+								; Indexed by var_gearing via table_rB_fixed_32_interpolate.
 				.db 0C8h, 0C8h,	0C8h, 0C8h
 				.db 0C8h
 
 
-table_knock_unk_C2D4:		.db 56h, 80h			; DATA XREF: calc_ign_timing_min+6↓o
+table_idle_ramp_from_knock:		.db 56h, 80h			; DATA XREF: calc_ign_timing_min+6↓o
+								; Indexed by var_ign_knock_retard_base via table_rB_fixed_32_interpolate.
+								; Result -> var_idle_timing_ramp.
+								; Result -> var_idle_timing_ramp.
+								; Indexed by var_ign_knock_retard_base; the result
+								; becomes var_idle_timing_ramp. So the idle timing ramp
+								; is derived from how much knock retard is in force -
+								; more retard, different idle ramp.
 				.db 00h, 0Ch, 2Ah, 40h
 				.db 95h
 
@@ -4006,17 +4050,21 @@ table_unk_C2DB:			.db 00h, 80h			; DATA XREF: calc_ign_timing_min:loc_EBBC↓o
 				.db 40h
 
 ;2-D Table
-table_C2E2:			.db 02h				; DATA XREF: calc_ect_unk_160↓o
+table_ect_corr_160:			.db 02h				; DATA XREF: calc_ect_unk_160↓o
+								; ECT-indexed correction read by calc_ect_unk_160,
+								; result stored to var_ect_unk_160.
 								; (02h + 2) / 2	= 2 entries
 				.dw 0D240h
 				.dw 0E400h
 
 
 table_gear_correction:		.db 1Ah, 80h			; DATA XREF: calc_4ms_corrections:loc_EB0B↓o
+								; Indexed by var_gearing via table_rB_fixed_32_interpolate.
 				.db 06h, 0Ah, 19h, 25h,	25h
 
 
 table_unk_C2EE:			.db  4Fh ; O			; DATA XREF: calc_ign_timing_min+6C↓o
+								; Indexed by var_tps via table_rB_fixed4_interpolate.
 				.db  40h ; @
 				.db  80h ; Ç
 				.db  00h
@@ -4025,7 +4073,12 @@ table_unk_C2EE:			.db  4Fh ; O			; DATA XREF: calc_ign_timing_min+6C↓o
 								; commented" pending list) - real-world
 								; meaning of these 4 bytes not traced.
 
-table_unk_C2F2:			.db  20h			; DATA XREF: calc_4ms_corrections+32↓o
+table_ign_corr_rpm:			.db  20h			; DATA XREF: calc_4ms_corrections+32↓o
+								; Indexed by var_rpm_div_25 via table_rB_fixed_32_interpolate.
+								; Indexed by var_rpm_div_25, read immediately after the
+								; dwell calculation in calc_4ms_corrections; the result
+								; lands in var_temp_7A and feeds the correction stages
+								; that follow. What it corrects is not established.
 				.db  40h ; @
 				.db  29h ; )
 				.db  3Ah ; :
@@ -4035,7 +4088,9 @@ table_unk_C2F2:			.db  20h			; DATA XREF: calc_4ms_corrections+32↓o
 								; further.
 
 ;2-D Table
-table_unk_C2F7:			.db  04h			; DATA XREF: calc_4ms_corrections+69↓o
+table_overrun_advance:			.db  04h			; DATA XREF: calc_4ms_corrections+69↓o
+								; RPM-indexed; the result becomes var_overrun_advance,
+								; the ignition advance applied during overrun.
 								; (04h + 2) / 2	= 3 entries
 				.db  28h ; (
 				.db  44h ; D
@@ -4057,6 +4112,7 @@ table_idle_C2FE:		.dw 0600h			; DATA XREF: calc_iscv:loc_D87F↓o
 
 
 table_rpm_c31d:			.db 50h, 30h			; DATA XREF: calc_iscv+454↓o
+								; Indexed by var_rpm_div_25 via table_rB_fixed_16_interpolate.
 byte_C31F:			.db 00h, 66h, 9Ah, 0CDh
 
 
@@ -4085,6 +4141,7 @@ table_ect_idle_flare:		.db 0Ah				; DATA XREF: calc_iscv+5↓o
 
 
 table_tha_idle_flare:		.db 02h				; DATA XREF: calc_iscv+C↓o
+								; Indexed by var_tha via table_rA_pair_interpolate.
 								; (02h + 2) / 2	= 2 entries
 				.db 0B3h, 0Ah
 				.db 0D2h, 33h
@@ -4094,6 +4151,7 @@ table_unk_C34A:			.db 1Fh, 0Ah			; DATA XREF: calc_iscv:loc_D8C4↓o
 
 
 table_idle_pim:			.db 21h, 30h			; DATA XREF: calc_iscv+4B↓o
+								; Indexed by var_pim2 via table_rB_fixed_16_interpolate.
 				.db 00h, 26h, 26h, 26h
 
 
@@ -4117,7 +4175,9 @@ byte_C372:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
 byte_C374:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
 
 
-table_ect_C376:			.db 0Ch				; DATA XREF: calc_ect_unk_194↓o
+table_ect_corr_194:			.db 0Ch				; DATA XREF: calc_ect_unk_194↓o
+								; ECT-indexed correction read by calc_ect_unk_194,
+								; result stored to var_ect_unk_194.
 				.db 26h, 0F3h
 				.db 51h, 0F1h
 				.db 6Bh, 0E8h
@@ -4128,8 +4188,10 @@ table_ect_C376:			.db 0Ch				; DATA XREF: calc_ect_unk_194↓o
 
 
 table_iscv_adc_1:		.db 73h, 60h, 19h, 27h,	33h, 3Bh
+								; Indexed by var_adc_battery via table_rB_fixed_32_interpolate.
 								; DATA XREF: calc_idle_batt1+2↓o
 table_iscv_adc_2:		.db 73h, 60h, 36h, 33h,	31h, 2Ch
+								; Indexed by var_adc_battery via table_rB_fixed_32_interpolate.
 								; DATA XREF: calc_idle_batt2+2↓o
 table_iscv_C391:		.db 00h, 08h, 10h, 20h		; DATA XREF: calc_iscv+112↓o
 table_knock_retard_step:		.db 02h, 04h, 06h		; DATA XREF: ROM:F583↓t
@@ -8014,7 +8076,7 @@ loc_CE8C:							; CODE XREF: divide_d_by_x+8ED↑j
 				tbs	bit3, var_flags_4E
 				bne	loc_CECD
 
-				ld	y, #table_rpm_unk_C209
+				ld	y, #table_overrun_fuel_mult
 				jsr	table_rpm_pair_interpolate
 
 				mov	a, b
@@ -9536,7 +9598,7 @@ loc_D4B9:							; CODE XREF: clamp_min_ect_194+2↑j
 ; Calls: table_ect_pair_interpolate
 ; ---------------------------------------------------------------------------
 calc_ect_unk_194:							; CODE XREF: divide_d_by_x+1DF5↓p
-				ld	y, #table_ect_C376
+				ld	y, #table_ect_corr_194
 				jsr	table_ect_pair_interpolate
 
 				st	a, var_ect_unk_194
@@ -14729,11 +14791,11 @@ locret_E7CC:							; CODE XREF: update_pim_est_slow+9↑j
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
 loc_E7CD:							; CODE XREF: divide_d_by_x:loc_E54E↑j
-				ld	y, #table_rpm_C168
+				ld	y, #table_ign_rpm_pos
 				ld	b, var_ign_blend_accum
 				bpz	loc_E7D8
 
-				ld	y, #table_rpm_C172
+				ld	y, #table_ign_rpm_neg
 
 loc_E7D8:							; CODE XREF: divide_d_by_x+2238↑j
 				ld	d, var_rpm_x_5p12
@@ -14976,7 +15038,7 @@ update_ign_timing_blend:							; CODE XREF: divide_d_by_x+D3A↑p
 loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 
 ; Init/reset path, taken when var_flags_44.5 is CLEAR: seeds var_ign_blend_hist0/var_ign_blend_hist1/
-; var_ign_blend_hist2 to table_pim_unk_C154(dmatx_pim)/2 (a PIM-indexed baseline),
+; var_ign_blend_hist2 to table_pim_blend_seed(dmatx_pim)/2 (a PIM-indexed baseline),
 ; zeroes var_ign_blend_accum/var_ign_blend_out, sets var_fuelcut_recovery_cnt=0xFF - a first-run/reset baseline,
 ; not the normal per-tick path (that's loc_E890 below, taken when
 ; var_flags_44.5 is SET instead - `tbbs` branches if set).
@@ -14988,7 +15050,7 @@ loc_E86C:							; CODE XREF: update_ign_timing_blend+2↑j
 ; set. Set = normal running; clear = seed/init.
 
 				ld	d, dmatx_pim
-				ld	y, #table_pim_unk_C154
+				ld	y, #table_pim_blend_seed
 				jsr	table_rD_fixed64_interpolate
 
 				shr	d
@@ -15452,7 +15514,7 @@ calc_4ms_corrections:							; CODE XREF: divide_d_by_x:loc_D2D2↑p
 ; larger ADC byte means a lower supply.
 ;
 ; It then restores var_flags_4E from var_flags_4E_saved and takes a third
-; lookup, table_unk_C2F2 indexed by var_rpm_div_25, into var_temp_7A for the
+; lookup, table_ign_corr_rpm indexed by var_rpm_div_25, into var_temp_7A for the
 ; correction stages that follow.
 ; ---------------------------------------------------------------------------
 loc_EA2D:							; CODE XREF: calc_4ms_corrections+3↑j
@@ -15475,7 +15537,7 @@ loc_EA2D:							; CODE XREF: calc_4ms_corrections+3↑j
 				st	a, var_ign_dwell_min
 				ld	a, var_flags_4E_saved
 				st	a, var_flags_4E
-				ld	y, #table_unk_C2F2
+				ld	y, #table_ign_corr_rpm
 				ld	b, var_rpm_div_25
 				jsr	table_rB_fixed_32_interpolate
 
@@ -15514,7 +15576,7 @@ loc_EA7A:							; CODE XREF: calc_4ms_corrections+54↑j
 				cmp	a, var_temp_7A
 				bcs	loc_EA95
 
-				ld	y, #table_unk_C2F7
+				ld	y, #table_overrun_advance
 				jsr	table_rpm_pair_interpolate
 
 				st	a, var_overrun_advance
@@ -15730,7 +15792,7 @@ calc_ign_timing_min:							; CODE XREF: calc_4ms_corrections+552↓p
 				tbbc	bit3, var_flags_4E, loc_EB66
 
 				ld	b, var_ign_knock_retard_base
-				ld	y, #table_knock_unk_C2D4
+				ld	y, #table_idle_ramp_from_knock
 				jsr	table_rB_fixed_32_interpolate
 
 				st	a, var_idle_timing_ramp
@@ -15926,7 +15988,7 @@ loc_EC16:							; CODE XREF: ramp_misfire_correction+4↑j
 ; Calls: table_ect_pair_interpolate
 ; ---------------------------------------------------------------------------
 calc_ect_unk_160:						; CODE XREF: divide_d_by_x+1DEA↑p
-				ld	y, #table_C2E2
+				ld	y, #table_ect_corr_160
 				jsr	table_ect_pair_interpolate
 
 				st	a, var_ect_unk_160

@@ -1856,6 +1856,54 @@ variable's declaration - a rare confirmation of that handshake in use.
 Tables named: `table_gear_correction`, `table_accel_enrich_tps` (bringing
 this cluster's total to seven).
 
+### Table pass
+
+Jon's point that the tables are mostly unnamed and undocumented. **39 of 79
+now carry a description**, and nine got real names:
+
+| was | now |
+|---|---|
+| `table_C2E2` | `table_ect_corr_160` |
+| `table_ect_C376` | `table_ect_corr_194` |
+| `table_knock_unk_C2D4` | `table_idle_ramp_from_knock` |
+| `table_pim_unk_C154` | `table_pim_blend_seed` |
+| `table_rpm_C168` / `C172` | `table_ign_rpm_pos` / `table_ign_rpm_neg` |
+| `table_rpm_unk_C209` | `table_overrun_fuel_mult` |
+| `table_unk_C2F7` | `table_overrun_advance` |
+| `table_unk_C2F2` | `table_ign_corr_rpm` |
+
+plus `table_dwell_battery`, `table_dwell_rpm`, `table_dwell_min_rpm`,
+`table_lambda_step`, `table_inj_battery_comp`, `table_gear_correction` and
+`table_accel_enrich_tps` from the dark-block passes - sixteen in total.
+
+`table_pim_blend_seed` is the nicest of them: it is what
+`update_ign_timing_blend`'s init path seeds all three delay-line stages
+with, so it sets the point the blend converges from after every reset.
+`table_ign_rpm_pos`/`neg` are a pair selected by the SIGN of
+`var_ign_blend_accum`, which is why they had looked like two unrelated RPM
+tables.
+
+**Method, and a heuristic bug worth recording.** The mechanical facts about a
+table are what indexes it and where the result lands, both derivable from
+the call site. My first generated pass got 53 tables but several were WRONG,
+because it picked the nearest variable load rather than the one matching the
+interpolator's register convention - `table_ign_rpm_pos` came out "indexed by
+var_ign_blend_accum", which is the selector, not the index. A second attempt
+still mis-read `table_accel_enrich_tps` because its search window ran past
+the `jsr` and caught a later load.
+
+Fixed by (a) requiring the load register to match the interpolator family
+(`table_rD_*` wants `ld d`, `rB` wants `ld b`, `rA` wants `ld a`) and
+(b) bounding the search strictly between the pointer load and the `jsr`.
+That yields **28 accurate** annotations rather than 53 partly-wrong ones.
+
+That is the third heuristic of mine this session to produce confident-looking
+wrong output - after the `DATA XREF:.*` comment-stripper and the
+prose-matching `unk_` counter. The pattern is consistent: **generated
+analysis is reliable for positive structural facts and unreliable the moment
+it has to pick between candidates.** Spot-check anything of the latter kind
+against a case whose answer is already known.
+
 ---
 
 ## Pending work (next targets)
