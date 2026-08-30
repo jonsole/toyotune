@@ -439,7 +439,7 @@ void Diag_Task(void *Context)
 		if (Signals & OS_SIGNAL_MESSAGE)
 		{
 			OS_Message_t *Msg;
-			while (Msg = OS_MessageGet())
+			while ((Msg = OS_MessageGet()) != NULL)
 				Diag_HandleMessage(Diag, Msg);
 		}
 
