@@ -127,10 +127,37 @@ static void Diag_TxData16(Diag_t *Diag, const uint16_t TxData)
 
 
 /***************************************************************************************/
+/* A command is a PAIR of frames, like every other exchange on this link.
+
+   The ECU always reads two frames into D - MSB into A, LSB into B - and only
+   then tests the parity bit of the SECOND one to decide what it received:
+   set means .diag_command, which validates the byte as a mode of 0DAh..0DEh,
+   stores it and echoes it back; clear means data, dispatched to the current
+   mode handler.
+
+   So the command byte goes in the LSB with the 9th bit set, and the MSB is
+   padding.  This used to be Diag_TxData16(0x100 | Command), which sent 0x01
+   and then the command byte with the 9th bit clear on both - the ECU read
+   that as the 16-bit data value 0x01DB and never changed mode.
+
+   Reads never exposed it: the ROM initialises to 0DAh (read16), so a read
+   finds the ECU already in the right mode and goes straight to sending the
+   address.  Writes are the only path needing a mode change. */
 static void Diag_TxCommand(Diag_t *Diag, uint8_t Command)
 {
-	Diag_TxData16(Diag, 0x100 | Command);
+	SERCOM_UsartTxEnable(Diag->Hw.Usart);
+
+	/* MSB: padding, 9th bit clear */
+	while (!SERCOM_UsartTxReady(Diag->Hw.Usart));
+	Diag->Hw.Usart->DATA.reg = 0x000;
+
+	/* LSB: the command byte, 9th bit set to mark it as a command */
+	while (!SERCOM_UsartTxReady(Diag->Hw.Usart));
+	Diag->Hw.Usart->DATA.reg = 0x100 | Command;
+
+	SERCOM_UsartTxDisable(Diag->Hw.Usart);
 }
+
 
 
 static void Diag_StartTimer(Diag_t *Diag)
