@@ -162,25 +162,55 @@ set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS "${LINKER_SCRIPT}"
 #
 # TOYOTUNE_ROM_SOURCE follows TOYOTUNE_ECU/TOYOTUNE_CPU by default, so the
 # image and the config.h selection cannot drift apart unnoticed. Note that
-# config.h currently #errors on anything but MR2/CPU1 - the other three sources
+# config.h currently #errors on anything but MR2/CPU1 - the other sources
 # assemble fine, but the firmware side is not finished for them.
+#
+# Where a ROM has a DIAG16 variant under its toyotune/ directory, that is the
+# one to use: diag.c's live read/write link is not a hardware bus cycle but a
+# cooperative protocol, so it only works if the code running on the Denso side
+# implements it. The DIAG16 mod adds exactly that - an extended serial
+# diagnostics block at 0x8000 handling the same 0xDA read-16 / 0xDB,0xDC
+# write-16 / 0xDD,0xDE write-8 commands diag.c sends. Against a stock ROM
+# diag.c has nothing to talk to.
 set(_rom_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../roms/3S-GTE")
 if(TOYOTUNE_ECU STREQUAL "MR2")
     if(TOYOTUNE_CPU STREQUAL "1")
-        set(_rom_default "${_rom_root}/D151803-9651/D151803-9651.ASM")
+        set(_rom_default "${_rom_root}/D151803-9651/toyotune/D151803-9651_DIAG16_32K.ASM")
     else()
+        # No DIAG16 variant exists for -9661 yet, so this is the stock ROM and
+        # diag.c will not work against it.
         set(_rom_default "${_rom_root}/D151803-9661/D151803-9661.ASM")
     endif()
 else()
     if(TOYOTUNE_CPU STREQUAL "1")
-        set(_rom_default "${_rom_root}/D151804-0461/D151804-0461.ASM")
+        set(_rom_default "${_rom_root}/D151804-0461/toyotune/D151804-0461_DIAG16_32K_JS.ASM")
     else()
+        # -0471's DIAG16 variant does not currently assemble (the D8X assembler
+        # reports "did not converge after 10 passes"), so this stays stock.
         set(_rom_default "${_rom_root}/D151804-0471/D151804-0471.ASM")
     endif()
 endif()
 
-set(TOYOTUNE_ROM_SOURCE "${_rom_default}" CACHE FILEPATH
-    "ROM source (.asm/.bin) that image.c is generated from")
+# Deliberately defaults to EMPTY rather than to _rom_default. A cache entry
+# holding the resolved path would be sticky: it is written on the first
+# configure and then never updated, so later changing TOYOTUNE_ECU/TOYOTUNE_CPU
+# - or changing the default here - would silently keep generating the old ROM
+# in an existing build directory. Empty means "follow the selection above".
+set(TOYOTUNE_ROM_SOURCE "" CACHE FILEPATH
+    "ROM source (.asm/.bin) image.c is generated from; empty follows TOYOTUNE_ECU/TOYOTUNE_CPU")
+
+if(TOYOTUNE_ROM_SOURCE)
+    set(_rom_source "${TOYOTUNE_ROM_SOURCE}")
+else()
+    set(_rom_source "${_rom_default}")
+endif()
+
+if(NOT EXISTS "${_rom_source}")
+    message(WARNING "ROM source does not exist:\n  ${_rom_source}\n"
+                    "The rom-image / verify-rom-image targets will fail.")
+endif()
+
+message(STATUS "ROM image source: ${_rom_source}")
 
 find_package(Python3 COMPONENTS Interpreter)
 
@@ -189,17 +219,17 @@ if(Python3_Interpreter_FOUND)
 
     add_custom_target(rom-image
         COMMAND ${Python3_EXECUTABLE} "${_build_image}"
-                "${TOYOTUNE_ROM_SOURCE}"
+                "${_rom_source}"
                 -o "${CMAKE_CURRENT_SOURCE_DIR}/image.c"
-        COMMENT "Regenerating image.c from ${TOYOTUNE_ROM_SOURCE}"
+        COMMENT "Regenerating image.c from ${_rom_source}"
         VERBATIM
     )
 
     add_custom_target(verify-rom-image
         COMMAND ${Python3_EXECUTABLE} "${_build_image}"
-                "${TOYOTUNE_ROM_SOURCE}"
+                "${_rom_source}"
                 --verify "${CMAKE_CURRENT_SOURCE_DIR}/image.c"
-        COMMENT "Checking image.c matches ${TOYOTUNE_ROM_SOURCE}"
+        COMMENT "Checking image.c matches ${_rom_source}"
         VERBATIM
     )
 else()

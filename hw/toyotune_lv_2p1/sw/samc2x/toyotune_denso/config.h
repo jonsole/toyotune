@@ -47,10 +47,11 @@
 #error "Define exactly one of TOYOTUNE_ECU_MR2 / TOYOTUNE_ECU_ST205, not both."
 #endif
 
-/* Defaults to the MR2, because the image currently active in image.c is a
-   D151803-9651 build.  Selecting TOYOTUNE_ECU_ST205 needs a matching ST205
-   image added to image.c first - the frame layouts are shared, the ROM is
-   not. */
+/* Defaults to the MR2, because the image currently in image.c is a
+   D151803-9651 DIAG16 build (the DIAG16 variant is the one to use - it is
+   what implements the serial protocol diag.c speaks; see INSTALL.md section
+   6).  Selecting TOYOTUNE_ECU_ST205 needs a matching ST205 image generated
+   into image.c first - the frame layouts are shared, the ROM is not. */
 #if !defined(TOYOTUNE_ECU_MR2) && !defined(TOYOTUNE_ECU_ST205)
 #define TOYOTUNE_ECU_MR2
 #endif
@@ -58,7 +59,7 @@
 #if defined(TOYOTUNE_ECU_ST205)
 /* The frame handling is family-independent, so the sniffing and parsing side
    is ready for the ST205.  The ROM image is not: image.c currently holds only
-   a D151803-9651 (MR2) build, and this firmware writes that image into the
+   a D151803-9651 DIAG16 (MR2) build, and this firmware writes that image into the
    SRAM the Denso CPU executes from.  Building ST205 today would therefore
    run MR2 code on an ST205 ECU.
 

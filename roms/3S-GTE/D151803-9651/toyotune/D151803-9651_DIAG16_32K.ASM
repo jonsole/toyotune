@@ -1107,6 +1107,7 @@ table_knock_info:		.block 3			; DATA XREF: sub_C59B:loc_C7DAo
 ; *************************************************
 ; Extended serial diagnostics
 ; *************************************************
+rom_start:
 serial_diag_extended:                
                         
 ; Flush any stale data in UART receive buffer
@@ -9076,7 +9077,8 @@ loc_E1F2:							; CODE XREF: sub_E115+E5j
 
 ;Start of ROM test, checksums ROM to make sure it sums to 0xAA55
 
-				ld	x, #unk_C000		; Load X with address of start of ROM
+				ld	x, #rom_start		; Load X with address of start of ROM (8000h,
+							;  so the diagnostics block is checksummed too)
 				clr	a			; Clear	16 bit checksum
 				clr	b
 

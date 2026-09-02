@@ -108,8 +108,8 @@ Presets are named `<car>-cpu<n>-<config>`:
 
 | Preset | Build |
 |---|---|
-| `mr2-cpu1-debug` | MR2 (D151803-9651), `-O0 -g3` |
-| `mr2-cpu1-release` | MR2 (D151803-9651), `-Os` |
+| `mr2-cpu1-debug` | MR2 (D151803-9651 DIAG16), `-O0 -g3` |
+| `mr2-cpu1-release` | MR2 (D151803-9651 DIAG16), `-Os` |
 | `mr2-cpu2-debug` | MR2 CPU2 — **expected to fail**, see below |
 | `st205-cpu1-debug` | ST205 (D151804-0461) — **expected to fail**, see below |
 
@@ -192,14 +192,40 @@ Changing the ROM means regenerating that array from a source under `roms/`.
 ```
 
 ```sh
-# regenerate image.c from a ROM source
-python tools/build_image.py ../../../../../roms/3S-GTE/D151803-9651/D151803-9651.ASM -o image.c
+R=../../../../../roms/3S-GTE/D151803-9651/toyotune/D151803-9651_DIAG16_32K.ASM
 
-# check the committed image.c still matches its source
-python tools/build_image.py ../../../../../roms/3S-GTE/D151803-9651/D151803-9651.ASM --verify image.c
+python tools/build_image.py $R -o image.c        # regenerate
+python tools/build_image.py $R --verify image.c  # check it still matches
 ```
 
-or through CMake, which picks the source to match `TOYOTUNE_ECU`/`TOYOTUNE_CPU`:
+### Which ROM, and why the DIAG16 one
+
+The committed image is built from
+`roms/3S-GTE/D151803-9651/toyotune/D151803-9651_DIAG16_32K.ASM` — the **DIAG16
+variant**, not the stock ROM.
+
+`diag.c`'s live read/write of ECU memory is not a hardware bus cycle. Once the
+Denso MCU is out of reset the SAMC21 is off the bus entirely, so it has to ask
+the Denso *software* to do the read or write for it, over the 1 MHz USART. That
+only works if the code running on the Denso side implements the protocol — and
+a stock ROM does not. The DIAG16 mod adds an extended serial diagnostics block
+at `0x8000` handling exactly the commands `diag.c` sends (`0xDA` read-16,
+`0xDB`/`0xDC` write-16, `0xDD`/`0xDE` write-8), dispatched through a jump table.
+Against a stock ROM, `diag.c` has nothing to talk to.
+
+That is also what the low half of the image is now for: it used to be 16K of
+`0xFF` padding, and is now 127 bytes of diagnostic code at `0x8000` plus `0x5F`
+fill. The engine ROM still sits at `0xC000..0xFFFF` and differs from the stock
+dump by 58 bytes — the hooks into the new block, plus the recomputed checksum.
+The self test sums the whole `8000..FFFF`, so the diagnostic block is
+checksum-protected along with the engine ROM. That took a one-line change to the
+source: it originally still summed only `C000..FFFF`, leaving the new code
+unchecked, where the ST205 `0461` DIAG16 mod had always covered it. The loop ends
+when X wraps to `0000` rather than on a count, so the lower start needs nothing
+else — 64 outer passes instead of 32, watchdog kicked once per pass as before.
+
+or through CMake, which picks the source to match `TOYOTUNE_ECU`/`TOYOTUNE_CPU`
+(preferring a DIAG16 variant where one exists and assembles):
 
 ```sh
 cmake --build build/mr2-cpu1-release --target rom-image         # regenerate
@@ -208,7 +234,21 @@ cmake --build build/mr2-cpu1-release --target verify-rom-image  # check, exit 1 
 
 Neither runs as part of a normal build — regenerating needs Python, and the
 image the firmware ships should change only deliberately. Point them at a
-different ROM with `-DTOYOTUNE_ROM_SOURCE=<path>`.
+different ROM with `-DTOYOTUNE_ROM_SOURCE=<path>`; clear it again with
+`-UTOYOTUNE_ROM_SOURCE` to go back to following `TOYOTUNE_ECU`/`TOYOTUNE_CPU`.
+
+The per-selection defaults are:
+
+| `TOYOTUNE_ECU` / `CPU` | ROM source |
+|---|---|
+| MR2 / 1 | `D151803-9651/toyotune/D151803-9651_DIAG16_32K.ASM` |
+| MR2 / 2 | `D151803-9661/D151803-9661.ASM` — stock, no DIAG16 variant exists |
+| ST205 / 1 | `D151804-0461/toyotune/D151804-0461_DIAG16_32K_JS.ASM` |
+| ST205 / 2 | `D151804-0471/D151804-0471.ASM` — stock; its DIAG16 variant does not assemble |
+
+The two stock entries mean `diag.c` will not work on those builds. Both are
+already blocked by a `#error` in `config.h` for unrelated reasons, so neither
+is reachable today.
 
 ### What the script does, and why it does it itself
 
@@ -240,16 +280,20 @@ invoked, with `-p 5F` to match the Makefiles' fill byte.
 > | ROM | starts summing at |
 > |---|---|
 > | `D151803-9651`, `-9661`, `-0461`, `-0471`, `-0481`, 3VZ `0680` (16K) | `C000` |
-> | `D151803-9651_DIAG16_32K` (32K) | `C000` |
+> | `D151803-9651_DIAG16_32K` (32K) | `8000` |
 > | `D151804-0461_DIAG16_32K_JS` (32K) | `8000` |
 > | `Jon_ST205_ECU/D151804-0461`, `-0471` (32K) | `8000` |
+> | `3S-GE/D151804-0401_DIAG16_32K` (32K) | `C000` — see below |
 >
-> The two 32K DIAG16 mods differ: the `0461` one extends the self test down
-> over its added diagnostic code at `0x8000`, the `9651` one leaves it covering
-> only the top 16K. So neither a hardcoded `C000` nor a hardcoded `8000` is
-> right, and `checksum.exe`'s rule — infer the start from the input file's
-> *length* — is right for the 16K ROMs and for the `0461` DIAG16 only by
-> coincidence, and wrong for the `9651` DIAG16.
+> The 16K ROMs sum from `C000` because that is where they start; the 32K DIAG16
+> images sum from `8000` so that their added diagnostic block is covered too.
+> The 3S-GE `0401` DIAG16 is the odd one out, still summing only `C000..FFFF`
+> and so leaving its own diagnostic code unchecked — it does not currently
+> assemble, so it has not been brought into line.
+>
+> So no fixed value is right, and `checksum.exe`'s rule — infer the start from
+> the input file's *length* — coincides with the truth only when a ROM's own
+> start happens to equal it.
 >
 > Getting it wrong is not subtle: forcing `C000` on `D151804-0461_DIAG16_32K_JS`
 > yields adjustment `6FC6`, and the ECU's own sum over `8000..FFFF` then comes
@@ -257,8 +301,8 @@ invoked, with `-p 5F` to match the Makefiles' fill byte.
 > `--checksum-start` if a ROM's loop cannot be found (the script warns and
 > falls back to `C000`).
 
-The script reproduces the committed `image.c` byte-for-byte from
-`roms/3S-GTE/D151803-9651/D151803-9651.ASM`, which is what `--verify` checks.
+The script reproduces the committed `image.c` byte-for-byte from its source,
+which is what `--verify` checks.
 
 The `production_test.bin` image that `image.c` used to carry under `#if 0` is
 no longer duplicated there; regenerate it from the still-committed binary when
