@@ -144,6 +144,71 @@ target_link_libraries(${PROJECT_NAME} PRIVATE m)
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS "${LINKER_SCRIPT}")
 
 # ---------------------------------------------------------------------------
+# The Denso ROM image (image.c)
+# ---------------------------------------------------------------------------
+#
+# image.c is generated, not written: it is the 32K image the SAMC21 writes into
+# the Denso MCU's SRAM at boot, built from one of the ROM sources under roms/.
+# tools/build_image.py assembles that source, applies the OMODE patch and the
+# 0xAA55 checksum the ECU's own power-on test expects, pads to 32K and emits
+# the DMCU_Image[] array.
+#
+# It is deliberately NOT part of the default build: regenerating needs Python,
+# and the image the firmware ships should change only when someone means it to.
+# Two targets are offered instead:
+#
+#   cmake --build . --target rom-image           regenerate image.c
+#   cmake --build . --target verify-rom-image    check it still matches its source
+#
+# TOYOTUNE_ROM_SOURCE follows TOYOTUNE_ECU/TOYOTUNE_CPU by default, so the
+# image and the config.h selection cannot drift apart unnoticed. Note that
+# config.h currently #errors on anything but MR2/CPU1 - the other three sources
+# assemble fine, but the firmware side is not finished for them.
+set(_rom_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../roms/3S-GTE")
+if(TOYOTUNE_ECU STREQUAL "MR2")
+    if(TOYOTUNE_CPU STREQUAL "1")
+        set(_rom_default "${_rom_root}/D151803-9651/D151803-9651.ASM")
+    else()
+        set(_rom_default "${_rom_root}/D151803-9661/D151803-9661.ASM")
+    endif()
+else()
+    if(TOYOTUNE_CPU STREQUAL "1")
+        set(_rom_default "${_rom_root}/D151804-0461/D151804-0461.ASM")
+    else()
+        set(_rom_default "${_rom_root}/D151804-0471/D151804-0471.ASM")
+    endif()
+endif()
+
+set(TOYOTUNE_ROM_SOURCE "${_rom_default}" CACHE FILEPATH
+    "ROM source (.asm/.bin) that image.c is generated from")
+
+find_package(Python3 COMPONENTS Interpreter)
+
+if(Python3_Interpreter_FOUND)
+    set(_build_image "${CMAKE_CURRENT_SOURCE_DIR}/tools/build_image.py")
+
+    add_custom_target(rom-image
+        COMMAND ${Python3_EXECUTABLE} "${_build_image}"
+                "${TOYOTUNE_ROM_SOURCE}"
+                -o "${CMAKE_CURRENT_SOURCE_DIR}/image.c"
+        COMMENT "Regenerating image.c from ${TOYOTUNE_ROM_SOURCE}"
+        VERBATIM
+    )
+
+    add_custom_target(verify-rom-image
+        COMMAND ${Python3_EXECUTABLE} "${_build_image}"
+                "${TOYOTUNE_ROM_SOURCE}"
+                --verify "${CMAKE_CURRENT_SOURCE_DIR}/image.c"
+        COMMENT "Checking image.c matches ${TOYOTUNE_ROM_SOURCE}"
+        VERBATIM
+    )
+else()
+    message(STATUS
+        "Python not found - the rom-image / verify-rom-image targets are "
+        "unavailable. The firmware still builds; image.c is committed.")
+endif()
+
+# ---------------------------------------------------------------------------
 # Flashable images and listings, matching the Studio project's post-build step
 # ---------------------------------------------------------------------------
 

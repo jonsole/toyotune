@@ -178,6 +178,96 @@ comes out at 40,048 text.
 Verified working: DFP 1.2.176 + CMSIS 6.3.0, GNU Arm Embedded 10.3.1,
 CMake 4.4.3, Ninja 1.13.2.
 
+## 6. The Denso ROM image (`image.c`)
+
+`image.c` is **generated, not written**. The board has no EPROM: at boot the
+SAMC21 writes a 32K image into the SRAM the Denso MCU executes from, so the
+"ROM" the ECU runs is the `DMCU_Image[]` array compiled into this firmware.
+Changing the ROM means regenerating that array from a source under `roms/`.
+
+`tools/build_image.py` does the whole chain in one step:
+
+```
+.asm  --assemble-->  raw  --pad-->  32K image  --checksum-->  image.c
+```
+
+```sh
+# regenerate image.c from a ROM source
+python tools/build_image.py ../../../../../roms/3S-GTE/D151803-9651/D151803-9651.ASM -o image.c
+
+# check the committed image.c still matches its source
+python tools/build_image.py ../../../../../roms/3S-GTE/D151803-9651/D151803-9651.ASM --verify image.c
+```
+
+or through CMake, which picks the source to match `TOYOTUNE_ECU`/`TOYOTUNE_CPU`:
+
+```sh
+cmake --build build/mr2-cpu1-release --target rom-image         # regenerate
+cmake --build build/mr2-cpu1-release --target verify-rom-image  # check, exit 1 on drift
+```
+
+Neither runs as part of a normal build — regenerating needs Python, and the
+image the firmware ships should change only deliberately. Point them at a
+different ROM with `-DTOYOTUNE_ROM_SOURCE=<path>`.
+
+### What the script does, and why it does it itself
+
+The ROM `Makefile`s shell out to `roms/bin/checksum.exe` and
+`roms/bin/scramble.exe`. Both are MSVC builds that die with
+`STATUS_DLL_NOT_FOUND` on a machine without the matching redistributable, so
+the two steps are ported into the script instead — a few lines of arithmetic
+each. The assembler is *not* reimplemented; `roms/d8x_assembler/asm_d8x.py` is
+invoked, with `-p 5F` to match the Makefiles' fill byte.
+
+1. **Assemble** the `.asm` (a `.bin` source is taken as-is instead).
+2. **Pad** to 32K with `0xFF`, ROM at the top — the Denso executes from the top
+   of its address space, so a 16K ROM in a 32K image written to SRAM at
+   `0x8000` lands at `0xC000..0xFFFF`. This replicates the Makefile's
+   `scramble ... 8000 FF 00 01234567`, which with an identity code and zero XOR
+   is only "place the ROM at the top of a buffer of `0xFF`".
+3. **Patch OMODE**: follow the reset vector at `0xFFFE`; if the first
+   instruction is `ld #07h,OMODE` (`33 07`) the operand becomes `02`.
+4. **Checksum**: sum the 16-bit words from the start address the ROM's own
+   self test uses, up to `0xFFFF`, and store an adjustment word at
+   `0xFFDA/0xFFDB` so the total comes to `0xAA55`.
+
+> **The summed range is read out of the image, not assumed — the ROMs here
+> disagree about it.** The self test is
+> `ld x, #<start>` / `clr a` / `clr b` / `ld y, #0100h` / `add d, x + 00h` /
+> `inc x` / `inc x` / `dec y` / `bne` … `cmp d, #0AA55h`, and the script finds
+> that byte sequence in the finished image and reads the `ld x` operand:
+>
+> | ROM | starts summing at |
+> |---|---|
+> | `D151803-9651`, `-9661`, `-0461`, `-0471`, `-0481`, 3VZ `0680` (16K) | `C000` |
+> | `D151803-9651_DIAG16_32K` (32K) | `C000` |
+> | `D151804-0461_DIAG16_32K_JS` (32K) | `8000` |
+> | `Jon_ST205_ECU/D151804-0461`, `-0471` (32K) | `8000` |
+>
+> The two 32K DIAG16 mods differ: the `0461` one extends the self test down
+> over its added diagnostic code at `0x8000`, the `9651` one leaves it covering
+> only the top 16K. So neither a hardcoded `C000` nor a hardcoded `8000` is
+> right, and `checksum.exe`'s rule — infer the start from the input file's
+> *length* — is right for the 16K ROMs and for the `0461` DIAG16 only by
+> coincidence, and wrong for the `9651` DIAG16.
+>
+> Getting it wrong is not subtle: forcing `C000` on `D151804-0461_DIAG16_32K_JS`
+> yields adjustment `6FC6`, and the ECU's own sum over `8000..FFFF` then comes
+> to `8F45` instead of `AA55` — a failed ROM self test. Override with
+> `--checksum-start` if a ROM's loop cannot be found (the script warns and
+> falls back to `C000`).
+
+The script reproduces the committed `image.c` byte-for-byte from
+`roms/3S-GTE/D151803-9651/D151803-9651.ASM`, which is what `--verify` checks.
+
+The `production_test.bin` image that `image.c` used to carry under `#if 0` is
+no longer duplicated there; regenerate it from the still-committed binary when
+it is wanted:
+
+```sh
+python tools/build_image.py "../../../test code/production_test.bin" --no-checksum -o image.c
+```
+
 ## Troubleshooting
 
 **`SAMC21_DFP_DIR does not exist`** — packs not unzipped, or unzipped
