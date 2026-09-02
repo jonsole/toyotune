@@ -10,6 +10,7 @@
 
 #define DIAG_SIGNAL_WRITE	(OS_SIGNAL_MESSAGE << 1)
 #define DIAG_SIGNAL_READ	(OS_SIGNAL_MESSAGE << 2)
+#define DIAG_SIGNAL_TICK	(OS_SIGNAL_MESSAGE << 3)
 
 #define DIAG_STATE_WAIT_CMD		// Wait for 0xDA or ADC channel
 
@@ -35,6 +36,29 @@ Diag_t Diag;
 
 uint32_t Diag_TimeMs;
 
+/* Last completed scheduled read, and a count of them. Debug() is compiled
+   out, so without these a working read leaves no evidence at all. Readable
+   over SWD, and the values the CAN response frame will carry. */
+uint32_t Diag_ReadCount;
+uint16_t Diag_LastAddress;
+uint16_t Diag_LastValue;
+
+/* Called when a scheduled read completes.  Lets the CAN command layer emit
+   a response without diag.c knowing anything about CAN. */
+static Diag_ReadComplete_t Diag_ReadCompleteHandler;
+
+void Diag_SetReadCompleteHandler(Diag_ReadComplete_t Handler)
+{
+	Diag_ReadCompleteHandler = Handler;
+}
+
+static Diag_WriteComplete_t Diag_WriteCompleteHandler;
+
+void Diag_SetWriteCompleteHandler(Diag_WriteComplete_t Handler)
+{
+	Diag_WriteCompleteHandler = Handler;
+}
+
 
 /***************************************************************************************/
 uint16_t Diag_Time(void)
@@ -46,6 +70,12 @@ uint16_t Diag_Time(void)
 void Diag_TimerTick(Diag_t *Diag)
 {
 	Diag_TimeMs++;
+
+	/* Wake the task only when the head of the list has actually come due,
+	   rather than on every one of the 1000 ticks a second. From SysTick. */
+	if (Diag->ReadState == DIAG_READ_IDLE && Diag->ReadList &&
+	    Time_Le(Diag->ReadList->Time, Diag_Time()))
+		OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_TICK);
 }
 
 /***************************************************************************************/
@@ -167,6 +197,9 @@ static void Diag_RxWriteDataAckLsbHandler(Diag_t *Diag, uint16_t RxData)
 	Diag_CancelTimer(Diag);
 
 	Diag->WriteDataAck |= RxData;
+
+	/* As above - restore the dispatcher. */
+	Diag->RxHandler = Diag_RxHandler;
 	if (Diag->WriteDataAck == Diag->WriteData)
 	{
 		/* Set flag to update write in background */
@@ -175,6 +208,9 @@ static void Diag_RxWriteDataAckLsbHandler(Diag_t *Diag, uint16_t RxData)
 			
 		/* Clear ready flag, nothing more to write */
 		Diag->WriteDataReady = 0;
+
+		if (Diag->WriteSize == 0 && Diag_WriteCompleteHandler)
+			Diag_WriteCompleteHandler(true);
 	}
 	else
 	{
@@ -193,10 +229,20 @@ static void Diag_RxWriteAddressAckLsbHandler(Diag_t *Diag, uint16_t RxData)
 	Diag_CancelTimer(Diag);
 
 	Diag->WriteAddressAck |= RxData;
+
+	/* Hand the dispatcher back.  The read path does this and the write path
+	   did not, so every frame after a write kept landing in this handler
+	   instead of Diag_RxHandler. */
+	Diag->RxHandler = Diag_RxHandler;
 	if (Diag->WriteAddressAck == Diag->WriteAddress)
 	{
 		/* Clear ready flag, address has been written */
 		Diag->WriteAddressReady = 0;
+
+		/* Wake the task to prepare the data phase.  Without this the write
+		   stopped here: the address was acknowledged and nothing ever set
+		   WriteDataReady, so the data was never sent. */
+		OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_WRITE);
 	}
 	else
 	{
@@ -433,7 +479,7 @@ void Diag_Task(void *Context)
 
 	for (;;)
 	{
-		OS_SignalSet_t Signals = OS_SignalWait(OS_SIGNAL_MESSAGE | DIAG_SIGNAL_READ | DIAG_SIGNAL_WRITE);
+		OS_SignalSet_t Signals = OS_SignalWait(OS_SIGNAL_MESSAGE | DIAG_SIGNAL_READ | DIAG_SIGNAL_WRITE | DIAG_SIGNAL_TICK);
 
 		/* Check if any messages to be handled */
 		if (Signals & OS_SIGNAL_MESSAGE)
@@ -459,7 +505,10 @@ void Diag_Task(void *Context)
 			Diag->WriteSize -= WriteSize;
 
 			Diag->WriteDataCommand = (WriteSize > 1) ? DIAG_CMD_WRITE_16_DATA : DIAG_CMD_WRITE_8_DATA;
-			Diag->WriteDataReady   = Diag->WriteSize > 0;	
+			/* Ready if a chunk was just prepared - NOT if bytes remain after it,
+			   which is what this used to test.  For a single two-byte write the
+			   remainder is zero, so the data phase never started. */
+			Diag->WriteDataReady   = (WriteSize > 0);	
 		}
 #endif
 	
@@ -498,8 +547,17 @@ void Diag_Task(void *Context)
 					Diag->ReadState = DIAG_READ_IDLE;
 			
 					/* TODO: Send result over UART */
-					Debug("Diag: Addr %04x, Data %02x%02x\n", Diag->ReadCurrent->Address, Diag->ReadData[0], Diag->ReadData[1]);
+					Diag_LastAddress = Diag->ReadCurrent->Address;
+					Diag_LastValue = (uint16_t)((Diag->ReadData[0] << 8) | Diag->ReadData[1]);
+					Diag_ReadCount += 1;
+
+					if (Diag_ReadCompleteHandler)
+						Diag_ReadCompleteHandler(Diag->ReadCurrent, Diag_LastValue);
 			
+					/* A Period of zero is a one-shot read: do not re-queue it.  The
+					   completion handler above owns it now and frees it. */
+					if (Diag->ReadCurrent->Period != 0)
+					{
 					/* Update the current read entry time for next period */
 					Diag->ReadCurrent->Time = Time_Add(Diag->ReadCurrent->Time, Diag->ReadCurrent->Period);
 					time_t Time = Diag_Time();
@@ -508,30 +566,32 @@ void Diag_Task(void *Context)
 			
 					/* Insert read entry back into linked list */
 					Diag_ReadEntryInsert(Diag, Diag->ReadCurrent);
+					}
 				}
 			}		
 	
-			/* Check if read state is idle and there are read entries in the list */
-			if (Diag->ReadState == DIAG_READ_IDLE && Diag->ReadList)
-			{	
-				time_t Time = Diag_Time();
-		
-				/* Check if it's time to read the entry at the head of the list */
-				if (Time_Le(Diag->ReadList->Time, Time))
-				{
-					/* Remove entry from list */
-					Diag->ReadCurrent = Diag_ReadEntryRemoveHead(Diag);
-			
-					/* Copy read address and size */
-					Diag->ReadAddress = Diag->ReadCurrent->Address;
-					Diag->ReadSize = Diag->ReadCurrent->Size;
-			
-					/* Reset read index */
-					Diag->ReadIndex = 0;
-			
-					/* Move to ready state so that interrupt will read data */
-					Diag->ReadState = DIAG_READ_READY;
-				}
+		}
+
+		/* Start the next scheduled read if one has come due.  Deliberately outside
+		   the DIAG_SIGNAL_READ branch: that signal is only raised when a read
+		   COMPLETES, so with the check in there nothing ever started the first
+		   read, and once one finished with the next not yet due the task slept
+		   with nothing left to wake it. Diag_TimerTick now raises
+		   DIAG_SIGNAL_TICK when the head of the list comes due. */
+		if (Diag->ReadState == DIAG_READ_IDLE && Diag->ReadList)
+		{
+			time_t Time = Diag_Time();
+
+			if (Time_Le(Diag->ReadList->Time, Time))
+			{
+				Diag->ReadCurrent = Diag_ReadEntryRemoveHead(Diag);
+
+				Diag->ReadAddress = Diag->ReadCurrent->Address;
+				Diag->ReadSize = Diag->ReadCurrent->Size;
+				Diag->ReadIndex = 0;
+
+				/* Ready state, so the receive interrupt starts the transfer */
+				Diag->ReadState = DIAG_READ_READY;
 			}
 		}
 	}
@@ -540,29 +600,9 @@ void Diag_Task(void *Context)
 
 void Diag_Init(void)
 {
-
-	static Diag_ReadEntry_t Test1 =
-	{
-		.Next = NULL,
-		.Period = 5000,
-		.Address = 0x55,
-		.Size = 2
-	};
-
-	static Diag_ReadEntry_t Test2 =
-	{
-		.Next = NULL,
-		.Period = 1000,
-		.Address = 0x04,
-		.Size = 2
-	};
-	
-	Diag.ReadState = DIAG_READ_IDLE;
-	
-	Test1.Time = Diag_Time() + Test1.Period;
-	Diag_ReadEntryInsert(&Diag, &Test1);
-	Test2.Time = Diag_Time() + Test2.Period;
-	Diag_ReadEntryInsert(&Diag, &Test2);
-
+	/* No reads are registered here any more.  Two hard-coded debug entries
+	   used to live here; now that a completed read emits a CAN response they
+	   would be unsolicited traffic.  Reads are requested over CAN - see
+	   diag_can.c. */
 	OS_TaskInit(DIAG_TASK_ID, Diag_Task, &Diag, Diag.Stack, sizeof(Diag.Stack));
 }

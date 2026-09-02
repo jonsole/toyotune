@@ -73,6 +73,20 @@ static __inline bool DIAG_IsCommand(const uint16_t RxData)
 	return !(RxData & 0x100);
 }
 
+/* Notified when a scheduled read completes.  A Period of 0 marks a one-shot
+   entry, which is not re-queued - the handler owns it once called. */
+typedef void (*Diag_ReadComplete_t)(Diag_ReadEntry_t *Entry, uint16_t Value);
+extern void Diag_SetReadCompleteHandler(Diag_ReadComplete_t Handler);
+
+/* Notified when a write completes, Ok false if the ECU echoed back
+   something other than what was sent. */
+typedef void (*Diag_WriteComplete_t)(bool Ok);
+extern void Diag_SetWriteCompleteHandler(Diag_WriteComplete_t Handler);
+
+/* Used by the CAN command layer to queue reads of its own. */
+extern uint16_t Diag_Time(void);
+extern void Diag_ReadEntryInsert(Diag_t *Diag, Diag_ReadEntry_t *EntryNew);
+
 extern void Diag_Init(void);
 extern void Diag_Task(void *Context);
 extern void Diag_TimerTick(Diag_t *Diag);

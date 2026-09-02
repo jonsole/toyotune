@@ -12,6 +12,7 @@
 #include "dmac.h"
 #include "clk.h"
 #include "diag.h"
+#include "diag_can.h"
 #include "sdl.h"
 #include "xmem.h"
 #include "dmcu.h"
@@ -196,6 +197,7 @@ int main(void)
 
 	/* Initialise diagnostics, SERCOM0 */
 	Diag_Init();
+	DiagCan_Init();
 
 	/* Start periodic CAN telemetry */
 	CanTelemetry_Init();
@@ -215,6 +217,6 @@ void SysTick_Handler(void)
 	Timer += 1;
 	CanTelemetry_TimerTick();
 	//OS_SignalSend(ESP_TASK_ID, ESP_SIGNAL_RX_IDLE);
-	//Diag_TimerTick(&Diag);
+	Diag_TimerTick(&Diag);
 }
 

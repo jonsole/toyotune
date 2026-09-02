@@ -81,6 +81,7 @@ add_executable(${PROJECT_NAME}
     debug.c
     debug_printf.c
     diag.c
+    diag_can.c
     dmac.c
     dmcu.c
     evsys.c
