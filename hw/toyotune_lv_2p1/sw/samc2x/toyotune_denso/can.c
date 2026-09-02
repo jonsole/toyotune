@@ -123,10 +123,84 @@ void CAN_Init(void)
    the identifier left-aligned in a 29-bit field, so a standard ID goes in
    bits 28:18 and XTD stays clear - getting this wrong is silent, the frame
    simply goes out with a nonsense identifier. */
-void CAN_TxStandard(uint16_t Id, const void *Data, uint32_t DataSize)
+uint32_t CAN_TxDropped;
+uint32_t CAN_BusOffRecoveries;
+
+/* Recover the controller from bus-off.
+
+   When the transmit error counter passes 255 the CAN controller takes itself
+   bus-off: the hardware sets CCCR.INIT and the node stops transmitting and
+   receiving entirely. It does NOT come back on its own - INIT stays set until
+   software clears it, and nothing in this firmware used to. A quiet bus was
+   therefore permanently fatal to telemetry, recoverable only by a power cycle
+   or a debugger, which is exactly what kept happening on the bench.
+
+   Getting there is quick: the error counter rises by 8 per unacknowledged
+   frame, so at the 250 frames/s this board transmits, about 30 frames - a
+   little over a tenth of a second - is enough if nothing else is on the bus.
+
+   Clearing INIT starts the recovery sequence defined by the CAN standard: the
+   node waits to observe 129 occurrences of 11 consecutive recessive bits
+   before it rejoins, which on an idle 500 kbit/s bus takes a few milliseconds.
+   PSR.BO stays set for the duration and clears when recovery completes, so
+   testing INIT as well as BO means this kicks recovery once and then leaves it
+   alone rather than restarting it on every call.
+
+   No rate limiting is needed beyond that: this is called from the telemetry
+   task's tick, so a bus that keeps failing simply retries at the tick rate
+   rather than spinning. CAN_BusOffRecoveries counts how often it has happened,
+   which is what turns "telemetry stopped" into a diagnosis. */
+void CAN_Poll(void)
 {
-	/* Wait if queue is full */
-	while (CAN0->TXFQS.bit.TFQF);
+	if (CAN0->PSR.bit.BO && CAN0->CCCR.bit.INIT)
+	{
+		CAN0->CCCR.reg &= ~CAN_CCCR_INIT;
+		CAN_BusOffRecoveries += 1;
+	}
+}
+
+
+
+/* How long to wait for a free Tx queue slot before giving up.
+   
+   Deliberately a spin count rather than a time: this is the transmit path and
+   must stay safe to call from an interrupt, where a SysTick-derived timeout
+   could never expire. The exact duration does not matter, only that it is
+   bounded and comfortably longer than one frame - a maximum length standard
+   frame at 500 kbit/s is about 130 bit times, roughly 260us, and each pass of
+   the loop is an APB read of several cycles at 48MHz. This gives order
+   milliseconds, so a slot that is merely momentarily busy is still waited for.
+
+   The point is the bound, not the value. An unbounded wait here is what wedged
+   the board repeatedly: with nothing acknowledging on the bus the eight deep
+   queue fills within about 30 frames, and the caller then spins forever - which
+   in the old firmware was an interrupt handler, taking the SDL sniffer and all
+   telemetry down with it. Dropping a periodic telemetry frame costs nothing;
+   the next one is along in 20ms. */
+#define CAN_TX_WAIT_SPINS			(50000UL)
+
+static bool CAN_TxWaitForSlot(void)
+{
+	uint32_t Spins = CAN_TX_WAIT_SPINS;
+
+	while (CAN0->TXFQS.bit.TFQF)
+	{
+		if (Spins == 0)
+		{
+			CAN_TxDropped += 1;
+			return false;
+		}
+		Spins -= 1;
+	}
+
+	return true;
+}
+
+
+bool CAN_TxStandard(uint16_t Id, const void *Data, uint32_t DataSize)
+{
+	if (!CAN_TxWaitForSlot())
+		return false;
 
 	uint8_t Index = CAN0->TXFQS.bit.TFQPI;
 	CanMramTxbe *TxBufferElement = &CAN_TxBuffer[Index];
@@ -134,14 +208,16 @@ void CAN_TxStandard(uint16_t Id, const void *Data, uint32_t DataSize)
 	TxBufferElement->TXBE_1.reg = CAN_TXBE_1_DLC(DataSize);
 	memcpy((void *)&TxBufferElement->TXBE_DATA, Data, DataSize);
 	CAN0->TXBAR.reg = 1UL << Index;
+
+	return true;
 }
 
 
 /* Transmit with a 29-bit extended identifier. */
-void CAN_Tx(uint32_t Id, const void *Data, uint32_t DataSize)
+bool CAN_Tx(uint32_t Id, const void *Data, uint32_t DataSize)
 {
-	/* Wait if queue is full */
-	while (CAN0->TXFQS.bit.TFQF);
+	if (!CAN_TxWaitForSlot())
+		return false;
 
 	uint8_t Index = CAN0->TXFQS.bit.TFQPI;
 	CanMramTxbe *TxBufferElement = &CAN_TxBuffer[Index];
@@ -149,4 +225,6 @@ void CAN_Tx(uint32_t Id, const void *Data, uint32_t DataSize)
 	TxBufferElement->TXBE_1.reg = CAN_TXBE_1_DLC(DataSize);	
 	memcpy((void *)&TxBufferElement->TXBE_DATA, Data, DataSize);
 	CAN0->TXBAR.reg = 1UL << Index;
+
+	return true;
 }

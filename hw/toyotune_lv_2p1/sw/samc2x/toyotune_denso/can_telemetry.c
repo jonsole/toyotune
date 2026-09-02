@@ -257,6 +257,10 @@ static void CanTelemetry_Task(void *Context)
 	{
 		OS_SignalWait(CAN_TELEMETRY_SIGNAL_TICK);
 
+		/* Before anything else, and regardless of whether there is data to
+		   send: the controller does not leave bus-off without being told. */
+		CAN_Poll();
+
 		ECU_DmaData1_t Cpu1ToCpu2;
 		ECU_DmaData2_t Cpu2ToCpu1;
 
