@@ -12,7 +12,9 @@
 #include <stdalign.h>
 #include <string.h>
 
-#define CAN_FILTER_ID         TOYOTUNE_CAN_ID_FILTER
+#include "can.h"
+
+#define CAN_FILTER_ID         TOYOTUNE_CAN_ID_DIAG_CMD
 
 // Nominal bit rate. The time quanta is 48 MHz / (5+1) = 8MHz.
 // And each bit is (1 + NTSEG1 + 1 + NTSEG2 + 1) = 16 time quanta
@@ -46,7 +48,18 @@ static alignas(4) CanMramRxf0e CAN_RxFifo0Filtered[CAN_RX_FIFO_FILTERED_SIZE];
 #define CAN_RX_FIFO_UNFILTERED_SIZE (2)
 static alignas(4) CanMramRxf1e CAN_RxFifo1Unfiltered[CAN_RX_FIFO_UNFILTERED_SIZE];
 
-//static alignas(4) CanMramSidfe can_rx_standard_filter;
+/* One standard-identifier filter element, matching the diagnostic command
+   frame and steering it into Rx FIFO 0.  Everything else continues to fall
+   through GFC into FIFO 1, which is not a receive path but overwrite-mode
+   scratch for the errata 1.6.18 workaround. */
+static alignas(4) CanMramSidfe CAN_RxStandardFilter[1];
+
+static CAN_RxHandler_t CAN_RxHandler;
+
+void CAN_RxSetHandler(CAN_RxHandler_t Handler)
+{
+	CAN_RxHandler = Handler;
+}
 
 
 
@@ -80,6 +93,16 @@ void CAN_Init(void)
 	   at the end of every bus message for errata 1.6.18 Workaround 1 */
 	CAN0->GFC.reg = CAN_GFC_ANFE_RXF1 | CAN_GFC_ANFS_RXF1;
 
+	/* Standard-identifier filter list: accept the diagnostic command frame
+	   into FIFO 0.  SFT_CLASSIC with SFID2 as a mask of all ones matches
+	   that identifier exactly. */
+	CAN_RxStandardFilter[0].SIDFE_0.reg = CAN_SIDFE_0_SFT_CLASSIC |
+								  CAN_SIDFE_0_SFEC_STF0M |
+								  CAN_SIDFE_0_SFID1(CAN_FILTER_ID) |
+								  CAN_SIDFE_0_SFID2(0x7FF);
+	CAN0->SIDFC.reg = CAN_SIDFC_FLSSA((uint32_t)CAN_RxStandardFilter) |
+					  CAN_SIDFC_LSS(1);
+
 	/* Rx FIFO 0 - this could be used for receiving messages to be processed */
 	CAN0->RXF0C.reg = CAN_RXF0C_F0SA((uint32_t)CAN_RxFifo0Filtered) | CAN_RXF0C_F0S(CAN_RX_FIFO_FILTERED_SIZE);
 
@@ -91,7 +114,12 @@ void CAN_Init(void)
 					  CAN_RXF1C_F1OM;								/* Overwrite mode, no need to process these messages */
 
 	/* Configure the CAN controller with the max. number of bytes to capture from the payload of each Rx message */
-	CAN0->RXESC.reg = CAN_RXESC_RBDS_DATA8 | CAN_RXESC_F0DS_DATA8 | CAN_RXESC_F1DS_DATA8;
+	/* Element data size must match the CanMramRxf0e/Rxf1e structs used to walk
+	   these FIFOs, which carry a 64-byte data array - 72 bytes per element.
+	   Configured for DATA8 the peripheral packs elements every 16 bytes, so
+	   indexing the array found the right element only at index 0 and garbage
+	   for every one after it. */
+	CAN0->RXESC.reg = CAN_RXESC_RBDS_DATA64 | CAN_RXESC_F0DS_DATA64 | CAN_RXESC_F1DS_DATA64;
 
 	/* Disable CAN Tx Buffer Tx interrupts */
 	CAN0->TXBTIE.reg = 0U;
@@ -114,6 +142,12 @@ void CAN_Init(void)
 	/* Enable CAN interrupts,  RFxNE: Rx FIFO x New Message Interrupt Enable */
 	CAN0->IE.reg = CAN_IE_RF1NE | CAN_IE_RF0NE;
 				   
+	/* Enable the NVIC line.  CAN0->IE/ILE enable the interrupt inside the
+	   peripheral, but without this CAN0_Handler is never entered and
+	   nothing drains FIFO 0. */
+	NVIC_SetPriority(CAN0_IRQn, 2);
+	NVIC_EnableIRQ(CAN0_IRQn);
+
 	/* Enable CAN */
 	CAN0->CCCR.reg = 0U; /* Enable CAN */
 }
@@ -227,4 +261,33 @@ bool CAN_Tx(uint32_t Id, const void *Data, uint32_t DataSize)
 	CAN0->TXBAR.reg = 1UL << Index;
 
 	return true;
+}
+
+/* Drain Rx FIFO 0 and hand each accepted frame to the registered handler.
+   FIFO 1 needs no draining - it is in overwrite mode and exists only so the
+   errata workaround sees an interrupt per bus message - but its flag still
+   has to be cleared or the line would stay asserted. */
+void CAN0_Handler(void)
+{
+	const uint32_t Status = CAN0->IR.reg;
+	CAN0->IR.reg = Status;
+
+	if (Status & CAN_IR_RF0N)
+	{
+		while (CAN0->RXF0S.bit.F0FL)
+		{
+			const uint8_t Index = CAN0->RXF0S.bit.F0GI;
+			const CanMramRxf0e *Element = &CAN_RxFifo0Filtered[Index];
+
+			/* Standard identifiers sit in bits 28:18, as on the transmit side */
+			const uint16_t Id = (uint16_t)((Element->RXF0E_0.reg >> 18) & 0x7FF);
+			const uint8_t Length = (uint8_t)((Element->RXF0E_1.reg >> 16) & 0x0F);
+
+			if (CAN_RxHandler)
+				CAN_RxHandler(Id, (const uint8_t *)&Element->RXF0E_DATA[0], Length);
+
+			/* Acknowledge, releasing the element back to the FIFO */
+			CAN0->RXF0A.reg = CAN_RXF0A_F0AI(Index);
+		}
+	}
 }

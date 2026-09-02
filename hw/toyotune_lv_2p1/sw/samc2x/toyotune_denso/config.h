@@ -122,7 +122,12 @@
 #define TOYOTUNE_CAN_ID_MEDIUM2  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 2)
 #define TOYOTUNE_CAN_ID_SLOW     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 3)
 #define TOYOTUNE_CAN_ID_RAW      (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 4)
-#define TOYOTUNE_CAN_ID_FILTER       (0x45a)
+/* Diagnostic access to the running Denso MCU: a command frame in, a
+   response frame out.  In the same per-board block as the telemetry so
+   one range covers a board, and so the receive filter is a single
+   identifier rather than a range. */
+#define TOYOTUNE_CAN_ID_DIAG_CMD (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 10)
+#define TOYOTUNE_CAN_ID_DIAG_RSP (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 11)
 
 #else /* TOYOTUNE_CPU2 */
 
@@ -136,7 +141,12 @@
 #define TOYOTUNE_CAN_ID_MEDIUM2  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 2)
 #define TOYOTUNE_CAN_ID_SLOW     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 3)
 #define TOYOTUNE_CAN_ID_RAW      (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 4)
-#define TOYOTUNE_CAN_ID_FILTER       (0x45b)
+/* Diagnostic access to the running Denso MCU: a command frame in, a
+   response frame out.  In the same per-board block as the telemetry so
+   one range covers a board, and so the receive filter is a single
+   identifier rather than a range. */
+#define TOYOTUNE_CAN_ID_DIAG_CMD (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 10)
+#define TOYOTUNE_CAN_ID_DIAG_RSP (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 11)
 
 /* CPU2 is not supported yet, but only one thing is actually missing: its ROM
    image.  image.c holds a CPU1 build, and image.c needs to select on
