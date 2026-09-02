@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "rigol": {
+      "command": ".venv/Scripts/python.exe",
+      "args": ["tools/rigol/mcp_server.py"],
+      "env": {
+        "RIGOL_ADDR": "192.168.88.220"
+      }
+    },
+    "pyocd-debug": {
+      "command": "hw/toyotune_lv_2p1/sw/python/.venv/Scripts/pyocd-debug-mcp.exe",
+      "args": []
+    }
+  }
+}
