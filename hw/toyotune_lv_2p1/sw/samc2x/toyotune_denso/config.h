@@ -122,6 +122,12 @@
 #define TOYOTUNE_CAN_ID_MEDIUM2  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 2)
 #define TOYOTUNE_CAN_ID_SLOW     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 3)
 #define TOYOTUNE_CAN_ID_RAW      (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 4)
+/* Added when signals moved to engineering units: the widened knock retards no
+   longer fit MEDIUM2, and INFO carries the protocol version a consumer needs
+   to know the layout it is decoding.  Still clear of the diagnostic pair at
+   +10/+11 below. */
+#define TOYOTUNE_CAN_ID_MEDIUM3  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 5)
+#define TOYOTUNE_CAN_ID_INFO     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 6)
 /* Diagnostic access to the running Denso MCU: a command frame in, a
    response frame out.  In the same per-board block as the telemetry so
    one range covers a board, and so the receive filter is a single
@@ -141,6 +147,12 @@
 #define TOYOTUNE_CAN_ID_MEDIUM2  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 2)
 #define TOYOTUNE_CAN_ID_SLOW     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 3)
 #define TOYOTUNE_CAN_ID_RAW      (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 4)
+/* Added when signals moved to engineering units: the widened knock retards no
+   longer fit MEDIUM2, and INFO carries the protocol version a consumer needs
+   to know the layout it is decoding.  Still clear of the diagnostic pair at
+   +10/+11 below. */
+#define TOYOTUNE_CAN_ID_MEDIUM3  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 5)
+#define TOYOTUNE_CAN_ID_INFO     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 6)
 /* Diagnostic access to the running Denso MCU: a command frame in, a
    response frame out.  In the same per-board block as the telemetry so
    one range covers a board, and so the receive filter is a single

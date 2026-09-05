@@ -45,7 +45,7 @@ DMA_CPU1_TO_CPU2 = 38
 DMA_CPU2_TO_CPU1 = 34
 DMA_TOTAL = DMA_CPU1_TO_CPU2 + DMA_CPU2_TO_CPU1
 
-Signal = collections.namedtuple("Signal", "name byte length factor offset unit")
+Signal = collections.namedtuple("Signal", "name byte length factor offset unit signed")
 Frame = collections.namedtuple("Frame", "id name signals period_ms")
 
 
@@ -59,7 +59,10 @@ def load_dbc(path):
     frames, periods, current = {}, {}, None
 
     bo = re.compile(r"^BO_ (\d+) (\S+)\s*:\s*(\d+)")
-    sg = re.compile(r'^\s*SG_ (\w+)\s*:\s*(\d+)\|(\d+)@0\+\s*'
+    # The sign flag is captured, not assumed. Temperatures and manifold
+    # pressure are signed now, and matching only @0+ would silently drop them
+    # rather than fail - the worst possible failure for a decoder.
+    sg = re.compile(r'^\s*SG_ (\w+)\s*:\s*(\d+)\|(\d+)@0([-+])\s*'
                     r'\(([^,]+),([^)]+)\)\s*\[[^\]]*\]\s*"([^"]*)"')
     cm = re.compile(r'^CM_ BO_ (\d+) "Period (\d+) ms\.";')
 
@@ -75,8 +78,8 @@ def load_dbc(path):
             if (start - 7) % 8 or length % 8:
                 raise ValueError(f"{m.group(1)}: not byte aligned, unsupported here")
             current.signals.append(Signal(m.group(1), (start - 7) // 8, length,
-                                          float(m.group(4)), float(m.group(5)),
-                                          m.group(6)))
+                                          float(m.group(5)), float(m.group(6)),
+                                          m.group(7), m.group(4) == "-"))
             continue
         m = cm.match(line)
         if m:
@@ -91,7 +94,7 @@ def decode(frame, data):
         end = s.byte + s.length // 8
         if end > len(data):
             continue
-        raw = int.from_bytes(data[s.byte:end], "big")
+        raw = int.from_bytes(data[s.byte:end], "big", signed=s.signed)
         value = raw * s.factor + s.offset
         if s.factor == 1.0 and s.offset == 0.0:
             out[s.name] = f"{raw:5d}"

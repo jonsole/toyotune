@@ -84,6 +84,7 @@ add_executable(${PROJECT_NAME}
     diag_can.c
     dmac.c
     dmcu.c
+    ecu_scale.c
     evsys.c
     image.c
     main.c

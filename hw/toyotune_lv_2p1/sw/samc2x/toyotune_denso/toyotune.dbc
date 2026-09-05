@@ -1,4 +1,4 @@
-VERSION "toyotune-v2.1"
+VERSION "toyotune-v2.1-proto1"
 
 NS_ :
 
@@ -7,34 +7,36 @@ BS_:
 BU_: TT_CPU1 TT_CPU2
 
 BO_ 1024 TT_Cpu1_Fast: 8 TT_CPU1
- SG_ Rpm : 7|16@0+ (0.1953125,0) [0|12800] "rpm" Vector__XXX
- SG_ Tps : 23|16@0+ (1,0) [0|65535] "" Vector__XXX
- SG_ Pim2 : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
- SG_ InjPw : 55|16@0+ (4,0) [0|262140] "us" Vector__XXX
+ SG_ Rpm : 7|16@0+ (1,0) [0|65535] "rpm" Vector__XXX
+ SG_ TpsRaw : 23|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ Map : 39|16@0- (0.1,0) [-100|400] "kPa" Vector__XXX
+ SG_ InjPw : 55|16@0+ (1,0) [0|65535] "us" Vector__XXX
 
 BO_ 1025 TT_Cpu1_Medium1: 8 TT_CPU1
- SG_ Ect : 7|16@0+ (1,0) [0|65535] "" Vector__XXX
- SG_ Tha : 23|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ Tham : 31|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ Battery : 39|8@0+ (0.0775,0) [0|19.7] "V" Vector__XXX
- SG_ AdcLambda : 47|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ IgnTiming : 55|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ IscvDuty : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Ect : 7|16@0- (0.01,0) [-40|140] "degC" Vector__XXX
+ SG_ Tha : 23|16@0- (0.01,0) [-40|140] "degC" Vector__XXX
+ SG_ Tham : 39|16@0- (0.01,0) [-40|140] "degC" Vector__XXX
+ SG_ Battery : 55|16@0+ (0.01,0) [0|20] "V" Vector__XXX
 
 BO_ 1026 TT_Cpu1_Medium2: 8 TT_CPU1
- SG_ KnockRetardCyl1 : 7|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetardCyl2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetardCyl3 : 23|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetard : 31|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetardCpu2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ MaxRetard : 47|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ LambdaTrim : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ InjDuty : 7|16@0+ (0.01,0) [0|200] "%" Vector__XXX
+ SG_ KnockRetard : 23|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ IgnTimingRaw : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ IscvDutyRaw : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ LambdaRaw : 55|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ PwLoopMode : 63|8@0+ (1,0) [0|255] "" Vector__XXX
 
+BO_ 1029 TT_Cpu1_Medium3: 8 TT_CPU1
+ SG_ KnockRetardCyl1 : 7|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ KnockRetardCyl2 : 23|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ KnockRetardCyl3 : 39|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ LambdaTrimRaw : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ MaxRetardRaw : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
 BO_ 1027 TT_Cpu1_Slow: 8 TT_CPU1
- SG_ NvTrimPim : 7|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ NvTrimO2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ FuelTrim : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ NvTrimPimRaw : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ NvTrimO2Raw : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ FuelTrimRaw : 23|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ ErrorFlags1 : 31|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ ErrorFlags2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ Flags46 : 47|8@0+ (1,0) [0|255] "" Vector__XXX
@@ -51,35 +53,45 @@ BO_ 1028 TT_Cpu1_Raw: 8 TT_CPU1
  SG_ RawByte5 : 55|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ RawByte6 : 63|8@0+ (1,0) [0|255] "" Vector__XXX
 
+BO_ 1030 TT_Cpu1_Info: 8 TT_CPU1
+ SG_ ProtocolVersion : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ EcuFamily : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ CpuIndex : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Reserved : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ TxDropped : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ BusOffRecoveries : 55|16@0+ (1,0) [0|65535] "" Vector__XXX
+
 BO_ 1056 TT_Cpu2_Fast: 8 TT_CPU2
- SG_ Rpm : 7|16@0+ (0.1953125,0) [0|12800] "rpm" Vector__XXX
- SG_ Tps : 23|16@0+ (1,0) [0|65535] "" Vector__XXX
- SG_ Pim2 : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
- SG_ InjPw : 55|16@0+ (4,0) [0|262140] "us" Vector__XXX
+ SG_ Rpm : 7|16@0+ (1,0) [0|65535] "rpm" Vector__XXX
+ SG_ TpsRaw : 23|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ Map : 39|16@0- (0.1,0) [-100|400] "kPa" Vector__XXX
+ SG_ InjPw : 55|16@0+ (1,0) [0|65535] "us" Vector__XXX
 
 BO_ 1057 TT_Cpu2_Medium1: 8 TT_CPU2
- SG_ Ect : 7|16@0+ (1,0) [0|65535] "" Vector__XXX
- SG_ Tha : 23|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ Tham : 31|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ Battery : 39|8@0+ (0.0775,0) [0|19.7] "V" Vector__XXX
- SG_ AdcLambda : 47|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ IgnTiming : 55|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ IscvDuty : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Ect : 7|16@0- (0.01,0) [-40|140] "degC" Vector__XXX
+ SG_ Tha : 23|16@0- (0.01,0) [-40|140] "degC" Vector__XXX
+ SG_ Tham : 39|16@0- (0.01,0) [-40|140] "degC" Vector__XXX
+ SG_ Battery : 55|16@0+ (0.01,0) [0|20] "V" Vector__XXX
 
 BO_ 1058 TT_Cpu2_Medium2: 8 TT_CPU2
- SG_ KnockRetardCyl1 : 7|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetardCyl2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetardCyl3 : 23|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetard : 31|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ KnockRetardCpu2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ MaxRetard : 47|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ LambdaTrim : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ InjDuty : 7|16@0+ (0.01,0) [0|200] "%" Vector__XXX
+ SG_ KnockRetard : 23|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ IgnTimingRaw : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ IscvDutyRaw : 47|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ LambdaRaw : 55|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ PwLoopMode : 63|8@0+ (1,0) [0|255] "" Vector__XXX
 
+BO_ 1061 TT_Cpu2_Medium3: 8 TT_CPU2
+ SG_ KnockRetardCyl1 : 7|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ KnockRetardCyl2 : 23|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ KnockRetardCyl3 : 39|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ LambdaTrimRaw : 55|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ MaxRetardRaw : 63|8@0+ (1,0) [0|255] "" Vector__XXX
+
 BO_ 1059 TT_Cpu2_Slow: 8 TT_CPU2
- SG_ NvTrimPim : 7|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ NvTrimO2 : 15|8@0+ (1,0) [0|255] "" Vector__XXX
- SG_ FuelTrim : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ NvTrimPimRaw : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ NvTrimO2Raw : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ FuelTrimRaw : 23|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ ErrorFlags1 : 31|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ ErrorFlags2 : 39|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ Flags46 : 47|8@0+ (1,0) [0|255] "" Vector__XXX
@@ -96,22 +108,98 @@ BO_ 1060 TT_Cpu2_Raw: 8 TT_CPU2
  SG_ RawByte5 : 55|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ RawByte6 : 63|8@0+ (1,0) [0|255] "" Vector__XXX
 
+BO_ 1062 TT_Cpu2_Info: 8 TT_CPU2
+ SG_ ProtocolVersion : 7|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ EcuFamily : 15|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ CpuIndex : 23|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ Reserved : 31|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ TxDropped : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
+ SG_ BusOffRecoveries : 55|16@0+ (1,0) [0|65535] "" Vector__XXX
+
+
 CM_ BO_ 1024 "Period 20 ms.";
+CM_ SG_ 1024 Rpm "Engine speed";
+CM_ SG_ 1024 TpsRaw "Throttle position, RAW ADC - transfer function not established";
+CM_ SG_ 1024 Map "Manifold pressure, ABSOLUTE. From Pim2, the measured value";
+CM_ SG_ 1024 InjPw "Injector 1 pulse width";
 CM_ BO_ 1025 "Period 100 ms.";
+CM_ SG_ 1025 Ect "Coolant temperature";
+CM_ SG_ 1025 Tha "Intake air temperature";
+CM_ SG_ 1025 Tham "Manifold air temperature";
+CM_ SG_ 1025 Battery "Battery voltage";
 CM_ BO_ 1026 "Period 100 ms.";
+CM_ SG_ 1026 InjDuty "Injector duty, derived from InjPw and Rpm";
+CM_ SG_ 1026 KnockRetard "Current knock retard, positive magnitude";
+CM_ SG_ 1026 IgnTimingRaw "Ignition timing, RAW - scaling ambiguous, see PLAN.md 3.6b";
+CM_ SG_ 1026 IscvDutyRaw "Idle valve duty, RAW - transfer function not established";
+CM_ SG_ 1026 LambdaRaw "Narrowband O2 ADC, RAW - not a wideband reading";
+CM_ SG_ 1026 PwLoopMode "0 open loop, 200 closed loop";
+CM_ BO_ 1029 "Period 100 ms.";
+CM_ SG_ 1029 KnockRetardCyl1 "Per-cylinder knock retard";
+CM_ SG_ 1029 KnockRetardCyl2 "Per-cylinder knock retard";
+CM_ SG_ 1029 KnockRetardCyl3 "Per-cylinder knock retard";
+CM_ SG_ 1029 LambdaTrimRaw "RAW - zero point and sign not established";
+CM_ SG_ 1029 MaxRetardRaw "RAW - CPU2's maximum retard";
 CM_ BO_ 1027 "Period 500 ms.";
+CM_ SG_ 1027 NvTrimPimRaw "Learned MAP trim, RAW";
+CM_ SG_ 1027 NvTrimO2Raw "Learned O2 trim, RAW";
+CM_ SG_ 1027 FuelTrimRaw "RAW";
+CM_ SG_ 1027 ErrorFlags1 "Fault flags, bit field";
+CM_ SG_ 1027 ErrorFlags2 "Fault flags, bit field";
+CM_ SG_ 1027 Flags46 "Status flags, bit field";
+CM_ SG_ 1027 Flags1 "Status flags, bit field";
+CM_ SG_ 1027 LimiterFlags "Limiter flags, bit field";
 CM_ BO_ 1028 "Period 50 ms.";
+CM_ SG_ 1028 SliceIndex "Which 7-byte slice of the 72-byte DMA capture this is";
+CM_ BO_ 1030 "Period 1000 ms.";
+CM_ SG_ 1030 ProtocolVersion "Wire-protocol version; refuse to decode an unknown one";
+CM_ SG_ 1030 EcuFamily "0 MR2, 1 ST205";
+CM_ SG_ 1030 CpuIndex "Which Denso CPU this board is attached to";
+CM_ SG_ 1030 TxDropped "Frames dropped, saturating. Non-zero means the bus is unhappy";
+CM_ SG_ 1030 BusOffRecoveries "Bus-off recoveries, saturating";
 CM_ BO_ 1056 "Period 20 ms.";
+CM_ SG_ 1056 Rpm "Engine speed";
+CM_ SG_ 1056 TpsRaw "Throttle position, RAW ADC - transfer function not established";
+CM_ SG_ 1056 Map "Manifold pressure, ABSOLUTE. From Pim2, the measured value";
+CM_ SG_ 1056 InjPw "Injector 1 pulse width";
 CM_ BO_ 1057 "Period 100 ms.";
+CM_ SG_ 1057 Ect "Coolant temperature";
+CM_ SG_ 1057 Tha "Intake air temperature";
+CM_ SG_ 1057 Tham "Manifold air temperature";
+CM_ SG_ 1057 Battery "Battery voltage";
 CM_ BO_ 1058 "Period 100 ms.";
+CM_ SG_ 1058 InjDuty "Injector duty, derived from InjPw and Rpm";
+CM_ SG_ 1058 KnockRetard "Current knock retard, positive magnitude";
+CM_ SG_ 1058 IgnTimingRaw "Ignition timing, RAW - scaling ambiguous, see PLAN.md 3.6b";
+CM_ SG_ 1058 IscvDutyRaw "Idle valve duty, RAW - transfer function not established";
+CM_ SG_ 1058 LambdaRaw "Narrowband O2 ADC, RAW - not a wideband reading";
+CM_ SG_ 1058 PwLoopMode "0 open loop, 200 closed loop";
+CM_ BO_ 1061 "Period 100 ms.";
+CM_ SG_ 1061 KnockRetardCyl1 "Per-cylinder knock retard";
+CM_ SG_ 1061 KnockRetardCyl2 "Per-cylinder knock retard";
+CM_ SG_ 1061 KnockRetardCyl3 "Per-cylinder knock retard";
+CM_ SG_ 1061 LambdaTrimRaw "RAW - zero point and sign not established";
+CM_ SG_ 1061 MaxRetardRaw "RAW - CPU2's maximum retard";
 CM_ BO_ 1059 "Period 500 ms.";
+CM_ SG_ 1059 NvTrimPimRaw "Learned MAP trim, RAW";
+CM_ SG_ 1059 NvTrimO2Raw "Learned O2 trim, RAW";
+CM_ SG_ 1059 FuelTrimRaw "RAW";
+CM_ SG_ 1059 ErrorFlags1 "Fault flags, bit field";
+CM_ SG_ 1059 ErrorFlags2 "Fault flags, bit field";
+CM_ SG_ 1059 Flags46 "Status flags, bit field";
+CM_ SG_ 1059 Flags1 "Status flags, bit field";
+CM_ SG_ 1059 LimiterFlags "Limiter flags, bit field";
 CM_ BO_ 1060 "Period 50 ms.";
-CM_ "Toyotune v2.1 board telemetry, sniffed from the ECU inter-CPU DMA link.
-All signals are raw ECU counts unless a factor is given. Ect, Tha and Tham are
-inverted ADC counts on a non-linear NTC curve and cannot be expressed as a
-linear DBC scaling - convert with the breakpoint table in roms/docs/adc_system.md.
-Pim2 is boost above a baseline and clamps to zero below it, so it carries no
-vacuum information. Rpm is rpm_x_5p12, hence the 1/5.12 factor. InjPw counts are
-4 us. Battery is well anchored at 0.0775 V per count.
-TT_Raw carries the two DMA blocks (38 bytes then 34) 7 bytes at a time, indexed
-by SliceIndex, for signals not yet broken out above.";
+CM_ SG_ 1060 SliceIndex "Which 7-byte slice of the 72-byte DMA capture this is";
+CM_ BO_ 1062 "Period 1000 ms.";
+CM_ SG_ 1062 ProtocolVersion "Wire-protocol version; refuse to decode an unknown one";
+CM_ SG_ 1062 EcuFamily "0 MR2, 1 ST205";
+CM_ SG_ 1062 CpuIndex "Which Denso CPU this board is attached to";
+CM_ SG_ 1062 TxDropped "Frames dropped, saturating. Non-zero means the bus is unhappy";
+CM_ SG_ 1062 BusOffRecoveries "Bus-off recoveries, saturating";
+
+VAL_ 1026 PwLoopMode 0 "OpenLoop" 200 "ClosedLoop" ;
+VAL_ 1058 PwLoopMode 0 "OpenLoop" 200 "ClosedLoop" ;
+VAL_ 1030 EcuFamily 0 "MR2" 1 "ST205" ;
+VAL_ 1062 EcuFamily 0 "MR2" 1 "ST205" ;
+

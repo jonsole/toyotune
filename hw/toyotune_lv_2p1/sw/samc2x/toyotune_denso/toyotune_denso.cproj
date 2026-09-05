@@ -237,6 +237,15 @@
     <Compile Include="dmcu.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="ecu_scale.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="ecu_scale.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="ecu_scale_tables.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="evsys.c">
       <SubType>compile</SubType>
     </Compile>
