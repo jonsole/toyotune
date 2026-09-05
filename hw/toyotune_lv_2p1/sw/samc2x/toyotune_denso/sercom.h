@@ -69,6 +69,20 @@ static __inline bool SERCOM_UsartTxReady(SercomUsart *Usart)
 	return Usart->INTFLAG.bit.DRE;
 }
 
+/* DRE only means the DATA register is free; the byte may still be sitting in
+   the shift register.  On this link the SAMC21 is the synchronous SLAVE - a
+   frame leaves only when the ECU clocks it - so clearing TXEN on DRE alone can
+   discard a byte that never went out.  TXC means "actually shifted out". */
+static __inline bool SERCOM_UsartTxComplete(SercomUsart *Usart)
+{
+	return Usart->INTFLAG.bit.TXC;
+}
+
+static __inline void SERCOM_UsartTxClearComplete(SercomUsart *Usart)
+{
+	Usart->INTFLAG.reg = SERCOM_USART_INTFLAG_TXC;
+}
+
 static __inline void SERCOM_UsartSetRxPad(SercomUsart *Usart, uint8_t RxPad)
 {
 	SERCOM_UsartDisable(Usart);

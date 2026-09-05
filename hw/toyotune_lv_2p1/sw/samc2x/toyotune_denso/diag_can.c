@@ -253,19 +253,32 @@ static void DiagCan_Command(uint16_t Id, const uint8_t *Data, uint8_t Length)
 				break;
 			}
 
-			Diag.WriteBuffer[0] = (uint8_t)(Value >> 8);
-			Diag.WriteBuffer[1] = (uint8_t)Value;
+			/* Size picks the width, and both are atomic in the ECU: 2 is a
+			   single st d,[y], 1 a single st a,[y].  A byte write is the one
+			   to use when the neighbouring byte must not be disturbed - a word
+			   write would have to read and rewrite it.  For Size 1 the byte is
+			   the LOW half of Value, so 0x00AB writes 0xAB. */
+			if (Size == 1)
+			{
+				Diag.WriteBuffer[0] = (uint8_t)Value;
+			}
+			else
+			{
+				Diag.WriteBuffer[0] = (uint8_t)(Value >> 8);
+				Diag.WriteBuffer[1] = (uint8_t)Value;
+			}
+
 			Diag.WriteIndex = 0;
 			Diag.WriteSize = Size;
+			Diag.WriteWidth = Size;
 			Diag.WriteAddress = Address;
 			Diag.WriteAddressAck = 0;
-			Diag.WriteAddressCommand = (Size > 1) ? 0xDB : 0xDD;
 			Diag.WriteAddressReady = true;
 
 			/* No response yet - DiagCan_WriteComplete sends it once the ECU has
 			   acknowledged the data, so an OK means the write actually landed. */
 			DiagCan_WriteAddress = Address;
-			DiagCan_WriteValue = Value;
+			DiagCan_WriteValue = (Size == 1) ? (Value & 0x00FF) : Value;
 			break;
 
 		default:

@@ -20,13 +20,28 @@
 
 #define BUILD_DIAG_WRITE
 
+/* TEMPORARY BENCH EXPERIMENT - set back to 1 to restore ADC snooping.
+
+   SERCOM_UsartSetRxPad() does not merely retarget the pad: it calls
+   SERCOM_UsartDisable()/Enable(), switching the whole USART off and on with a
+   SYNCBUSY.ENABLE spin each way.  The receiver is dead for that window, so any
+   frame arriving is lost silently - no interrupt, no error flag.  Losing one
+   frame of the ECU's echo leaves a read/write sequence armed and one frame out
+   of step, which then captures the ECU's ADC traffic (0x101 then 0x102) as the
+   result.  This switch tests that theory by never touching the pad: foreign
+   (bit-8-set) frames are simply ignored and the dispatcher stays in control.
+   Cost is AdcData[] never being populated, which nothing reads - its only
+   consumer is a Debug() that debug.h compiles out. */
+#define DIAG_ADC_SNOOP    (0)
+
 #define DIAG_CMD_READ_16		(0xDA)
-#define DIAG_CMD_WRITE_16_ADDR	(0xDB)
-#define DIAG_CMD_WRITE_16_DATA	(0xDC)
-#define DIAG_CMD_WRITE_8_ADDR	(0xDD)
-#define DIAG_CMD_WRITE_8_DATA	(0xDE)
 
 Diag_t Diag;
+
+/* Spin bound for waiting on TXC.  The ECU is the clock master, so a link that
+   stops clocking must not wedge the SERCOM0 ISR - count the give-ups instead. */
+#define DIAG_TX_DRAIN_GUARD	(2000)
+volatile uint32_t Diag_TxDrainTimeouts;
 
 
 #define DIAG_READ_IDLE		(0) /*  */
@@ -71,6 +86,17 @@ void Diag_TimerTick(Diag_t *Diag)
 {
 	Diag_TimeMs++;
 
+	/* A completed read the task has not picked up yet.  Re-raise the signal
+	   until it does: the ISR raises DIAG_SIGNAL_READ once, and if that wakeup
+	   is missed the link wedges permanently, because the TICK below is gated
+	   on DIAG_READ_IDLE and so can never fire while we sit in AVAILABLE.
+	   Seen on the bench after ~3400 good reads: mode stuck at DAh, ReadState
+	   stuck at AVAILABLE, the diag_can entry pool full, and every later read
+	   answered with an error.  Cheap to re-send - the task clears the state
+	   as soon as it runs. */
+	if (Diag->ReadState == DIAG_READ_AVAILABLE)
+		OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_READ);
+
 	/* Wake the task only when the head of the list has actually come due,
 	   rather than on every one of the 1000 ticks a second. From SysTick. */
 	if (Diag->ReadState == DIAG_READ_IDLE && Diag->ReadList &&
@@ -110,276 +136,266 @@ Diag_ReadEntry_t *Diag_ReadEntryRemoveHead(Diag_t *Diag)
 
 /***************************************************************************************/
 /* Send 16-bit UART data */
-static void Diag_TxData16(Diag_t *Diag, const uint16_t TxData)
+/* ==== Protocol v2 - one inbound byte per poll ==============================
+
+   The D8X receive buffer holds ONE byte, and its diag routine runs inside
+   int_vector_1_serial_rx, which the NE crank interrupt preempts for ~350us.
+   v1 answered the ECU's sync with two bytes 11us apart, so an NE landing
+   between them overran the first: ~10% of reads lost at 7000 rpm.  That was
+   never fixable from this side, which is why nothing tried here ever helped.
+
+   v2: send exactly ONE byte per poll, so an overrun needs two bytes in flight
+   and cannot happen.  The ECU never waits either, so it no longer blocks its
+   own ISR - better for engine timing than the code this replaces, not worse.
+
+   Framing.  The ECU announces its state as a MARK-parity byte in D0..DF, then
+   sends that state's payload as SPACE-parity bytes.  Its ADC traffic is mark
+   with values 00..1F, so there is no overlap and every frame is classifiable
+   with no state of our own - which is what makes this resynchronising: lose a
+   byte and the next announcement says exactly where the ECU is.
+
+   We answer once per group, on its LAST frame, so the decision is taken with
+   the payload already in hand.                                             */
+
+/* Scope trigger.  Goes HIGH when we answer the ECU's idle announcement and
+   start a transaction, LOW when that transaction completes - so the pulse
+   spans the whole exchange and its width is the transfer time.  On PA23 =
+   X2.3, a spare pin on the CAN connector, with ground on X2.6.  Set to 0 to
+   compile it out. */
+#define DIAG_SCOPE_MARK           (1)
+#define DIAG_SCOPE_PIN            PIN_PA23
+
+#if DIAG_SCOPE_MARK
+#define DIAG_ScopeHigh()          PIO_Set(DIAG_SCOPE_PIN)
+#define DIAG_ScopeLow()           PIO_Clear(DIAG_SCOPE_PIN)
+#else
+#define DIAG_ScopeHigh()          do { } while (0)
+#define DIAG_ScopeLow()           do { } while (0)
+#endif
+
+#define DIAG_MODE_READ_ADDR_MSB   (0xDA)  /* idle; expecting read address MSB */
+#define DIAG_MODE_READ_ADDR_LSB   (0xD0)
+#define DIAG_MODE_READ_RESULT     (0xD8)  /* 2 payload bytes; auto-increments */
+/* Two write phases, picked by Diag_t.WriteWidth.  Both are atomic in the ECU:
+   the 16-bit one holds the MSB and commits with a single st d,[y], the 8-bit
+   one commits immediately with a single st a,[y].  A byte write is NOT a
+   read-modify-write and does not need emulating with a word write - which is
+   exactly why it is worth offering: writing one byte of a pair leaves its
+   neighbour alone, where a word write would have to read and rewrite it. */
+#define DIAG_MODE_WRITE_ADDR_MSB  (0xDD)  /* 16-bit write phase */
+#define DIAG_MODE_WRITE_ADDR_LSB  (0xD3)
+#define DIAG_MODE_WRITE_DATA      (0xDE)  /* expecting the data MSB */
+#define DIAG_MODE_WRITE_DATA_LSB  (0xD4)  /* expecting the data LSB */
+#define DIAG_MODE_WRITE_ACK       (0xDF)  /* 2 payload bytes: the read-back */
+#define DIAG_MODE_WRITE8_ADDR_MSB (0xDC)  /* 8-bit write phase */
+#define DIAG_MODE_WRITE8_ADDR_LSB (0xD5)
+#define DIAG_MODE_WRITE8_DATA     (0xD6)  /* expecting the data byte */
+#define DIAG_MODE_WRITE8_ACK      (0xD7)  /* 1 payload byte: the read-back */
+
+static uint8_t Diag_Mode;          /* last state the ECU announced */
+static uint8_t Diag_PayloadLeft;   /* payload frames still expected */
+static uint8_t Diag_PayloadIndex;
+static uint8_t Diag_Payload[2];
+
+uint32_t Diag_ProtocolResyncs;     /* announcements we could not account for */
+uint32_t Diag_ReadStrays;          /* streamed words arriving with no read pending */
+
+/* Send one frame.  Mark parity marks a command, space a data byte - the ECU
+   tests SSD.0 to tell them apart. */
+static void Diag_TxFrame(Diag_t *Diag, uint16_t Frame)
 {
-	/* Enable UART Tx */
 	SERCOM_UsartTxEnable(Diag->Hw.Usart);
 
-	/* Load transmit buffer */
 	while (!SERCOM_UsartTxReady(Diag->Hw.Usart));
-	Diag->Hw.Usart->DATA.reg = TxData >> 8;
-	while (!SERCOM_UsartTxReady(Diag->Hw.Usart));
-	Diag->Hw.Usart->DATA.reg = TxData & 0xFF;
+	Diag->Hw.Usart->DATA.reg = Frame;
 
-	/* Disable UART Tx */
+	/* Wait for the frame to actually leave before releasing the pad.  DRE only
+	   says the DATA register is free; on this synchronous SLAVE link a frame
+	   leaves only when the ECU clocks it, so clearing TXEN on DRE alone can
+	   discard a byte that never went out.  TX shares PAD0 with the ADC's
+	   output, so it cannot just be left enabled.  Bounded: the ECU owns the
+	   clock, and a stalled link must not wedge this ISR. */
+	{
+		uint32_t Guard = DIAG_TX_DRAIN_GUARD;
+		while (!SERCOM_UsartTxComplete(Diag->Hw.Usart) && --Guard);
+		SERCOM_UsartTxClearComplete(Diag->Hw.Usart);
+		if (Guard == 0)
+			Diag_TxDrainTimeouts++;
+	}
+
 	SERCOM_UsartTxDisable(Diag->Hw.Usart);
 }
 
+#define Diag_TxData(Diag, Byte)     Diag_TxFrame((Diag), (Byte) & 0x00FF)
+#define Diag_TxCommand(Diag, Byte)  Diag_TxFrame((Diag), 0x0100 | ((Byte) & 0x00FF))
 
-/***************************************************************************************/
-/* A command is a PAIR of frames, like every other exchange on this link.
-
-   The ECU always reads two frames into D - MSB into A, LSB into B - and only
-   then tests the parity bit of the SECOND one to decide what it received:
-   set means .diag_command, which validates the byte as a mode of 0DAh..0DEh,
-   stores it and echoes it back; clear means data, dispatched to the current
-   mode handler.
-
-   So the command byte goes in the LSB with the 9th bit set, and the MSB is
-   padding.  This used to be Diag_TxData16(0x100 | Command), which sent 0x01
-   and then the command byte with the 9th bit clear on both - the ECU read
-   that as the 16-bit data value 0x01DB and never changed mode.
-
-   Reads never exposed it: the ROM initialises to 0DAh (read16), so a read
-   finds the ECU already in the right mode and goes straight to sending the
-   address.  Writes are the only path needing a mode change. */
-static void Diag_TxCommand(Diag_t *Diag, uint8_t Command)
+/* A complete group (announcement plus payload) has arrived.  Decide the single
+   byte we send back, if any. */
+static void Diag_GroupComplete(Diag_t *Diag)
 {
-	SERCOM_UsartTxEnable(Diag->Hw.Usart);
-
-	/* MSB: padding, 9th bit clear */
-	while (!SERCOM_UsartTxReady(Diag->Hw.Usart));
-	Diag->Hw.Usart->DATA.reg = 0x000;
-
-	/* LSB: the command byte, 9th bit set to mark it as a command */
-	while (!SERCOM_UsartTxReady(Diag->Hw.Usart));
-	Diag->Hw.Usart->DATA.reg = 0x100 | Command;
-
-	SERCOM_UsartTxDisable(Diag->Hw.Usart);
-}
-
-
-
-static void Diag_StartTimer(Diag_t *Diag)
-{
-}
-
-static void Diag_CancelTimer(Diag_t *Diag)
-{
-}
-
-
-/***************************************************************************************/
-
-static void Diag_RxHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxCommandMsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxCommandLsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxReadDataMsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxReadDataLsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxWriteDataAckMsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxWriteDataAckLsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxWriteAddressAckMsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxWriteAddressAckLsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxAdcMsbHandler(Diag_t *Diag, uint16_t RxData);
-static void Diag_RxAdcLsbHandler(Diag_t *Diag, uint16_t RxData);
-
-static void Diag_RxCommandMsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag->RxHandler = Diag_RxCommandLsbHandler;
-}
-
-static void Diag_RxCommandLsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag->RxHandler = Diag_RxHandler;
-}
-
-static void Diag_RxReadDataMsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag->ReadData[0] = (uint8_t)RxData;	
-	Diag->RxHandler = Diag_RxReadDataLsbHandler;
-}
-
-static void Diag_RxReadDataLsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag_CancelTimer(Diag);
-
-	Diag->ReadData[1] = (uint8_t)RxData;
-	Diag->RxHandler = Diag_RxHandler;
-
-	/* Set state to indicate data available */
-	Diag->ReadState = DIAG_READ_AVAILABLE;
-
-	/* Wake up task to handle read data */
-	OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_READ);
-}
-
-static void Diag_RxWriteDataAckMsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag->WriteDataAck = RxData << 8;
-	Diag->RxHandler = Diag_RxWriteDataAckLsbHandler;
-}
-
-static void Diag_RxWriteDataAckLsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag_CancelTimer(Diag);
-
-	Diag->WriteDataAck |= RxData;
-
-	/* As above - restore the dispatcher. */
-	Diag->RxHandler = Diag_RxHandler;
-	if (Diag->WriteDataAck == Diag->WriteData)
+	switch (Diag_Mode)
 	{
-		/* Set flag to update write in background */
-		OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_WRITE);
-		//Diag->WriteDataUpdate = 1;
-			
-		/* Clear ready flag, nothing more to write */
-		Diag->WriteDataReady = 0;
+	case DIAG_MODE_READ_ADDR_MSB:
+		/* ECU idle and waiting - start whichever transaction is pending. */
+		if (Diag->ReadState == DIAG_READ_READY)
+		{
+			DIAG_ScopeHigh();
+			Diag_TxData(Diag, Diag->ReadAddress >> 8);
+		}
+#ifdef BUILD_DIAG_WRITE
+		else if (Diag->WriteAddressReady || Diag->WriteDataReady)
+		{
+			DIAG_ScopeHigh();
+			Diag_TxCommand(Diag, (Diag->WriteWidth == 1)
+			                   ? DIAG_MODE_WRITE8_ADDR_MSB
+			                   : DIAG_MODE_WRITE_ADDR_MSB);
+		}
+#endif
+		break;
 
-		if (Diag->WriteSize == 0 && Diag_WriteCompleteHandler)
-			Diag_WriteCompleteHandler(true);
-	}
-	else
-	{
-		/* TODO: Retry write data */
-	}
-}
+	case DIAG_MODE_READ_ADDR_LSB:
+		Diag_TxData(Diag, Diag->ReadAddress);
+		break;
 
-static void Diag_RxWriteAddressAckMsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag->WriteAddressAck = RxData << 8;
-	Diag->RxHandler = Diag_RxWriteAddressAckLsbHandler;
-}
+	case DIAG_MODE_READ_RESULT:
+		/* Only take this if a read is actually outstanding.  The ECU stays in
+		   D8 and streams the NEXT word every poll until a command stops it -
+		   that is the block read - so if our stop command is missed (the ECU
+		   only listens for it in a ~20us window at the end of the poll) the
+		   next word arrives unasked, for an address two higher than the one
+		   requested.  Storing it completed the already-finished entry a second
+		   time, which is where the stray CAN responses and the wrong values
+		   came from: a stale streamed word answering the following request. */
+		if (Diag->ReadState == DIAG_READ_READY)
+		{
+			Diag->ReadData[0] = Diag_Payload[0];
+			Diag->ReadData[1] = Diag_Payload[1];
+			Diag->ReadState = DIAG_READ_AVAILABLE;
+			DIAG_ScopeLow();
+			OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_READ);
+		}
+		else
+			Diag_ReadStrays++;
 
-static void Diag_RxWriteAddressAckLsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag_CancelTimer(Diag);
+		/* Either way, command it back to idle - that both ends the stream and
+		   starts the next transaction. */
+		Diag_TxCommand(Diag, DIAG_MODE_READ_ADDR_MSB);
+		break;
 
-	Diag->WriteAddressAck |= RxData;
+#ifdef BUILD_DIAG_WRITE
+	/* The address phase is the same either width - only the mode codes the ECU
+	   announces differ, which is how it knows which data phase to enter. */
+	case DIAG_MODE_WRITE_ADDR_MSB:
+	case DIAG_MODE_WRITE8_ADDR_MSB:
+		Diag_TxData(Diag, Diag->WriteAddress >> 8);
+		break;
 
-	/* Hand the dispatcher back.  The read path does this and the write path
-	   did not, so every frame after a write kept landing in this handler
-	   instead of Diag_RxHandler. */
-	Diag->RxHandler = Diag_RxHandler;
-	if (Diag->WriteAddressAck == Diag->WriteAddress)
-	{
-		/* Clear ready flag, address has been written */
-		Diag->WriteAddressReady = 0;
+	case DIAG_MODE_WRITE_ADDR_LSB:
+	case DIAG_MODE_WRITE8_ADDR_LSB:
+		Diag_TxData(Diag, Diag->WriteAddress);
+		break;
 
-		/* Wake the task to prepare the data phase.  Without this the write
-		   stopped here: the address was acknowledged and nothing ever set
-		   WriteDataReady, so the data was never sent. */
-		OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_WRITE);
-	}
-	else
-	{
-		/* TODO: Retry write address */
-	}
+	case DIAG_MODE_WRITE_DATA:
+	case DIAG_MODE_WRITE8_DATA:
+		/* Reaching the data phase means the ECU took both address bytes - that
+		   is the address phase acknowledged.  Retire it and wake the task to
+		   pack the first data chunk; we answer on the next announcement.
+		   Without this the write stalls here with WriteAddressReady still set,
+		   which is why every write after the first came back BUSY. */
+		if (Diag->WriteAddressReady)
+		{
+			Diag->WriteAddressReady = 0;
+			OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_WRITE);
+			break;
+		}
 
-}
+		if (!Diag->WriteDataReady)
+			/* Nothing more to write - take the ECU back to idle. */
+			Diag_TxCommand(Diag, DIAG_MODE_READ_ADDR_MSB);
+		else if (Diag_Mode == DIAG_MODE_WRITE8_DATA)
+			/* The byte lands the moment the ECU takes it - there is no second
+			   half and nothing is held, so an abandoned byte write is simply a
+			   byte that was never sent. */
+			Diag_TxData(Diag, Diag->WriteData);
+		else
+			Diag_TxData(Diag, Diag->WriteData >> 8);
+		break;
 
-static void Diag_RxAdcMsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag->RxHandler = Diag_RxAdcLsbHandler;
-	Diag->AdcData[Diag->AdcChannel] = (RxData & 0xFF) << 8;
-}
+	case DIAG_MODE_WRITE_DATA_LSB:
+		/* The ECU is holding our MSB and will not store anything until this
+		   arrives - it commits both halves with a single st d,[y].  If we go
+		   quiet here it simply re-announces D4 next poll and nothing has been
+		   written, so an abandoned write cannot tear a word either. */
+		if (Diag->WriteDataReady)
+			Diag_TxData(Diag, Diag->WriteData);
+		else
+			Diag_TxCommand(Diag, DIAG_MODE_READ_ADDR_MSB);
+		break;
 
-static void Diag_RxAdcLsbHandler(Diag_t *Diag, uint16_t RxData)
-{
-	Diag->AdcData[Diag->AdcChannel] |= (RxData & 0xFF);
-	Diag->RxHandler = Diag_RxHandler;
+	case DIAG_MODE_WRITE_ACK:
+	case DIAG_MODE_WRITE8_ACK:
+		{
+			/* Payload is what the ECU read back from where it just wrote, in
+			   one instruction either width - so it is a coherent sample of the
+			   location, not bytes read a poll apart. */
+			const uint16_t Read = (Diag_Mode == DIAG_MODE_WRITE8_ACK)
+			                    ? Diag_Payload[0]
+			                    : (uint16_t)(((uint16_t)Diag_Payload[0] << 8) | Diag_Payload[1]);
 
-	/* Switch USART Rx to back PAD 2 to receive data from MCU */
-	SERCOM_UsartSetRxPad(Diag->Hw.Usart, 2);
+			if (Read == Diag->WriteData)
+			{
+				Diag->WriteDataReady = 0;
+				DIAG_ScopeLow();
+				OS_SignalSend(DIAG_TASK_ID, DIAG_SIGNAL_WRITE);
 
-	//Debug("ADC %x %04X ", Diag->AdcChannel, Diag->AdcData[Diag->AdcChannel] >> 4);
-}
+				if (Diag->WriteSize == 0 && Diag_WriteCompleteHandler)
+					Diag_WriteCompleteHandler(true);
+			}
+			/* On a mismatch leave WriteDataReady set, so the value is resent
+			   when the ECU next announces its data state.  Never silently
+			   accept. */
+		}
+		break;
+#endif
 
-
-static void Diag_ReadData(Diag_t *Diag, uint16_t RxData)
-{
-	Diag_StartTimer(Diag);
-
-	/* Check ECU is in the correct state already */
-	if (RxData == DIAG_CMD_READ_16)
-	{
-		/* ECU is in Read Mode, so transmit address of data required */
-		Diag_TxData16(Diag, Diag->ReadAddress);
-		Diag->RxHandler = Diag_RxReadDataMsbHandler;
-	}
-	else
-	{
-		/* Incorrect state, request read mode */
-		Diag_TxCommand(Diag, DIAG_CMD_READ_16);
-		Diag->RxHandler = Diag_RxCommandMsbHandler;
+	default:
+		Diag_ProtocolResyncs++;
+		break;
 	}
 }
 
-static void Diag_WriteData(Diag_t *Diag, uint16_t RxData)
-{
-	Diag_StartTimer(Diag);
-
-	/* Check ECU is in the correct state already */
-	if (RxData == Diag->WriteDataCommand)
-	{
-		/* Transmit data to write */
-		Diag_TxData16(Diag, Diag->WriteData);
-		Diag->RxHandler = Diag_RxWriteDataAckMsbHandler;
-	}
-	else
-	{
-		/* Incorrect state, request write data mode */
-		Diag_TxCommand(Diag, Diag->WriteDataCommand);
-		Diag->RxHandler = Diag_RxCommandMsbHandler;
-	}
-}
-
-static void Diag_WriteAddress(Diag_t *Diag, uint16_t RxData)
-{
-	Diag_StartTimer(Diag);
-
-	/* Check ECU is in the correct state already */
-	if (RxData == Diag->WriteAddressCommand)
-	{
-		/* Transmit address of write */
-		Diag_TxData16(Diag, Diag->WriteAddress);
-		Diag->RxHandler = Diag_RxWriteAddressAckMsbHandler;
-	}
-	else
-	{
-		/* Incorrect state, request write address mode */
-		Diag_TxCommand(Diag, Diag->WriteAddressCommand);
-		Diag->RxHandler = Diag_RxCommandMsbHandler;
-	}
-}
-
+/* Every received frame lands here. */
 static void Diag_RxHandler(Diag_t *Diag, uint16_t RxData)
 {
-	if (DIAG_IsCommand(RxData))
+	if (RxData & 0x0100)
 	{
-		if (Diag->ReadState == DIAG_READ_READY)
-			Diag_ReadData(Diag, RxData);
-#ifdef BUILD_DIAG_WRITE
-		else if (Diag->WriteDataReady)
-			Diag_WriteData(Diag, RxData);
-		else if (Diag->WriteAddressReady)
-			Diag_WriteAddress(Diag, RxData);
-#endif
-		//Debug("%02X\n", RxData);
-	}
-	else
-	{
-		if (RxData != 0x102)
+		/* Mark parity.  D0..DF is the ECU announcing its state; 00..1F is its
+		   ADC traffic, which is none of our business. */
+		const uint8_t Byte = (uint8_t)RxData;
+		if (Byte >= 0xD0)
 		{
-			/* Must be ADC channel request */
-			Diag->AdcChannel = (RxData >> 1) & 0x1F;
-			Diag->RxHandler = Diag_RxAdcMsbHandler;
-
-			/* Switch USART Rx to PAD 0 to receive data from ADC */
-			SERCOM_UsartSetRxPad(Diag->Hw.Usart, 0);
-
-			//Debug("%02X:", Diag->AdcChannel);
+			Diag_Mode         = Byte;
+			Diag_PayloadIndex = 0;
+			Diag_PayloadLeft  = (Byte == DIAG_MODE_READ_RESULT ||
+			                     Byte == DIAG_MODE_WRITE_ACK)  ? 2 :
+			                    (Byte == DIAG_MODE_WRITE8_ACK) ? 1 : 0;
+			if (Diag_PayloadLeft == 0)
+				Diag_GroupComplete(Diag);
 		}
+		return;
+	}
+
+	/* Space parity: payload for the announcement we are inside.  A payload
+	   byte with no announcement is a stray and is dropped rather than taken as
+	   data - the v1 defect that turned a timing miss into a wrong value
+	   instead of a missing one. */
+	if (Diag_PayloadLeft)
+	{
+		if (Diag_PayloadIndex < sizeof(Diag_Payload))
+			Diag_Payload[Diag_PayloadIndex++] = (uint8_t)RxData;
+
+		if (--Diag_PayloadLeft == 0)
+			Diag_GroupComplete(Diag);
 	}
 }
 
@@ -466,6 +482,14 @@ void SERCOM0_Handler(void)
 			/* Call receive handler */
 			Diag.RxHandler(&Diag, RxData);
 		}
+		else
+		{
+			/* Receive error (overrun/framing).  Abandon the group we were in so
+			   a lost frame cannot be absorbed as payload; the ECU's next
+			   announcement resynchronises us. */
+			Diag_PayloadLeft = 0;
+			Diag_ProtocolResyncs++;
+		}
 	}
 }
 
@@ -500,7 +524,25 @@ void Diag_Task(void *Context)
 
 	/* Enable USART interrupts */
 	Diag->Hw.Usart->INTENSET.reg = SERCOM_USART_INTENSET_RXC;
-	NVIC_SetPriority(SERCOM_GetIrqNumber(Diag->Instance), 1);
+	/* Highest priority in the system.  The ECU is the master of this link and
+	   its ROM waits only 16 poll-loop iterations (ld b,#10h) for our reply
+	   before abandoning the transaction with a bare ret.  At priority 1 this
+	   handler could not preempt TC0/TC1 (the SDL sniffers, also priority 1),
+	   so a 4 ms inter-CPU burst would push us past that window - the ECU
+	   would give up while our read/write sequence stayed armed, and the next
+	   two frames it sent (ADC traffic, 0x101 then 0x102) got captured as the
+	   result.  That is the 0x0102 seen on ~12% of reads at 7000 rpm. */
+#if DIAG_MARK
+	PIO_Clear(DIAG_MARK_PIN);
+	PIO_EnableOutput(DIAG_MARK_PIN);
+	PIO_Clear(DIAG_MARK2_PIN);
+	PIO_EnableOutput(DIAG_MARK2_PIN);
+#endif
+#if DIAG_SCOPE_MARK
+	PIO_Clear(DIAG_SCOPE_PIN);
+	PIO_EnableOutput(DIAG_SCOPE_PIN);
+#endif
+	NVIC_SetPriority(SERCOM_GetIrqNumber(Diag->Instance), 0);
 	NVIC_EnableIRQ(SERCOM_GetIrqNumber(Diag->Instance));
 
 
@@ -520,22 +562,27 @@ void Diag_Task(void *Context)
 		/* Check if write update required */
 		if (Signals & DIAG_SIGNAL_WRITE)
 		{
-			const uint8_t WriteSize = Diag->WriteSize > 2 ? 2 : Diag->WriteSize;
+			/* One chunk of exactly WriteWidth bytes.  A word request with an
+			   odd byte left over cannot be finished atomically, so it is
+			   dropped rather than emitted as a half word - use width 1 for
+			   odd lengths. */
+			const uint8_t WriteSize = (Diag->WriteSize >= Diag->WriteWidth)
+			                        ? Diag->WriteWidth : 0;
 
-			if (WriteSize > 0)
-				Diag->WriteData = Diag->WriteBuffer[Diag->WriteIndex + 0] << 8;
-			if (WriteSize > 1)
-				Diag->WriteData |= Diag->WriteBuffer[Diag->WriteIndex + 1];
-					
-			Diag->WriteIndex += WriteSize;
+			if (WriteSize == 2)
+				Diag->WriteData = ((uint16_t)Diag->WriteBuffer[Diag->WriteIndex + 0] << 8)
+				                | Diag->WriteBuffer[Diag->WriteIndex + 1];
+			else if (WriteSize == 1)
+				Diag->WriteData = Diag->WriteBuffer[Diag->WriteIndex];
+
+			Diag->WriteIndex   += WriteSize;
 			Diag->WriteAddress += WriteSize;
-			Diag->WriteSize -= WriteSize;
+			Diag->WriteSize    -= WriteSize;
 
-			Diag->WriteDataCommand = (WriteSize > 1) ? DIAG_CMD_WRITE_16_DATA : DIAG_CMD_WRITE_8_DATA;
-			/* Ready if a chunk was just prepared - NOT if bytes remain after it,
-			   which is what this used to test.  For a single two-byte write the
+			/* Ready if a chunk was just prepared - NOT if bytes remain after
+			   it, which is what this used to test.  For a single write the
 			   remainder is zero, so the data phase never started. */
-			Diag->WriteDataReady   = (WriteSize > 0);	
+			Diag->WriteDataReady = (WriteSize != 0);
 		}
 #endif
 	

@@ -32,14 +32,15 @@ typedef struct Diag
 	uint8_t AdcChannel;
 	uint16_t AdcData[16];
 
-	uint8_t WriteDataCommand;
-	uint8_t WriteAddressCommand;
 
 	bool WriteAddressReady;
 	bool WriteDataReady;
 	//bool WriteDataUpdate;
 
 	uint8_t	WriteSize;
+	uint8_t	WriteWidth;			// 1 = byte writes, 2 = word writes.  Fixed for the
+								// whole request: it selects which address-phase
+								// command is sent, so it cannot change mid-transfer.
 	uint16_t WriteAddress;
 	uint16_t WriteAddressAck;	// Ack from ECU of address to write to
 	uint8_t	WriteIndex;

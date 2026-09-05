@@ -1088,7 +1088,20 @@ dmarx_unk_245:			.block 1			; DATA XREF: sub_E115+1E4r
 dmarx_ign_timing_unk_246:	.block 1			; DATA XREF: ignition_timing_calc+123r
 dmarx_ign_timing_unk_247:	.block 1			; DATA XREF: sub_C59B+DAo
 								; ignition_timing_calc+12Br
-unk_248:			.block 0B7h
+unk_248:			.block 1			; MUST stay at 0248h - copy_dma_rx compares X
+								; against #unk_248 as its loop sentinel
+serial_diag_wdata:		.block 1			; 0249h - holds the write data MSB between
+								; polls so the store itself can be a single
+								; atomic 16-bit st d,[y].  This is the BOTTOM
+								; of the stack, which grows DOWN from
+								; stack_top at 02FFh, so it is the last
+								; address the stack would ever reach.  The
+								; alternatives were measured and rejected:
+								; 00E0h is live (seen incrementing at 7000rpm)
+								; and 0307h-03FEh is not implemented RAM - it
+								; reads back 0000h and ignores writes.
+								.block 0B5h			; rest of the stack (1+1+B5h = B7h, so no
+								; address below stack_top shifts)
 stack_top:			.block 1			; DATA XREF: watchdog_kick+2Do
 								; watchdog_kick+32o
 var_nv_tps:			.block 1			; DATA XREF: sub_C59B+23Co
@@ -1108,115 +1121,297 @@ table_knock_info:		.block 3			; DATA XREF: sub_C59B:loc_C7DAo
 ; Extended serial diagnostics
 ; *************************************************
 rom_start:
-serial_diag_extended:                
-                        
-; Flush any stale data in UART receive buffer
+serial_diag_extended:
+; *** PROTOCOL v4 - ONE inbound byte per exchange, atomic 8- and 16-bit ***
+;
+; The D8X receive buffer holds ONE byte, and this runs inside
+; int_vector_1_serial_rx, which int_vector_e_ne (NE, IMASKL bit 6) preempts for
+; ~350us - one NE period at 7000rpm.  v1 answered its sync with TWO bytes 11us
+; apart, so an NE landing between them overran the first: SSD.6 set, whole
+; transaction dropped, ~10% of reads lost at 7000rpm.
+;
+; v3 keeps v1's flush/announce/wait shape but takes only ONE byte per exchange.
+; With a single byte in flight an overrun cannot happen, and the wait is halved
+; because there is no second byte to wait for.
+;
+; The flush is essential and must not be removed: SIN0 is shared with the ADC
+; converter, so between polls this buffer fills with ADC traffic.  A pipelined
+; design that answers between polls cannot work here - our reply would sit in
+; the buffer for 4ms and be overrun by the next ADC byte.  The reply has to
+; arrive while this routine is looking, which is what the wait below is for.
+;
+; Framing.  The state is announced as a MARK-parity byte in D0..DF, payload as
+; SPACE parity.  ADC traffic is mark with values 00..1F, so there is no overlap
+; and the SAMC21 can classify every frame with no state of its own - which is
+; what makes it resynchronising.  Inbound, SSD.0 set = command, clear = data.
+;
+; State is serial_diag_mode + serial_diag_address (7Dh..7Fh) plus one scratch
+; byte, serial_diag_wdata.  77h..7Ch belong to engine code and 80h starts
+; var_diag_errors_1, so the third byte could not go there; it lives at 0249h,
+; at the bottom of the stack (see its declaration for why that is safe and
+; what else was tried).  It is what makes writes atomic: the MSB is held there
+; until the LSB arrives and both go out in a single st d,[y].  Reads were
+; already atomic - ld d,[y] is one instruction - and the write read-back uses
+; the same, so engine code can never see, and the SAMC21 can never verify
+; against, a half-updated word.
+;
+; A byte write is offered as its own phase rather than emulated with a word
+; write, and needs no scratch byte: st a,[y] is one instruction and so is
+; already atomic.  It is the one to use when the neighbouring byte must not be
+; disturbed - reaching a single byte through a word write would mean reading
+; that neighbour and writing it back, and THAT read-modify-write is what could
+; not be made atomic.
+;
+;   mode  meaning                              payload
+;   DA    idle / read: expect address MSB      0
+;   D0    read: expect address LSB             0
+;   D8    read result, address auto-increments 2   (repeats: block read)
+;   DD    write16: expect address MSB          0
+;   D3    write16: expect address LSB          0
+;   DE    write16: expect data MSB (held)      0
+;   D4    write16: expect data LSB (commits)   0
+;   DF    write16 acknowledge (read-back)      2   (repeats: block write)
+;   DC    write8: expect address MSB           0
+;   D5    write8: expect address LSB           0
+;   D6    write8: expect data byte (commits)   0
+;   D7    write8 acknowledge (read-back)       1   (repeats: block write)
+;
+; Commands accepted from the SAMC21: DAh, DDh and DCh only - the three phase
+; entries.  The internal sub-states are deliberately rejected, so a corrupt
+; frame cannot drop us into the middle of a phase.
+;
+; Both dispatches are sixteen-entry address tables indexed by mode & 0Fh, not
+; compare chains: constant time, no state ordering to get wrong, and adding a
+; state is a table entry rather than another compare.  This is the ECU's own
+; idiom - int_watchdog dispatches the ADC handlers the same way at 0FAD2h.
+
+; Drain stale ADC traffic so the wait below sees only the SAMC21 reply
 .diag_flush:
 				ld      a, SIDR_SODR
-				tbbs    bit7, SSD, .diag_flush          ; Loop back if SSD.7 set (data in receive buffer)
-                        
-; Send sync byte                        
-				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
-				ld      a, serial_diag_mode             ; Copy mode value...
-				;clrb    bit1, PORTD_ASRIN
-				st      a, SIDR_SODR                    ; ...to serial Tx buffer
+				tbbs    bit7, SSD, .diag_flush
 
-				ld      y, #.diag_mode_table            ; Load table base for diag mode table
-				sub     a, #0DAh                        ; Convert mode into index and...
-				shl     a                               ; ...multiply by 2
-				add     y, a                            ; Compute address in table
-				ld      y, y + 00h                      ; Load jump address into y for selected mode
+; Announce the state we are in, then dispatch on it.  Every mode is D0h..DFh,
+; so the low nibble is a dense 0..15 index into a sixteen-entry address table -
+; constant time whatever the state, where the compare chain this replaces cost
+; up to nine cmp/branch pairs and got longer every time a state was added.  All
+; sixteen slots are filled, so a mode that somehow went bad lands on a real
+; handler instead of falling off the end of the chain.
+;
+; An address table (.dw, read through ld y,y+00h) rather than a table of
+; branches: it cannot be broken by a handler drifting out of an 8-bit reach,
+; which has already happened three times in this block.
+				setb    bit1, SSD						; parity mark for the mode byte
+				ld      a, serial_diag_mode
+				st      a, SIDR_SODR
 
-				ld      b, #10h                         ; Initialise loop counter (16 iterations)
-				;setb    bit1, PORTD_ASRIN
+				and     a, #0Fh							; D0h..DFh -> 0..15
+				shl     a								; ...times two, for a word table
+				ld      y, #.diag_ann_vec
+				add     y, a
+				ld      y, y + 00h						; Y = what this announcement owes
+				jmp     y + 00h
 
-; Wait for MSB of command/address to be received
-.diag_msb_wait:
-				tbbs    bit7, SSD, .diag_msb_found      ; Exit loop if SSD.7 set (data in receive buffer)
-				dec     b                               ; Repeat for 14 iterations...
-				bne     .diag_msb_wait                  ; ...loop back if more iterations
-				ret					; Timed out waiting for data
+; Wait briefly for ONE byte.  The SAMC21 answers ~9.4us after the announcement
+; ends and a frame takes 11us to shift, so ~20us is needed; 10h iterations is
+; what v1 used for this same wait.  Do NOT raise it - this spins inside the
+; serial ISR and every extra iteration delays crank/ignition/injection.
+.diag_wait:
+				ld      b, #10h
+.diag_wait_loop:
+				tbbs    bit7, SSD, .diag_have_byte
+				dec     b
+				bne     .diag_wait_loop
+				ret										; nothing came - retry next poll
 
-; MSB of command/address received
-.diag_msb_found:                                              
-				tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
-				ld      a, SIDR_SODR                    ; Store MSB in A
+; Kept here, between two rets so nothing falls into it, because the tbbs below
+; reaches it with an 8-bit offset.
+.diag_overrun:
+				ld      a, SIDR_SODR					; discard whatever survived
+.diag_resync:
+				ld      #0DAh, serial_diag_mode			; back to idle; the next
+				ret										; announcement resyncs the SAMC21
 
-; Wait for LSB of command/address to be received                        
-.diag_lsb_wait:
-				tbbs    bit7, SSD, .diag_lsb_found      ; Exit loop if SSD.7 set (data in receive buffer)
-				dec     b                               ; Repeat for 14 iterations...
-				bne     .diag_lsb_wait                  ; ...loop back if more iterations
-				ret		                      	; Timed out waiting for data
+.diag_have_byte:
+				tbbs    bit6, SSD, .diag_overrun		; SSD.6 = receive overrun
 
-; LSB of command/address received
-.diag_lsb_found:        	tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
-				ld      b, SIDR_SODR                    ; Store LSB in B, 16 bit value now in D
+; Same index, a second table: where a DATA byte goes in this state.  Worked out
+; into Y before the byte is taken, because the handlers want the byte in B.
+				ld      a, serial_diag_mode
+				and     a, #0Fh
+				shl     a
+				ld      y, #.diag_data_vec
+				add     y, a
+				ld      y, y + 00h						; Y = handler for a byte in this state
 
-				tbbs    bit0, SSD, .diag_command        ; Read Serial Status Register, jump if parity bit is set (command selection bit)
-				jmp     y + 00h                         ; Not command, so jump to mode handler routine
+				ld      b, SIDR_SODR					; take the one byte
+				tbbs    bit0, SSD, .diag_command		; mark = command, space = data
+				jmp     y + 00h
 
-; Handler for read 16 mode
-.diag_data_read16_mode:
-				mov     d, y                            ; Move address to Y
-				ld      d, [y]                          ; Read 2 bytes and increment address                        
-
-; Transmit word in D
-.diag_tx_word:
-				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
-				st      a, SIDR_SODR                    ; Write 1st byte to serial Tx buffer
-				div     d, #00h                         ; Wait for a bit...                        
-				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
-				st      b, SIDR_SODR                    ; Write 2nd byte to serial Tx buffer
-				ret
-				
-; Handler for write 16 bits mode, address phase
-.diag_addr_write16_mode:
-				st      d, serial_diag_address          ; Store write address
-				ld      #0DCh, serial_diag_mode         ; Move to data_write16 mode
-				bra     .diag_tx_word                   ; Echo back address
-                        
-; Handler for write 16 bits mode, data phase
-.diag_data_write16_mode:
-				ld      y, serial_diag_address          ; Retrieve write address
-				st      d, [y]                          ; Write 16 bit value in D, increment write address
-				st      y, serial_diag_address          ; Store write address
-				bra     .diag_tx_word                   ; Echo back address
-                        
-; Handler for write 8 bits mode, address phase
-.diag_addr_write8_mode:
-				st      d, serial_diag_address          ; Store write address
-				ld      #0DEh, serial_diag_mode         ; Move to data_write8 mode    
-				bra     .diag_tx_word                   ; Echo back address
-                        
-; Handler for write 16 bits mode, data phase
-.diag_data_write8_mode:
-				ld      y, serial_diag_address          ; Retrieve write address
-				st      a, [y]                          ; Write 8 bit value in A, increment write address
-				st      y, serial_diag_address          ; Store write address
-				bra     .diag_tx_word                   ; Echo back address
-
-; Command received, store and echo back              
+; Command byte in B.  Only the phase-entry commands are legal.  Deliberately
+; still a compare chain and not a table: this byte comes straight off the wire
+; and can be any value at all, so indexing on its low nibble would need a range
+; check first - more code than the three compares it would save.
 .diag_command:
-				cmp     b, #0DAh                        ; Check if command < 0DAh...
-				bcs     .diag_drop                      ; Jump if it is, command is invalid
-				cmp     b, #0DEh                        ; Check if command > 0DEh
-				bgt     .diag_drop                      ; Jump if it is, command is invalid                                
-				st      b, serial_diag_mode             ; Store new diagnostic mode                        
-				bra     .diag_tx_word                   ; Echo back command  
-                        
-; Drop any data in buffer                        
-.diag_drop:
-				ld      a, SIDR_SODR
-				tbbs    bit7, SSD, .diag_drop            ; Loop back if SSD.7 set (data in receive buffer)
+				cmp     b, #0DAh
+				beq     .diag_command_set
+				cmp     b, #0DDh
+				beq     .diag_command_set
+				cmp     b, #0DCh
+				beq     .diag_command_set
+				jmp     .diag_resync
+.diag_command_set:
+				st      b, serial_diag_mode
 				ret
 
-.diag_mode_table:
-				.dw     .diag_data_read16_mode          ; 0DAh
-				.dw     .diag_addr_write16_mode         ; 0DBh
-				.dw     .diag_data_write16_mode         ; 0DCh
-				.dw     .diag_addr_write8_mode          ; 0DDh
-				.dw     .diag_data_write8_mode          ; 0DEh
+; Address MSB - stashed in the high half of serial_diag_address; the LSB handler
+; reloads it into A so that D = A:B is the finished address.  One entry point
+; per phase, so none of them has to re-test the mode: the vector already knew.
+.diag_read_addr_msb:
+				st      b, serial_diag_address
+				ld      #0D0h, serial_diag_mode			; read: address LSB next
+				ret
+.diag_write_addr_msb:
+				st      b, serial_diag_address
+				ld      #0D3h, serial_diag_mode			; 16-bit write: address LSB next
+				ret
+.diag_write8_addr_msb:
+				st      b, serial_diag_address
+				ld      #0D5h, serial_diag_mode			; 8-bit write: address LSB next
+				ret
+
+.diag_read_addr_lsb:
+				ld      a, serial_diag_address			; A = stashed MSB, B = LSB
+				st      d, serial_diag_address			; ...so D is the address
+				ld      #0D8h, serial_diag_mode			; next announce does the read
+				ret
+
+.diag_write_addr_lsb:
+				ld      a, serial_diag_address
+				st      d, serial_diag_address
+				ld      #0DEh, serial_diag_mode			; ready for the first data MSB
+				ret
+
+.diag_write_addr_lsb8:
+				ld      a, serial_diag_address
+				st      d, serial_diag_address
+				ld      #0D6h, serial_diag_mode			; ready for the first data byte
+				ret
+
+; 8-bit write data.  st a,[y] is a single instruction storing a single byte,
+; so this is already atomic and needs no held half - which is the whole reason
+; a byte write is worth offering separately rather than emulating it with a
+; 16-bit one.  A 16-bit write would have to read the neighbouring byte first,
+; and THAT read-modify-write is what could not be made atomic.
+.diag_write_data8:
+				ld      y, serial_diag_address
+				mov     b, a							; A = B (mov is src,dest) - st only takes a or d
+				st      a, [y]							; ATOMIC byte store; Y += 1
+				st      y, serial_diag_address			; keep the incremented address
+				ld      #0D7h, serial_diag_mode			; next announce reads it back
+				ret
+
+; Data MSB.  Hold it instead of storing it: storing the halves in separate
+; polls leaves 4ms in which engine code can read a half-updated word.  The
+; LSB handler commits both at once.
+.diag_write_data:
+				st      b, serial_diag_wdata
+				ld      #0D4h, serial_diag_mode			; data LSB next
+				ret
+
+; Data LSB - B holds it, A gets the MSB back, so D is the whole word and
+; st d,[y] writes both bytes in ONE instruction.  Nothing can be scheduled
+; between the halves, so no other code ever sees a torn value.
+.diag_write_data_lsb:
+				ld      a, serial_diag_wdata			; D = A:B = the 16-bit value
+				ld      y, serial_diag_address
+				st      d, [y]							; ATOMIC 16-bit store; Y += 2
+				st      y, serial_diag_address			; keep the incremented address
+				ld      #0DFh, serial_diag_mode			; next announce reads it back
+				ret
+
+; Read result: two payload bytes, address auto-increments.  Mode stays D8h, so
+; if the SAMC21 stays quiet each further poll delivers the next word - block
+; read for free, amortising the two address polls away.  A command ends it,
+; which the SAMC21 sends anyway to start its next request.
+.diag_send_read:
+				ld      y, serial_diag_address
+				ld      d, [y]							; read 2 bytes, Y += 2
+				st      y, serial_diag_address
+				clrb    bit1, SSD						; parity space for payload
+				st      a, SIDR_SODR
+				div     d, #00h							; inter-byte delay, as v1
+				clrb    bit1, SSD
+				st      b, SIDR_SODR
+				jmp     .diag_wait
+
+; Write acknowledge: read the WORD back from where it was just written so the
+; SAMC21 can verify it, then drop back to DEh for the next data word - so a
+; block write is DD/D3 once followed by DE/D4/DF per word.
+.diag_send_wack:
+				ld      y, serial_diag_address
+				dec     y
+				dec     y								; back to the word just written
+				ld      d, [y]							; atomic 16-bit read-back
+				clrb    bit1, SSD
+				st      a, SIDR_SODR
+				div     d, #00h							; inter-byte spacing, as .diag_send_read
+				clrb    bit1, SSD
+				st      b, SIDR_SODR
+				ld      #0DEh, serial_diag_mode			; ready for the next data word
+				jmp     .diag_wait
+
+; 8-bit write acknowledge: one byte back from where it was just written, then
+; back to D6h for the next byte - so a byte block write is DCh once followed
+; by D6h/D7h per byte.
+.diag_send_back8:
+				ld      y, serial_diag_address
+				dec     y								; back to the byte just written
+				ld      a, [y]
+				clrb    bit1, SSD
+				st      a, SIDR_SODR
+				ld      #0D6h, serial_diag_mode			; ready for the next data byte
+				jmp     .diag_wait
+
+; What each announced state owes the SAMC21 right now: a payload, or just the
+; wait for its reply.  Indexed by mode & 0Fh.
+.diag_ann_vec:
+				.dw     .diag_wait						; D0h  read: expect address LSB
+				.dw     .diag_resync					; D1h  unused
+				.dw     .diag_resync					; D2h  unused
+				.dw     .diag_wait						; D3h  write16: expect address LSB
+				.dw     .diag_wait						; D4h  write16: expect data LSB
+				.dw     .diag_wait						; D5h  write8: expect address LSB
+				.dw     .diag_wait						; D6h  write8: expect data byte
+				.dw     .diag_send_back8				; D7h  write8 acknowledge
+				.dw     .diag_send_read					; D8h  read result
+				.dw     .diag_resync					; D9h  unused
+				.dw     .diag_wait						; DAh  idle: expect address MSB
+				.dw     .diag_resync					; DBh  unused
+				.dw     .diag_wait						; DCh  write8: expect address MSB
+				.dw     .diag_wait						; DDh  write16: expect address MSB
+				.dw     .diag_wait						; DEh  write16: expect data MSB
+				.dw     .diag_send_wack					; DFh  write16 acknowledge
+
+; Where a data byte goes, per state.  The states that owe a payload rather than
+; expect one resync here: a data byte arriving in them is a protocol error.
+.diag_data_vec:
+				.dw     .diag_read_addr_lsb				; D0h  read address LSB
+				.dw     .diag_resync					; D1h  unused
+				.dw     .diag_resync					; D2h  unused
+				.dw     .diag_write_addr_lsb			; D3h  write16 address LSB
+				.dw     .diag_write_data_lsb			; D4h  write16 data LSB - commits
+				.dw     .diag_write_addr_lsb8			; D5h  write8 address LSB
+				.dw     .diag_write_data8				; D6h  write8 data - commits
+				.dw     .diag_resync					; D7h  ack state - owes us nothing
+				.dw     .diag_resync					; D8h  read result - a command ends it
+				.dw     .diag_resync					; D9h  unused
+				.dw     .diag_read_addr_msb				; DAh  read address MSB
+				.dw     .diag_resync					; DBh  unused
+				.dw     .diag_write8_addr_msb			; DCh  write8 address MSB
+				.dw     .diag_write_addr_msb			; DDh  write16 address MSB
+				.dw     .diag_write_data				; DEh  write16 data MSB - held
+				.dw     .diag_resync					; DFh  ack state - owes us nothing
+
 
 serial_diag_init:		ld	a, #0DAh
 				st	a, serial_diag_mode
@@ -14800,6 +14995,17 @@ table_adc_handler:		.dw adc_handler_pim, adc_handler_tps ; DATA XREF: ROM:FAD4o
 				.dw adc_handler_trac_tps, adc_handler_unk_1CD
 				.dw adc_handler_tham, adc_handler_complete
 				.dw adc_handler_o2_sensor, adc_handler_unk_1CE
+; NOTE: slots 0 and 4 are UNREACHABLE, and the 82h entries there are fillers
+; marking that - not spare capacity.  adc_debug_command increments
+; var_adc_index a SECOND time (push a / jsr / pull a / inc a) on top of the
+; inc in adc_advance_index, so a diag slot advances the index by two and the
+; slot after it is jumped over.  With diag at 3 and 7 the skipped slots are
+; exactly 4 and 0, and the steady-state cycle is 1,2,3(diag),5,6,7(diag).
+; Setting those fillers to 80h therefore does nothing - measured: read
+; latency unchanged at 12.1ms median.  To raise the diag rate you must
+; either convert a reachable slot (1,2,5,6 - costs that ADC channel) or
+; drop the second inc (makes 0 and 4 live, but lengthens the cycle from 6
+; slots to 8, sampling every ADC channel ~33% less often).
 table_adc_channel:		.db 82h, 02h, 81h, 80h		; DATA XREF: ROM:FA5Ao
 				.db 82h, 08h, 01h, 80h
 table_adc_channel_2:		.db 82h, 03h, 81h, 80h		; DATA XREF: ROM:FA63o
