@@ -15,6 +15,71 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Diagnostic 54 explained: the DMA offset was off by one
+Jon confirmed the car's CPU2 is `D151804-0471` — the same part with the flat
+table — and that code 54 was **live**, not stored. Both of my escape hatches
+were gone, so the error had to be in the mapping itself. It was.
+
+**CPU1 does not receive into the `dmarx_*` variables.** DMA lands in
+`var_dma_rx_buffer` (`0x1D8` on 0461), and `copy_dma_rx` then word-copies 34
+bytes from there into `0x220`–`0x241`. So the `dmarx_*` block is a *copy*, and
+its correspondence to CPU2 depends on where CPU2's transmit buffer starts —
+which the hardware states outright:
+
+    0471 (CPU2)  st d, ASR3 <- #8150h        transmit buffer at 0x150
+    0461 (CPU1)  copy_dma_rx dest starts     0x220
+                 => offset = 0x220 - 0x150 = 0xD0
+
+    9661 (CPU2)  st d, ASR3 <- #814Dh        transmit buffer at 0x14D
+    9651 (CPU1)  copy_dma_rx dest starts     0x226
+                 => offset = 0x226 - 0x14D = 0xD9
+
+**Both are one less than the name-derived values** — `0xD1` and `0xDA` — and
+`0xDA` is the number CLAUDE.md has carried all along, "confirmed via
+cross-named pairs", i.e. by the same flawed method. The names sit on the wrong
+byte of some 16-bit variables, and taking the modal difference launders that
+into a confident wrong answer. The 16-bit variables actually settle it the
+other way: `copy_dma_rx` copies *words*, so a 16-bit pair must align exactly,
+and `dmatx_rpm_x_5p12` @`0x158` → `dmarx_rpm_x_5p12` @`0x228` is `0xD0`. That
+was the minority vote I dismissed as a 16-bit artefact. It was the only
+trustworthy vote in the set.
+
+**So CPU1's `0x23C` is CPU2's `0x16C`, not `0x16B`** — `dmatx_status1_16C`,
+not the flat table byte. And that lands the pieces exactly:
+
+    CPU2 update_dmatx_status_flags builds a status byte bit by bit:
+      bit 3 (0x08) <- var_flags_47 bit 2
+      bit 4 (0x10) <- var_flags_47 bit 3
+    CPU1 update_diag_obd BIT-TESTS exactly bits 3 and 4 of what it receives
+      bit 3 -> var_error_flags2 bit 7 -> diagnostic code 54 on the ST205
+      bit 4 -> var_error_flags2 bit 2
+
+Two independent structures agreeing on the same two bit positions is the
+confirmation. Under the old offset CPU1 would have been bit-testing a flat
+calibration constant, which is exactly the nonsense that kept coming out.
+
+`var_flags_47` bit 2 is set by `update_odb_flags` when the low nibble of
+`dmatx_diag_mode_16D` is non-zero — a real, condition-driven flag. Code 54 is
+live because something genuinely sets it. Finding what feeds that nibble is
+the next step, and it is now a well-posed question.
+
+**What this invalidates.** Every `dmarx_*` name whose suffix encodes a CPU2
+address is off by one, and worse, any name carried across *semantically* from
+CPU2 now refers to its neighbour. The six names "resolved" via `0xD1` in an
+earlier entry are wrong, and `dmarx_status1_16C`/`dmarx_status2_16E` and
+friends need re-deriving. Not corrected yet — it needs a careful pass over the
+whole block on both pairs rather than a search-and-replace, since the
+semantic names shift as well as the numeric suffixes.
+
+**Method note.** The lesson is narrower than "check your work". Three times
+this session a majority vote over derived data beat a single direct
+measurement, and three times the vote was wrong. Names are derived data.
+Hardware registers, vendor opcode tables and ROM bytes are measurements.
+Where they disagree, the measurement wins — and if a measurement is
+available at all, the vote should not have been used.
+
+---
+
 ### The interpolator table format, finally traced
 This is the useful outcome of the whole `iscv_duty` argument, and it unblocks
 reading every table in these ROMs.
