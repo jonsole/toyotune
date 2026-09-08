@@ -15,6 +15,43 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### 9651 CPU1 -> 9661 CPU2: this direction is correct
+Checked name by name, with the alignment pinned without names. Offset `+0x13B`
+holds for the word-copied region, and it holds for real reasons:
+
+- **Hardware:** CPU1 transmits from `0x200` (`ASR3`), CPU2's `copy_serbus_rx`
+  word-copies into `dmarx_pim2` at `0xC5`. `0x200 − 0xC5 = 0x13B`.
+- **16-bit anchor, behaviourally:** CPU1 does `st d, var_ect` then
+  `st d, dmatx_ect` — a 16-bit ECT at `0x204`. CPU2 does `ld d, dmarx_ect` at
+  `0xC9`. `0x204 − 0xC9 = 0x13B`, and a 16-bit value cannot be off by a byte.
+- **Fifteen exact same-slot semantic matches:** pim2, tps, ect, inj_pw_inj1,
+  pim, tha, tham, battery, nv_trim_pim, nv_trim_o2, lambda_state, adc_lambda,
+  obd_inj, obd_iscv, obd_o2_sensor. Contrast the CPU2 -> CPU1 direction, where
+  every name was one slot behind.
+
+The seven remaining differences are cosmetic stem spellings at the same slot
+(`cmd_startup`/`cnt_startup` — almost certainly a typo for "cnt";
+`knock_retard_info`/`knock_info`; `ign_obd`/`obd_ign`; `knock_retard`/`knock`)
+plus two slots where the two sides hold genuinely different readings and one
+of them is wrong:
+
+    0x216  CPU1 dmatx_ign_corr_cpu2     vs  CPU2 dmarx_add_enrichment_DB
+    0x21C  CPU1 dmatx_pw_loop_mode      vs  CPU2 dmarx_dout0_duty_E1
+
+Not alignment errors — the slot is the same — but worth resolving from each
+side's writer and reader.
+
+**The tail does not follow the offset.** Bytes 30–34 are copied individually
+into CPU2's low flag area: `dmatx_error_flags1`/`_2` (0x21E–0x21F) →
+`dmarx_unk_4B` (0x4B, 2 bytes — which could now be named
+`dmarx_error_flags`), `dmatx_flags_46` → `dmarx_var_flags_46` (0x42),
+`dmatx_flags_1` → `dmarx_flags_1` (0x4E), `dmatx_limiter_flags` →
+`dmarx_limiter_flags` (0x43). Bytes 0x223–0x225 are not consumed by CPU2.
+CLAUDE.md now says so, since `+0x13B` applied to a tail byte gives a wrong
+address.
+
+---
+
 ### All four DMA offsets from hardware, and what that costs the dmarx_* names
 Derived every offset from the buffer registers and unpack routines, no names
 involved:
