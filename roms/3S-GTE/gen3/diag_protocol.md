@@ -308,13 +308,13 @@ Requests on **`0x40A`** (`TOYOTUNE_CAN_ID_DIAG_CMD`, = telemetry base + 10), res
 | 1–2 | address, big-endian |
 | 3–4 | value, big-endian |
 | 5–6 | period, ms |
-| 7 | size — 1 or 2, default 2 |
+| 7 | size — 1 or 2, default 2. **Writes only**; see below |
 
 **Response** (8 bytes): opcode, status, address (2), value (2), 0, 0.
 
 | Opcode | Operation |
 |---|---|
-| `0x01` | read (one-shot) |
+| `0x01` | read (one-shot) — always 16-bit, whatever `size` says |
 | `0x02` | write — `size` picks the width |
 | `0x03` | add periodic read |
 | `0x04` | cancel periodic read |
@@ -330,6 +330,12 @@ Requests on **`0x40A`** (`TOYOTUNE_CAN_ID_DIAG_CMD`, = telemetry base + 10), res
 | `0x05` | busy |
 
 For a write of `size` 1 the byte is the **low half** of the value field, so `0x00AB` writes `0xAB`. A write response is not sent until the ECU has acknowledged the data, so an `OK` means the write actually landed.
+
+**`size` has no effect on a read, and cannot.** The ECU has two write commands — `0xDC` write-8 and `0xDD` write-16 — but only one read, `0xDA` **read-16**. There is no 8-bit read to issue. The field is still validated, because rejecting a size the caller cannot have meant beats ignoring it silently, but `DiagCan_ReadComplete()` reports the 16-bit word unmasked.
+
+So a read of an 8-bit variable returns **that byte in the high half and its neighbour in the low half** — take `value >> 8`. Confirmed on the bench 2026-09-08: eight reads of `0x020C` at each size all returned `0x9B50`, which is `dmatx_battery` (`0x9B` = 155, 12.06 V) followed by `dmatx_nv_trim_pim` (`0x50` = 80), both matching the telemetry frames at the same moment.
+
+Masking in the firmware was considered and rejected: the neighbour byte is real data a caller may want, and hiding it would make the response claim a precision the link does not have.
 
 ---
 

@@ -12,7 +12,26 @@
  *   1-2  address
  *   3-4  value        writes only
  *   5-6  period ms    add-periodic only
- *   7    size, 1 or 2 reads and add-periodic
+ *   7    size, 1 or 2 writes only - see below
+ *
+ * SIZE DOES NOT AFFECT A READ, AND CANNOT.
+ *
+ * The ECU protocol has two write commands, 0xDC write-8 and 0xDD write-16,
+ * but only one read: 0xDA, read-16.  There is no 8-bit read to issue.  Size
+ * is still validated and carried on a read entry, because rejecting a size
+ * the caller cannot have meant is better than ignoring it silently - but the
+ * value that comes back is always the 16-bit word at that address, and
+ * DiagCan_ReadComplete() does not mask it.
+ *
+ * So a caller reading an 8-bit variable gets that byte in the HIGH half and
+ * its neighbour in the LOW half, and wants Value >> 8.  Confirmed on the
+ * bench 2026-09-08: address 0x020C returned 0x9B50 at both sizes, which is
+ * Battery (0x9B = 155, 12.06 V) followed by NvTrimPim (0x50 = 80), and both
+ * matched the telemetry frames at the same moment.
+ *
+ * Masking here was considered and rejected: the neighbour byte is real data
+ * the caller may want, and hiding it would make the frame claim a precision
+ * the link does not have.
  *
  * Response frame:
  *
@@ -166,6 +185,10 @@ static void DiagCan_WriteComplete(bool Ok)
 }
 
 
+/* Value is reported whole, never masked by Entry->Size: the ECU can only do a
+   16-bit read, so a byte request has already fetched its neighbour and hiding
+   that would claim a precision the link does not have.  See the top of this
+   file. */
 static void DiagCan_ReadComplete(Diag_ReadEntry_t *Entry, uint16_t Value)
 {
 	const bool OneShot = (Entry->Period == 0);
@@ -213,6 +236,8 @@ static void DiagCan_Command(uint16_t Id, const uint8_t *Data, uint8_t Length)
 	const uint16_t Address = DiagCan_Be16(&Data[1]);
 	const uint16_t Value = (Length >= 5) ? DiagCan_Be16(&Data[3]) : 0;
 	const uint16_t Period = (Length >= 7) ? DiagCan_Be16(&Data[5]) : 0;
+	/* Absent or zero means 16-bit, which is also the only width a read can
+	   actually have - see the note at the top of this file. */
 	const uint8_t Size = (Length >= 8 && Data[7] != 0) ? Data[7] : 2;
 
 	if (Size != 1 && Size != 2)
