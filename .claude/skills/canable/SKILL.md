@@ -128,7 +128,7 @@ Command frame, 8 bytes, big-endian to match the ECU:
 | 1-2 | address |
 | 3-4 | value (writes only) |
 | 5-6 | period ms (add-periodic only) |
-| 7 | size, 1 or 2 (reads and add-periodic) |
+| 7 | size, 1 or 2 - **honoured for writes, ignored for reads**, see below |
 
 Response frame:
 
@@ -152,7 +152,33 @@ Response frame:
 A periodic read emits the same response layout on its own schedule, so a host
 decodes one thing for both. The pool is **8 entries**; `0x05` cancels the lot.
 
-Four things worth knowing before trusting a result:
+### Every read is 16 bits, whatever size you ask for
+
+**Confirmed on the bench 2026-09-08.** The `size` byte is validated and
+stored, and it does change a *write* - the ECU protocol has both `0xDC`
+write-8 and `0xDD` write-16 - but the only read command it has is `0xDA`,
+**read-16**. There is no 8-bit read. `DiagCan_ReadComplete()` then passes the
+full 16-bit value into the response without masking it by the requested size,
+so `size=1` and `size=2` return byte-for-byte identical replies.
+
+The practical consequence: reading an 8-bit variable gives you **that byte in
+the high half and its neighbour in the low half**.
+
+```
+read 0x020C size=1  ->  0x9B50
+read 0x020C size=2  ->  0x9B50      (identical, 8 reads each)
+
+0x9B = 155  Battery     -> 0.0774*155 + 0.0601 = 12.06 V
+0x50 =  80  NvTrimPim   -> the next byte along
+```
+
+Both halves matched the telemetry frames exactly at the same moment, so this
+is the ECU's real memory and not a decode artefact. **Take `value >> 8` when
+you asked for a byte**, and be aware you have also read its neighbour - which
+is harmless for a read, but means you cannot infer anything from the low byte
+without knowing what lives there.
+
+### Other things worth knowing before trusting a result
 
 - **Match replies on the echoed address, not on arrival order.** Periodic
   reads interleave with one-shot ones.
@@ -160,6 +186,11 @@ Four things worth knowing before trusting a result:
   location saw about 1 wrong value in 27,000, and nothing in the protocol
   detects a bad read - only writes are verified, by the ECU reading back what
   it wrote. Read anything that matters twice.
+- **"Read twice" only proves anything for a value that should be static.** A
+  live variable legitimately differs between reads: two reads of `RpmX5p12`
+  during a steady 3500 rpm came back 17880 and 17888, which is 3492 and 3494
+  rpm - both correct, and both matching the telemetry frame at the time.
+  Comparing repeated reads of a moving value tests nothing.
 - **Every access is a single D8X instruction**, so engine code never sees a
   half-written value. A byte write is a real byte write, not a
   read-modify-write, so it cannot disturb its neighbour.
