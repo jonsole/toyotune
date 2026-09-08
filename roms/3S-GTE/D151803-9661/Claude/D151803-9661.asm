@@ -5107,6 +5107,15 @@ loc_D084:							; D07B↑j ...
 ; The three port writes just below (PORTB.4 clear, PORTB.1 set, DOUT.3
 ; clear) are unrelated one-off pin inits, not part of either warning
 ; block - probably just sharing this tick since it's a convenient place.
+; 
+; Confirmed as static for THIS ROM, but they are not arbitrary: the ST205
+; CPU2, D151804-0471, drives these same three pins in the same order at
+; this same point in the tick, each gated on dmarx_ect >= 0F7C0h and
+; var_rpm_x_5p12 >= 0A0h, with DOUT.3 additionally duration-limited. That
+; is its ECU-controlled chargecooler pump; this car has an air-to-air
+; intercooler, so the same code path just parks the pins. So "unrelated"
+; is right for 9661 and wrong for the family - see the 0471 annotation and
+; gen3/session_journal.md.
 ;
 ; 2) PORTA.3 warning (from the tbbs below), gated on var_flags_40.0
 ;    clear: resets var_cnt32ms_B5 unless ECT/speed/RPM/PIM/THAM ALL
