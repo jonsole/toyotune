@@ -6039,9 +6039,9 @@ reset_vector:							; DATA XREF: ROM:FFFE↓o
 				ld	#0F9h, TIMER3		; Timer3 LSB
 
 ; Inter-CPU DMA serial link: program ASR2/ASR3 with buffer addresses
-				ld	d, #81DEh		; DMA RX buffer base address
+				ld	d, #8000h + var_dma_rx_buffer		; DMA RX buffer base address
 				st	d, ASR2			; ASR2 = DMA receive channel
-				ld	d, #9200h		; DMA TX buffer base address
+				ld	d, #9000h + dmatx_pim2		; DMA TX buffer base address
 				st	d, ASR3			; ASR3 = DMA transmit channel
 				ld	#0FCh, ASR1P		; ASR1 pos edge counter MSB
 
@@ -6270,9 +6270,9 @@ loc_C749:							; CODE XREF: divide_d_by_x+2484↓j
 				ld	#0FCh, ASR1P		; ASR1 pos edge	counter	value MSB
 				ld	#30h, ASR0NL		; ASR0 neg edge	counter	value LSB
 				ld	#00h, unk_1D
-				ld	d, #81DEh
+				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
-				ld	d, #9200h
+				ld	d, #9000h + dmatx_pim2
 				st	d, ASR3			; ASR3 edge counter value MSB
 				tbbs	bit7, var_flags_46, loc_C7AD
 
@@ -19850,7 +19850,7 @@ loc_F899:							; CODE XREF: start_dma+19↑j
 				or	a, #40h
 				st	a, var_asr0n_shadow_1DD
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
-				ld	d, #9200h
+				ld	d, #9000h + dmatx_pim2
 				st	d, ASR3			; ASR3 edge counter value MSB
 				ld	#0B7h, TIMER3		; Timer	LSB (bit0~bit2)
 
@@ -19881,7 +19881,7 @@ loc_F8C4:							; CODE XREF: start_dma+32↑j
 				or	a, #80h
 				st	a, var_asr0n_shadow_1DD
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
-				ld	d, #81DEh
+				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, var_cnt_unk_77
@@ -19943,7 +19943,7 @@ loc_F90D:							; CODE XREF: IV0+A↑j
 loc_F911:							; CODE XREF: IV0+17↑j
 								; IV0+1A↑j
 				st	b, var_cnt_unk_76
-				ld	d, #81DEh
+				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, RAMST		; Built-in RAM status
