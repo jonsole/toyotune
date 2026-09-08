@@ -15,7 +15,72 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The interpolator table format, finally traced
+This is the useful outcome of the whole `iscv_duty` argument, and it unblocks
+reading every table in these ROMs.
+
+`table_rD_clamp` and `interp_table_pair` between them define the layout, and
+neither had been read carefully before:
+
+    table_rD_clamp:  sub d, y+00h   -> a 16-bit read: bytes [0..1] are map_min
+                     cmp a, y+02h   -> byte [2] is map_max (the index clamp)
+                     inc y          -> Y now base+1
+    interp_table_pair: add a, #02h
+                     add y, a       -> Y = base + 3 + index
+
+So the format is:
+
+    [0..1]  map_min, 16-bit, subtracted from the scaled index
+    [2]     map_max, the index clamp = number of intervals
+    [3..]   map_max + 1 data values, evenly spaced
+
+The `fixed4/8/16/32/…` in the entry-point names is the index pre-shift, which
+sets the rpm-per-step: entering at `fixed32` shifts right 5, so one index step
+is 1600 rpm and `fixed16` gives 800.
+
+**It validates itself two ways.** `table_C3EE` decodes to breakpoints at 800,
+2400 and 4000 rpm — reproducing, from the bytes alone, a hand annotation a
+previous session had written on 9661's copy of the same table. And
+`table_C3BA` decodes to `33 64 7B 7B 83 83 83` across 400–5200 rpm, a proper
+rising ignition curve.
+
+Note what this means for the previous two entries: the "constant 0x80" claim
+was right, and the "self-refutation" that withdrew it was itself wrong,
+because that test used a *third*, also-incorrect guess at the format. Reading
+the routine settles it; guessing at layouts and testing the guesses against
+each other does not.
+
+**Which leaves a real conflict, and it should stay open.** Statically the
+table is flat: `80 80 80` at all three breakpoints, so the byte should be a
+constant `0x80`, and neither bit 3 nor bit 4 should ever be set — yet
+diagnostic code 54 is observed on the car. Both stock `D151804-0471` and the
+`Jon_ST205_ECU` build have identical bytes there, so it is not the tune.
+
+One thing that narrows it: **the NV diagnostic bytes are OR-only.** The commit
+is `and b, #97h` / `or b, nv_diag_errors_2` / `write_rB_nv_ram` — it sets bits
+and never clears them, so a code latches until diagnostic memory is cleared,
+and only has to happen once. Candidates, none tested:
+
+- a different CPU2 part number in that car;
+- a transient on the inter-CPU DMA link. CPU1 does no frame-integrity check on
+  the received block, so a short or misaligned frame would put some other
+  variable's value at `0x23C`. Worth noting the SAMC21 sniffer in
+  `hw/.../sdl.c` *does* check (`if (RxSize == 38)`) precisely because a
+  partial capture misaligns every field after it;
+- a setter not yet found.
+
+The cheapest discriminator is knowing which car and part number the code was
+seen on, and whether it was live or stored.
+
+---
+
 ### Withdrawing "constant 0x80": the table parse was self-refuting
+
+> **⚠** The withdrawal was itself mistaken — see "The interpolator table
+> format, finally traced" above. The parse used here to refute the earlier
+> entry was a third wrong guess at the layout. Reading `table_rD_clamp` and
+> `interp_table_pair` settles the format, and the table really is flat. The
+> conflict with the observed code 54 is real and remains open.
 Jon reports that diagnostic code 54 does occur on the car — observed, not
 inferred. That contradicts the previous entry, and the previous entry is the
 thing that is wrong.
