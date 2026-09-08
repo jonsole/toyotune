@@ -207,7 +207,11 @@ def apply_renames(path, renames):
     from d8x_source import read
     text = read(path)
     existing = set(re.findall(r'^([A-Za-z_]\w*):', text, re.M))
-    clashes = {t: n for t, n in renames.items() if n in existing and n != t}
+    # A target may legitimately collide with a name that is itself being renamed
+    # away in the same batch -- A->B while B->C is a chain, not a collision,
+    # and the single simultaneous pass below resolves it correctly.
+    clashes = {t: n for t, n in renames.items()
+               if n in existing and n != t and n not in renames}
     if clashes:
         raise ValueError(f'target names already defined in {path}: {clashes}')
 

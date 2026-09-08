@@ -15,6 +15,48 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The dmarx_* shift applied
+Renamed every `dmarx_*` in both CPU1 ROMs to the identity of the CPU2 variable
+it actually receives: **28 in 9651, 27 in 0461**, plus `scale_by_dmarx_167` ->
+`scale_by_dmarx_241` and its 0461 counterpart, whose names embedded the CPU2
+address of the variable they read. Both still assemble byte-identical.
+
+**A third confirmation of the offset turned up while checking the plan**, and
+it is the cleanest of the lot. The received block is 34 bytes. At `+0xD9` the
+CPU2 window is `0x14D`–`0x16E`: it starts exactly on `dmatx_ve_corr_map`, the
+first `dmatx_*` variable, and ends exactly on the last byte of `word_16D`, the
+last one. At the old `+0xDA` it would run `0x14C`–`0x16D`, beginning
+mid-variable and truncating a 16-bit word — the low byte would never be
+transmitted. A DMA window that starts and ends on variable boundaries at both
+ends is not a coincidence.
+
+**Naming rule.** Each CPU1 slot takes its CPU2 peer's stem, with any embedded
+address rewritten to the CPU1 address. Where 0471 had only an `unk_` at the
+peer address, 0461 falls back to 9651's corrected stem at the same block
+index, the two pairs' blocks being structurally parallel — that is what keeps
+`scaled_ve`, `lambda_trim` and `status1` alive on the ST205 side. Those are
+marked as parallel-derived rather than peer-derived.
+
+The warning blocks in both ROMs have been rewritten: they now record that the
+shift *has* been applied, the derivation, all three checks, and the current
+correspondence table.
+
+**Two things this changes about earlier conclusions.** `dmarx_lambda_trim` on
+9651 is now `dmarx_ign_timing` — so the byte `update_diag_obd` bit-tests was
+never a lambda trim. And the six names "resolved" via the old offset in an
+earlier entry are all superseded.
+
+**A tooling bug this surfaced.** `apply_renames`' collision guard rejected
+`A -> B` whenever `B` already existed, without noticing that `B` was itself
+being renamed away in the same batch — a chain, not a collision, and exactly
+what a block-wide shift is made of. The guard now exempts targets that are
+themselves rename sources. The existing test for simultaneous swaps had not
+caught it because its fixture only *referenced* the colliding name rather than
+defining it as a label; the fixture now defines it, and the test fails against
+the old guard.
+
+---
+
 ### 9651 CPU1 -> 9661 CPU2: this direction is correct
 Checked name by name, with the alignment pinned without names. Offset `+0x13B`
 holds for the word-copied region, and it holds for real reasons:

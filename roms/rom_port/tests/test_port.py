@@ -204,7 +204,12 @@ class TestApply(unittest.TestCase):
     def test_swaps_are_applied_simultaneously(self):
         # A batch can legitimately contain A->B and B->C. Sequential
         # application would merge the two symbols.
-        path = write('alpha:\n\t\t\t\tld a, beta\n')
+        # beta is DEFINED as a label here, not merely referenced. An
+        # earlier collision guard rejected A->B whenever B existed,
+        # without noticing B was itself being renamed away in the same
+        # batch - a chain, not a collision. The old fixture only
+        # referenced beta, so it never caught that.
+        path = write('alpha:\n\t\t\t\tld a, beta\n\nbeta:\n\t\t\t\tret\n')
         try:
             apply_renames(path, {'alpha': 'beta', 'beta': 'gamma'})
             text = open(path, encoding='utf-8').read()

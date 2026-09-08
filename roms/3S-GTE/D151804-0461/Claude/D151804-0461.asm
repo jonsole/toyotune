@@ -1073,94 +1073,100 @@ unk_21E:			.block 1			; DATA XREF: factory_self_test+3C↓w
 								; factory_self_test:loc_E0F8↓w ...
 				.block 1
 								; ===========================================================================
-								; WARNING: the dmarx_* names below are shifted by one byte.
+								; The CPU2 -> CPU1 DMA block. Inter-CPU offset for this pair is +0D0h.
 								;
-								;   The inter-CPU offset for this pair is +0D0h, derived from the DMA
-								;   hardware: CPU2 arms its transmit buffer via ASR3, CPU1 receives into
-								;   var_dma_rx_buffer and copy_dma_rx word-copies that into this block, so
-								;   the offset is (this block's start) - (CPU2's ASR3 buffer start).
-								;   CLAUDE.md previously gave a value one higher, 'confirmed via cross-named
-								;   pairs' - which is circular, because these names were themselves assigned
-								;   using it. Their mutual consistency proves nothing.
+								;   These names were SHIFTED BY ONE on <date of this change>: each now
+								;   carries the identity of the CPU2 variable it actually receives. They
+								;   previously reflected an offset one higher, which CLAUDE.md had recorded
+								;   as 'confirmed via cross-named pairs' - circular, since the names were
+								;   generated from it.
 								;
-								;   Two independent checks say the hardware value is right. Both ECU pairs
-								;   put CPU2's dmatx_status1_* at exactly the address CPU1 bit-tests in
-								;   update_diag_obd; and on the ST205, CPU2's update_dmatx_status_flags
-								;   sets that byte's bits 3 and 4 from var_flags_47, which is precisely the
-								;   pair of bits update_diag_obd tests. Under the old offset CPU1 would be
-								;   bit-testing a flat calibration constant.
+								;   The offset comes from the DMA hardware: CPU2 arms its transmit buffer
+								;   via ASR3, CPU1 receives into var_dma_rx_buffer and copy_dma_rx
+								;   word-copies that here, so it is (this block's start) - (CPU2's ASR3
+								;   buffer). Three independent checks agree:
+								;     - both ECU pairs put CPU2's dmatx_status1_* at exactly the address
+								;       CPU1 bit-tests in update_diag_obd, and on the ST205 that byte's
+								;       bits 3 and 4 are set from var_flags_47 by
+								;       update_dmatx_status_flags - the same two bits update_diag_obd
+								;       tests;
+								;     - the 16-bit fields line up, and a 16-bit value cannot be off by a
+								;       byte;
+								;     - the 34-byte window starts exactly on CPU2's first dmatx_ variable
+								;       and ends exactly on the last byte of its last one. At the old
+								;       offset it began mid-variable and truncated a 16-bit word.
 								;
-								;   So each name below most likely belongs to the variable ONE HIGHER in
-								;   this block. They have been left alone rather than shifted en masse -
-								;   that is a decision to take deliberately, not a search-and-replace.
-								;   The true correspondence, CPU1 address <- CPU2 address and name:
-								;   0220h dmarx_word_220                 <- 0150h dmatx_ve_corr_map
-								;   0222h dmarx_word_222                 <- 0152h dmatx_ve_corr_map_tps
-								;   0224h dmarx_word_224                 <- 0154h dmatx_ve_x_pim_x_rpm
+								;   Do NOT re-derive this offset from dmatx_/dmarx_ name pairs. Use the
+								;   buffer registers. See gen3/dma_link_system.md and CLAUDE.md.
+								;
+								;   Current correspondence, CPU1 address <- CPU2 address and name:
+								;   0220h dmarx_ve_corr_map              <- 0150h dmatx_ve_corr_map
+								;   0222h dmarx_ve_corr_map_tps          <- 0152h dmatx_ve_corr_map_tps
+								;   0224h dmarx_ve_x_pim_x_rpm           <- 0154h dmatx_ve_x_pim_x_rpm
 								;   0226h dmarx_scaled_ve                <- 0156h unk_156
 								;   0228h dmarx_rpm_x_5p12               <- 0158h dmatx_rpm_x_5p12
-								;   022Ah dmarx_warmup_enrich            <- 015Ah dmatx_warmup_enrichment_15A
-								;   022Bh dmarx_fuel_trim_22B            <- 015Bh unk_15B
-								;   022Ch dmarx_enrich_22C               <- 015Ch dmatx_enrichment_unk_15C
-								;   022Dh dmarx_enrich_22D               <- 015Dh dmatx_enrichment_unk_15D
-								;   022Eh dmarx_enrich_unk_22E           <- 015Eh dmatx_unk_enrich
-								;   022Fh dmarx_tham_enrich_unk          <- 015Fh unk_15F
-								;   0230h dmarx_idle_enrich              <- 0160h dmatx_enrichment_unk_160
-								;   0231h dmarx_fuel_enrich              <- 0161h dmatx_fuel_enrichment
-								;   0233h dmarx_fuel_ign_corr            <- 0163h dmatx_knock_unk_163
-								;   0234h dmarx_knock_retard_cpu2        <- 0164h dmatx_max_retard_164
-								;   0235h dmarx_max_retard_235_164       <- 0165h unk_165
-								;   0236h dmarx_lambda_trim              <- 0166h unk_166
-								;   0237h dmarx_ign_timing               <- 0167h dmatx_ign_timing_fallback1
-								;   0238h dmarx_ign_timing_fallback1     <- 0168h dmatx_ign_timing_fallback2
-								;   0239h dmarx_ign_timing_fallback2     <- 0169h dmatx_ign_timing_unk_169
-								;   023Ah dmarx_ign_timing_unk_169       <- 016Ah unk_16A
-								;   023Bh dmarx_unk_23B_16A              <- 016Bh dmatx_unk_16B
-								;   023Ch dmarx_unk_23C_16B              <- 016Ch dmatx_status1_16C
-								;   023Dh dmarx_status1_16C              <- 016Dh dmatx_diag_mode_16D
-								;   023Fh dmarx_status2_16E              <- 016Fh unk_16F
-								;   0240h dmarx_ign_advance_hi           <- 0170h unk_170
-								;   0241h dmarx_ign_advance_lo           <- 0171h (none)
+								;   022Ah dmarx_warmup_enrichment_22A    <- 015Ah dmatx_warmup_enrichment_15A
+								;   022Bh dmarx_enrichment_unk_22B       <- 015Bh unk_15B
+								;   022Ch dmarx_enrichment_unk_22C       <- 015Ch dmatx_enrichment_unk_15C
+								;   022Dh dmarx_enrichment_unk_22D       <- 015Dh dmatx_enrichment_unk_15D
+								;   022Eh dmarx_unk_enrich               <- 015Eh dmatx_unk_enrich
+								;   022Fh dmarx_tham_enrich              <- 015Fh unk_15F
+								;   0230h dmarx_enrichment_unk_230       <- 0160h dmatx_enrichment_unk_160
+								;   0231h dmarx_fuel_enrichment          <- 0161h dmatx_fuel_enrichment
+								;   0233h dmarx_knock_unk_233            <- 0163h dmatx_knock_unk_163
+								;   0234h dmarx_max_retard_234           <- 0164h dmatx_max_retard_164
+								;   0235h dmarx_lambda_trim_235          <- 0165h unk_165
+								;   0236h dmarx_ign_timing               <- 0166h unk_166
+								;   0237h dmarx_ign_timing_fallback1     <- 0167h dmatx_ign_timing_fallback1
+								;   0238h dmarx_ign_timing_fallback2     <- 0168h dmatx_ign_timing_fallback2
+								;   0239h dmarx_ign_timing_unk_239       <- 0169h dmatx_ign_timing_unk_169
+								;   023Ah dmarx_unk_23A                  <- 016Ah unk_16A
+								;   023Bh dmarx_unk_23B                  <- 016Bh dmatx_unk_16B
+								;   023Ch dmarx_status1_23C              <- 016Ch dmatx_status1_16C
+								;   023Dh dmarx_diag_mode_23D            <- 016Dh dmatx_diag_mode_16D
+								;   023Fh dmarx_ign_advance_hi_23F       <- 016Fh unk_16F
+								;   0240h dmarx_word_240_hi              <- 0170h unk_170
+								;   0241h dmarx_unk_240_lo               <- 0171h (no symbol)
 								; ===========================================================================
-dmarx_word_220:			.block 1			; DATA XREF: divide_d_by_x+13BC↓r
+dmarx_ve_corr_map:			.block 1			; DATA XREF: divide_d_by_x+13BC↓r
 								; copy_dma_rx↓o
 				.block 1
-dmarx_word_222:			.block 1			; DATA XREF: divide_d_by_x+13C1↓r
+dmarx_ve_corr_map_tps:			.block 1			; DATA XREF: divide_d_by_x+13C1↓r
 				.block 1
-dmarx_word_224:			.block 1			; DATA XREF: divide_d_by_x+13D8↓r
+dmarx_ve_x_pim_x_rpm:			.block 1			; DATA XREF: divide_d_by_x+13D8↓r
 								; divide_d_by_x+140A↓r
 				.block 1
 dmarx_scaled_ve:			.block 1			; DATA XREF: divide_d_by_x:loc_E45F↓r
 				.block 1
 dmarx_rpm_x_5p12:			.block 1			; DATA XREF: factory_self_test+206↓r
 				.block 1
-dmarx_warmup_enrich:			.block 1			; DATA XREF: divide_d_by_x+B0F↓r
+dmarx_warmup_enrichment_22A:			.block 1			; DATA XREF: divide_d_by_x+B0F↓r
 								; divide_d_by_x+138E↓r ...
-dmarx_fuel_trim_22B:			.block 1			; DATA XREF: divide_d_by_x+B06↓r
+dmarx_enrichment_unk_22B:			.block 1			; DATA XREF: divide_d_by_x+B06↓r
 								; divide_d_by_x+C82↓r ...
-dmarx_enrich_22C:			.block 1			; DATA XREF: divide_d_by_x+B09↓r
-dmarx_enrich_22D:			.block 1			; DATA XREF: divide_d_by_x+B0C↓r
+dmarx_enrichment_unk_22C:			.block 1			; DATA XREF: divide_d_by_x+B09↓r
+dmarx_enrichment_unk_22D:			.block 1			; DATA XREF: divide_d_by_x+B0C↓r
 								; divide_d_by_x+1EC9↓r
-dmarx_enrich_unk_22E:			.block 1			; DATA XREF: divide_d_by_x+1EBF↓r
-dmarx_tham_enrich_unk:			.block 1			; DATA XREF: divide_d_by_x:loc_E46E↓r
-dmarx_idle_enrich:			.block 1			; DATA XREF: divide_d_by_x+B12↓r
+dmarx_unk_enrich:			.block 1			; DATA XREF: divide_d_by_x+1EBF↓r
+dmarx_tham_enrich:			.block 1			; DATA XREF: divide_d_by_x:loc_E46E↓r
+dmarx_enrichment_unk_230:			.block 1			; DATA XREF: divide_d_by_x+B12↓r
 								; divide_d_by_x+C85↓r ...
-dmarx_fuel_enrich:			.block 1			; DATA XREF: divide_d_by_x+833↓r
+dmarx_fuel_enrichment:			.block 1			; DATA XREF: divide_d_by_x+833↓r
 								; apply_enrich_and_trims+3↓r
 				.block 1
-dmarx_fuel_ign_corr:			.block 1			; DATA XREF: calc_4ms_corrections+534↓r
-dmarx_knock_retard_cpu2:			.block 1			; DATA XREF: ROM:F4CE↓r
+dmarx_knock_unk_233:			.block 1			; DATA XREF: calc_4ms_corrections+534↓r
+dmarx_max_retard_234:			.block 1			; DATA XREF: ROM:F4CE↓r
 								; ROM:F557↓r ...
-dmarx_max_retard_235_164:			.block 1			; DATA XREF: divide_d_by_x+1EDA↓r
-dmarx_lambda_trim:			.block 1			; DATA XREF: calc_4ms_corrections+400↓r
-dmarx_ign_timing:			.block 1			; DATA XREF: update_ign_timing_blend+BD↓r
-dmarx_ign_timing_fallback1:			.block 1			; DATA XREF: update_ign_timing_blend+C3↓r
-dmarx_ign_timing_fallback2:			.block 1			; DATA XREF: update_ign_timing_blend+5C↓r
+dmarx_lambda_trim_235:			.block 1			; DATA XREF: divide_d_by_x+1EDA↓r
+dmarx_ign_timing:			.block 1			; DATA XREF: calc_4ms_corrections+400↓r
+dmarx_ign_timing_fallback1:			.block 1			; DATA XREF: update_ign_timing_blend+BD↓r
+dmarx_ign_timing_fallback2:			.block 1			; DATA XREF: update_ign_timing_blend+C3↓r
+dmarx_ign_timing_unk_239:			.block 1			; DATA XREF: update_ign_timing_blend+5C↓r
 								; update_ign_timing_blend+D3↓r
-dmarx_ign_timing_unk_169:			.block 1			; DATA XREF: update_ign_timing_blend+56↓r
+dmarx_unk_23A:			.block 1			; DATA XREF: update_ign_timing_blend+56↓r
 								; update_ign_timing_blend+D9↓r
-dmarx_unk_23B_16A:			.block 1			; DATA XREF: scale_by_dmarx_16A+8↓r
-dmarx_unk_23C_16B:			.block 1			; DATA XREF: divide_d_by_x+958↓r
+dmarx_unk_23B:			.block 1			; DATA XREF: scale_by_dmarx_23B+8↓r
+dmarx_status1_23C:			.block 1			; DATA XREF: divide_d_by_x+958↓r
 								; Purpose unconfirmed. CPU2 writes it once, from an RPM-indexed
 								;   lookup (table_C3EE on 0471, table_C376_rpm on 9661), and CPU1
 								;   reads it at eight sites - in update_diag_obd it BIT-TESTS bits
@@ -1186,11 +1192,11 @@ dmarx_unk_23C_16B:			.block 1			; DATA XREF: divide_d_by_x+958↓r
 								;   inter-CPU DMA (CPU1 does no frame-integrity check on the
 								;   received block), or a setter not yet found.
 								; divide_d_by_x+C53↓r ...
-dmarx_status1_16C:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EE3C↓r
+dmarx_diag_mode_23D:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EE3C↓r
 unk_23E:			.block 1			; DATA XREF: factory_self_test+1E1↓r
-dmarx_status2_16E:			.block 1			; DATA XREF: factory_self_test+1DA↓r
-dmarx_ign_advance_hi:			.block 1			; DATA XREF: iv6_ne_process+122↓r
-dmarx_ign_advance_lo:			.block 1			; DATA XREF: divide_d_by_x+DA↓o
+dmarx_ign_advance_hi_23F:			.block 1			; DATA XREF: factory_self_test+1DA↓r
+dmarx_word_240_hi:			.block 1			; DATA XREF: iv6_ne_process+122↓r
+dmarx_unk_240_lo:			.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12A↓r
 byte_242:			.block 0BDh			; DATA XREF: copy_dma_rx+B↓o
 stack_top:			.block 1			; DATA XREF: ROM:C642↓o
@@ -3272,7 +3278,7 @@ loc_C64A:							; CODE XREF: divide_d_by_x+D4↓j
 
 loc_C653:							; CODE XREF: divide_d_by_x+DD↓j
 				st	d, [y]
-				cmp	y, #dmarx_ign_advance_lo
+				cmp	y, #dmarx_unk_240_lo
 				ble	loc_C653
 
 
@@ -4933,7 +4939,7 @@ loc_CD87:							; CODE XREF: divide_d_by_x+803↑j
 				cmp	a, var_cnt_CE
 				bcc	loc_CDC4
 
-				ld	a, dmarx_fuel_enrich
+				ld	a, dmarx_fuel_enrichment
 				cmp	a, #04h
 				bcs	loc_CDC4
 
@@ -5197,7 +5203,7 @@ check_open_or_closed_loop:					; CODE XREF: divide_d_by_x+94B↑j
 
 				tbbs	bit0, var_flags_46, open_loop_CEFD
 
-				ld	a, dmarx_unk_23C_16B
+				ld	a, dmarx_status1_23C
 				cmpb	a, #40h
 				bne	open_loop_CEFD
 
@@ -5557,11 +5563,11 @@ loc_D072:							; CODE XREF: divide_d_by_x+AF4↑j
 
 				tbbs	bit3, var_error_flags1,	open_loop_mode_D055
 
-				ld	a, dmarx_fuel_trim_22B
-				or	a, dmarx_enrich_22C
-				or	a, dmarx_enrich_22D
-				or	a, dmarx_warmup_enrich
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_22B
+				or	a, dmarx_enrichment_unk_22C
+				or	a, dmarx_enrichment_unk_22D
+				or	a, dmarx_warmup_enrichment_22A
+				or	a, dmarx_enrichment_unk_230
 				bne	open_loop_mode_D055
 
 				cmp	#93h, var_adc_battery
@@ -5831,7 +5837,7 @@ loc_D1BF:							; CODE XREF: divide_d_by_x+C40↑j
 				cmp	d, #0FFE7h
 				blta	loc_D1D4
 
-				ld	a, dmarx_unk_23C_16B
+				ld	a, dmarx_status1_23C
 				cmpb	a, #40h
 				beq	loc_D1D6
 
@@ -5873,8 +5879,8 @@ closed_loop_control:							; CODE XREF: divide_d_by_x:loc_D1EA↑j
 				cmp	d, #0EF80h
 				bcc	loc_D268
 
-				ld	a, dmarx_fuel_trim_22B
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_22B
+				or	a, dmarx_enrichment_unk_230
 				bne	loc_D268
 
 				cmp	#80h, var_rpm_div_25
@@ -6329,7 +6335,7 @@ loc_D3E8:							; CODE XREF: divide_d_by_x+E6A↑j
 				tbbc	bit6, var_flags_46, loc_D409
 
 				push	a
-				ld	a, dmarx_unk_23C_16B
+				ld	a, dmarx_status1_23C
 				cmpb	a, #02h
 				pull	a
 				bne	loc_D409
@@ -6592,7 +6598,7 @@ loc_D4E4:							; CODE XREF: calc_iscv+75↑j
 				cmp	#0Fh, var_cnt_startup
 				bgt	loc_D4F8
 
-				ld	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_230
 				cmp	a, #0Dh
 				bcs	loc_D4F8
 
@@ -6851,7 +6857,7 @@ loc_D60A:							; CODE XREF: calc_iscv:loc_D5E6↑j
 				st	a, var_temp_w
 				ld	y, #unk_C331
 				clr	a
-				ld	b, dmarx_unk_23C_16B
+				ld	b, dmarx_status1_23C
 				cmpb	b, #01h
 				bne	loc_D622
 
@@ -6991,8 +6997,8 @@ loc_D6C4:							; CODE XREF: calc_iscv+24C↑j
 				cmp	#0E8h, var_ect
 				bcs	loc_D6E3
 
-				ld	a, dmarx_fuel_trim_22B
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_22B
+				or	a, dmarx_enrichment_unk_230
 				bne	loc_D6E3
 
 				cmp	#93h, var_adc_battery
@@ -7442,16 +7448,16 @@ loc_D8F6:							; CODE XREF: divide_d_by_x+1375↑j
 				cmpb	a, #01h
 				beq	loc_D922
 
-				ld	a, dmarx_fuel_trim_22B
-				or	a, dmarx_warmup_enrich
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_22B
+				or	a, dmarx_warmup_enrichment_22A
+				or	a, dmarx_enrichment_unk_230
 				bne	loc_D922
 
 				tbbs	bit7, var_flags_40, loc_D922
 
 				tbbs	bit1, var_flags_46, loc_D92A
 
-				ld	a, dmarx_unk_23C_16B
+				ld	a, dmarx_status1_23C
 				cmpb	a, #40h
 				beq	loc_D922
 
@@ -7483,9 +7489,9 @@ loc_D92A:							; CODE XREF: divide_d_by_x+1399↑j
 
 loc_D934:							; CODE XREF: divide_d_by_x+13B5↑j
 				clr	var_4ms_cnt_B4
-				ld	d, dmarx_word_220
+				ld	d, dmarx_ve_corr_map
 				st	d, var_temp_w
-				ld	d, dmarx_word_222
+				ld	d, dmarx_ve_corr_map_tps
 				st	d, var_temp_7A
 				ld	d, var_inj_pw_base
 				tbbc	bit0, var_flags_4E, loc_D94C
@@ -7499,7 +7505,7 @@ loc_D94C:							; CODE XREF: divide_d_by_x+13C9↑j
 				ld	x, #1EB8h
 				jsr	mult_rDrX
 
-				ld	x, dmarx_word_224
+				ld	x, dmarx_ve_x_pim_x_rpm
 				jsr	mult_rDrX
 
 				mov	x, d
@@ -7540,7 +7546,7 @@ loc_D97F:							; CODE XREF: divide_d_by_x+13E1↑j
 loc_D982:							; CODE XREF: divide_d_by_x+13FA↑j
 				push	b
 				push	x
-				ld	d, dmarx_word_224
+				ld	d, dmarx_ve_x_pim_x_rpm
 				ld	x, #1EB8h
 				jsr	mult_rDrX
 
@@ -7696,7 +7702,7 @@ loc_DA30:							; CODE XREF: ROM:DA21↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_DA3D:							; CODE XREF: ROM:DA1B↑j
-				ld	a, dmarx_unk_23C_16B
+				ld	a, dmarx_status1_23C
 				cmpb	a, #40h
 				bne	loc_DA56
 
@@ -8351,7 +8357,7 @@ loc_DCE8:							; CODE XREF: divide_d_by_x+1764↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 update_diag_obd:							; CODE XREF: divide_d_by_x+1D9A↓p
-				ld	a, dmarx_unk_23C_16B
+				ld	a, dmarx_status1_23C
 				cmpb	a, #08h
 				beq	loc_DCF5
 
@@ -9639,7 +9645,7 @@ loc_E268:							; CODE XREF: factory_self_test:loc_E24F↑j
 				cmp	b, #18h
 				bcs	loc_E2CC
 
-				ld	a, dmarx_status2_16E
+				ld	a, dmarx_ign_advance_hi_23F
 				cmp	b, #26h
 				bcs	loc_E2D1
 
@@ -9924,7 +9930,7 @@ loc_E3C6:							; CODE XREF: divide_d_by_x+1DA9↑j
 apply_enrich_and_trims:							; CODE XREF: divide_d_by_x+476↑p
 								; divide_d_by_x:loc_E31A↑p
 				ld	x, var_scaled_ve_tham
-				ld	a, dmarx_fuel_enrich
+				ld	a, dmarx_fuel_enrichment
 				beq	no_enrichment
 
 				tbbc	bit2, var_flags_44, loc_E3DD
@@ -10002,31 +10008,31 @@ loc_E425:							; CODE XREF: apply_enrich_and_trims+59↑j
 
 loc_E42D:							; CODE XREF: divide_d_by_x:loc_E3C6↑j
 				ld	x, #0080h
-				ld	a, dmarx_warmup_enrich
+				ld	a, dmarx_warmup_enrichment_22A
 				add	x, a
-				ld	a, dmarx_fuel_trim_22B
+				ld	a, dmarx_enrichment_unk_22B
 				add	x, a
 				add	x, a
-				ld	a, dmarx_enrich_unk_22E
+				ld	a, dmarx_unk_enrich
 				add	x, a
 				add	x, a
 				add	x, a
 				add	x, a
 				tbbc	bit2, var_flags_46, loc_E448
 
-				ld	a, dmarx_enrich_22D
+				ld	a, dmarx_enrichment_unk_22D
 				add	x, a
 				add	x, a
 
 loc_E448:							; CODE XREF: divide_d_by_x+1EC6↑j
-				ld	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_230
 				add	x, a
 				mov	x, d
 				sub	b, var_accel_enrich
 				subc	a, #00h
 				shl	d
 				mov	d, x
-				ld	b, dmarx_max_retard_235_164
+				ld	b, dmarx_lambda_trim_235
 				cmp	b, #80h
 				beq	loc_E45F
 
@@ -10046,7 +10052,7 @@ loc_E45F:							; CODE XREF: divide_d_by_x+1EDF↑j
 
 
 loc_E46E:							; CODE XREF: divide_d_by_x+1EEC↑j
-				ld	b, dmarx_tham_enrich_unk
+				ld	b, dmarx_tham_enrich
 				jsr	add_d_base_offset
 
 				st	d, var_scaled_ve_tham
@@ -10731,7 +10737,7 @@ loc_E771:							; CODE XREF: divide_d_by_x+21DA↑j
 				ld	d, #0FFFFh
 
 loc_E789:							; CODE XREF: divide_d_by_x+220A↑j
-				bsr	scale_by_dmarx_16A
+				bsr	scale_by_dmarx_23B
 
 				st	d, var_ign_blend_pos
 				ld	y, #table_ect_C168
@@ -10743,7 +10749,7 @@ loc_E789:							; CODE XREF: divide_d_by_x+220A↑j
 
 				bsr	scale_by_nv_trim_o2
 
-				bsr	scale_by_dmarx_16A
+				bsr	scale_by_dmarx_23B
 
 				st	d, var_ign_blend_neg
 				jmp	loc_E98B
@@ -10794,16 +10800,16 @@ loc_E7BF:							; CODE XREF: scale_by_nv_trim_o2+3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-scale_by_dmarx_16A:							; CODE XREF: divide_d_by_x:loc_E789↑p
+scale_by_dmarx_23B:							; CODE XREF: divide_d_by_x:loc_E789↑p
 								; divide_d_by_x+2224↑p
 				add	d, var_temp_w
 				bcc	loc_E7CA
 
 				ld	d, #0FFFFh
 
-loc_E7CA:							; CODE XREF: scale_by_dmarx_16A+2↑j
+loc_E7CA:							; CODE XREF: scale_by_dmarx_23B+2↑j
 				mov	d, x
-				ld	a, dmarx_unk_23B_16A
+				ld	a, dmarx_unk_23B
 				jsr	mult_rArX
 
 				add	a, #04h
@@ -10811,10 +10817,10 @@ loc_E7CA:							; CODE XREF: scale_by_dmarx_16A+2↑j
 
 				ld	d, #0FFFFh
 
-locret_E7D8:							; CODE XREF: scale_by_dmarx_16A+10↑j
+locret_E7D8:							; CODE XREF: scale_by_dmarx_23B+10↑j
 				ret
 
-; End of function scale_by_dmarx_16A
+; End of function scale_by_dmarx_23B
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -10878,10 +10884,10 @@ loc_E829:							; CODE XREF: update_ign_timing_blend+4B↑j
 				bcs	loc_E857
 
 				mov	d, x
-				ld	a, dmarx_ign_timing_unk_169
+				ld	a, dmarx_unk_23A
 				tbbc	bit0, var_diag_errors_5, loc_E838
 
-				ld	a, dmarx_ign_timing_fallback2
+				ld	a, dmarx_ign_timing_unk_239
 
 loc_E838:							; CODE XREF: update_ign_timing_blend+59↑j
 				neg	a
@@ -10950,10 +10956,10 @@ loc_E87B:							; CODE XREF: update_ign_timing_blend+98↑j
 
 loc_E895:							; CODE XREF: update_ign_timing_blend+B7↑j
 				mov	d, x
-				ld	b, dmarx_ign_timing
+				ld	b, dmarx_ign_timing_fallback1
 				tbbc	bit0, var_diag_errors_5, loc_E89F
 
-				ld	b, dmarx_ign_timing_fallback1
+				ld	b, dmarx_ign_timing_fallback2
 
 loc_E89F:							; CODE XREF: update_ign_timing_blend+C0↑j
 				jsr	mult_rBrX2
@@ -10963,10 +10969,10 @@ loc_E89F:							; CODE XREF: update_ign_timing_blend+C0↑j
 				jsr	table_rD_fixed2_interpolate
 
 				st	a, var_temp_7A
-				ld	a, dmarx_ign_timing_fallback2
+				ld	a, dmarx_ign_timing_unk_239
 				tbbc	bit0, var_diag_errors_5, loc_E8B5
 
-				ld	a, dmarx_ign_timing_unk_169
+				ld	a, dmarx_unk_23A
 
 loc_E8B5:							; CODE XREF: update_ign_timing_blend+D6↑j
 				mul	a, var_temp_7A
@@ -12061,7 +12067,7 @@ loc_ED84:							; CODE XREF: ROM:ED7B↑j
 loc_ED91:							; CODE XREF: calc_4ms_corrections+3A7↑j
 				ld	a, var_flags_4E
 				st	a, var_flags_4E_temp
-				ld	a, dmarx_lambda_trim
+				ld	a, dmarx_ign_timing
 				tbbc	bit2, var_flags_46, loc_EDD4
 
 				mov	a, b
@@ -12233,7 +12239,7 @@ loc_EE32:							; CODE XREF: calc_4ms_corrections+470↑j
 				ld	a, #0FFh
 
 loc_EE3C:							; CODE XREF: calc_4ms_corrections+4A2↑j
-				ld	b, dmarx_status1_16C
+				ld	b, dmarx_diag_mode_23D
 				cmpb	b, #0Fh
 				beq	loc_EE49
 
@@ -12362,7 +12368,7 @@ loc_EEBD:							; CODE XREF: calc_4ms_corrections+509↑j
 				ld	b, var_lambda_ign_corr
 				add	b, var_open_loop_ign_corr
 				rolc	a
-				add	b, dmarx_fuel_ign_corr
+				add	b, dmarx_knock_unk_233
 				addc	a, #00h
 				sub	d, #0085h
 				bmi	loc_EEDF
@@ -12873,11 +12879,11 @@ loc_F0DE:							; CODE XREF: iv6_ne_process+10B↑j
 
 loc_F0EF:							; CODE XREF: iv6_ne_process+11D↑j
 				mov	d, x
-				ld	a, dmarx_ign_advance_hi
+				ld	a, dmarx_word_240_hi
 				cmp	#30h, va_ne_count_2
 				bcc	loc_F0FB
 
-				ld	a, dmarx_ign_advance_lo
+				ld	a, dmarx_unk_240_lo
 
 loc_F0FB:							; CODE XREF: iv6_ne_process+128↑j
 				add	x, a
@@ -13817,7 +13823,7 @@ loc_F4C1:							; CODE XREF: ROM:F4BC↑j
 
 				tbbs	bit2, var_flags_46, loc_F4ED
 
-				ld	a, dmarx_knock_retard_cpu2
+				ld	a, dmarx_max_retard_234
 				cmp	a, #04h
 				bcs	loc_F4ED
 
@@ -13931,7 +13937,7 @@ loc_F551:							; CODE XREF: ROM:F54E↑j
 				shl	b
 				bcs	loc_F56E
 
-				sub	b, dmarx_knock_retard_cpu2
+				sub	b, dmarx_max_retard_234
 				bcc	loc_F56E
 
 				add	b, var_knock_retard_prev
@@ -14009,7 +14015,7 @@ loc_F5AB:							; CODE XREF: ROM:F596↑j
 loc_F5AE:							; CODE XREF: ROM:F5A9↑j
 				bcc	loc_F5B8
 
-				add	a, dmarx_knock_retard_cpu2
+				add	a, dmarx_max_retard_234
 				bcs	loc_F5BB
 
 				clr	a
@@ -14018,7 +14024,7 @@ loc_F5AE:							; CODE XREF: ROM:F5A9↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_F5B8:							; CODE XREF: ROM:loc_F5AE↑j
-				ld	a, dmarx_knock_retard_cpu2
+				ld	a, dmarx_max_retard_234
 
 loc_F5BB:							; CODE XREF: ROM:F589↑j
 								; ROM:F5B3↑j ...
@@ -14410,7 +14416,7 @@ iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+F↓p
 				tbs	bit3, DOUT		; DOUT Data Register
 				beq	loc_F797
 
-				ld	a, dmarx_unk_23C_16B
+				ld	a, dmarx_status1_23C
 				cmpb	a, #04h
 				beq	loc_F75E
 
@@ -14784,7 +14790,7 @@ loc_F911:							; CODE XREF: copy_dma_tx:loc_F90C↑j
 
 
 copy_dma_rx:							; CODE XREF: IV0+F↑p
-				ld	x, #dmarx_word_220
+				ld	x, #dmarx_ve_corr_map
 				ld	y, #var_dma_rx_buffer
 
 loc_F920:							; CODE XREF: copy_dma_rx+E↓j
