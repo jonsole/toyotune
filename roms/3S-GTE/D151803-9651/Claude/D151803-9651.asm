@@ -841,13 +841,29 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								; divide_d_by_x+968↓r ...
 								; 4C.0 - Knock sensor error
 								; 4C.1 - TPS error
-								; 4C.2 - ISC self-check mismatch: set when
-								;   dmarx_iscv_duty (CPU2's commanded ISC
-								;   duty) doesn't equal an expected test
-								;   value of 0x10 during a startup/self-
-								;   check comparison sequence (update_diag_obd);
-								;   cleared when it matches. Companion to
-								;   bit7 (same check, other test value).
+								; 4C.2 - Mirrors BIT 4 of dmarx_iscv_duty
+								;   (update_diag_obd): set when that bit is
+								;   set, cleared when clear. Companion to
+								;   bit7, which mirrors bit 3 of the same
+								;   byte.
+								;   CORRECTION: this was previously read as
+								;   a comparison against a test value of
+								;   0x10. It is not - `cmpb` is a bit-wise
+								;   AND test (BITA-equivalent, opcode 0xCE),
+								;   not a compare, so `cmpb a, #10h` tests
+								;   bit 4 rather than comparing against 16.
+								;   The technical reference's instruction
+								;   table had cmpb's opcode wrong (0xCD,
+								;   colliding with `cmp b`), which is what
+								;   made the misreading easy; corrected
+								;   against bin/TASM8x.TAB and the doc's own
+								;   opcode matrix.
+								;   Note also that dmarx_iscv_duty is not
+								;   obviously an ISC duty: on CPU2 it is
+								;   written exactly once, from an RPM-indexed
+								;   table lookup sitting among the ignition
+								;   timing fallback lookups in calc_params.
+								;   Treat the name as unconfirmed.
 								; 4C.3 - TRAC TPS error
 								; 4C.4 - THAM sensor error
 								; 4C.5 - O2 sensor heater error
@@ -861,12 +877,16 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								;   var_diag_errors_5.3 alongside it;
 								;   cleared once var_adc_lambda reads lean
 								;   (negative) again.
-								; 4C.7 - ISC self-check mismatch: set when
-								;   dmarx_iscv_duty doesn't equal an
-								;   expected test value of 0x08 during the
-								;   same startup/self-check sequence as
-								;   bit2 (update_diag_obd); cleared when it
-								;   matches.
+								; 4C.7 - Mirrors BIT 3 of dmarx_iscv_duty
+								;   (update_diag_obd), the companion to
+								;   bit2 - see the correction there; this is
+								;   a bit test, not a compare against 0x08.
+								;   Not committed to nv_diag_errors_2 on
+								;   this ROM: the commit mask is 1Fh, which
+								;   excludes bit 7. On the ST205 CPU1,
+								;   D151804-0461, the mask is 97h and this
+								;   bit becomes diagnostic code 54,
+								;   "chargecooler pump/level".
 								;
 var_flags_4D:			.block 1			; DATA XREF: divide_d_by_x+84A↓r
 								; divide_d_by_x+9AE↓r ...

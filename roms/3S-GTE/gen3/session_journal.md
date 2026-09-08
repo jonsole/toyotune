@@ -15,6 +15,66 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### `cmpb` is a bit test, and the reference had its opcode wrong
+Chasing what feeds diagnostic 54 turned up a documentation bug with a real
+consequence.
+
+**The bug.** `roms/docs/toshiba-8x-technical-reference.md`'s instruction table
+listed `cmpb a, #xx` as opcode **0xCD** and `cmpb a, $xx` as **0xDD** — the
+same opcodes it gives for `cmp b, #xx` and `cmp b, $xx`. The vendor table
+`bin/TASM8x.TAB` says `CMPB A,#*` is **0xCE** and `CMPB A,$*` is **0xDE**, and
+the reference's own opcode matrix agrees (row Cx position E is `cmpb a`). Both
+rows corrected, in the technical reference and in `-part1`.
+
+The collision made `cmpb` easy to read as a comparison. It is not: `cmpb`
+performs a bit-wise AND and discards the result, keeping only the flags —
+6811 BITA/BITB. The reference's *description* column always said so; only the
+opcode was wrong.
+
+**The consequence.** `update_diag_obd` reads
+`ld a, dmarx_iscv_duty` / `cmpb a, #08h` / `cmpb a, #10h`. Those are tests of
+**bit 3** and **bit 4**, not comparisons against 8 and 16. So:
+
+    dmarx_iscv_duty bit 3 -> var_error_flags2 bit 7
+    dmarx_iscv_duty bit 4 -> var_error_flags2 bit 2
+
+and on the ST205 CPU1 (commit mask 97h) bit 7 becomes diagnostic code 54,
+chargecooler pump/level. On the MR2 (mask 1Fh) bit 7 is not committed at all.
+
+`var_error_flags2`'s annotation in 9651 described bits 2 and 7 as an "ISC
+self-check mismatch ... doesn't equal an expected test value of 0x10 / 0x08".
+That reading is wrong and has been corrected in place.
+
+**`dmarx_iscv_duty` is probably misnamed too.** On CPU2 (`D151804-0471`,
+`calc_params`) the byte is written exactly once:
+
+    ld  y, #table_C3EE
+    ld  d, var_rpm_x_5p12
+    jsr table_rD_fixed32_interpolate
+    st  a, dmatx_iscv_duty
+
+An RPM-indexed table lookup, sitting in a run of other RPM-indexed lookups
+that produce `dmatx_ign_timing_fallback1` and `_fallback2`. Nothing about it
+looks like a commanded valve duty, and CPU1 reads two individual bits out of
+it. A calibration byte whose bits are flags, indexed by engine speed, would
+fit what both sides do with it — but that is a guess, and the name should be
+treated as unconfirmed until `table_C3EE`'s contents are read.
+
+**Where this leaves diagnostic 54.** It is raised from bit 3 of a byte CPU2
+derives from an RPM-indexed table — not from any sensor reading. So the ST205
+ROMs carry a chargecooler-pump diagnostic that is, as far as CPU1 is
+concerned, a function of engine speed and calibration data. The pump drive
+itself is still not located.
+
+**Method note, again.** Two mistakes this session came from the same place:
+reading an instruction's meaning off a name or a table row without checking
+it. `cmp #xx, $var` tests `var - #xx` and its thresholds needed converting to
+engineering units; `cmpb` is not `cmp`. The technical reference is
+authoritative for semantics but `bin/TASM8x.TAB` is authoritative for
+encodings, and where they disagree the TAB file wins — it is the vendor's.
+
+---
+
 ### Correcting the pump claim: those three pins never actuate
 The entry below claims D151804-0471's PORTB.4/PORTB.1/DOUT.3 blocks are the
 ECU-controlled chargecooler pump. That is wrong, and this is what checking the

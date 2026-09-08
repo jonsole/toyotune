@@ -212,8 +212,8 @@ In the tables below:
 | `cmp x, $xxxx` | 0xBC | TEST(X − $(xxxx:xxxx+1)) | EXT | ⧫ | ⧫ | ⧫ | ⧫ |
 | `cmp y, #xxxx` | 0x8D | TEST(Y − #xxxx) | IMM | ⧫ | ⧫ | ⧫ | ⧫ |
 | `cmp d, #xxxx` | 0x89 | TEST(D − #xxxx) | IMM | ⧫ | ⧫ | ⧫ | ⧫ |
-| `cmpb a, #xx` | 0xCD | TEST(A & #xx) — bit test | IMM | ⧫ | ⧫ | 0 | - |
-| `cmpb a, $xx` | 0xDD | TEST(A & $xx) | DIR | ⧫ | ⧫ | 0 | - |
+| `cmpb a, #xx` | 0xCE | TEST(A & #xx) — bit test | IMM | ⧫ | ⧫ | 0 | - |
+| `cmpb a, $xx` | 0xDE | TEST(A & $xx) | DIR | ⧫ | ⧫ | 0 | - |
 | `cmpb b, #xx` | 0xCF | TEST(B & #xx) | IMM | ⧫ | ⧫ | 0 | - |
 
 > **Note:** `cmpb` performs a bit-wise AND test (equivalent to 6811 BITA/BITB). Result is discarded; only flags are updated. V is always cleared.
