@@ -187,10 +187,10 @@ sites). Sizes in bytes.
 | 12 | `0x212` | `dmatx_adc_lambda` | 1 | `adc_handler_throttle_closed` | `0xD7` | `dmarx_adc_lambda` | `update_odb_flags`, OBD output |
 | 13 | `0x213` | `dmatx_knock_retard_info` | 3 | `copy_dma_tx` ← `nv_table_knock_info` (+2) | `0xD8` | `dmarx_knock_info` | `drive_DOUT0` |
 | 16 | `0x216` | `dmatx_ign_corr_cpu2` | 1 | `knock_processing` ← `dmarx_knock_retard_cpu2` | `0xDB` | `dmarx_add_enrichment_DB` | `update_odb_flags` (non-zero test only) — **see §5** |
-| 17 | `0x217` | `dmatx_obd_inj` | 1 | `update_diag_obd` | `0xDC` | `dmarx_obd_inj` | **none found** |
-| 18 | `0x218` | `dmatx_ign_obd` | 1 | `bg_ne_process` | `0xDD` | `dmarx_obd_ign` | **none found** |
-| 19 | `0x219` | `dmatx_obd_iscv` | 1 | `update_diag_obd` | `0xDE` | `dmarx_obd_iscv` | **none found** |
-| 1A | `0x21A` | `dmatx_obd_o2_sensor` | 1 | OBD output code | `0xDF` | `dmarx_obd_o2_sensor` | OBD output, `table_odb` |
+| 17 | `0x217` | `dmatx_obd_inj` | 1 | `update_diag_obd` | `0xDC` | `dmarx_obd_inj` | `next_odb_byte` via `table_odb` — see §5 |
+| 18 | `0x218` | `dmatx_ign_obd` | 1 | `bg_ne_process` | `0xDD` | `dmarx_obd_ign` | `next_odb_byte` via `table_odb` — see §5 |
+| 19 | `0x219` | `dmatx_obd_iscv` | 1 | `update_diag_obd` | `0xDE` | `dmarx_obd_iscv` | `next_odb_byte` via `table_odb` — see §5 |
+| 1A | `0x21A` | `dmatx_obd_o2_sensor` | 1 | OBD output code | `0xDF` | `dmarx_obd_o2_sensor` | `next_odb_byte` via `table_odb`, `output_odb_bit` |
 | 1B | `0x21B` | `dmatx_knock_retard` | 1 | `check_clear_speed_limiter_rev` | `0xE0` | `dmarx_knock` | `table_knock_enrichment`, `main_continue_2` |
 | 1C | `0x21C` | `dmatx_pw_loop_mode` | 1 | `copy_dma_tx` ← `var_pw_loop_mode` | `0xE1` | `dmarx_dout0_duty_E1` (**2 bytes**) | `drive_DOUT0` — **see §5** |
 | 1D | `0x21D` | `dmatx_tps_delta` | 1 | **no writer found** | `0xE2` | (low byte of the above) | |
@@ -223,12 +223,28 @@ These are cosmetic: the slot is the same on both sides.
 
 Recorded rather than resolved.
 
-**Four fields are sent and never read.** `dmarx_nv_trim_pim`,
-`dmarx_obd_inj`, `dmarx_obd_ign` and `dmarx_obd_iscv` have no reader on CPU2
-that references them by name. `ecu_overview.md` describes `nv_trim_pim` as a
-live term in the frame; on the evidence here it is transmitted and ignored.
-An indexed or table-driven read would not show up in a symbol search, so
-"none found" is not quite "none" — but a direct reader would have.
+**One field is sent and never read: `nv_trim_pim`.** No reader for
+`dmarx_nv_trim_pim` was found on CPU2. `ecu_overview.md` describes it as a live
+term in the frame; on this evidence it is transmitted and ignored. As always,
+an indexed read would not show up — but see the correction immediately below
+for how easily that conclusion goes wrong.
+
+**Correction — the three OBD fields *are* read, via a table of addresses.**
+An earlier draft of this document listed `obd_inj`, `obd_ign` and `obd_iscv`
+as unread. They are not: they are consumed by the VF-pin diagnostic datastream
+(§6), which reaches them through `table_odb`, a table of *addresses* rather
+than values. Two things made that easy to miss, and both are worth knowing
+before trusting a "no reader" claim:
+
+- The reference is a `.dw` operand, not a `ld`. A search for instructions
+  touching the symbol finds nothing.
+- The scan that produced the original claim required a line to begin with a
+  tab, so it silently skipped the one line in the table that also carries the
+  `table_odb:` label — which is precisely the line those three appear on.
+  `dmarx_obd_o2_sensor` sits on a continuation line and *was* found, which is
+  why the first three looked unread and the fourth did not. A "no reader"
+  result that splits a group like that should be treated as a bug in the
+  search, not a finding.
 
 **Slot `0x216`: CPU1 echoes a CPU2 byte back.** `knock_processing` writes
 `dmatx_ign_corr_cpu2` from `dmarx_knock_retard_cpu2` — a value that *came
@@ -253,7 +269,58 @@ never leave, is not visible from the software side.
 
 ---
 
-## 6. Related
+## 6. Where the OBD fields go: the VF-pin datastream
+
+Three of the frame's fields exist purely to be serialised back out of the ECU
+on CPU2's diagnostic output, so the CPU1 → CPU2 link is the middle leg of a
+longer path: CPU1 measures, DMA carries it over, CPU2 shifts it out of a pin
+for a workshop tester.
+
+**Activation.** `check_io_inputs` reads PORTB.7 into `var_input_bits` bit 1,
+setting the bit when the pin reads **low** — i.e. when the diagnostic
+connector's **TE2 terminal is jumpered to E1**. Everything below is gated on
+that bit.
+
+**The two mutually exclusive uses of PORTA.4.** That single pin is Toyota's
+**VF** diagnostic terminal, and it carries one of two things depending on the
+same `var_input_bits.1` gate:
+
+- **TE2 open** — `generate_vf_PORTA_4` drives it as a slow PWM whose duty
+  encodes `var_vf`, the classic analogue "read VF with a voltmeter" signal.
+  It skips while the datastream is active.
+- **TE2 grounded** — `output_odb_bit` instead shifts `var_odb_shift_reg` out
+  one bit per `int_vector_c_timer` tick. It skips while the datastream is
+  *not* active.
+
+**What gets sent.** `next_odb_byte` runs every 4 ms from `iv6_4ms_process`,
+walking `table_odb` two bytes at a time and loading each pointed-to value into
+`var_odb_shift_reg`. The table holds **addresses**, and its eleven entries are,
+in order:
+
+| # | address | what it is |
+|---|---------|-----------|
+| 1 | `var_ne_table+1` | an NE period sample |
+| 2 | `dmarx_obd_inj` | **from CPU1** — injector OBD snapshot (`update_diag_obd`) |
+| 3 | `dmarx_obd_ign` | **from CPU1** — ignition OBD snapshot (`bg_ne_process`) |
+| 4 | `dmarx_obd_iscv` | **from CPU1** — ISCV OBD snapshot (`update_diag_obd`) |
+| 5 | `var_rpm_div_25` | RPM |
+| 6 | `dmarx_pim2` | **from CPU1** — manifold pressure |
+| 7 | `dmarx_ect` | **from CPU1** — coolant temperature |
+| 8 | `dmarx_tps` | **from CPU1** — throttle position |
+| 9 | `var_spd` | vehicle speed |
+| 10 | `dmarx_obd_o2_sensor` | **from CPU1** — O2 sensor reading |
+| 11 | `odb_null` | a fixed zero, presumably a frame delimiter |
+| 12 | `var_obd_flags1` | status byte built by `update_odb_flags` |
+| 13 | `var_odb_flags2` | status byte built by `update_odb_flags` |
+
+Seven of the thirteen are values CPU1 supplied over this link. So the OBD
+datastream is largely a CPU1 datastream that CPU2 merely transmits — which is
+why those fields have a writer on CPU1 with an obvious purpose and no
+*computational* consumer on CPU2 at all.
+
+---
+
+## 7. Related
 
 - `session_journal.md` § *CPU2 (D151803-9661): serial_dma_start/int_vector_0's
   ASR2/ASR3/TIMER3 protocol decoded* — the original decode of the register
