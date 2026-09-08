@@ -15,6 +15,55 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Diagnostic 54 traced end to end: it is PORTC.6 on CPU2
+With the DMA offset fixed the rest fell out quickly. The chain, all of it read
+from the code rather than inferred:
+
+    PORTC bit 6 reads HIGH
+      check_io_inputs inverts it into var_input_bits bit 3 (set when LOW)
+      update_odb_flags counts unk_B8 up while it is high, clearing on low
+      unk_B8 >= 5Ch  ->  nibble bit 3 of dmatx_diag_mode_16D
+      nibble non-zero -> var_flags_47 bit 2
+      update_dmatx_status_flags -> dmatx_status1_16C bit 3
+      DMA -> CPU1 023Ch bit 3
+      update_diag_obd bit-tests it -> var_error_flags2 bit 7
+      commit mask 97h -> nv_diag_errors_2 bit 7 -> code 54
+
+`unk_B8` sits in the `0B2h`-`0BAh` block that `increment_counters` bumps every
+~32 ms, so `5Ch` = 92 ticks is a debounce of about **2.9 seconds**. The two
+neighbouring blocks in `update_odb_flags` are the same idiom on other inputs,
+with counters `unk_B6` and `unk_B7` and a `99h` (~4.9 s) debounce — three
+sibling counters used identically, which also settles the `unk_B9` timing
+question from earlier in the session: they are all 32 ms counters.
+
+**ST205-only on both sides, which is the cross-check.** `D151803-9661` reads
+the same PORTC.6 into the same `var_input_bits` bit, but has no debounce block
+for it at all; and `D151803-9651`'s commit mask is `1Fh`, which excludes bit 7,
+so the MR2 pair could not report this code even if its CPU2 raised it. Two
+independent ways of not having the feature, in the two ROMs for the car that
+does not have the hardware.
+
+**So PORTC.6 on CPU2 is the chargecooler pump/level input**, monitored with a
+~2.9 s debounce. That is the question this whole thread started from, and it is
+now testable on the bench rather than argued about: drive PORTC.6 high for
+three seconds and code 54 should appear.
+
+What is still **not** established is what *drives* the pump. This is the
+monitor. The earlier candidate — the three conditional output blocks in 0471
+that 9661 writes unconditionally — remains unexplained: its thresholds decode
+to over 100 degC coolant AND over 8000 RPM, which cannot co-occur, and nothing
+found since changes that.
+
+**Worth recording about the method.** Every wrong turn in this thread came from
+trusting derived data over a measurement that was available the whole time: the
+name-derived DMA offset over the buffer registers, a guessed table layout over
+the interpolator's own code, a doc's opcode column over the vendor table. The
+thing that broke the deadlock was not more analysis but Jon's two facts — the
+part number and that the code was live — each of which eliminated a whole
+branch immediately.
+
+---
+
 ### Diagnostic 54 explained: the DMA offset was off by one
 Jon confirmed the car's CPU2 is `D151804-0471` — the same part with the flat
 table — and that code 54 was **live**, not stored. Both of my escape hatches

@@ -4843,6 +4843,37 @@ loc_D343:							; CODE XREF: update_odb_flags:loc_D32F↑j
 								; update_odb_flags+11D↑j
 				clr	unk_B7
 
+; ───────────────────────────────────────────────────────────────────────────
+; Diagnostic code 54 ("chargecooler pump/level") starts here.
+;
+; var_input_bits bit 3 is PORTC bit 6, inverted by check_io_inputs (the bit
+; is SET when the pin reads LOW). So this block counts up while PORTC.6 is
+; HIGH, and clears the counter whenever it goes low. unk_B8 is in the
+; 0B2h-0BAh block that increment_counters bumps every ~32 ms, so 5Ch = 92
+; ticks is a debounce of about 2.9 seconds.
+;
+; The full chain, confirmed end to end:
+;   PORTC.6 high for ~2.9s
+;     -> nibble bit 3 here -> dmatx_diag_mode_16D low nibble non-zero
+;     -> var_flags_47 bit 2  (just below)
+;     -> update_dmatx_status_flags sets dmatx_status1_16C bit 3
+;     -> DMA to CPU1, landing at 023Ch (offset 0D0h - derived from the
+;        buffer registers, NOT from name pairs; see CLAUDE.md)
+;     -> D151804-0461 update_diag_obd: cmpb a,#08h is a BIT TEST, so
+;        bit 3 set -> var_error_flags2 bit 7
+;     -> commit mask 97h -> nv_diag_errors_2 bit 7 -> code 54.
+;
+; ST205-only on BOTH sides, which is the cross-check: D151803-9661 reads the
+; same PORTC.6 into the same var_input_bits bit but has no debounce block for
+; it, and D151803-9651's commit mask is 1Fh, which excludes bit 7 - so the MR2
+; pair could not report this code even if CPU2 raised it.
+;
+; The two neighbouring blocks above are the same idiom on other inputs, with
+; their own counters unk_B6 and unk_B7 and a 99h (~4.9s) debounce.
+;
+; So PORTC.6 is the chargecooler pump/level input. What is NOT established is
+; what drives the pump - this is the monitor, not the drive.
+; ───────────────────────────────────────────────────────────────────────────
 loc_D345:							; CODE XREF: update_odb_flags+123↑j
 				tbbs	bit3, var_input_bits, loc_D350
 
