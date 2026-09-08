@@ -15,6 +15,56 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Correcting the pump claim: those three pins never actuate
+The entry below claims D151804-0471's PORTB.4/PORTB.1/DOUT.3 blocks are the
+ECU-controlled chargecooler pump. That is wrong, and this is what checking the
+two thresholds turned up.
+
+**The ECT threshold is over 100 degC.** `dmarx_ect` is XOR-inverted, high =
+hot, and its high byte is the "ECU" column in
+`3S-GTE/temp_sensor_calibration.xlsx` — a measured ECU-value/thermometer
+table. That table converts `0E4h` to 82.0 degC, matching the "~82 degC"
+already in `adc_system.md`, which is a good check on both. It ends at `0EFh`
+= 100 degC. The threshold is `0F7h`, off the top of the measured curve.
+
+**The RPM threshold is 8000, above the fuel cut.** `cmp #xx, $var` tests
+`var - #xx` (technical reference, "Branch Operations"), reading the HIGH byte
+of the 16-bit `var_rpm_x_5p12`, so a threshold converts as high byte * 50 RPM.
+Every other RPM threshold in 0471 converts sensibly — 3200, 3800, 4000, 5200,
+and 7200/7400 as an obvious fuel-cut pair. `0A0h` is 8000 RPM, past all of
+them.
+
+The two tests are ANDed, so both `bcs` branches always take the "off" path.
+PORTB.4 ends up clear, PORTB.1 set, DOUT.3 clear — **exactly the state 9661
+writes unconditionally**. The two ROMs reach identical pin states by different
+routes, and 0471's blocks never actuate.
+
+**What survives.** The code difference is real and only 0471 has it, so these
+pins remain the best structural candidate. CPU1's evidence is untouched and
+still independent: 0461 uniquely carries diagnostic code 54 (chargecooler
+pump/level) at `nv_diag_errors_2` bit 7, with commit mask `97h` against
+9651's `1Fh`. So the ST205 ROMs do know about a chargecooler pump. What is
+*not* established is that these three pins drive it. As calibrated they are
+either a severe overheat/overspeed failsafe or a disabled feature.
+
+**The pump drive is not located.** Back to open.
+
+**Method note.** The mistake was reading control-flow structure — three
+conditional blocks where the sibling has three bare writes — as evidence of
+function, without converting either threshold into engineering units. The
+structure was read correctly; it just does not mean what it appeared to. Both
+conversions were cheap, and the calibration spreadsheet even self-checks
+against a figure already in the docs. Convert the constants before naming the
+behaviour.
+
+The `unk_B9` timer question that prompted this is answered in passing: it is
+incremented by the `#0B209h` call to `increment_counters` (base 0B2h, 9
+counters, so 0B2h-0BAh), which is gated on `var_flags_41` bit 6, cleared in
+`process_32ms`. So it ticks every 32 ms, and `3Dh` = 61 ticks = **1.95 s** —
+the duration DOUT.3 would run for, if it ever ran.
+
+---
+
 ### The chargecooler pump, found in CPU2 — and the DMA offset is per-pair
 Ported 9661 -> 0471 the way 9651 -> 0461 was done, which put the CPU2 side of
 the ST205 pair in reach and answered the pump question.
@@ -42,6 +92,12 @@ additionally requires counter `unk_B9` < 3Dh, and that counter is zeroed
 whenever the ECT/RPM conditions fail — so DOUT.3 is duration-limited in a way
 the other two are not, which is what an ECU-controlled pump with a run limit
 looks like.
+
+> **⚠** Wrong, corrected by "Correcting the pump claim: those three pins
+> never actuate" above. Both thresholds are unreachable — over 100 degC
+> coolant AND over 8000 RPM, past the fuel cut — so these blocks never
+> fire and 0471 ends up in the same pin states 9661 writes outright. The
+> CPU1 diagnostic-code evidence in the next paragraph is unaffected.
 
 That closes the loop with the CPU1 finding two entries above: 0461 uniquely
 *reports* diagnostic code 54 (chargecooler pump/level) while running detection

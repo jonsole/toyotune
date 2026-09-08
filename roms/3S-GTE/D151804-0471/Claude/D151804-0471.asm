@@ -4363,36 +4363,46 @@ loc_D1A4:							; CODE XREF: check_startup-325↑j
 
 
 ; ───────────────────────────────────────────────────────────────────────────
-; Chargecooler cooling outputs (PORTB.4, PORTB.1, DOUT.3).
+; PORTB.4 / PORTB.1 / DOUT.3 — conditional here, unconditional on the MR2,
+; but the conditions cannot be met.
 ;
-; Three blocks follow, driving three pins off the same pair of conditions:
-;   dmarx_ect >= 0F7C0h   (coolant temperature, sent over from CPU1)
-;   var_rpm_x_5p12 >= 0A0h
-; PORTB.4 is set when both hold; PORTB.1 is driven the opposite way (cleared
-; when both hold, set otherwise); DOUT.3 additionally requires the counter
-; unk_B9 to be below 3Dh, and that counter is zeroed whenever the ECT/RPM
-; conditions fail - i.e. DOUT.3 is rate/duration limited in a way the other
-; two are not.
+; Three blocks follow, driving three pins off the same pair of tests:
+;   dmarx_ect      >= 0F7C0h   coolant temperature from CPU1
+;   var_rpm_x_5p12 >= 0A0h     engine speed
+; PORTB.4 is set when both hold, PORTB.1 cleared, and DOUT.3 set when both
+; hold AND the 32ms counter unk_B9 is below 3Dh (that counter being zeroed
+; whenever the tests fail, so DOUT.3 would be limited to ~1.95s).
 ;
-; This is the D151804-0471 (ST205, water chargecooler) side of the ECU-
-; controlled chargecooler pump. The corresponding CPU2 ROM for the MR2,
-; D151803-9661, writes these same three pins in the same order at the same
-; point in the tick, but unconditionally - "clrb bit4,PORTB / setb bit1,PORTB
-; / clrb bit3,DOUT" with no test at all, parking them in a fixed state
-; because that car has an air-to-air intercooler and nothing to drive. The
-; annotation there reads them as unrelated one-off pin inits, which is
-; correct for that ROM and is why the pair only makes sense side by side.
+; Both thresholds are past the end of their scales:
 ;
-; CPU1 agrees: D151804-0461 uniquely reports diagnostic code 54
-; (chargecooler pump/level) where D151803-9651 does not - see
-; gen3/session_journal.md.
+;   dmarx_ect is XOR-inverted, high = hot, and its high byte is the ECU value
+;   in 3S-GTE/temp_sensor_calibration.xlsx. 0E4h = 82.0 degC there (matching
+;   gen3/adc_system.md), and the table ends at 0EFh = 100 degC. This threshold
+;   is 0F7h, off the top of the measured curve — comfortably over 100 degC.
 ;
-; NOT CONFIRMED: which physical device hangs off which of the three pins,
-; and whether ">= 0F7C0h" is hot or cold - dmarx_ect's scaling direction has
-; not been checked here (see 3S-GTE/convert.xlsx). The control structure is
-; read directly from the code; the device mapping is inference from the
-; vehicle difference.
+;   `cmp #xx, $var` tests var - #xx (see toshiba-8x-technical-reference.md,
+;   "Branch Operations"), reading the HIGH byte of the 16-bit
+;   var_rpm_x_5p12, so the threshold is (high byte * 50) RPM. Every other RPM
+;   threshold in this ROM converts sensibly that way — 3200, 3800, 4000,
+;   5200, and 7200/7400 for the fuel-cut pair. 0A0h is 8000 RPM, above the
+;   fuel cut.
+;
+; So both `bcs` branches always take the "off" path, leaving PORTB.4 clear,
+; PORTB.1 set and DOUT.3 clear — which is exactly the state D151803-9661
+; writes unconditionally at this same point in its tick. The two ROMs reach
+; the same pin states by different routes.
+;
+; NOT RESOLVED, and do not read more into this than it says. The code
+; difference is real and only 0471 has it, which makes these pins the best
+; structural candidate for the ST205's chargecooler pump; CPU1 agrees that
+; something chargecooler-related exists, in that D151804-0461 uniquely
+; carries diagnostic code 54 (chargecooler pump/level) where D151803-9651
+; does not. But as calibrated this code never actuates, so it is not a
+; working thermostatic pump drive, and calling it one would be wrong. It may
+; be a severe overheat/overspeed failsafe, or a disabled feature. The actual
+; pump drive, if it is in this ROM at all, has not been found.
 ; ───────────────────────────────────────────────────────────────────────────
+
 loc_D1AB:							; CODE XREF: check_startup-31F↑j
 								; check_startup-31A↑j
 				ld	d, dmarx_ect
