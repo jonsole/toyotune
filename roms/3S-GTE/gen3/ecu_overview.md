@@ -115,8 +115,8 @@ base address**, and the offset depends on direction:
 
 | Direction | Formula | Confirmed by |
 |---|---|---|
-| CPU2 → CPU1 (CPU2 `dmatx_*` = CPU1 `dmarx_*`) | `CPU1 = CPU2 + 0xDA` | `dmarx_max_retard_23B_161` / `dmatx_max_retard_161` and two more pairs |
-| CPU1 → CPU2 (CPU1 `dmatx_*` = CPU2 `dmarx_*`) | `CPU1 = CPU2 + 0x13B` | `dmatx_tps`/`dmarx_tps`, `dmatx_ect`/`dmarx_ect`, `dmatx_pim2`/`dmarx_pim2`, battery |
+| CPU2 → CPU1 (CPU2 `dmatx_*` = CPU1 `dmarx_*`) | `CPU1 = CPU2 + 0xD9` | derived from the DMA buffer registers (CPU2 `ASR3` = `0x14D`, CPU1 unpacks to `0x226`). **The earlier `0xDA` was wrong by one** and the CPU1 `dmarx_*` names still reflect it — see the warning block at the head of that block and `session_journal.md` |
+| CPU1 → CPU2 (CPU1 `dmatx_*` = CPU2 `dmarx_*`) | `CPU1 = CPU2 + 0x13B` | verified from hardware and from `dmatx_ect`/`dmarx_ect` (16-bit); **covers only the first 30 bytes** — the tail is copied to scattered flag addresses. Full trace in [dma_link_system.md](dma_link_system.md) |
 
 The two offsets are not interchangeable: applied to a `dmatx` address,
 `0xDA` lands inside CPU2's `var_serbus_rx` buffer rather than its DMA block,
@@ -483,6 +483,7 @@ In this directory:
 | Document | Covers |
 |---|---|
 | [fuel_calculation_system.md](fuel_calculation_system.md) | Pulse-width chain, the trims, DMA load terms, the `mov` and aliasing traps |
+| [dma_link_system.md](dma_link_system.md) | The inter-CPU serial DMA link, CPU1 → CPU2: registers, arming and completion on both ends, the unpack, every field's writer and reader, and the slots that don't add up |
 | [ignition_system.md](ignition_system.md) | CPR scheduling, dwell, advance blending, misfire detection |
 | [knock_sensor_system.md](knock_sensor_system.md) | Knock MCU protocol, per-cylinder retard, the abs() idiom |
 | [idle_control_system.md](idle_control_system.md) | ISCV target calculation, fixed-opening override, idle trim |
