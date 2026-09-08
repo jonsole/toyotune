@@ -3465,21 +3465,30 @@ dmarx_unk_241_167:		.block 1			; DATA XREF: scale_by_dmarx_167+8↓r
 								; comment. Consumed here via mult_rArX in
 								; scale_by_dmarx_167, not traced further.
 dmarx_unk_242_168:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
-								; Constant 0x80. NOT an ISC duty - the old name was a guess and
-								;   it misled at least two write-ups; see gen3/session_journal.md.
-								;   CPU2 produces it with one write, an RPM-indexed lookup of a
-								;   table whose data bytes are all 0x80, so it interpolates to
-								;   0x80 at every engine speed. The table is byte-identical in
-								;   both ECU pairs - 00 80 02 80 80 80, read straight out of the
-								;   ROM images at 0xC376 (9661) and 0xC3EE (0471).
-								;   Consequences: every test of it has a fixed outcome. In
-								;   particular update_diag_obd's `cmpb a, #08h` / `#10h` are bit
-								;   tests of bits 3 and 4 (cmpb is a bitwise AND, opcode 0xCE),
-								;   and 0x80 has neither set, so var_error_flags2 bits 7 and 2
-								;   are always cleared there - diagnostic code 54 on the ST205
-								;   cannot be raised by that path. 0x80 is this family's neutral
-								;   value, so a flat 0x80 table reads like a feature calibrated
-								;   off, but that is inference. Purpose unresolved.
+								; Purpose unconfirmed - the previous name, iscv_duty, was a
+								;   guess, but so was the analysis that replaced it. Both the
+								;   claim that this byte is a constant 0x80 and the conclusion
+								;   drawn from it are WITHDRAWN; see gen3/session_journal.md.
+								;   What is established:
+								;   - CPU2 writes it once, from an RPM-indexed table lookup
+								;     (table_C3EE on 0471, table_C376_rpm on 9661).
+								;   - CPU1 reads it at eight sites. In update_diag_obd it
+								;     BIT-TESTS bits 3 and 4 (`cmpb` is a bitwise AND, opcode
+								;     0xCE; every cmpb immediate in these ROMs is a single bit
+								;     or a contiguous mask, never an arbitrary threshold).
+								;     Bit 3 -> var_error_flags2 bit 7, which on the ST205 CPU1
+								;     becomes diagnostic code 54; bit 4 -> bit 2.
+								;   - Diagnostic 54 DOES occur in service (owner-observed), so
+								;     bit 3 does get set and this byte is not constant.
+								;   What is NOT established: the interpolator's table header
+								;   format. Reading the leading byte as an offset-to-last-entry
+								;   makes table_C3EE look like a flat 0x80, but the same reading
+								;   makes the RPM-indexed ignition fallback table C3BA flat too,
+								;   and its data (33 64 7B 7B 83 83 83) is obviously a curve. So
+								;   the format is misunderstood and no value can be read off
+								;   these tables until table_pair_interpolate is traced properly.
+								;   An RPM-derived duty or level, range-checked by CPU1's bit
+								;   tests, remains entirely consistent with everything above.
 								; divide_d_by_x+C86↓r ...
 								; 242.0	-
 								; 242.1	-

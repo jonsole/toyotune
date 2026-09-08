@@ -15,7 +15,68 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Withdrawing "constant 0x80": the table parse was self-refuting
+Jon reports that diagnostic code 54 does occur on the car — observed, not
+inferred. That contradicts the previous entry, and the previous entry is the
+thing that is wrong.
+
+**The error.** I read the interpolator tables as: leading byte = offset to the
+last entry, then (key, value) pairs. Applied to `table_C3EE` that gives one
+entry and a constant `0x80`. But applied to `table_C3BA` — the RPM-indexed
+ignition-timing fallback table two entries earlier in the same block — it
+gives a constant `0x80` as well, and that table's data is `33 64 7B 7B 83 83
+83`, plainly a rising curve. A parse that turns an ignition curve into a
+constant is wrong. So nothing can be read off these tables until
+`table_pair_interpolate`'s header handling is traced properly, and "the byte
+is a constant" does not follow.
+
+Everything downstream of that claim goes with it: the byte is not known to be
+constant, so the tests against it do not have fixed outcomes, and diagnostic
+54 is not blocked. The observation was right and the analysis was wrong.
+
+**What survives, and is worth keeping separate from what did not:**
+
+- `cmpb` is a bit test, opcode 0xCE — that stands, and is now supported
+  independently of the documentation. Every `cmpb` immediate in 9651 is a
+  single bit (`01 02 04 08 10 20 40 80`) or a contiguous mask (`0F 30 E0
+  F8`), never an arbitrary threshold, which is the usage signature of a bit
+  test and not of a compare. The opcode-table correction stands too.
+- So `update_diag_obd` tests bits 3 and 4 of this byte, and bit 3 feeding
+  diagnostic 54 on the ST205 is consistent with the car's behaviour.
+- The byte therefore *varies* in service. Which makes "an RPM-derived duty or
+  level, range-checked by CPU1" a perfectly reasonable reading — i.e. the
+  original `iscv_duty` name may well have been right, and the case against it
+  was much weaker than the previous entry claimed.
+
+The placeholder names are being kept, since neither reading is confirmed and
+`unk_` is what CLAUDE.md asks for in that state, but the annotations in all
+four ROMs have been rewritten to say what is actually known and to stop
+asserting the constant.
+
+**Also checked while chasing this**, and worth recording so nobody repeats it:
+`Jon_ST205_ECU`'s own `D151804-0471` build has the same table bytes as stock
+(`00 80 02 80 80 80` at `table_C3EE`), so the difference is not in the tune;
+and bit 7 of `var_error_flags2` is written in exactly one place in 0461, with
+`nv_diag_errors_2` having exactly one writer, so the commit path really is the
+only route to code 54. Those parts of the earlier analysis held up.
+
+**Method note.** Three wrong conclusions this session, all the same shape: a
+structure read correctly, then a meaning assigned to it without testing the
+assignment against something already known. The fix each time was cheap and
+available — convert the threshold to engineering units, check the opcode
+against the vendor table, run the table parse against a table whose shape you
+already know. The last of those took one line and would have caught this
+immediately.
+
+---
+
 ### `iscv_duty` was never a duty: it is a constant 0x80
+
+> **⚠** Withdrawn — see "Withdrawing \"constant 0x80\": the table parse was
+> self-refuting" above. The byte is not known to be constant; the table
+> parse this rests on also turns an RPM-indexed ignition curve into a
+> constant, so it is wrong. Diagnostic 54 does occur on the car. The
+> `cmpb` bit-test finding and the rename are unaffected.
 Following the naming doubt from the previous entry to its end. The byte is a
 fixed calibration constant, and the name was a guess that had already misled
 two write-ups.
