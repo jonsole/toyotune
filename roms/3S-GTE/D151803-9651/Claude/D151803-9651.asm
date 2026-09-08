@@ -3463,7 +3463,7 @@ dmarx_status1_169:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EEC7↓r
 								; the exact bit-to-source mapping
 								; (var_flags_40.6/var_flags_47.2/.3,
 								; var_enrich_flags.5/.6, all inverted).
-damrx_unk_244:			.block 1			; DATA XREF: factory_self_test+1EB↓r
+dmarx_unk_244:			.block 1			; DATA XREF: factory_self_test+1EB↓r
 								; READ-ONLY in this file: read by loc_E2F3, with
 								; no bit- or byte-level write site found here -
 								; so it holds whatever clear_variables left (0)
@@ -13187,7 +13187,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ;
 ; Reads: var_io_input1, var_io_input2, var_trac_tps_raw, var_tps_raw,
 ;   var_nv_tps, var_rpm_x_5p12, var_speed_kph, unk_100, unk_C000,
-;   dmarx_status2_16B, damrx_unk_244
+;   dmarx_status2_16B, dmarx_unk_244
 ; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, unk_223,
 ;   word_224
 ; Calls: selftest_io_cycle, watchdog_kick
@@ -13655,7 +13655,7 @@ loc_E2F3:							; CODE XREF: factory_self_test:loc_E2DA↑j
 				cmp	b, #26h
 				bcs	loc_E35D
 
-				ld	a, damrx_unk_244
+				ld	a, dmarx_unk_244
 				cmp	b, #3Ah
 				bcs	loc_E35A
 
