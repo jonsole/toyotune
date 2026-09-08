@@ -1133,7 +1133,22 @@ dmatx_unk_167:			.block 1			; CC50↓w
 								; unresolved (see calc_params' inline
 								; comment), so no further specificity is
 								; available from either side yet.
-dmatx_iscv_duty:			.block 1			; CC1A↓w
+dmatx_unk_168:			.block 1			; CC1A↓w
+								; Constant 0x80. NOT an ISC duty - the old name was a guess and
+								;   it misled at least two write-ups; see gen3/session_journal.md.
+								;   CPU2 produces it with one write, an RPM-indexed lookup of a
+								;   table whose data bytes are all 0x80, so it interpolates to
+								;   0x80 at every engine speed. The table is byte-identical in
+								;   both ECU pairs - 00 80 02 80 80 80, read straight out of the
+								;   ROM images at 0xC376 (9661) and 0xC3EE (0471).
+								;   Consequences: every test of it has a fixed outcome. In
+								;   particular update_diag_obd's `cmpb a, #08h` / `#10h` are bit
+								;   tests of bits 3 and 4 (cmpb is a bitwise AND, opcode 0xCE),
+								;   and 0x80 has neither set, so var_error_flags2 bits 7 and 2
+								;   are always cleared there - diagnostic code 54 on the ST205
+								;   cannot be raised by that path. 0x80 is this family's neutral
+								;   value, so a flat 0x80 table reads like a feature calibrated
+								;   off, but that is inference. Purpose unresolved.
 								; = CPU1's dmarx_iscv_duty (0xDA offset, exact match;
 								; CPU1 originally named it dmarx_unk_242_168, embedding
 								; this address in its own name before being simplified -
@@ -2023,7 +2038,7 @@ table_C370_ect:			.db  1Fh			; CC38↓o
 ; RPM table
 
 table_C376_rpm:			.dw 0080h			; CC12↓o
-								; RPM-indexed; the result becomes dmatx_iscv_duty,
+								; RPM-indexed; the result becomes dmatx_unk_168,
 								; the ISC duty CPU1 cross-checks against DOUT.3 in
 								; its relay health monitor.
 				.db  02h
@@ -4094,7 +4109,7 @@ locret_CBFB:							; CBEE↑j
 ;   var_spd, dmarx_flags_1, dmarx_cnt_startup, dmarx_unk_D6 (via
 ;   dmarx_lambda_state), var_ne_sum, var_rpm_smooth_ea
 ; Writes: dmatx_ign_timing_fallback1, dmatx_ign_timing_fallback2,
-;   dmatx_iscv_duty, dmatx_ign_timing_unk_166, dmatx_unk_167, var_map_ve,
+;   dmatx_unk_168, dmatx_ign_timing_unk_166, dmatx_unk_167, var_map_ve,
 ;   dmatx_scaled_ve, var_ve_x_pim_x_rpm, dmatx_ve_x_pim_x_rpm,
 ;   dmatx_lambda_trim_162, var_map_temp_x
 ; ---------------------------------------------------------------------------
@@ -4119,13 +4134,13 @@ calc_params:							; loc_CBE9↑j
 				st	a, dmatx_ign_timing_fallback2
 
 
-; dmatx_iscv_duty = table_C376_rpm(RPM)/32 - see its declaration comment
+; dmatx_unk_168 = table_C376_rpm(RPM)/32 - see its declaration comment
 ; above.
 
 				ld	y, #table_C376_rpm
 				ld	d, var_rpm_x_5p12
 				jsr	table_rD_fixed32_interpolate
-				st	a, dmatx_iscv_duty
+				st	a, dmatx_unk_168
 
 
 ; dmatx_ign_timing_unk_166 = (table_C356_rpm(RPM) * table_C36A_ect(ECT))/64,

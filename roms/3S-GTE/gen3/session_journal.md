@@ -15,6 +15,62 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### `iscv_duty` was never a duty: it is a constant 0x80
+Following the naming doubt from the previous entry to its end. The byte is a
+fixed calibration constant, and the name was a guess that had already misled
+two write-ups.
+
+**The evidence.** CPU2 writes it exactly once, from an RPM-indexed lookup:
+
+    ld  y, #table_C3EE          (0471; table_C376_rpm on 9661)
+    ld  d, var_rpm_x_5p12
+    jsr table_rD_fixed32_interpolate
+    st  a, dmatx_...
+
+`table_rD_fixed32_interpolate` is a chained fall-through entry — `shr d` then
+into the fixed16 entry, and so on — so the "32" scales the *index*, not the
+result. And the table's data bytes are all `80h`, so it interpolates to `0x80`
+at every engine speed. Read straight out of the ROM images rather than the
+disassembly, both tables are byte-identical:
+
+    9661 @ 0xC376:  00 80 02 80 80 80
+    0471 @ 0xC3EE:  00 80 02 80 80 80
+
+**Consequences.** Every test against this byte has a fixed outcome. The one
+that matters here: `update_diag_obd`'s `cmpb a, #08h` and `cmpb a, #10h` are
+bit tests of bits 3 and 4 (see the previous entry on `cmpb`), and `0x80` has
+neither set — so `var_error_flags2` bits 7 and 2 are *always cleared* there,
+and **diagnostic code 54 on the ST205 cannot be raised by that path**. The
+byte is read at eight sites on CPU1, and all eight see a constant.
+
+**Renamed, in all four ROMs**, back to the repo's placeholder convention,
+since CLAUDE.md's rule is that a rename should reflect confirmed
+understanding rather than a guess and we do not have one:
+
+    D151803-9651  dmarx_iscv_duty -> dmarx_unk_242_168
+    D151803-9661  dmatx_iscv_duty -> dmatx_unk_168
+    D151804-0461  dmarx_iscv_duty -> dmarx_unk_23C_16B
+    D151804-0471  dmatx_iscv_duty -> dmatx_unk_16B
+
+The CPU1/CPU2 address pairs in those names check out against both pairs' own
+offsets — 0x242 − 0xDA = 0x168, 0x23C − 0xD1 = 0x16B — which is another
+independent check on the per-pair offsets. 9651's name is in fact the one it
+carried before a previous session "simplified" it to `dmarx_iscv_duty`.
+
+`0x80` is this family's neutral value, so a flat `0x80` table reads like a
+feature calibrated off. That is inference and is marked as such in the
+annotations.
+
+**What this cost.** The guessed name propagated: 9661's declaration comment
+built "the ISC duty CPU1 cross-checks against DOUT.3 in its relay health
+monitor" on top of it — plausibly because `#08h` in the bit test was read as
+"DOUT.3" — and 9651's `var_error_flags2` bit table described an "ISC
+self-check mismatch" against test values of 0x08 and 0x10. Both wrong, both
+corrected. A name is an assertion, and in a disassembly it is the assertion
+everything downstream gets built on.
+
+---
+
 ### `cmpb` is a bit test, and the reference had its opcode wrong
 Chasing what feeds diagnostic 54 turned up a documentation bug with a real
 consequence.

@@ -544,7 +544,22 @@ dmatx_ign_timing_fallback1:			.block 1			; DATA XREF: check_startup-806↓w
 dmatx_ign_timing_fallback2:			.block 1			; DATA XREF: check_startup-7FB↓w
 dmatx_ign_timing_unk_169:			.block 1			; DATA XREF: check_startup-7D5↓w
 unk_16A:			.block 1			; DATA XREF: check_startup-7BA↓w
-dmatx_iscv_duty:			.block 1			; DATA XREF: check_startup-7F0↓w
+dmatx_unk_16B:			.block 1			; DATA XREF: check_startup-7F0↓w
+								; Constant 0x80. NOT an ISC duty - the old name was a guess and
+								;   it misled at least two write-ups; see gen3/session_journal.md.
+								;   CPU2 produces it with one write, an RPM-indexed lookup of a
+								;   table whose data bytes are all 0x80, so it interpolates to
+								;   0x80 at every engine speed. The table is byte-identical in
+								;   both ECU pairs - 00 80 02 80 80 80, read straight out of the
+								;   ROM images at 0xC376 (9661) and 0xC3EE (0471).
+								;   Consequences: every test of it has a fixed outcome. In
+								;   particular update_diag_obd's `cmpb a, #08h` / `#10h` are bit
+								;   tests of bits 3 and 4 (cmpb is a bitwise AND, opcode 0xCE),
+								;   and 0x80 has neither set, so var_error_flags2 bits 7 and 2
+								;   are always cleared there - diagnostic code 54 on the ST205
+								;   cannot be raised by that path. 0x80 is this family's neutral
+								;   value, so a flat 0x80 table reads like a feature calibrated
+								;   off, but that is inference. Purpose unresolved.
 dmatx_status1_16C:			.block 1			; DATA XREF: update_dmatx_status_flags:loc_D79D↓w
 dmatx_diag_mode_16D:			.block 1			; DATA XREF: check_startup-950↓r
 								; check_startup:loc_CFF0↓r ...
@@ -3376,7 +3391,7 @@ calc_params:							; CODE XREF: check_startup:loc_CCA0↑j
 				ld	d, var_rpm_x_5p12
 				jsr	table_rD_fixed32_interpolate
 
-				st	a, dmatx_iscv_duty
+				st	a, dmatx_unk_16B
 				ld	y, #table_C3E2
 				jsr	table_rb_fixed_64_ect_interp
 

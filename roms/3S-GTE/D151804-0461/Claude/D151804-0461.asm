@@ -1110,7 +1110,22 @@ dmarx_ign_timing_fallback2:			.block 1			; DATA XREF: update_ign_timing_blend+5C
 dmarx_ign_timing_unk_169:			.block 1			; DATA XREF: update_ign_timing_blend+56↓r
 								; update_ign_timing_blend+D9↓r
 dmarx_unk_23B_16A:			.block 1			; DATA XREF: scale_by_dmarx_16A+8↓r
-dmarx_iscv_duty:			.block 1			; DATA XREF: divide_d_by_x+958↓r
+dmarx_unk_23C_16B:			.block 1			; DATA XREF: divide_d_by_x+958↓r
+								; Constant 0x80. NOT an ISC duty - the old name was a guess and
+								;   it misled at least two write-ups; see gen3/session_journal.md.
+								;   CPU2 produces it with one write, an RPM-indexed lookup of a
+								;   table whose data bytes are all 0x80, so it interpolates to
+								;   0x80 at every engine speed. The table is byte-identical in
+								;   both ECU pairs - 00 80 02 80 80 80, read straight out of the
+								;   ROM images at 0xC376 (9661) and 0xC3EE (0471).
+								;   Consequences: every test of it has a fixed outcome. In
+								;   particular update_diag_obd's `cmpb a, #08h` / `#10h` are bit
+								;   tests of bits 3 and 4 (cmpb is a bitwise AND, opcode 0xCE),
+								;   and 0x80 has neither set, so var_error_flags2 bits 7 and 2
+								;   are always cleared there - diagnostic code 54 on the ST205
+								;   cannot be raised by that path. 0x80 is this family's neutral
+								;   value, so a flat 0x80 table reads like a feature calibrated
+								;   off, but that is inference. Purpose unresolved.
 								; divide_d_by_x+C53↓r ...
 dmarx_status1_16C:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EE3C↓r
 unk_23E:			.block 1			; DATA XREF: factory_self_test+1E1↓r
@@ -5123,7 +5138,7 @@ check_open_or_closed_loop:					; CODE XREF: divide_d_by_x+94B↑j
 
 				tbbs	bit0, var_flags_46, open_loop_CEFD
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_23C_16B
 				cmpb	a, #40h
 				bne	open_loop_CEFD
 
@@ -5757,7 +5772,7 @@ loc_D1BF:							; CODE XREF: divide_d_by_x+C40↑j
 				cmp	d, #0FFE7h
 				blta	loc_D1D4
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_23C_16B
 				cmpb	a, #40h
 				beq	loc_D1D6
 
@@ -6255,7 +6270,7 @@ loc_D3E8:							; CODE XREF: divide_d_by_x+E6A↑j
 				tbbc	bit6, var_flags_46, loc_D409
 
 				push	a
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_23C_16B
 				cmpb	a, #02h
 				pull	a
 				bne	loc_D409
@@ -6777,7 +6792,7 @@ loc_D60A:							; CODE XREF: calc_iscv:loc_D5E6↑j
 				st	a, var_temp_w
 				ld	y, #unk_C331
 				clr	a
-				ld	b, dmarx_iscv_duty
+				ld	b, dmarx_unk_23C_16B
 				cmpb	b, #01h
 				bne	loc_D622
 
@@ -7377,7 +7392,7 @@ loc_D8F6:							; CODE XREF: divide_d_by_x+1375↑j
 
 				tbbs	bit1, var_flags_46, loc_D92A
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_23C_16B
 				cmpb	a, #40h
 				beq	loc_D922
 
@@ -7622,7 +7637,7 @@ loc_DA30:							; CODE XREF: ROM:DA21↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_DA3D:							; CODE XREF: ROM:DA1B↑j
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_23C_16B
 				cmpb	a, #40h
 				bne	loc_DA56
 
@@ -8277,7 +8292,7 @@ loc_DCE8:							; CODE XREF: divide_d_by_x+1764↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 update_diag_obd:							; CODE XREF: divide_d_by_x+1D9A↓p
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_23C_16B
 				cmpb	a, #08h
 				beq	loc_DCF5
 
@@ -14336,7 +14351,7 @@ iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+F↓p
 				tbs	bit3, DOUT		; DOUT Data Register
 				beq	loc_F797
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_23C_16B
 				cmpb	a, #04h
 				beq	loc_F75E
 

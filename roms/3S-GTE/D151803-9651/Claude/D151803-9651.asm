@@ -841,7 +841,7 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								; divide_d_by_x+968↓r ...
 								; 4C.0 - Knock sensor error
 								; 4C.1 - TPS error
-								; 4C.2 - Mirrors BIT 4 of dmarx_iscv_duty
+								; 4C.2 - Mirrors BIT 4 of dmarx_unk_242_168
 								;   (update_diag_obd): set when that bit is
 								;   set, cleared when clear. Companion to
 								;   bit7, which mirrors bit 3 of the same
@@ -858,7 +858,7 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								;   made the misreading easy; corrected
 								;   against bin/TASM8x.TAB and the doc's own
 								;   opcode matrix.
-								;   Note also that dmarx_iscv_duty is not
+								;   Note also that dmarx_unk_242_168 is not
 								;   obviously an ISC duty: on CPU2 it is
 								;   written exactly once, from an RPM-indexed
 								;   table lookup sitting among the ignition
@@ -877,7 +877,7 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								;   var_diag_errors_5.3 alongside it;
 								;   cleared once var_adc_lambda reads lean
 								;   (negative) again.
-								; 4C.7 - Mirrors BIT 3 of dmarx_iscv_duty
+								; 4C.7 - Mirrors BIT 3 of dmarx_unk_242_168
 								;   (update_diag_obd), the companion to
 								;   bit2 - see the correction there; this is
 								;   a bit test, not a compare against 0x08.
@@ -3464,7 +3464,22 @@ dmarx_unk_241_167:		.block 1			; DATA XREF: scale_by_dmarx_167+8↓r
 								; /64, saturated - see that ROM's own
 								; comment. Consumed here via mult_rArX in
 								; scale_by_dmarx_167, not traced further.
-dmarx_iscv_duty:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
+dmarx_unk_242_168:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
+								; Constant 0x80. NOT an ISC duty - the old name was a guess and
+								;   it misled at least two write-ups; see gen3/session_journal.md.
+								;   CPU2 produces it with one write, an RPM-indexed lookup of a
+								;   table whose data bytes are all 0x80, so it interpolates to
+								;   0x80 at every engine speed. The table is byte-identical in
+								;   both ECU pairs - 00 80 02 80 80 80, read straight out of the
+								;   ROM images at 0xC376 (9661) and 0xC3EE (0471).
+								;   Consequences: every test of it has a fixed outcome. In
+								;   particular update_diag_obd's `cmpb a, #08h` / `#10h` are bit
+								;   tests of bits 3 and 4 (cmpb is a bitwise AND, opcode 0xCE),
+								;   and 0x80 has neither set, so var_error_flags2 bits 7 and 2
+								;   are always cleared there - diagnostic code 54 on the ST205
+								;   cannot be raised by that path. 0x80 is this family's neutral
+								;   value, so a flat 0x80 table reads like a feature calibrated
+								;   off, but that is inference. Purpose unresolved.
 								; divide_d_by_x+C86↓r ...
 								; 242.0	-
 								; 242.1	-
@@ -8353,7 +8368,7 @@ check_open_or_closed_loop:					; CODE XREF: divide_d_by_x+97E↑j
 
 				tbbs	bit0, var_flags_46, open_loop_CF51
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_242_168
 				cmpb	a, #40h
 				bne	open_loop_CF51
 
@@ -9009,7 +9024,7 @@ locret_D1DC:							; CODE XREF: read_nv_afr_trim+2↑j
 ;     loc_D2D2 (injection already scheduled this cycle - same guard pattern
 ;     as calc_4ms_corrections). Otherwise a var_cnt_trim_settle readiness gate is
 ;     maintained (cleared unless var_limiter_flags upper bits are clear,
-;     var_ign_blend_out is near a fixed threshold, and dmarx_iscv_duty == 0x40).
+;     var_ign_blend_out is near a fixed threshold, and dmarx_unk_242_168 == 0x40).
 ;  3) (closed_loop_control, D23E-D2BC) A SECOND closed-loop lambda trim
 ;     system, distinct from the RPM/MAP-zone nv_afr_trim_base system in
 ;     calc_4ms_corrections' chunk CE6C. Gated on ECT 83-104C, off-idle,
@@ -9071,7 +9086,7 @@ loc_D213:							; CODE XREF: divide_d_by_x+C73↑j
 				cmp	d, #0FFE7h
 				blta	loc_D228
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_242_168
 				cmpb	a, #40h
 				beq	loc_D22A
 
@@ -10913,7 +10928,7 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ;     var_cnt_EA (warm-up elapsed), diagnostic-check mode, ECT (with a
 ;     trim_state-dependent threshold, 0xE1 or 0xE3), CPU2 enrichment
 ;     request flags, var_flags_40.7, var_flags_46.1 (real closed-loop flag) and
-;     dmarx_iscv_duty. Calls init_pw_closed_loop (closed-loop path init: var_pw_loop_mode=0xC8)
+;     dmarx_unk_242_168. Calls init_pw_closed_loop (closed-loop path init: var_pw_loop_mode=0xC8)
 ;     or init_pw_open_loop (open-loop path init: var_pw_loop_mode=0), which forward into
 ;     shared init code setting unk_1C0/unk_1C6.
 ;  3) (D998-DA10) VE-map candidate calculation: combines CPU2's DMA'd
@@ -11010,7 +11025,7 @@ loc_D965:							; CODE XREF: divide_d_by_x+13C5↑j
 
 				tbbs	bit1, var_flags_46, loc_D98E ; Jump if closed loop mode
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_242_168
 				cmpb	a, #40h
 				beq	loc_D986
 
@@ -11225,7 +11240,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_iscv_duty, var_adc_lambda, var_cnt_6A, var_flags_46,
+; Reads: dmarx_unk_242_168, var_adc_lambda, var_cnt_6A, var_flags_46,
 ; var_inj_pw_base, var_pim2, var_rpm_x_5p12
 ; Writes: unk_1C4, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
 ;    var_trim_state_alias
@@ -11277,7 +11292,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; var_flags_4E's.
 ;
 ; Reads: var_rpm_x_5p12, var_pim2, var_flags_46, var_adc_lambda,
-;   var_lambda_avg, var_inj_pw_base, var_cnt_6A, dmarx_iscv_duty,
+;   var_lambda_avg, var_inj_pw_base, var_cnt_6A, dmarx_unk_242_168,
 ;   var_stft_dwell_cnt
 ; Writes: var_lambda_integrator, var_lambda_avg, unk_1C4,
 ;   var_trim_state_alias, var_stft_dwell_cnt
@@ -11338,7 +11353,7 @@ loc_DA94:							; CODE XREF: ROM:DA85↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_DAA1:							; CODE XREF: ROM:DA7F↑j
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_242_168
 				cmpb	a, #40h
 				bne	loc_DABA
 
@@ -12222,7 +12237,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_iscv_duty, unk_1CF, var_adc_o2_heater, var_flags_46,
+; Reads: dmarx_unk_242_168, unk_1CF, var_adc_o2_heater, var_flags_46,
 ; var_flags_4F_saved, var_inj_battery_adjust, var_inj_pw_inj1,
 ; var_io_input1, var_iscv_pwm, var_pim2, var_rpm_x_5p12, var_speed_kph
 ; Writes: dmatx_obd_inj, dmatx_obd_iscv, var_o2_heater_unk_185, var_cnt_187,
@@ -12234,7 +12249,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; update_diag_obd (was update_diag_obd): diagnostic / OBD snapshot update.
 ;
 ; Opens with the ISC self-check documented on var_error_flags2 bits 2 and 7:
-; dmarx_iscv_duty is compared against 0x08 and 0x10, each mismatch setting
+; dmarx_unk_242_168 is compared against 0x08 and 0x10, each mismatch setting
 ; its own error bit and each match clearing it.
 ;
 ; It then goes on to populate the OBD snapshot bytes CPU2 serializes
@@ -12248,7 +12263,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; role; do not assume the details.
 ; ---------------------------------------------------------------------------
 update_diag_obd:							; CODE XREF: divide_d_by_x+1E05↓p
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_unk_242_168
 				cmpb	a, #08h
 				beq	loc_DD73
 
@@ -19560,7 +19575,7 @@ loc_F7C0:							; Clear	flag to	run 4ms	background code
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: TIMER, dmarx_iscv_duty, var_rpm_x_5p12, var_speed_kph
+; Reads: TIMER, dmarx_unk_242_168, var_rpm_x_5p12, var_speed_kph
 ; Writes: DOUT, var_4ms_cnt_speed_update, var_cnt_C6,
 ; var_error_flags_6D, var_flags_42, var_flags_46, var_flags_47,
 ; var_gearing, var_iscv_error_cnt, var_iscv_relay_cnt,
@@ -19586,7 +19601,7 @@ iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+F↓p
 				tbs	bit3, DOUT			; Test DOUT.3 (ISC relay): is it active?
 				beq	loc_F81D			; DOUT.3 off: skip ISC monitoring
 
-				ld	a, dmarx_iscv_duty		; A = ISC duty command from CPU2
+				ld	a, dmarx_unk_242_168		; A = ISC duty command from CPU2
 				cmpb	a, #04h				; Does CPU2 command match expected state (4)?
 				beq	loc_F7E4			; Yes: matching - healthy path
 
