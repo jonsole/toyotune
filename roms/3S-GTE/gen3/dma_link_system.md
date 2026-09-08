@@ -1,17 +1,24 @@
-# Inter-CPU DMA link — CPU1 → CPU2 (D151803-9651 → D151803-9661)
+# Inter-CPU DMA link (D151803-9651 <-> D151803-9661)
 
-The two Denso CPUs exchange a fixed block of RAM over a 1 MHz synchronous
-serial link, driven by the 8X's serial DMA engine, once per 4 ms tick. This
-document traces one direction end to end: what CPU1 puts in the block, how
-the transfer is armed and detected on both ends, where each byte lands on
-CPU2, and who consumes it there. Every claim below was read from the two
-`Claude/` disassemblies; nothing is taken from symbol names alone.
+The two Denso CPUs exchange a fixed block of RAM in each direction over a
+1 MHz synchronous serial link, driven by the 8X's serial DMA engine, once per
+4 ms tick. This document traces both directions end to end: what each CPU puts
+in its block, how the transfer is armed and detected, where each byte lands,
+and who consumes it. Every claim was read from the two `Claude/`
+disassemblies; nothing is taken from symbol names alone.
 
-The reverse direction (CPU2 → CPU1) is **not** covered here yet. Its CPU1-side
-`dmarx_*` names are known to be one slot out — see the warning block at the
-head of that block in `Claude/D151803-9651.asm`, and `session_journal.md`
-§ *All four DMA offsets from hardware* — and will be documented once they are
-corrected.
+The two directions are not symmetric, and the differences matter more than the
+similarities.
+
+| | CPU1 -> CPU2 | CPU2 -> CPU1 |
+|---|---|---|
+| block | 38 bytes at `0x200` | 34 bytes at `0x14D` |
+| offset | `CPU1 = CPU2 + 0x13B` | `CPU1 = CPU2 + 0xD9` |
+| offset covers | the first 30 bytes only | the whole block |
+| unpacked by | `copy_serbus_rx`, from `main_loop` | `copy_dma_rx`, **inside the ISR** |
+| tail handling | four explicit copies to scattered flags | none, uniform |
+| bytes not consumed | `0x223`-`0x225` | none |
+| marshalling | mostly one routine, `copy_dma_tx` | none: written where computed |
 
 ---
 
@@ -45,7 +52,7 @@ guarantees consistency *between* fields.
 
 ---
 
-## 2. CPU1: assembling and sending the block
+## 2. CPU1 -> CPU2: assembling and sending
 
 ### 2.1 The block
 
@@ -104,19 +111,16 @@ not established. Retry counting is done with `var_cnt_unk_76`/`_77` and
 Nothing here is edge-triggered by serial activity. It is a fixed-rate poll
 and re-arm loop hung off the 4 ms tick.
 
-### 2.3 Receive completion: `IV0`
+### 2.3 A note on `IV0`
 
-Vector `0xFFDE`, enabled by `IMASKL.2`, cleared by `IRQLL.2`. It reads
-`TIMER3` again and treats `TIMER3 & 0x30 != 0` together with `RAMST.2` clear
-as "frame received": it then calls `copy_dma_rx` **inside the interrupt**,
-which word-copies 34 bytes from `var_dma_rx_buffer` into the `dmarx_*`
-block, and zeroes the retry counters. Otherwise it saturating-increments
-`var_cnt_unk_76`. This is CPU1's receive side of the *reverse* direction; it
-matters here only for the asymmetry noted in §3.3.
+CPU1's `IV0` is its receive side for the *other* direction, not this one, so
+it is documented with the reverse block in §5.3. It is worth noting here only
+for the contrast: CPU1 unpacks in the interrupt, CPU2 defers to `main_loop`
+(§3.3).
 
 ---
 
-## 3. CPU2: receiving and unpacking
+## 3. CPU1 -> CPU2: receiving and unpacking
 
 ### 3.1 Arming
 
@@ -162,7 +166,7 @@ Frame bytes `0x23`–`0x25` (CPU1's `unk_223`/`word_224`) are received into
 
 ---
 
-## 4. Field by field
+## 4. CPU1 -> CPU2: field by field
 
 Offsets are into the frame; "CPU1 writer" is the routine that stores the
 value; "CPU2 readers" are the routines that reference the landed variable
@@ -179,20 +183,20 @@ sites). Sizes in bytes.
 | 0A | `0x20A` | `dmatx_tha` | 1 | `adc_handler_tha` | `0xCF` | `dmarx_tha` | enrichment decay, `drive_DOUT0`, THA tables |
 | 0B | `0x20B` | `dmatx_tham` | 1 | `adc_handler_tham` | `0xD0` | `dmarx_tham` | `calc_ignition_timing`, `drive_DOUT2_tvsv`, `table_C3BB_tham` |
 | 0C | `0x20C` | `dmatx_battery` | 1 | `adc_handler_battery` | `0xD1` | `dmarx_battery` | `drive_DOUT2_tvsv` |
-| 0D | `0x20D` | `dmatx_nv_trim_pim` | 1 | `copy_dma_tx` ← `var_nv_trim_unk_98`, else `0x50` | `0xD2` | `dmarx_nv_trim_pim` | **none found** — see §5 |
+| 0D | `0x20D` | `dmatx_nv_trim_pim` | 1 | `copy_dma_tx` ← `var_nv_trim_unk_98`, else `0x50` | `0xD2` | `dmarx_nv_trim_pim` | **none found** — see §6 |
 | 0E | `0x20E` | `dmatx_cmd_startup_20E` | 1 | `copy_dma_tx` ← `var_cnt_startup` | `0xD3` | `dmarx_cnt_startup` | `calc_params`, `check_startup` |
 | 0F | `0x20F` | `dmatx_cnt_unk_20F` | 1 | `copy_dma_tx` ← `var_cnt_EA` | `0xD4` | `dmarx_unk_D4` | `calc_ignition_timing`, enrichment decay, `drive_DOUT2_tvsv` |
 | 10 | `0x210` | `dmatx_nv_trim_o2` | 1 | `copy_dma_tx` ← `var_nv_trim_unk_96`, else `0x00` | `0xD5` | `dmarx_nv_trim_o2` | `decay_enrichment_unk_FE`, `table_C393` |
 | 11 | `0x211` | `dmatx_lambda_state` | 1 | `copy_dma_tx` ← `var_lambda_state` | `0xD6` | `dmarx_lambda_state` | `calc_params`, `main_continue` |
 | 12 | `0x212` | `dmatx_adc_lambda` | 1 | `adc_handler_throttle_closed` | `0xD7` | `dmarx_adc_lambda` | `update_odb_flags`, OBD output |
 | 13 | `0x213` | `dmatx_knock_retard_info` | 3 | `copy_dma_tx` ← `nv_table_knock_info` (+2) | `0xD8` | `dmarx_knock_info` | `drive_DOUT0` |
-| 16 | `0x216` | `dmatx_ign_corr_cpu2` | 1 | `knock_processing` ← `dmarx_knock_retard_cpu2` | `0xDB` | `dmarx_add_enrichment_DB` | `update_odb_flags` (non-zero test only) — **see §5** |
-| 17 | `0x217` | `dmatx_obd_inj` | 1 | `update_diag_obd` | `0xDC` | `dmarx_obd_inj` | `next_odb_byte` via `table_odb` — see §5 |
-| 18 | `0x218` | `dmatx_ign_obd` | 1 | `bg_ne_process` | `0xDD` | `dmarx_obd_ign` | `next_odb_byte` via `table_odb` — see §5 |
-| 19 | `0x219` | `dmatx_obd_iscv` | 1 | `update_diag_obd` | `0xDE` | `dmarx_obd_iscv` | `next_odb_byte` via `table_odb` — see §5 |
+| 16 | `0x216` | `dmatx_ign_corr_cpu2` | 1 | `knock_processing` ← `dmarx_max_retard_23A` | `0xDB` | `dmarx_add_enrichment_DB` | `update_odb_flags` (non-zero test only) — **see §6** |
+| 17 | `0x217` | `dmatx_obd_inj` | 1 | `update_diag_obd` | `0xDC` | `dmarx_obd_inj` | `next_odb_byte` via `table_odb` — see §6 |
+| 18 | `0x218` | `dmatx_ign_obd` | 1 | `bg_ne_process` | `0xDD` | `dmarx_obd_ign` | `next_odb_byte` via `table_odb` — see §6 |
+| 19 | `0x219` | `dmatx_obd_iscv` | 1 | `update_diag_obd` | `0xDE` | `dmarx_obd_iscv` | `next_odb_byte` via `table_odb` — see §6 |
 | 1A | `0x21A` | `dmatx_obd_o2_sensor` | 1 | OBD output code | `0xDF` | `dmarx_obd_o2_sensor` | `next_odb_byte` via `table_odb`, `output_odb_bit` |
 | 1B | `0x21B` | `dmatx_knock_retard` | 1 | `check_clear_speed_limiter_rev` | `0xE0` | `dmarx_knock` | `table_knock_enrichment`, `main_continue_2` |
-| 1C | `0x21C` | `dmatx_pw_loop_mode` | 1 | `copy_dma_tx` ← `var_pw_loop_mode` | `0xE1` | `dmarx_dout0_duty_E1` (**2 bytes**) | `drive_DOUT0` — **see §5** |
+| 1C | `0x21C` | `dmatx_pw_loop_mode` | 1 | `copy_dma_tx` ← `var_pw_loop_mode` | `0xE1` | `dmarx_dout0_duty_E1` (**2 bytes**) | `drive_DOUT0` — **see §6** |
 | 1D | `0x21D` | `dmatx_tps_delta` | 1 | **no writer found** | `0xE2` | (low byte of the above) | |
 | 1E | `0x21E` | `dmatx_error_flags1` | 1 | `copy_dma_tx` ← `var_error_flags1` (`st d`, both bytes) | `0x4B` | `dmarx_unk_4B` (2) | `drive_DOUT0` |
 | 1F | `0x21F` | `dmatx_error_flags2` | 1 | (second byte of the above) | `0x4C` | | |
@@ -219,7 +223,114 @@ These are cosmetic: the slot is the same on both sides.
 
 ---
 
-## 5. Things that do not add up
+---
+
+## 5. CPU2 -> CPU1: the reverse block
+
+### 5.1 The block
+
+34 bytes at `0x14D`-`0x16E` on CPU2, arriving at `0x226`-`0x247` on CPU1. The
+window fits the variables exactly: it starts on the first byte of
+`dmatx_ve_corr_map` and ends on the last byte of `word_16D`, and the declared
+sizes between them total precisely 34. That is what fixes the offset at
+`+0xD9` -- at `+0xDA` the window would begin mid-variable and truncate
+`word_16D`, whose low byte would never be sent.
+
+As in the other direction, `ASR3` points straight at the first live variable
+and the engine streams RAM, so **neither transmit path has a packing buffer**
+and neither block is a snapshot.
+
+### 5.2 Who fills it
+
+CPU1 marshals most of its block in one routine. **CPU2 has no marshalling step
+at all** -- every field is written where it is computed. Four clusters account
+for nearly all of it:
+
+- **`calc_ignition_timing`** writes seven fields: `dmatx_ign_timing`,
+  `dmatx_max_retard_161`, `dmatx_tham_enrich`, `dmatx_unk_15F`,
+  `dmatx_knock_unk_160`, `dmatx_ve_corr_map` and `dmatx_ve_corr_map_tps`.
+- **`calc_params`** writes seven: both ignition fallbacks,
+  `dmatx_ign_timing_unk_166`, `dmatx_unk_167`, `dmatx_unk_168`,
+  `dmatx_scaled_ve`, `dmatx_ve_x_pim_x_rpm` and `dmatx_lambda_trim_162`.
+- **The enrichment decay chain** fills the `0x157`-`0x15D` run, and several of
+  those slots have *two* writers -- one stage of the chain producing a value
+  and the next decaying it. `main_continue_3` and `decay_enrichment_unk_53`
+  both write `0x158`; `decay_enrichment_unk_53` and `decay_enrichment_unk_FE`
+  both write `0x159`; `decay_enrichment_unk_FE` and `decay_enrichment_unk_100`
+  both write `0x15A`; `decay_enrichment_unk_100` and
+  `decay_var_enrichment_unk_103` both write `0x15D`. See §6.
+- **`update_dmatx_status_flags`** writes the two packed bitfields,
+  `dmatx_status1_169` and `dmatx_status2_16B`.
+
+The remainder: `main_loop` writes `dmatx_rpm_x_5p12`, `open_loop` writes
+`dmatx_fuel_enrichment`, `output_odb_bit_return` writes
+`dmatx_diag_mode_16A`, and `factory_selfcheck` writes
+`dmatx_ign_advance_hi_16C`.
+
+### 5.3 Arming, and CPU1's unpack
+
+`serial_dma_start` on CPU2 mirrors CPU1's `start_dma`: the same `TIMER3` poll,
+the same arming of `ASR0N` through a software shadow (`var_asr0n_shadow_126`
+here), the same retry counters. The shadow exists because **reading `ASR0N`
+does not return what was written** -- the write configures the DMA engine, the
+read returns a latched edge-capture value -- so the register cannot be
+read-modify-written and the code must keep its own copy of what it last wrote.
+
+On the receiving side CPU1's `IV0` detects the frame and calls `copy_dma_rx`
+**inside the interrupt**, word-copying all 34 bytes with no special cases:
+
+```
+copy_dma_rx:  ld  x, #dmarx_ve_corr_map     ; 0x226
+              ld  y, #var_dma_rx_buffer     ; 0x1DE
+loc_F9A1:     ld  d, [y]                    ; 17 words
+              st  d, x + 00h
+              inc x / inc x
+              cmp x, #byte_248              ; stop at 0x248
+              bcs loc_F9A1
+```
+
+So `CPU1 = CPU2 + 0xD9` holds for **every** byte of this direction; there is no
+equivalent of the other direction's scattered tail. The cost is that this copy
+runs in interrupt context where the other direction's runs in `main_loop`.
+
+### 5.4 Field by field
+
+| CPU2 addr | CPU2 name | sz | CPU2 writer | CPU1 addr | CPU1 name | CPU1 readers |
+|-----------|-----------|---:|-------------|-----------|-----------|--------------|
+| `0x14D` | `dmatx_ve_corr_map` | 2 | `calc_ignition_timing` | `0x226` | `dmarx_ve_corr_map` | `calc_inj_pw_base` |
+| `0x14F` | `dmatx_ve_corr_map_tps` | 2 | `calc_ignition_timing` | `0x228` | `dmarx_ve_corr_map_tps` | `calc_inj_pw_base` |
+| `0x151` | `dmatx_ve_x_pim_x_rpm` | 2 | `calc_params` | `0x22A` | `dmarx_ve_x_pim_x_rpm` | `calc_inj_pw_base` |
+| `0x153` | `dmatx_scaled_ve` | 2 | `calc_params` | `0x22C` | `dmarx_scaled_ve` | `no_enrichment` |
+| `0x155` | `dmatx_rpm_x_5p12` | 2 | `main_loop` | `0x22E` | `dmarx_rpm_x_5p12` | `watchdog_kick` |
+| `0x157` | `dmatx_warmup_enrichment_157` | 1 | `main_continue_3` | `0x230` | `dmarx_warmup_enrichment_230` | `calc_inj_pw_base, no_enrichment` |
+| `0x158` | `dmatx_enrichment_unk_158` | 1 | `main_continue_3, decay_..._53` | `0x231` | `dmarx_enrichment_unk_231` | `calc_inj_pw_base, closed_loop_control, no_enrichment` |
+| `0x159` | `dmatx_enrichment_unk_159` | 1 | `decay_..._53, decay_..._FE` | `0x232` | `dmarx_enrichment_unk_232` | `OBD path only` |
+| `0x15A` | `dmatx_enrichment_unk_15A` | 1 | `decay_..._FE, decay_..._100` | `0x233` | `dmarx_enrichment_unk_233` | `no_enrichment` |
+| `0x15B` | `dmatx_unk_enrich` | 1 | `decay_enrichment_unk_FE` | `0x234` | `dmarx_unk_enrich` | `no_enrichment` |
+| `0x15C` | `dmatx_tham_enrich` | 1 | `calc_ignition_timing` | `0x235` | `dmarx_tham_enrich` | `no_enrichment` |
+| `0x15D` | `dmatx_enrichment_unk_15D` | 1 | `decay_..._100, decay_var_..._103` | `0x236` | `dmarx_enrichment_unk_236` | `calc_inj_pw_base, calc_iscv, closed_loop_control` |
+| `0x15E` | `dmatx_fuel_enrichment` | 1 | `open_loop` | `0x237` | `dmarx_fuel_enrichment` | `apply_enrich_and_trims` |
+| `0x15F` | `dmatx_unk_15F` | 1 | `calc_ignition_timing` | `0x238` | `*(no CPU1 symbol)*` | `-- see §6` |
+| `0x160` | `dmatx_knock_unk_160` | 1 | `calc_ignition_timing` | `0x239` | `dmarx_knock_unk_239` | `check_set_overrun_flag` |
+| `0x161` | `dmatx_max_retard_161` | 1 | `calc_ignition_timing` | `0x23A` | `dmarx_max_retard_23A` | `knock_processing` |
+| `0x162` | `dmatx_lambda_trim_162` | 1 | `calc_params` | `0x23B` | `dmarx_lambda_trim_23B` | `no_enrichment` |
+| `0x163` | `dmatx_ign_timing` | 1 | `calc_ignition_timing` | `0x23C` | `dmarx_ign_timing` | `update_cyl_rpm_dev` |
+| `0x164` | `dmatx_ign_timing_fallback1` | 1 | `calc_params` | `0x23D` | `dmarx_ign_timing_fallback1` | `update_ign_timing_blend` |
+| `0x165` | `dmatx_ign_timing_fallback2` | 1 | `calc_params` | `0x23E` | `dmarx_ign_timing_fallback2` | `update_ign_timing_blend` |
+| `0x166` | `dmatx_ign_timing_unk_166` | 1 | `calc_params` | `0x23F` | `dmarx_ign_timing_unk_23F` | `update_ign_timing_blend, table_ign_blend_weight` |
+| `0x167` | `dmatx_unk_167` | 1 | `calc_params` | `0x240` | `dmarx_unk_240` | `update_ign_timing_blend, table_ign_blend_weight` |
+| `0x168` | `dmatx_unk_168` | 1 | `calc_params` | `0x241` | `dmarx_unk_241` | `scale_by_dmarx_241` |
+| `0x169` | `dmatx_status1_169` | 1 | `update_dmatx_status_flags` | `0x242` | `dmarx_status1_242` | `update_diag_obd, calc_inj_pw_base, check_open_or_closed_loop, read_nv_afr_trim, update_lambda_stft, iv6_4ms_process` |
+| `0x16A` | `dmatx_diag_mode_16A` | 1 | `output_odb_bit_return` | `0x243` | `dmarx_diag_mode_243` | `check_clear_speed_limiter_rev` |
+| `0x16B` | `dmatx_status2_16B` | 1 | `update_dmatx_status_flags` | `0x244` | `dmarx_status2_244` | `watchdog_kick` |
+| `0x16C` | `dmatx_ign_advance_hi_16C` | 1 | `factory_selfcheck` | `0x245` | `dmarx_ign_advance_hi_245` | `watchdog_kick` |
+| `0x16D` | `word_16D` | 2 | `**no writer found**` | `0x246-0x247` | `dmarx_word_246_hi / dmarx_unk_246_lo` | `bg_ne_process_F108, clear_variables` |
+
+`dmarx_status1_242` is the most-consumed byte in this direction, and it is the
+one `update_diag_obd` bit-tests: bit 3 of it becomes diagnostic code 54 on the
+ST205. See `session_journal.md` § *Diagnostic 54 traced end to end*.
+
+## 6. Things that do not add up
 
 Recorded rather than resolved.
 
@@ -247,13 +358,14 @@ before trusting a "no reader" claim:
   search, not a finding.
 
 **Slot `0x216`: CPU1 echoes a CPU2 byte back.** `knock_processing` writes
-`dmatx_ign_corr_cpu2` from `dmarx_knock_retard_cpu2` — a value that *came
-from CPU2* in the previous frame — so this slot is a loopback, not a CPU1
+`dmatx_ign_corr_cpu2` from `dmarx_max_retard_23A` — a value CPU2 sent in the
+previous frame (§5.4, CPU2 `0x161`) — so this slot is a loopback, not a CPU1
 computation. CPU2 reads it only in `update_odb_flags`, as a non-zero test
 feeding an OBD status bit. Neither name is supported by its own side's code:
 CPU1's says "ignition correction", CPU2's says "add enrichment", and what
-actually travels is CPU2's own value coming back. (Note `dmarx_knock_retard_cpu2`
-is itself in the reverse-direction block whose names are one slot out.)
+actually travels is CPU2's own max-retard value coming back. Worth noting the
+round trip is two frames: CPU2 computes it in `calc_ignition_timing`, CPU1
+receives and re-sends it, CPU2 reads it back a tick later.
 
 **Slot `0x21C`–`0x21D`: the two sides disagree about the width.** CPU1 sends
 two independent bytes, `var_pw_loop_mode` at `0x21C` and `dmatx_tps_delta` at
@@ -262,6 +374,26 @@ be stale. CPU2's `drive_DOUT0` reads `0xE1`–`0xE2` as a **single 16-bit**
 "DOUT0 duty". One of these readings is wrong, and it is the one that drives a
 physical output. Worth settling from `drive_DOUT0`'s arithmetic.
 
+**A 16-bit CPU2 value arrives as two separately-named CPU1 bytes.** `word_16D`
+is 2 bytes on CPU2 and lands at CPU1 `0x246`-`0x247`, which CPU1 declares as
+two 1-byte symbols. That is consistent, and it is what lets the block end on a
+variable boundary, but the two sides disagree about whether this is one value
+or two. `bg_ne_process_F108` reads both, so CPU1 probably does treat it as a
+pair. **No writer for `word_16D` was found on CPU2 at all**, so what it
+carries is open.
+
+**`dmatx_unk_15F` is sent and has no CPU1 symbol.** CPU2 writes it in
+`calc_ignition_timing`; it arrives at CPU1 `0x238`, where nothing is declared
+and nothing reads it -- the mirror of the unread fields in the other
+direction.
+
+**Several enrichment slots have two writers each.** As described in §5.2, one
+stage of the decay chain writes a slot and the next rewrites it. Because
+transmit streams live RAM with no snapshot, which stage's value CPU1 receives
+depends on where in the chain the engine happened to read that byte. Probably
+harmless for a decaying value, but worth knowing before treating any of these
+as a stable reading.
+
 **CPU2 receives 35 bytes; CPU1 sends 38.** `var_serbus_rx` is 35 bytes and
 `copy_serbus_rx` consumes exactly 35. Whether the engine actually transfers
 38 and CPU2 drops the tail, or the count is 35 and CPU1's last three bytes
@@ -269,7 +401,7 @@ never leave, is not visible from the software side.
 
 ---
 
-## 6. Where the OBD fields go: the VF-pin datastream
+## 7. Where the OBD fields go: the VF-pin datastream
 
 Three of the frame's fields exist purely to be serialised back out of the ECU
 on CPU2's diagnostic output, so the CPU1 → CPU2 link is the middle leg of a
@@ -320,7 +452,7 @@ why those fields have a writer on CPU1 with an obvious purpose and no
 
 ---
 
-## 7. Related
+## 8. Related
 
 - `session_journal.md` § *CPU2 (D151803-9661): serial_dma_start/int_vector_0's
   ASR2/ASR3/TIMER3 protocol decoded* — the original decode of the register
