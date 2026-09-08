@@ -70,7 +70,7 @@ or Gen 2.
 | `D151803-9651` | JDM | SW20 MR2, **Gen 3** | `89861-17460` | **CPU1** | ASM, bin, idb, XDF, `Claude/` |
 | `D151803-9661` | JDM | SW20 MR2, **Gen 3** | `89861-17460` | **CPU2** | ASM, bin, idb, XDF, `Claude/` |
 | `D151804-0461` | JDM | ST205 Celica GT-Four | | **CPU1** | ASM, bin, idb, XDF, `Claude/` |
-| `D151804-0471` | JDM | ST205 Celica GT-Four | | **CPU2** | ASM, bin, idb, XDF |
+| `D151804-0471` | JDM | ST205 Celica GT-Four | | **CPU2** | ASM, bin, idb, XDF, `Claude/` |
 | `D151804-0481` | UK | ST205 Celica GT-Four | | **CPU1** | ASM, bin, idb |
 | `D151804-0491` | UK | ST205 Celica GT-Four | | **CPU2** | idb only — no ROM image |
 | `D151804-7720` | JDM | ST205 Celica GT-Four, 95+ | | unpaired here | bin, idb — no disassembly |
@@ -90,7 +90,7 @@ Notes on the gaps:
 - **`D151804-7720`** has no partner listed in `roms.txt`, so which CPU it is
   has not been confirmed. It has no disassembly either — only the ROM image
   and an IDA database.
-- Only `-9651`, `-9661` and `-0461` have `Claude/` working copies, which are
+- Only `-9651`, `-9661`, `-0461` and `-0471` have `Claude/` working copies, which are
   ahead of the parent `.ASM` in renames and comments. Edit those, not the
   parent, when doing RE work.
 

@@ -15,6 +15,270 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The chargecooler pump, found in CPU2 — and the DMA offset is per-pair
+Ported 9661 -> 0471 the way 9651 -> 0461 was done, which put the CPU2 side of
+the ST205 pair in reach and answered the pump question.
+
+**`D151804-0471` now has a `Claude/` working copy.** Created from the parent
+`.ASM` (CP437 -> UTF-8, no replacement characters), 170 renames applied,
+**296 hand-named symbols**, assembles byte-identical to the shipped
+`D151804-0471.BIN`. The CPU2 ROMs are small in code and large in data: 9661
+has 2061 instructions against 0471's 2099, and 0471's file is three times
+longer only because ~10k bytes are still one-`.db`-per-byte in its IDA
+database. 15 exact function-signature matches, 35 fuzzy, 4556 uniquely-
+matching instruction windows.
+
+**The pump is three output pins in CPU2, and the MR2 ROM parks them.** At the
+same point in the same tick, both CPU2 ROMs write PORTB.4, PORTB.1 and DOUT.3
+in that order. 9661 writes them bare and unconditionally —
+`clrb bit4,PORTB` / `setb bit1,PORTB` / `clrb bit3,DOUT`, no test at all.
+0471 wraps each in a control block gated on the same two conditions:
+
+    dmarx_ect       >= 0F7C0h      (coolant temperature, sent from CPU1)
+    var_rpm_x_5p12  >= 0A0h
+
+PORTB.4 is set when both hold; PORTB.1 is driven the opposite way; DOUT.3
+additionally requires counter `unk_B9` < 3Dh, and that counter is zeroed
+whenever the ECT/RPM conditions fail — so DOUT.3 is duration-limited in a way
+the other two are not, which is what an ECU-controlled pump with a run limit
+looks like.
+
+That closes the loop with the CPU1 finding two entries above: 0461 uniquely
+*reports* diagnostic code 54 (chargecooler pump/level) while running detection
+code identical to 9651's, because the *driving* is over here in CPU2. Both
+ROMs annotated; 9661's existing note reading those three writes as "unrelated
+one-off pin inits" is correct for that ROM and has been given a cross-
+reference rather than changed.
+
+Still not confirmed, and marked as such in the annotation: which physical
+device is on which of the three pins, and whether `>= 0F7C0h` is hot or cold
+(`dmarx_ect`'s scaling direction was not checked — see `3S-GTE/convert.xlsx`).
+The control structure is read from the code; the device mapping is inference
+from the vehicle difference.
+
+**A false lead worth recording.** 9661 has a function the port named
+`selfcheck_io_pump`, which looked like exactly the thing. It is not: "pump"
+there means pumping the I/O loop — a prior session's comment says it keeps I/O
+reads and the CPU1 DMA link alive while `factory_selfcheck` sits in its idle
+loop. The annotation is what stopped it becoming a wrong answer, which is an
+argument for writing them.
+
+**The CPU1<->CPU2 DMA offsets are per-pair, not per-family.** CLAUDE.md gave
+`+0xDA` and `+0x13B` as though they were properties of the architecture. They
+are properties of the MR2 pair. Measured across every `dmatx_X`/`dmarx_X` name
+pair in each ECU:
+
+| pair | CPU2 -> CPU1 | CPU1 -> CPU2 |
+|------|--------------|--------------|
+| `D151803-9651`/`-9661` | `+0xDA` | `+0x13B` |
+| `D151804-0461`/`-0471` | **`+0xD1`** | **`+0x133`** |
+
+Nine and eight bytes of difference — far enough to land inside a neighbouring
+variable and return something plausible. CLAUDE.md now carries both rows and
+the derivation (take the *modal* difference; a few pairs disagree by one or
+two because a 16-bit variable's name sits on a different byte).
+
+**The six names held back since the first pass are now resolved**, and they
+cross-validate the offset. Each embeds a CPU1 and a CPU2 address; rewriting
+the CPU2 half with `+0xD1` lands every one of them on a symbol the 9661 ->
+0471 port had named independently, matching stems included:
+
+    dmarx_max_retard_23B_161  -> dmarx_max_retard_235_164   (0471: dmatx_max_retard_164)
+    dmarx_ign_timing_unk_166  -> dmarx_ign_timing_unk_169   (0471: dmatx_ign_timing_unk_169)
+    dmarx_status1_169         -> dmarx_status1_16C          (0471: dmatx_status1_16C)
+    dmarx_status2_16B         -> dmarx_status2_16E          (0471: dmatx_status2_16E)
+    dmarx_unk_241_167         -> dmarx_unk_23B_16A          (0471: unk_16A, not yet named)
+    scale_by_dmarx_167        -> scale_by_dmarx_16A
+
+Two derivations from different evidence agreeing on four of six is the
+strongest confirmation available without hardware. 0461 is now at **728
+hand-named symbols**, still byte-identical to its shipped ROM.
+
+**Typo fixed.** 9651's `damrx_unk_244` is now `dmarx_unk_244` in all four
+files that carried it (`Claude/`, the parent `.ASM`, `_32K.ASM`, and the
+`toyotune/` DIAG16 source), patched at byte level so the CP437 content could
+not be disturbed — `damrx`/`dmarx` are the same length and pure ASCII, so only
+6, 4, 4 and 4 bytes changed respectively. All four verified to assemble to
+identical binaries afterwards, DIAG16 included. A fifth, stale copy in
+`roms/d8x_assembler/` was left alone: it is a scratch/profiling snapshot that
+predates the renaming work, not a maintained source.
+
+---
+
+### Chargecooler pump: the trail ends at CPU1's boundary
+Traced what feeds 0461's diagnostic code 54, the "chargecooler pump/level"
+entry found in the previous session. The answer is that CPU1 does not control
+the pump at all — it only reports a fault about it — and the difference
+between the two ROMs is purely in reporting.
+
+**The path.** The generic commit routine folds the runtime error flags into
+the stored diagnostic bytes: `B` holds `var_error_flags2`, is masked, then
+OR'd into `nv_diag_errors_2`. The masks differ, and that single byte is the
+whole story:
+
+| ROM  | mask  | bits committed | consequence |
+|------|-------|----------------|-------------|
+| 9651 | `1Fh` | 0,1,2,3,4      | bit 3 -> code **47**, secondary throttle |
+| 0461 | `97h` | 0,1,2,4,**7**  | bit 7 -> code **54**, chargecooler pump/level |
+
+Each mask agrees exactly with its own ROM's diagnostic-code table, derived
+independently — 9651 reports 47 and not 54, 0461 reports 54 and not 47.
+
+**But the detection code is identical in both.** The condition behind bit 7 is
+`update_diag_obd`'s ISC self-check: read the ISC duty CPU2 reports, compare
+against `08h`, set bit 7 on mismatch and clear it on match (bit 2 is the same
+check against `10h`). 9651's own annotation of `var_error_flags2` already says
+so — "4C.2 ... ISC self-check mismatch ... Companion to bit7 (same check,
+other test value)". 0461 runs the same instructions on the same variable.
+
+So the two ROMs detect the same condition and disagree only about whether to
+surface it as a fault code. Since CPU1's code is identical, **the chargecooler
+pump control cannot be in CPU1** — it has to be on the CPU2 side, in
+**D151804-0471**, with CPU1 doing nothing but reporting. That also fits the
+output-pin evidence from the previous session: no CPU1 output bit differs
+between the ROMs.
+
+Two consequences worth keeping in view. First, `D151804-0471` has no `Claude/`
+working copy yet; porting 9661 -> 0471 the way 9651 -> 0461 was done is the
+obvious next move, and would also resolve the `dmarx_*_16x` CPU2 addresses
+that have been flagged since the first pass. Second, whether diagnostic 54 on
+this ECU *really* means the chargecooler pump, or whether the ISC self-check
+bit is simply reused for it, is not settled by anything in CPU1 — the label
+comes from the hand-written comment block, and the code underneath it is an
+ISC duty comparison.
+
+**`unk_23C` is `dmarx_iscv_duty`**, which is how the trail was picked up. The
+function-level matcher had missed it: in 0461 this code sits inside a chunk
+IDA folded into `divide_d_by_x`, so there is no function pair to walk.
+
+### Windowed matching, to reach the code the function matcher cannot
+That miss prompted a second matcher. Flatten both ROMs' code segments into a
+linear instruction stream, normalise as before (symbols -> placeholder,
+immediates kept), and index every window of 10, 8 and 6 instructions. Where a
+window is **unique in both files and identical**, the symbols at corresponding
+positions are the same symbol. It needs no function boundaries, so it reaches
+chunked code the signature matcher cannot.
+
+18142 uniquely-matching windows yielded 257 candidate mappings; 228 survived
+the safety rules and were applied. 0461 is now at **722 hand-named symbols**,
+from 397 at the start of the restart. Still byte-identical to the shipped ROM,
+"Total real edit regions: 0".
+
+**Cross-check.** For each applied rename, the number of operand references to
+the 9651 name and to the new 0461 name should agree if the mapping is right.
+**221 of 228 matched exactly, and all 228 were within 2** — the small
+differences being places the ROMs genuinely diverge (`dmarx_iscv_duty` itself
+is 7 references in 9651 against 9 in 0461, which is the extra reporting).
+
+**Windowed evidence is weaker, so the rules were tightened.** Only a fragment
+that is the symbol's *own* address is rewritten; anything else is refused
+rather than guessed, because at this strength there is no way to tell a
+referenced CPU1 variable from the CPU2 half of a `dmarx_*_NNN` pair. 11
+renames were held back on that rule alone.
+
+**Three traps, all found by the assembler or the guards rather than by eye:**
+
+- **A label reference can be an expression.** 9651 writes one operand as
+  `#(table_knock_retard_step-1)`, and the operand tokeniser treated the whole
+  parenthesised expression as a single symbol — which then got "renamed" onto
+  a 0461 label, producing the definition `(table_knock_retard_step-1):` and an
+  assembly failure. Any rename target must be validated as an identifier
+  before it is written. (0461's `unk_C375` is nevertheless the address one
+  below 9651's `table_knock_retard_step`, so the label itself is worth
+  chasing.)
+- **An identity address mapping must not short-circuit a symbol's own
+  address.** `var_cnt_CE` (9651, 0xCE) belongs at 0xC8 in 0461, but an
+  unrelated identity entry for 0xCE in the address map left the name
+  untouched, and the collision with the real `var_cnt_CE` was the only thing
+  that surfaced it. Own-address rewriting has to take precedence over every
+  other rule.
+- **Not every uppercase hex run is an address.** `igf_count_rpm_lt_3000` was
+  rewritten to `igf_count_rpm_lt_F6B3` before a plausibility check (RAM
+  `0x000`-`0x3FF` or ROM `0xC000`-`0xFFFF`) was added. `3000` is an RPM
+  threshold.
+
+Also noted in passing: 9651 has a typo, `damrx_unk_244` for `dmarx_`. It was
+left unported rather than copied into 0461; worth fixing in both.
+
+---
+
+### Sibling-ROM port, second pass: D151803-9651 -> D151804-0461
+Redone from scratch now that 9651 is in much better shape — all 158 of its
+functions are hand-named, against 101 at the first pass. Same method as
+before (normalise each function to its instruction sequence with symbol
+operands replaced by a placeholder, pair functions across ROMs by that
+signature, then walk matched pairs in lockstep to derive symbol renames), but
+the first pass's rough edges are now handled properly.
+
+**Result.** 84 exact signature matches out of 0461's 149 functions. Applied
+**98 new names and 43 updates** (2063 substitutions); 179 symbols were already
+correct and left alone; 5 flagged. 0461 goes from 397 to **495 hand-named
+symbols**. Verified: assembles byte-identical to the shipped
+`D151804-0461.BIN`, `verify_assembly_match.py` reports "Total real edit
+regions: 0".
+
+**Names that embed an address must be adapted, and only where justified.**
+Roughly a third of 9651's names carry a hex address (`inc_cnt_187`,
+`table_ect_C185`, `var_ect_unk_194`). Porting them verbatim embeds 9651
+addresses in 0461 names. An address map built from the confirmed pairs (275
+entries, 160 of them shifted) rewrites these, but a fragment is only rewritten
+when it can be justified: it is the symbol's own address, or the address of
+something the matched 9651 function actually references. Everything else is
+flagged rather than guessed — which is what keeps the CPU2 halves of
+`dmarx_max_retard_23B_161` and friends from being silently rewritten with a
+CPU1 map. Three cheap traps found along the way: `adc` parses as hex digits;
+`divide_rD_32`'s `32` is a scale factor, not an address; and `clamp_rD_FF`'s
+`FF` is a constant.
+
+**Distinguish a genuine update from a reversal of a correct adaptation.**
+Re-running against a moved-on source produces a list of "corrections" that
+mixes two opposite things: real progress (`var_unk_knk_12D` ->
+`var_pim_est_fast`) and attempts to push 9651's addresses back over 0461's
+correctly-adapted ones (`var_ect_unk_142` -> `var_ect_unk_148`). The test is
+to adapt the source name *first* and only then compare: if the adapted name
+equals what 0461 already has, it is already right. That is what separated 43
+real updates from 179 already-correct symbols.
+
+**The chargecooler pump, found — via the diagnostic tables.** Both ROMs hold a
+20-entry table of `(error variable, bit mask, diagnostic code)` triples. Aligned
+by code, they are identical except at five entries. 9651 alone has code **47,
+secondary throttle position** (`nv_diag_errors_2` bit 3). 0461 alone has codes
+**51, 52, 53 and 54** — and **54 is chargecooler pump/level**, at
+`nv_diag_errors_2` bit 7, exactly the "82.7" the comment block claims. So the
+feature *is* in the ROM, and the first pass's conclusion was wrong because it
+compared the hand-written comment block (identical in both, hence uninformative)
+instead of the table beneath it.
+
+The bit is set through the generic table-driven diagnostic store, not by a
+direct write — `nv_diag_errors_2` is referenced only twice in 0461 outside the
+table — so the next step is to find what feeds code 54's condition, indexed
+through that path, rather than grepping for a bit-7 write.
+
+> **⚠** "Found" is too strong, refined by "Chargecooler pump: the trail ends at
+> CPU1's boundary" above. The diagnostic-table difference is real and stands,
+> but the bit it maps is fed by the **ISC self-check**, and the detection code
+> is identical in both ROMs — so no pump *control* exists in this ROM to find.
+
+Worth noting what the pump is *not*: there is no distinct output pin for it.
+Bit operations on `DOUT`/`LDOUT`/`PORTA`-`PORTD`/`DOM`/`TAIT` are identical
+across the two ROMs apart from a single `bit1, PORTB` site, so the drive shares
+an existing output rather than adding one.
+
+**Secondary throttle, third independent confirmation.** The diagnostic table
+now agrees with the two earlier lines of evidence (9651's `adc_handler_trac_tps`
+processes ADC slot 8 while 0461 stubs it; 0461 lacks diagnostic code 47
+entirely). Traction control is a separate ECU; this ECU only monitors the
+secondary throttle position, and only on 9651.
+
+**Still flagged, unchanged from the first pass.** The `dmarx_*` names embedding
+both a CPU1 and a CPU2 address (`dmarx_max_retard_23B_161`, `dmarx_unk_241_167`,
+`scale_by_dmarx_167`, `dmarx_ign_timing_unk_166`) need 0461's CPU2 sibling,
+**D151804-0471**, to resolve — and the `CPU1 = CPU2 + 0xDA` offset should be
+re-confirmed for that pair rather than assumed from 9651/9661. Also
+`var_flags_4E_copy_D0`, whose `D0` is ambiguous.
+
+---
+
 ### Sibling-ROM port: D151803-9651 (CPU1) -> D151804-0461
 Scoping pass to see whether the 9651 RE work transfers to D151804-0461 — same
 3S-GTE, different car; 9651 is air-to-air intercooled, 0461 has a water
@@ -56,6 +320,13 @@ address rather than copied verbatim (`var_ect_unk_148` -> `var_ect_unk_142`,
 to the shipped `D151804-0461.BIN`, and `verify_assembly_match.py` reports
 "Total real edit regions: 0".
 
+> **⚠** Two of the names applied here were superseded by later 9651 work and
+> were wrong in 0461 until the second pass fixed them: `knock_unk_E712` and
+> `some_knock_averaging_calc` are `update_pim_est_fast`/`update_pim_est_slow`
+> — manifold-pressure estimation, not knock. Porting a name freezes a
+> snapshot of the source ROM's understanding; when the source moves on, the
+> copy is silently stale.
+
 **A trap worth remembering.** The first attempt failed to converge because a
 fuzzy match renamed `sub_FBB7` to `adc_handler_pim`, a name 0461 already
 uses — a duplicate label. Any bulk rename needs a guard against target names
@@ -80,6 +351,14 @@ Chargecooler pump/level" comment appears identically in *both* files: it is
 transcribed from the generic Toyota diagnostic-code list, not evidence the
 feature exists in 9651. Next place to look is inline in the main loop
 (`sub_C57A`) and at the DOUT/LDOUT bit writes that differ between the ROMs.
+
+> **⚠** The conclusion in this paragraph is wrong on both counts, corrected by
+> "Sibling-ROM port, second pass" above. The chargecooler pump *is* locatable
+> and the diagnostic-code comment *was* evidence: 0461's diagnostic mapping
+> table carries code **54 (chargecooler pump/level) at `nv_diag_errors_2` bit
+> 7**, and 9651's table does not. The tables were never compared in this
+> session — only the hand-written comment block above them, which is indeed
+> identical in both files and is what misled the reasoning here.
 
 **Left for a decision.** 10 renames were held back rather than guessed: the
 `dmarx_*` / `var_flags_4E_copy_*` names that embed *both* a CPU1 and a CPU2
