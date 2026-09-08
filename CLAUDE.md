@@ -159,12 +159,12 @@ The assemble step (`ASM`/`ASMFLAGS` in `makefile.lib`) runs `roms/d8x_assembler/
 
   | pair | vehicle | CPU2 → CPU1 | CPU1 → CPU2 |
   |------|---------|-------------|-------------|
-  | `D151803-9651`/`-9661` | SW20 MR2 Gen 3 | **`+0xD9`** | `+0x13B` (unverified) |
-  | `D151804-0461`/`-0471` | ST205 Celica GT-Four | **`+0xD0`** | `+0x133` (unverified) |
+  | `D151803-9651`/`-9661` | SW20 MR2 Gen 3 | **`+0xD9`** | `+0x13B` |
+  | `D151804-0461`/`-0471` | ST205 Celica GT-Four | **`+0xD0`** | `+0x133` |
 
   **The CPU2 → CPU1 figures above are derived from the DMA hardware registers, and they are one less than the name-derived values this file previously carried (`0xDA`/`0xD1`).** Do not derive these from `dmatx_X`/`dmarx_X` name pairs: several of those names sit on the wrong byte of a 16-bit variable, and taking the modal difference gives an answer that is off by one. Derive them from the buffer addresses instead — CPU2 arms its transmit buffer with `st d, ASR3` (`#814Dh` on 9661, `#8150h` on 0471; the top bit is a control flag), CPU1 receives into `var_dma_rx_buffer` and `copy_dma_rx` word-copies that to the `dmarx_*` block, so the offset is (copy destination start) − (CPU2 transmit start). The 16-bit variables corroborate it: the copy is word-wise, so a 16-bit pair must align exactly, and `dmatx_rpm_x_5p12` @`0x158` → `dmarx_rpm_x_5p12` @`0x228` gives `0xD0`, not `0xD1`.
 
-  Getting this wrong by one is not academic — it is what made `dmarx_iscv_duty` look like a flat calibration byte when CPU1 is really reading CPU2's `dmatx_status1`, and it hid the source of a live diagnostic code. The CPU1 → CPU2 figures have **not** been re-derived from hardware yet and should be treated as suspect by the same argument.
+  Getting this wrong by one is not academic — it is what made `dmarx_iscv_duty` look like a flat calibration byte when CPU1 is really reading CPU2's `dmatx_status1`, and it hid the source of a live diagnostic code. All four figures are now derived from hardware. Note the asymmetry: only the **CPU2 → CPU1** direction was wrong, and it was wrong by one in *both* pairs — the CPU1 → CPU2 values (`0x13B`, `0x133`) match what the name pairs gave. So the original error looks like a single mis-set byte in the CPU2 → CPU1 naming that then propagated to the sibling ECU along with everything else. Derivations: CPU2 → CPU1 is (CPU1 `copy_dma_rx` destination start) − (CPU2 `ASR3` transmit buffer); CPU1 → CPU2 is (CPU1 `ASR3` transmit buffer) − (CPU2 `copy_serbus_rx` destination start).
 
   The two pairs differ by 9 and 8 bytes respectively — enough to land inside a neighbouring variable and give a plausible-looking wrong answer. So derive the offset for the pair you are actually working on rather than reusing a number from here. The derivation is mechanical: collect every `dmatx_X` on CPU2 whose `dmarx_X` exists on CPU1, and take the **modal** address difference. (A minority of pairs disagree by one or two because a 16-bit variable's name sits on a different byte of the pair, so take the mode, not the first hit.)
 

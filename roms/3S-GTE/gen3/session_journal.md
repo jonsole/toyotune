@@ -15,6 +15,57 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### All four DMA offsets from hardware, and what that costs the dmarx_* names
+Derived every offset from the buffer registers and unpack routines, no names
+involved:
+
+| pair | CPU2 -> CPU1 | CPU1 -> CPU2 |
+|------|--------------|--------------|
+| `9651`/`9661` | `+0xD9` (TX `0x14D`, unpack dest `0x226`) | `+0x13B` (TX `0x200`, dest `0x0C5`) |
+| `0461`/`0471` | `+0xD0` (TX `0x150`, unpack dest `0x220`) | `+0x133` (TX `0x1FA`, dest `0x0C7`) |
+
+**Only the CPU2 -> CPU1 direction was ever wrong, and it was wrong by one in
+both pairs.** The CPU1 -> CPU2 values match what the name pairs gave. So this
+looks like a single mis-set byte in the original 9651 work that then travelled
+to the sibling ECU with everything else.
+
+**The thing that does not add up, stated plainly.** Under the corrected
+offset, 26 of the ~28 `dmarx_*` names in each CPU1 ROM sit exactly one
+variable behind their CPU2 peer — `dmarx_ign_timing` lands on
+`dmatx_ign_timing_fallback1`, `dmarx_fuel_enrich` on
+`dmatx_fuel_enrichment`'s neighbour, and so on all the way down the block.
+Taken at face value that is 26 names agreeing with the *old* offset, which
+looks like strong evidence against the new one.
+
+It is not, because it is circular: CLAUDE.md says the old offset was
+"confirmed via cross-named pairs", and these names were assigned by applying
+it. Their mutual consistency is a property of how they were generated, not
+evidence about the hardware.
+
+**Two independent checks settle it the other way.** Both ECU pairs put CPU2's
+`dmatx_status1_*` at exactly the address CPU1 bit-tests in `update_diag_obd`:
+
+    MR2    CPU1 0x242   +0xDA -> dmatx_unk_168      +0xD9 -> dmatx_status1_169
+    ST205  CPU1 0x23C   +0xD1 -> dmatx_unk_16B      +0xD0 -> dmatx_status1_16C
+
+Two ECUs landing on the same *kind* of variable independently is not
+coincidence, and it is a functional match rather than a naming one: on the
+ST205, `update_dmatx_status_flags` sets that byte's bits 3 and 4 from
+`var_flags_47`, which is exactly the pair of bits `update_diag_obd` tests.
+Under the old offset CPU1 is bit-testing a flat calibration constant, which
+is the nonsense this whole thread kept producing.
+
+**Left unrenamed on purpose.** Shifting 26 names by one in two ROMs on the
+back of this analysis is not something to do with a search-and-replace,
+especially as the *semantic* stems shift too, not just the numeric suffixes.
+Instead both CPU1 ROMs now carry a warning block at the head of the `dmarx_*`
+declarations giving the derivation, the circularity, the two checks, and the
+full CPU1-address <- CPU2-address-and-name correspondence for every entry. The
+information is recorded where anyone reading those names will see it; the
+rename is a deliberate decision for later.
+
+---
+
 ### Diagnostic 54 traced end to end: it is PORTC.6 on CPU2
 With the DMA offset fixed the rest fell out quickly. The chain, all of it read
 from the code rather than inferred:

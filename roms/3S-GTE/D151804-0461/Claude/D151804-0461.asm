@@ -1072,6 +1072,56 @@ unk_21D:			.block 1			; DATA XREF: factory_self_test+35↓w
 unk_21E:			.block 1			; DATA XREF: factory_self_test+3C↓w
 								; factory_self_test:loc_E0F8↓w ...
 				.block 1
+								; ===========================================================================
+								; WARNING: the dmarx_* names below are shifted by one byte.
+								;
+								;   The inter-CPU offset for this pair is +0D0h, derived from the DMA
+								;   hardware: CPU2 arms its transmit buffer via ASR3, CPU1 receives into
+								;   var_dma_rx_buffer and copy_dma_rx word-copies that into this block, so
+								;   the offset is (this block's start) - (CPU2's ASR3 buffer start).
+								;   CLAUDE.md previously gave a value one higher, 'confirmed via cross-named
+								;   pairs' - which is circular, because these names were themselves assigned
+								;   using it. Their mutual consistency proves nothing.
+								;
+								;   Two independent checks say the hardware value is right. Both ECU pairs
+								;   put CPU2's dmatx_status1_* at exactly the address CPU1 bit-tests in
+								;   update_diag_obd; and on the ST205, CPU2's update_dmatx_status_flags
+								;   sets that byte's bits 3 and 4 from var_flags_47, which is precisely the
+								;   pair of bits update_diag_obd tests. Under the old offset CPU1 would be
+								;   bit-testing a flat calibration constant.
+								;
+								;   So each name below most likely belongs to the variable ONE HIGHER in
+								;   this block. They have been left alone rather than shifted en masse -
+								;   that is a decision to take deliberately, not a search-and-replace.
+								;   The true correspondence, CPU1 address <- CPU2 address and name:
+								;   0220h dmarx_word_220                 <- 0150h dmatx_ve_corr_map
+								;   0222h dmarx_word_222                 <- 0152h dmatx_ve_corr_map_tps
+								;   0224h dmarx_word_224                 <- 0154h dmatx_ve_x_pim_x_rpm
+								;   0226h dmarx_scaled_ve                <- 0156h unk_156
+								;   0228h dmarx_rpm_x_5p12               <- 0158h dmatx_rpm_x_5p12
+								;   022Ah dmarx_warmup_enrich            <- 015Ah dmatx_warmup_enrichment_15A
+								;   022Bh dmarx_fuel_trim_22B            <- 015Bh unk_15B
+								;   022Ch dmarx_enrich_22C               <- 015Ch dmatx_enrichment_unk_15C
+								;   022Dh dmarx_enrich_22D               <- 015Dh dmatx_enrichment_unk_15D
+								;   022Eh dmarx_enrich_unk_22E           <- 015Eh dmatx_unk_enrich
+								;   022Fh dmarx_tham_enrich_unk          <- 015Fh unk_15F
+								;   0230h dmarx_idle_enrich              <- 0160h dmatx_enrichment_unk_160
+								;   0231h dmarx_fuel_enrich              <- 0161h dmatx_fuel_enrichment
+								;   0233h dmarx_fuel_ign_corr            <- 0163h dmatx_knock_unk_163
+								;   0234h dmarx_knock_retard_cpu2        <- 0164h dmatx_max_retard_164
+								;   0235h dmarx_max_retard_235_164       <- 0165h unk_165
+								;   0236h dmarx_lambda_trim              <- 0166h unk_166
+								;   0237h dmarx_ign_timing               <- 0167h dmatx_ign_timing_fallback1
+								;   0238h dmarx_ign_timing_fallback1     <- 0168h dmatx_ign_timing_fallback2
+								;   0239h dmarx_ign_timing_fallback2     <- 0169h dmatx_ign_timing_unk_169
+								;   023Ah dmarx_ign_timing_unk_169       <- 016Ah unk_16A
+								;   023Bh dmarx_unk_23B_16A              <- 016Bh dmatx_unk_16B
+								;   023Ch dmarx_unk_23C_16B              <- 016Ch dmatx_status1_16C
+								;   023Dh dmarx_status1_16C              <- 016Dh dmatx_diag_mode_16D
+								;   023Fh dmarx_status2_16E              <- 016Fh unk_16F
+								;   0240h dmarx_ign_advance_hi           <- 0170h unk_170
+								;   0241h dmarx_ign_advance_lo           <- 0171h (none)
+								; ===========================================================================
 dmarx_word_220:			.block 1			; DATA XREF: divide_d_by_x+13BC↓r
 								; copy_dma_rx↓o
 				.block 1

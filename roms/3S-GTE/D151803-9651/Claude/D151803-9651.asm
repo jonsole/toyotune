@@ -3424,6 +3424,57 @@ unk_223:			.block 1			; DATA XREF: factory_self_test+3F↓w
 								; is out of scope for this pass).
 word_224:			.block 2			; DATA XREF: factory_self_test+46↓w
 								; factory_self_test:loc_E183↓w ...
+								; ===========================================================================
+								; WARNING: the dmarx_* names below are shifted by one byte.
+								;
+								;   The inter-CPU offset for this pair is +0D9h, derived from the DMA
+								;   hardware: CPU2 arms its transmit buffer via ASR3, CPU1 receives into
+								;   var_dma_rx_buffer and copy_dma_rx word-copies that into this block, so
+								;   the offset is (this block's start) - (CPU2's ASR3 buffer start).
+								;   CLAUDE.md previously gave a value one higher, 'confirmed via cross-named
+								;   pairs' - which is circular, because these names were themselves assigned
+								;   using it. Their mutual consistency proves nothing.
+								;
+								;   Two independent checks say the hardware value is right. Both ECU pairs
+								;   put CPU2's dmatx_status1_* at exactly the address CPU1 bit-tests in
+								;   update_diag_obd; and on the ST205, CPU2's update_dmatx_status_flags
+								;   sets that byte's bits 3 and 4 from var_flags_47, which is precisely the
+								;   pair of bits update_diag_obd tests. Under the old offset CPU1 would be
+								;   bit-testing a flat calibration constant.
+								;
+								;   So each name below most likely belongs to the variable ONE HIGHER in
+								;   this block. They have been left alone rather than shifted en masse -
+								;   that is a decision to take deliberately, not a search-and-replace.
+								;   The true correspondence, CPU1 address <- CPU2 address and name:
+								;   0226h dmarx_word_226                 <- 014Dh dmatx_ve_corr_map
+								;   0228h dmarx_word_228                 <- 014Fh dmatx_ve_corr_map_tps
+								;   022Ah dmarx_word_22A                 <- 0151h dmatx_ve_x_pim_x_rpm
+								;   022Ch dmarx_scaled_ve                <- 0153h dmatx_scaled_ve
+								;   022Eh dmarx_rpm_x_5p12               <- 0155h dmatx_rpm_x_5p12
+								;   0230h dmarx_warmup_enrich            <- 0157h dmatx_warmup_enrichment_157
+								;   0231h dmarx_fuel_trim_231            <- 0158h dmatx_enrichment_unk_158
+								;   0232h dmarx_enrich_232               <- 0159h dmatx_enrichment_unk_159
+								;   0233h dmarx_enrich_233               <- 015Ah dmatx_enrichment_unk_15A
+								;   0234h dmarx_enrich_unk_234           <- 015Bh dmatx_unk_enrich
+								;   0235h dmarx_tham_enrich_unk          <- 015Ch dmatx_tham_enrich
+								;   0236h dmarx_idle_enrich              <- 015Dh dmatx_enrichment_unk_15D
+								;   0237h dmarx_fuel_enrich              <- 015Eh dmatx_fuel_enrichment
+								;   0239h dmarx_fuel_ign_corr            <- 0160h dmatx_knock_unk_160
+								;   023Ah dmarx_knock_retard_cpu2        <- 0161h dmatx_max_retard_161
+								;   023Bh dmarx_max_retard_23B_161       <- 0162h dmatx_lambda_trim_162
+								;   023Ch dmarx_lambda_trim              <- 0163h dmatx_ign_timing
+								;   023Dh dmarx_ign_timing               <- 0164h dmatx_ign_timing_fallback1
+								;   023Eh dmarx_ign_timing_fallback1     <- 0165h dmatx_ign_timing_fallback2
+								;   023Fh dmarx_ign_timing_fallback2     <- 0166h dmatx_ign_timing_unk_166
+								;   0240h dmarx_ign_timing_unk_166       <- 0167h dmatx_unk_167
+								;   0241h dmarx_unk_241_167              <- 0168h dmatx_unk_168
+								;   0242h dmarx_unk_242_168              <- 0169h dmatx_status1_169
+								;   0243h dmarx_status1_169              <- 016Ah dmatx_diag_mode_16A
+								;   0244h dmarx_unk_244                  <- 016Bh dmatx_status2_16B
+								;   0245h dmarx_status2_16B              <- 016Ch dmatx_ign_advance_hi_16C
+								;   0246h dmarx_ign_advance_hi           <- 016Dh word_16D
+								;   0247h dmarx_ign_advance_lo           <- 016Eh (none)
+								; ===========================================================================
 dmarx_word_226:			.block 2			; DATA XREF: divide_d_by_x+13FF↓r
 								; copy_dma_rx↓o
 dmarx_word_228:			.block 2			; DATA XREF: divide_d_by_x+1404↓r
