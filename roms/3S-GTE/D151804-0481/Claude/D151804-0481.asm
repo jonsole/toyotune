@@ -806,8 +806,8 @@ dmarx_status1_23C:	.block 1		; DATA XREF: watchdog_kick-F9B↓r
 dmarx_diag_mode_23D:	.block 1		; DATA XREF: calc_4ms_corrections:loc_EA5F↓r
 unk_23E:	.block 1		; DATA XREF: sub_DCF4+1D7↓r
 dmarx_ign_advance_hi_23F:	.block 1		; DATA XREF: sub_DCF4+1D0↓r
-dmarx_word_240_hi:	.block 1		; DATA XREF: iv6_ne_process+122↓r
-dmarx_unk_240_lo:	.block 1		; DATA XREF: ROM:C665↓o	iv6_ne_process+12A↓r
+dmarx_ign_retard_hi:	.block 1		; DATA XREF: iv6_ne_process+122↓r
+dmarx_ign_retard_lo:	.block 1		; DATA XREF: ROM:C665↓o	iv6_ne_process+12A↓r
 unk_242:	.block 1		; DATA XREF: copy_dma_rx+B↓o
 		.block 1
 		.block 1
@@ -3143,7 +3143,7 @@ loc_C65B:				; CODE XREF: ROM:C65F↓j
 
 loc_C664:				; CODE XREF: ROM:C668↓j
 		st	d, [y]
-		cmp	y, #dmarx_unk_240_lo
+		cmp	y, #dmarx_ign_retard_lo
 		ble	loc_C664
 ; START	OF FUNCTION CHUNK FOR watchdog_kick
 
@@ -10209,10 +10209,10 @@ loc_ED01:				; CODE XREF: iv6_ne_process+10B↑j
 
 loc_ED12:				; CODE XREF: iv6_ne_process+11D↑j
 		mov	d, x
-		ld	a, dmarx_word_240_hi
+		ld	a, dmarx_ign_retard_hi
 		cmp	#30h, va_ne_count_2
 		bcc	loc_ED1E
-		ld	a, dmarx_unk_240_lo
+		ld	a, dmarx_ign_retard_lo
 
 loc_ED1E:				; CODE XREF: iv6_ne_process+128↑j
 		add	x, a

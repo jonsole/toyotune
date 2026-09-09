@@ -177,7 +177,7 @@ var_flags_40:			.block 1			; C87C↓o ...
 								;   behavior right after a reset: the
 								;   decay_enrichment_unk_53/FE/100/
 								;   decay_var_enrichment_unk_103 skip-paths, TVSV's
-								;   word_16D table select, both
+								;   dmatx_ign_retard_pair table select, both
 								;   PORTA.2/PORTA.3 warning blocks, and a
 								;   PORTB.5 pulse in main_loop. Reads as
 								;   "a reset/soft-restart just happened",
@@ -351,7 +351,7 @@ var_flags_45:			.block 1			; CD54↓r ...
 								;   warming up, not boosting", not
 								;   independently confirmed. Also read
 								;   (alongside bit1) to select
-								;   word_16D's table entry, later in
+								;   dmatx_ign_retard_pair's table entry, later in
 								;   the same function.
 								; Bit 1	- Set if RPM > 4000
 var_flags_46:			.block 1			; CEAD↓r ...
@@ -1227,7 +1227,20 @@ dmatx_ign_advance_hi_16C:			.block 1			; D1DD↓w
 								; mode rather than a normal computed
 								; ignition-advance term; not independently
 								; confirmed.
-word_16D:			.block 2			; loc_CD61↓w ...
+dmatx_ign_retard_pair:			.block 2			; loc_CD61↓w ...
+								; A PAIR of single-byte ignition retard values, not a 16-bit
+								;   number. calc_ignition_timing selects a 2-byte entry from
+								;   table_rpm_ignition_retard (by var_flags_45 bit 1) and stores
+								;   both with one `st d`; zero is stored when the gating flags
+								;   are clear.
+								;   CPU1 then uses ONE of the two, chosen by crank position: in
+								;   bg_ne_process it loads the high byte, and substitutes the low
+								;   byte when va_ne_count_2 < 30h, then adds it to the ignition
+								;   timing. So the two bytes are alternative retard amounts for
+								;   different parts of the crank cycle.
+								;   Was word_16D, and previously recorded here as having no writer
+								;   at all - that was a search bug: the scan looked only for names
+								;   with a dmatx_ prefix, which this did not have.
 word_16F:			.block 2
 				.block 1
 				.block 1
@@ -3360,7 +3373,7 @@ reset_vector:							; FFFE↓o
 
 clear_variables:
 ; Zero-fills the working-variable region: var_flags_40-unk_7F byte-wise,
-; then var_ne_count-word_16D word-wise. Falls into loc_C88E below.
+; then var_ne_count-dmatx_ign_retard_pair word-wise. Falls into loc_C88E below.
 ; (A wider, separate clear runs later at runtime - see loc_D2E9.)
 				clr	a
 				clr	b
@@ -3374,7 +3387,7 @@ clear_variables_low:						; C883↓j
 
 clear_variables_high:						; C88C↓j
 				st	d, [y]			; clear	16 bits	at a time
-				cmp	y, #(word_16D+1)	; reached end of block?
+				cmp	y, #(dmatx_ign_retard_pair+1)	; reached end of block?
 				ble	clear_variables_high	; loop back if not
 ; End of function clear_variables
 
@@ -4396,7 +4409,7 @@ loc_CCE6:							; CCE1↑j
 ;   dmarx_ect, dmarx_unk_D4, dmarx_tham, var_flags_40, var_flags_41,
 ;   var_flags_45, dmarx_var_flags_46, PORTD_ASRIN, var_flags_44, var_cnt8ms_B0,
 ;   var_rpm_div_25
-; Writes: var_pim2_peak, dmatx_ign_timing, var_flags_45, word_16D,
+; Writes: var_pim2_peak, dmatx_ign_timing, var_flags_45, dmatx_ign_retard_pair,
 ;   var_max_retard_unk, dmatx_max_retard_161, var_cnt32ms_B2,
 ;   var_cnt16ms_B1, var_cnt_C1, var_cnt8ms_B0, var_cnt32ms_B3,
 ;   var_tham_enrich_unk, dmatx_tham_enrich, PORTB, var_flags_47, var_flags_48,
@@ -4489,7 +4502,7 @@ loc_CD4D:							; CD3E↑j ...
 				clrb	bit0, var_flags_45	; Clear	flag as	ECT < 55c
 
 loc_CD4F:							; CD48↑j
-; word_16D: table_rpm_ignition_retard entry (selected by var_flags_45.1,
+; dmatx_ign_retard_pair: table_rpm_ignition_retard entry (selected by var_flags_45.1,
 ; the high-RPM latch above) when var_flags_40.0 is set AND var_flags_45.0
 ; (the cold/off-boost latch) is set; 0 otherwise. Computed but its
 ; consumer isn't in this function - not traced further.
@@ -4506,7 +4519,7 @@ loc_CD5F:							; CD5A↑j
 				ld	d, y + 00h
 
 loc_CD61:							; CD51↑j ...
-				st	d, word_16D
+				st	d, dmatx_ign_retard_pair
 
 ; var_max_retard_unk / dmatx_max_retard_161 = map_max_knock_retard_C546
 ; (RPM, var_pim2_peak) - the per-condition ceiling on knock retard,

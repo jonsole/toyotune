@@ -15,6 +15,50 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Two DMA loose ends closed, and a paragraph I silently deleted
+**`word_16D` had a writer all along.** Recorded as "no writer found on CPU2",
+which was not a finding: my writer scan matched only stores to names beginning
+`dmatx_`, and this field is called `word_16D`. Exactly the shape of the
+`table_odb` miss, and the third time this session a "nothing references it"
+claim turned out to be the search rather than the ROM. Every such claim should
+be treated as provisional until the search itself has been checked.
+
+What it is: `calc_ignition_timing` picks a two-byte entry from
+`table_rpm_ignition_retard` (selected by `var_flags_45` bit 1, zeroed when the
+gating flags are clear) and stores both bytes with one `st d`. **It is not a
+16-bit number.** CPU1 uses *one* of the two, chosen by crank position —
+`bg_ne_process` loads the high byte, substitutes the low byte when
+`va_ne_count_2 < 30h`, then adds it to the ignition timing. Two alternative
+retard amounts for different parts of the crank cycle, which explains why CPU2
+writes them together and CPU1 never reads them together.
+
+Renamed `dmatx_ign_retard_pair` and `dmarx_ign_retard_hi`/`_lo` in both ECU
+pairs plus 0481, the ST205 code checked instruction by instruction rather than
+assumed parallel: same `st d` from a table entry, same `va_ne_count_2 >= 30h`
+selection.
+
+**The `0x238` hole was an unnamed `.block 1`** between
+`dmarx_fuel_enrichment` and `dmarx_knock_unk_239`, which is why the received
+block appeared to have a gap. Now `dmarx_unk_238`; nothing reads it, so it
+stays `unk_`.
+
+**A tooling lesson that cost real content.** Commit `ef9cfe4` silently deleted
+three paragraphs of `dma_link_system.md`. The edit replaced everything between
+two headings — `s[:i] + new + s[j:]` — and the three reverse-direction
+anomalies happened to sit between them. Nothing failed, the file assembled
+fine, and the loss went unnoticed until I went looking for one of those
+paragraphs to update it and could not find it. Recovered from `git show
+b62b538` and restored, two of the three now marked resolved.
+
+A slice replacement between two anchors deletes whatever is in the middle, and
+does it silently. Replace a *known* string, or assert on what is about to be
+discarded — do not span from one landmark to another and assume you know what
+lies between.
+
+All five working copies assemble byte-identical.
+
+---
+
 ### The ECT threshold ladder, and a trap in the calibration spreadsheet
 Following up the three unreachable blocks. They are still unexplained, but two
 useful things came out of looking properly.

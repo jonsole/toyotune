@@ -1125,8 +1125,8 @@ unk_21E:			.block 1			; DATA XREF: factory_self_test+3C↓w
 								;   023Ch dmarx_status1_23C              <- 016Ch dmatx_status1_16C
 								;   023Dh dmarx_diag_mode_23D            <- 016Dh dmatx_diag_mode_16D
 								;   023Fh dmarx_ign_advance_hi_23F       <- 016Fh unk_16F
-								;   0240h dmarx_word_240_hi              <- 0170h unk_170
-								;   0241h dmarx_unk_240_lo               <- 0171h (no symbol)
+								;   0240h dmarx_ign_retard_hi              <- 0170h unk_170
+								;   0241h dmarx_ign_retard_lo               <- 0171h (no symbol)
 								; ===========================================================================
 dmarx_ve_corr_map:			.block 1			; DATA XREF: divide_d_by_x+13BC↓r
 								; copy_dma_rx↓o
@@ -1195,8 +1195,8 @@ dmarx_status1_23C:			.block 1			; DATA XREF: divide_d_by_x+958↓r
 dmarx_diag_mode_23D:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EE3C↓r
 unk_23E:			.block 1			; DATA XREF: factory_self_test+1E1↓r
 dmarx_ign_advance_hi_23F:			.block 1			; DATA XREF: factory_self_test+1DA↓r
-dmarx_word_240_hi:			.block 1			; DATA XREF: iv6_ne_process+122↓r
-dmarx_unk_240_lo:			.block 1			; DATA XREF: divide_d_by_x+DA↓o
+dmarx_ign_retard_hi:			.block 1			; DATA XREF: iv6_ne_process+122↓r
+dmarx_ign_retard_lo:			.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12A↓r
 byte_242:			.block 0BDh			; DATA XREF: copy_dma_rx+B↓o
 stack_top:			.block 1			; DATA XREF: ROM:C642↓o
@@ -3278,7 +3278,7 @@ loc_C64A:							; CODE XREF: divide_d_by_x+D4↓j
 
 loc_C653:							; CODE XREF: divide_d_by_x+DD↓j
 				st	d, [y]
-				cmp	y, #dmarx_unk_240_lo
+				cmp	y, #dmarx_ign_retard_lo
 				ble	loc_C653
 
 
@@ -12879,11 +12879,11 @@ loc_F0DE:							; CODE XREF: iv6_ne_process+10B↑j
 
 loc_F0EF:							; CODE XREF: iv6_ne_process+11D↑j
 				mov	d, x
-				ld	a, dmarx_word_240_hi
+				ld	a, dmarx_ign_retard_hi
 				cmp	#30h, va_ne_count_2
 				bcc	loc_F0FB
 
-				ld	a, dmarx_unk_240_lo
+				ld	a, dmarx_ign_retard_lo
 
 loc_F0FB:							; CODE XREF: iv6_ne_process+128↑j
 				add	x, a
