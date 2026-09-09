@@ -15,6 +15,32 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### D151804-0481 (UK ST205 CPU1) ported from 0461
+The cheapest port yet, because the two ROMs are the same car for different
+markets: **their RAM layouts are identical.** 209 hand-named symbols are
+shared and every one sits at the same address, none shifted — where
+9651 -> 0461 had piecewise shifts of 0, -4, -6 and -8 across the map. Only
+the ROM addresses moved, so RAM variable names port verbatim and only table
+and label names needed their embedded address adapted.
+
+New `Claude/D151804-0481.asm` (CP437 -> UTF-8, no replacement characters).
+Two passes: 87 exact function-signature matches gave 287 new names and 4
+updates (IDA's bare `IV4`/`IV6`/`IV9`/`IVc` vectors gaining descriptive
+names), then a windowed pass over 18018 uniquely-matching instruction
+windows gave 313 more with **zero** conflicts against what the first pass had
+just set. Nothing was rejected in the first pass at all.
+
+**0481 goes from 6 to 662 hand-named symbols**, and assembles byte-identical
+to `D151804-0481_ORIGNAL.bin` (its shipped image — the filename's typo is
+pre-existing).
+
+Worth noting what made this one clean where the first port was not: 0461 had
+already been corrected, so the DMA names it carries are the shifted-correct
+ones, and none of the off-by-one propagated onward. Porting from a corrected
+source is the whole difference.
+
+---
+
 ### The dmarx_* shift applied
 Renamed every `dmarx_*` in both CPU1 ROMs to the identity of the CPU2 variable
 it actually receives: **28 in 9651, 27 in 0461**, plus `scale_by_dmarx_167` ->
