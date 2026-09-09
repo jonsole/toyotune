@@ -100,3 +100,8 @@ CMakeUserPresets.json
 # Deliberately NOT a blanket *.bin rule - roms/ tracks around 45 legitimate
 # ROM images with that extension, as do cpld/roms and test code/.
 flash_backup_*.bin
+
+# rom_port scratch: plan/vote files written by port_rom.py and ad-hoc
+# rename scripts. The tooling never reads them back, and the results that
+# matter are recorded in the ROMs' own warning blocks.
+roms/rom_port/*.json
