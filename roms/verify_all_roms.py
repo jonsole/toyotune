@@ -107,14 +107,20 @@ def main(argv=None):
                         help='directories to search (default: roms/)')
     parser.add_argument('--vs-ref', metavar='REF',
                         help='also assemble each file as at this git ref and compare')
-    parser.add_argument('--tmp', default=os.path.join(tempfile.gettempdir(),
-                                                      'verify_all_roms'),
-                        help='scratch directory for assembler output (default: '
-                             'the system temp dir, deliberately outside the repo '
-                             'so a stray `git add -A` cannot commit it)')
+    parser.add_argument('--tmp', default=None,
+                        help='scratch directory for assembler output. Default is '
+                             'a fresh directory under the system temp dir - '
+                             'outside the repo, so a stray `git add -A` cannot '
+                             'commit it, and unique per run, so two concurrent '
+                             'runs cannot clobber the same output files')
     args = parser.parse_args(argv)
 
-    os.makedirs(args.tmp, exist_ok=True)
+    # A fixed scratch path means two runs in parallel fight over cur.bin and
+    # one dies with a PermissionError partway through. Give each run its own.
+    if args.tmp:
+        os.makedirs(args.tmp, exist_ok=True)
+    else:
+        args.tmp = tempfile.mkdtemp(prefix='verify_all_roms_')
     rows, failures, checked = [], 0, 0
 
     for source in find_sources(args.roots):
