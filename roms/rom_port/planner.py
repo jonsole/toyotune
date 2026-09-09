@@ -29,11 +29,28 @@ def _tail_address(name):
     return value if plausible_address(value) else None
 
 
+def _embedded_rom_address(name):
+    """A ROM address sitting mid-name: table_C356_rpm -> 0xC356.
+
+    Plenty of table and map names put their own address in the middle rather
+    than at the end, and reading only the trailing token misses those --
+    which made the tool refuse to adapt them at all. Only ROM-range values
+    count, and only when there is exactly one candidate: two would be
+    ambiguous, and RAM-range values are too easy to confuse with the small
+    constants that also appear in names.
+    """
+    found = {int(m, 16) for m in re.findall(r'(?<=_)([0-9A-Fa-f]{4})(?=_|$)', name)
+             if 0xC000 <= int(m, 16) <= 0xFFFF}
+    return found.pop() if len(found) == 1 else None
+
+
 def address_of(name, ram):
     a = ram.get(name, (None,))[0]
     if a is not None:
         return a
-    return _self_address(name) if AUTO.match(name) else _tail_address(name)
+    if AUTO.match(name):
+        return _self_address(name)
+    return _tail_address(name) or _embedded_rom_address(name)
 
 
 def build_address_map(votes, src_ram, dst_ram):
