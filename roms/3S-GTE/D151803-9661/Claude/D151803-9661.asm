@@ -972,8 +972,27 @@ dmarx_knock:			.block 1			; CA10↓r
 								; CPU1's knock level; indexes
 								; table_knock_enrichment here to give
 								; var_knock_enrichment.
-dmarx_dout0_duty_E1:			.block 2			; CE79↓r
-								; CPU1's DOUT0 duty value.
+dmarx_pw_loop_mode:			.block 1			; CE79↓r
+								; CPU1's var_pw_loop_mode, received over DMA.
+								;   Named for a duty because drive_DOUT0 treats it
+								;   as one - it compares it against a 0..198
+								;   sawtooth (var_unk_115, +6 per call, wrapping
+								;   at 0C8h) and drives DOUT.0 while it exceeds
+								;   it, which is a software PWM on a 0-200 scale.
+								;   But CPU1 only ever writes 0 or 0C8h to it:
+								;   it is an open-loop(0)/closed-loop(0C8h) fuel
+								;   selector, per its own declaration there. So
+								;   the duty is only ever 0 or full, and DOUT.0
+								;   is in practice a straight digital indication
+								;   of whether CPU1 is in closed loop - the PWM
+								;   is machinery that never varies.
+								;   Was dmarx_dout0_duty_E1, declared .block 2.
+								;   The second byte is a separate field (below),
+								;   not the low half of a 16-bit value: drive_DOUT0
+								;   reads this with `ld b`, one byte.
+dmarx_tps_delta_E2:			.block 1
+								; CPU1's dmatx_tps_delta (021Dh). Received but
+								;   never read anywhere in this ROM.
 var_spd_edge_count:		.block 1			; D580↓o ...
 								; Count	of speed signal	edges
 				.block 1
@@ -4660,11 +4679,21 @@ loc_CE67:							; CE53↑j
 
 ; ---------------------------------------------------------------------------
 ; drive_DOUT0: software-PWM comparator driving DOUT.0, the same idiom as
-; drive_DOUT2_tvsv (see its header below) but with the duty cycle received
-; directly from CPU1 over DMA (dmarx_dout0_duty_E1) rather than computed locally:
-; var_unk_115 free-runs 0->200 (+6/call, wraps at 0xC8), and DOUT.0 is
-; driven high while var_unk_115 < dmarx_dout0_duty_E1. What DOUT.0 physically
-; drives, and dmarx_dout0_duty_E1's meaning on CPU1's side, aren't confirmed.
+; drive_DOUT2_tvsv (see its header below) but with the duty received from
+; CPU1 over DMA rather than computed locally: var_unk_115 free-runs 0->198
+; (+6/call, wrapping at 0C8h) and DOUT.0 is driven high while the received
+; value exceeds it.
+;
+; The duty never actually varies. CPU1 writes only 0 or 0C8h to the source
+; variable (var_pw_loop_mode - its open-loop/closed-loop fuel selector), and
+; the sawtooth peaks at 198, so the comparison yields 'always clear' at 0 and
+; 'always set' at 0C8h. DOUT.0 is therefore a straight digital indication of
+; whether CPU1 is running closed loop, expressed through PWM machinery that
+; is never exercised. What DOUT.0 physically drives is still unconfirmed.
+;
+; Note it reads ONE byte (`ld b`). The declaration used to be `.block 2`,
+; which made the pair look like a 16-bit value; the second byte is CPU1's
+; separate dmatx_tps_delta and nothing here reads it.
 ; ---------------------------------------------------------------------------
 drive_DOUT0:							; D477↓p
 				ld	b, var_unk_115
@@ -4675,7 +4704,7 @@ drive_DOUT0:							; D477↓p
 
 loc_CE76:							; CE73↑j
 				st	b, var_unk_115
-				ld	b, dmarx_dout0_duty_E1
+				ld	b, dmarx_pw_loop_mode
 				cmp	b, var_unk_115
 				ble	loc_CE83
 				setb	bit0, DOUT

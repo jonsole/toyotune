@@ -196,8 +196,8 @@ sites). Sizes in bytes.
 | 19 | `0x219` | `dmatx_obd_iscv` | 1 | `update_diag_obd` | `0xDE` | `dmarx_obd_iscv` | `next_odb_byte` via `table_odb` — see §6 |
 | 1A | `0x21A` | `dmatx_obd_o2_sensor` | 1 | OBD output code | `0xDF` | `dmarx_obd_o2_sensor` | `next_odb_byte` via `table_odb`, `output_odb_bit` |
 | 1B | `0x21B` | `dmatx_knock_retard` | 1 | `check_clear_speed_limiter_rev` | `0xE0` | `dmarx_knock` | `table_knock_enrichment`, `main_continue_2` |
-| 1C | `0x21C` | `dmatx_pw_loop_mode` | 1 | `copy_dma_tx` ← `var_pw_loop_mode` | `0xE1` | `dmarx_dout0_duty_E1` (**2 bytes**) | `drive_DOUT0` — **see §6** |
-| 1D | `0x21D` | `dmatx_tps_delta` | 1 | **no writer found** | `0xE2` | (low byte of the above) | |
+| 1C | `0x21C` | `dmatx_pw_loop_mode` | 1 | `copy_dma_tx` ← `var_pw_loop_mode` | `0xE1` | `dmarx_pw_loop_mode` | `drive_DOUT0` — see §6 |
+| 1D | `0x21D` | `dmatx_tps_delta` | 1 | **no writer found** | `0xE2` | `dmarx_tps_delta_E2` | **none** |
 | 1E | `0x21E` | `dmatx_error_flags1` | 1 | `copy_dma_tx` ← `var_error_flags1` (`st d`, both bytes) | `0x4B` | `dmarx_unk_4B` (2) | `drive_DOUT0` |
 | 1F | `0x21F` | `dmatx_error_flags2` | 1 | (second byte of the above) | `0x4C` | | |
 | 20 | `0x220` | `dmatx_flags_46` | 1 | `copy_dma_tx` ← `var_flags_46` | `0x42` | `dmarx_var_flags_46` | 16 sites — the most-read byte in the frame |
@@ -334,7 +334,7 @@ ST205. See `session_journal.md` § *Diagnostic 54 traced end to end*.
 
 Recorded rather than resolved.
 
-**One field is sent and never read: `nv_trim_pim`.** No reader for
+**One field is sent and never read: `nv_trim_pim`.** Re-checked after the `table_odb` lesson below — it appears in no `.dw`/`.db` table either, only its own declaration. No reader for
 `dmarx_nv_trim_pim` was found on CPU2. `ecu_overview.md` describes it as a live
 term in the frame; on this evidence it is transmitted and ignored. As always,
 an indexed read would not show up — but see the correction immediately below
@@ -367,32 +367,22 @@ actually travels is CPU2's own max-retard value coming back. Worth noting the
 round trip is two frames: CPU2 computes it in `calc_ignition_timing`, CPU1
 receives and re-sends it, CPU2 reads it back a tick later.
 
-**Slot `0x21C`–`0x21D`: the two sides disagree about the width.** CPU1 sends
-two independent bytes, `var_pw_loop_mode` at `0x21C` and `dmatx_tps_delta` at
-`0x21D` — and no writer of `dmatx_tps_delta` was found, so the second byte may
-be stale. CPU2's `drive_DOUT0` reads `0xE1`–`0xE2` as a **single 16-bit**
-"DOUT0 duty". One of these readings is wrong, and it is the one that drives a
-physical output. Worth settling from `drive_DOUT0`'s arithmetic.
+**Slot `0x21C`: DOUT.0 is a closed-loop indicator dressed as a PWM.**
+Resolved, and it was not the width disagreement it first looked like. CPU2's
+`drive_DOUT0` is a software-PWM comparator: `var_unk_115` free-runs 0->198
+(+6 per call, wrapping at `0C8h`) and DOUT.0 is driven high while the received
+value exceeds it. But CPU1 writes only **0 or `0C8h`** to the source variable —
+`var_pw_loop_mode` is its open-loop/closed-loop fuel selector — and the
+sawtooth peaks at 198, so the comparison is 'always clear' at 0 and 'always
+set' at `0C8h`. **DOUT.0 is a straight digital indication of whether CPU1 is
+running closed loop**, expressed through PWM machinery that never varies. What
+DOUT.0 physically drives is still unconfirmed.
 
-**A 16-bit CPU2 value arrives as two separately-named CPU1 bytes.** `word_16D`
-is 2 bytes on CPU2 and lands at CPU1 `0x246`-`0x247`, which CPU1 declares as
-two 1-byte symbols. That is consistent, and it is what lets the block end on a
-variable boundary, but the two sides disagree about whether this is one value
-or two. `bg_ne_process_F108` reads both, so CPU1 probably does treat it as a
-pair. **No writer for `word_16D` was found on CPU2 at all**, so what it
-carries is open.
-
-**`dmatx_unk_15F` is sent and has no CPU1 symbol.** CPU2 writes it in
-`calc_ignition_timing`; it arrives at CPU1 `0x238`, where nothing is declared
-and nothing reads it -- the mirror of the unread fields in the other
-direction.
-
-**Several enrichment slots have two writers each.** As described in §5.2, one
-stage of the decay chain writes a slot and the next rewrites it. Because
-transmit streams live RAM with no snapshot, which stage's value CPU1 receives
-depends on where in the chain the engine happened to read that byte. Probably
-harmless for a decaying value, but worth knowing before treating any of these
-as a stable reading.
+The apparent 16-bit read was a mis-declaration: `drive_DOUT0` reads one byte
+(`ld b`), and the field had been declared `.block 2`. It is now split into
+`dmarx_pw_loop_mode` and `dmarx_tps_delta_E2`, the latter receiving CPU1's
+`dmatx_tps_delta` — which has no writer on CPU1 and no reader on CPU2, so it
+carries whatever `0x21D` last held.
 
 **CPU2 receives 35 bytes; CPU1 sends 38.** `var_serbus_rx` is 35 bytes and
 `copy_serbus_rx` consumes exactly 35. Whether the engine actually transfers
