@@ -96,6 +96,37 @@ TAIT:				.block 1			; C85E↓r ...
 LDOUT:				.block 1			; Latch	DOUT
 DOUT:				.block 1			; C86B↓r ...
 								; DOUT Data Register
+								;
+								; *** This is CPU2's DOUT. It is a different register on a different chip
+								; from CPU1's DOUT, and the bit assignments have nothing in common. ***
+								; CPU1's DOUT.0 is the IGT coil driver and its .4-.7 are the four injectors
+								; (see D151803-9651 and gen3/ignition_system.md). None of that applies here.
+								;
+								; CPU2 touches exactly three bits, and every access is a setb/clrb - the
+								; register is never read or written whole:
+								;
+								;   DOUT.0 - Closed-loop indicator, driven by drive_DOUT0. That routine is a
+								;            software-PWM comparator, but the value it compares comes from
+								;            CPU1's var_pw_loop_mode, which is only ever 0 or 0C8h, so the
+								;            duty is only ever 0% or 100%. In practice the pin just follows
+								;            whether CPU1 is running closed loop. Physical device unconfirmed.
+								;            See drive_DOUT0's header and gen3/dma_link_system.md §6.
+								;   DOUT.1 - never touched.
+								;   DOUT.2 - TVSV boost-control solenoid, driven by drive_DOUT2_tvsv. This
+								;            one IS a real PWM: var_tvsv_cnt free-runs 0->192 (+8/call,
+								;            wrapping at 0C8h) and the duty var_tvsv_117 genuinely varies,
+								;            computed by the block at loc_CE86. Do not confuse it with
+								;            DOUT.0 above - the boost control is bit 2, not bit 0.
+								;   DOUT.3 - only ever CLEARED, once, unconditionally, in the pin-park block
+								;            at loc_D084. Never set anywhere in this ROM. Note the ST205
+								;            CPU2 (D151804-0471) has conditional drive code on this same pin
+								;            whose thresholds cannot be met - see the annotation there.
+								;   DOUT.4-.7 - never touched.
+								;
+								; DOM is written 0 at reset, on re-prime and in factory_selfcheck, so DOUT
+								; writes here take effect immediately. That is the other difference from
+								; CPU1, where DOM latches DOUT transitions to a CPR timer match to get
+								; ignition and injection edges placed precisely.
 DOM:				.block 1			; C86E↓r ...
 								; DOUT Control Register
 PORTC:				.block 1			; loc_CD1D↓r ...
