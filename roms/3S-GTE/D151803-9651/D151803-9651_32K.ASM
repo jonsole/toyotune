@@ -1081,7 +1081,7 @@ dmarx_unk_241:			.block 1			; DATA XREF: sub_E84F+8r
 dmarx_unk_242:			.block 1			; DATA XREF: sub_C59B+98Br
 								; sub_C59B+C86r ...
 dmarx_unk_243:			.block 1			; DATA XREF: sub_EA22:loc_EEC7r
-damrx_unk_244:			.block 1			; DATA XREF: sub_E115+1EBr
+dmarx_unk_244:			.block 1			; DATA XREF: sub_E115+1EBr
 dmarx_unk_245:			.block 1			; DATA XREF: sub_E115+1E4r
 dmarx_ign_timing_unk_246:	.block 1			; DATA XREF: ignition_timing_calc+123r
 dmarx_ign_timing_unk_247:	.block 1			; DATA XREF: sub_C59B+DAo
@@ -9206,7 +9206,7 @@ loc_E2F3:							; CODE XREF: sub_E115:loc_E2DAj
 				cmp	b, #26h
 				bcs	loc_E35D
 
-				ld	a, damrx_unk_244
+				ld	a, dmarx_unk_244
 				cmp	b, #3Ah
 				bcs	loc_E35A
 

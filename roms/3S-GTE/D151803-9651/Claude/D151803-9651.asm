@@ -841,13 +841,29 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								; divide_d_by_x+968↓r ...
 								; 4C.0 - Knock sensor error
 								; 4C.1 - TPS error
-								; 4C.2 - ISC self-check mismatch: set when
-								;   dmarx_iscv_duty (CPU2's commanded ISC
-								;   duty) doesn't equal an expected test
-								;   value of 0x10 during a startup/self-
-								;   check comparison sequence (update_diag_obd);
-								;   cleared when it matches. Companion to
-								;   bit7 (same check, other test value).
+								; 4C.2 - Mirrors BIT 4 of dmarx_status1_242
+								;   (update_diag_obd): set when that bit is
+								;   set, cleared when clear. Companion to
+								;   bit7, which mirrors bit 3 of the same
+								;   byte.
+								;   CORRECTION: this was previously read as
+								;   a comparison against a test value of
+								;   0x10. It is not - `cmpb` is a bit-wise
+								;   AND test (BITA-equivalent, opcode 0xCE),
+								;   not a compare, so `cmpb a, #10h` tests
+								;   bit 4 rather than comparing against 16.
+								;   The technical reference's instruction
+								;   table had cmpb's opcode wrong (0xCD,
+								;   colliding with `cmp b`), which is what
+								;   made the misreading easy; corrected
+								;   against bin/TASM8x.TAB and the doc's own
+								;   opcode matrix.
+								;   Note also that dmarx_status1_242 is not
+								;   obviously an ISC duty: on CPU2 it is
+								;   written exactly once, from an RPM-indexed
+								;   table lookup sitting among the ignition
+								;   timing fallback lookups in calc_params.
+								;   Treat the name as unconfirmed.
 								; 4C.3 - TRAC TPS error
 								; 4C.4 - THAM sensor error
 								; 4C.5 - O2 sensor heater error
@@ -861,12 +877,16 @@ var_error_flags2:		.block 1			; DATA XREF: clear_nv_ram+D↓w
 								;   var_diag_errors_5.3 alongside it;
 								;   cleared once var_adc_lambda reads lean
 								;   (negative) again.
-								; 4C.7 - ISC self-check mismatch: set when
-								;   dmarx_iscv_duty doesn't equal an
-								;   expected test value of 0x08 during the
-								;   same startup/self-check sequence as
-								;   bit2 (update_diag_obd); cleared when it
-								;   matches.
+								; 4C.7 - Mirrors BIT 3 of dmarx_status1_242
+								;   (update_diag_obd), the companion to
+								;   bit2 - see the correction there; this is
+								;   a bit test, not a compare against 0x08.
+								;   Not committed to nv_diag_errors_2 on
+								;   this ROM: the commit mask is 1Fh, which
+								;   excludes bit 7. On the ST205 CPU1,
+								;   D151804-0461, the mask is 97h and this
+								;   bit becomes diagnostic code 54,
+								;   "chargecooler pump/level".
 								;
 var_flags_4D:			.block 1			; DATA XREF: divide_d_by_x+84A↓r
 								; divide_d_by_x+9AE↓r ...
@@ -3404,47 +3424,128 @@ unk_223:			.block 1			; DATA XREF: factory_self_test+3F↓w
 								; is out of scope for this pass).
 word_224:			.block 2			; DATA XREF: factory_self_test+46↓w
 								; factory_self_test:loc_E183↓w ...
-dmarx_word_226:			.block 2			; DATA XREF: divide_d_by_x+13FF↓r
+								; ===========================================================================
+								; The CPU2 -> CPU1 DMA block. Inter-CPU offset for this pair is +0D9h.
+								;
+								;   These names were SHIFTED BY ONE on <date of this change>: each now
+								;   carries the identity of the CPU2 variable it actually receives. They
+								;   previously reflected an offset one higher, which CLAUDE.md had recorded
+								;   as 'confirmed via cross-named pairs' - circular, since the names were
+								;   generated from it.
+								;
+								;   The offset comes from the DMA hardware: CPU2 arms its transmit buffer
+								;   via ASR3, CPU1 receives into var_dma_rx_buffer and copy_dma_rx
+								;   word-copies that here, so it is (this block's start) - (CPU2's ASR3
+								;   buffer). Three independent checks agree:
+								;     - both ECU pairs put CPU2's dmatx_status1_* at exactly the address
+								;       CPU1 bit-tests in update_diag_obd, and on the ST205 that byte's
+								;       bits 3 and 4 are set from var_flags_47 by
+								;       update_dmatx_status_flags - the same two bits update_diag_obd
+								;       tests;
+								;     - the 16-bit fields line up, and a 16-bit value cannot be off by a
+								;       byte;
+								;     - the 34-byte window starts exactly on CPU2's first dmatx_ variable
+								;       and ends exactly on the last byte of its last one. At the old
+								;       offset it began mid-variable and truncated a 16-bit word.
+								;
+								;   Do NOT re-derive this offset from dmatx_/dmarx_ name pairs. Use the
+								;   buffer registers. See gen3/dma_link_system.md and CLAUDE.md.
+								;
+								;   Current correspondence, CPU1 address <- CPU2 address and name:
+								;   0226h dmarx_ve_corr_map              <- 014Dh dmatx_ve_corr_map
+								;   0228h dmarx_ve_corr_map_tps          <- 014Fh dmatx_ve_corr_map_tps
+								;   022Ah dmarx_ve_x_pim_x_rpm           <- 0151h dmatx_ve_x_pim_x_rpm
+								;   022Ch dmarx_scaled_ve                <- 0153h dmatx_scaled_ve
+								;   022Eh dmarx_rpm_x_5p12               <- 0155h dmatx_rpm_x_5p12
+								;   0230h dmarx_warmup_enrichment_230    <- 0157h dmatx_warmup_enrichment_157
+								;   0231h dmarx_enrichment_unk_231       <- 0158h dmatx_enrichment_unk_158
+								;   0232h dmarx_enrichment_unk_232       <- 0159h dmatx_enrichment_unk_159
+								;   0233h dmarx_enrichment_unk_233       <- 015Ah dmatx_enrichment_unk_15A
+								;   0234h dmarx_unk_enrich               <- 015Bh dmatx_unk_enrich
+								;   0235h dmarx_tham_enrich              <- 015Ch dmatx_tham_enrich
+								;   0236h dmarx_enrichment_unk_236       <- 015Dh dmatx_enrichment_unk_15D
+								;   0237h dmarx_fuel_enrichment          <- 015Eh dmatx_fuel_enrichment
+								;   0239h dmarx_knock_unk_239            <- 0160h dmatx_knock_unk_160
+								;   023Ah dmarx_max_retard_23A           <- 0161h dmatx_max_retard_161
+								;   023Bh dmarx_lambda_trim_23B          <- 0162h dmatx_lambda_trim_162
+								;   023Ch dmarx_ign_timing               <- 0163h dmatx_ign_timing
+								;   023Dh dmarx_ign_timing_fallback1     <- 0164h dmatx_ign_timing_fallback1
+								;   023Eh dmarx_ign_timing_fallback2     <- 0165h dmatx_ign_timing_fallback2
+								;   023Fh dmarx_ign_timing_unk_23F       <- 0166h dmatx_ign_timing_unk_166
+								;   0240h dmarx_unk_240                  <- 0167h dmatx_unk_167
+								;   0241h dmarx_unk_241                  <- 0168h dmatx_unk_168
+								;   0242h dmarx_status1_242              <- 0169h dmatx_status1_169
+								;   0243h dmarx_diag_mode_243            <- 016Ah dmatx_diag_mode_16A
+								;   0244h dmarx_status2_244              <- 016Bh dmatx_status2_16B
+								;   0245h dmarx_ign_advance_hi_245       <- 016Ch dmatx_ign_advance_hi_16C
+								;   0246h dmarx_word_246_hi              <- 016Dh word_16D
+								;   0247h dmarx_unk_246_lo               <- 016Eh (no symbol)
+								; ===========================================================================
+dmarx_ve_corr_map:			.block 2			; DATA XREF: divide_d_by_x+13FF↓r
 								; copy_dma_rx↓o
-dmarx_word_228:			.block 2			; DATA XREF: divide_d_by_x+1404↓r
-dmarx_word_22A:			.block 2			; DATA XREF: divide_d_by_x+141B↓r
+dmarx_ve_corr_map_tps:			.block 2			; DATA XREF: divide_d_by_x+1404↓r
+dmarx_ve_x_pim_x_rpm:			.block 2			; DATA XREF: divide_d_by_x+141B↓r
 								; divide_d_by_x+144D↓r
 dmarx_scaled_ve:		.block 2			; DATA XREF: divide_d_by_x:loc_E4EB↓r
 dmarx_rpm_x_5p12:		.block 2			; DATA XREF: factory_self_test+210↓r
-dmarx_warmup_enrich:	.block 1			; DATA XREF: divide_d_by_x+B42↓r
+dmarx_warmup_enrichment_230:	.block 1			; DATA XREF: divide_d_by_x+B42↓r
 								; divide_d_by_x+13D1↓r ...
-dmarx_fuel_trim_231:		.block 1			; DATA XREF: divide_d_by_x+B39↓r
+dmarx_enrichment_unk_231:		.block 1			; DATA XREF: divide_d_by_x+B39↓r
 								; divide_d_by_x+CB5↓r ...
-dmarx_enrich_232:	.block 1			; DATA XREF: divide_d_by_x+B3C↓r
-dmarx_enrich_233:	.block 1			; DATA XREF: divide_d_by_x+B3F↓r
+dmarx_enrichment_unk_232:	.block 1			; DATA XREF: divide_d_by_x+B3C↓r
+dmarx_enrichment_unk_233:	.block 1			; DATA XREF: divide_d_by_x+B3F↓r
 								; divide_d_by_x+1F34↓r
-dmarx_enrich_unk_234:		.block 1			; DATA XREF: divide_d_by_x+1F2A↓r
-dmarx_tham_enrich_unk:		.block 1			; DATA XREF: divide_d_by_x:loc_E4FA↓r
-dmarx_idle_enrich:		.block 1			; DATA XREF: divide_d_by_x+B45↓r
+dmarx_unk_enrich:		.block 1			; DATA XREF: divide_d_by_x+1F2A↓r
+dmarx_tham_enrich:		.block 1			; DATA XREF: divide_d_by_x:loc_E4FA↓r
+dmarx_enrichment_unk_236:		.block 1			; DATA XREF: divide_d_by_x+B45↓r
 								; divide_d_by_x+CB8↓r ...
-dmarx_fuel_enrich:		.block 1			; DATA XREF: divide_d_by_x+866↓r
+dmarx_fuel_enrichment:		.block 1			; DATA XREF: divide_d_by_x+866↓r
 								; apply_enrich_and_trims+3↓r
 				.block 1
-dmarx_fuel_ign_corr:		.block 1			; DATA XREF: calc_4ms_corrections+533↓r
-dmarx_knock_retard_cpu2:	.block 1			; DATA XREF: ROM:F554↓r
+dmarx_knock_unk_239:		.block 1			; DATA XREF: calc_4ms_corrections+533↓r
+dmarx_max_retard_23A:	.block 1			; DATA XREF: ROM:F554↓r
 								; ROM:F5DD↓r ...
-dmarx_max_retard_23B_161:	.block 1			; DATA XREF: divide_d_by_x+1F45↓r
-dmarx_lambda_trim:		.block 1			; DATA XREF: calc_4ms_corrections+400↓r
-dmarx_ign_timing:		.block 1			; DATA XREF: update_ign_timing_blend+BD↓r
-dmarx_ign_timing_fallback1:	.block 1			; DATA XREF: update_ign_timing_blend+C3↓r
-dmarx_ign_timing_fallback2:	.block 1			; DATA XREF: update_ign_timing_blend+5C↓r
+dmarx_lambda_trim_23B:	.block 1			; DATA XREF: divide_d_by_x+1F45↓r
+dmarx_ign_timing:		.block 1			; DATA XREF: calc_4ms_corrections+400↓r
+dmarx_ign_timing_fallback1:		.block 1			; DATA XREF: update_ign_timing_blend+BD↓r
+dmarx_ign_timing_fallback2:	.block 1			; DATA XREF: update_ign_timing_blend+C3↓r
+dmarx_ign_timing_unk_23F:	.block 1			; DATA XREF: update_ign_timing_blend+5C↓r
 								; update_ign_timing_blend+D3↓r
-dmarx_ign_timing_unk_166:	.block 1			; DATA XREF: update_ign_timing_blend+56↓r
+dmarx_unk_240:	.block 1			; DATA XREF: update_ign_timing_blend+56↓r
 								; update_ign_timing_blend+D9↓r
-dmarx_unk_241_167:		.block 1			; DATA XREF: scale_by_dmarx_167+8↓r
+dmarx_unk_241:		.block 1			; DATA XREF: scale_by_dmarx_241+8↓r
 								; = CPU2's dmatx_unk_167 (0xDA offset,
 								; still unresolved on both sides): CPU2
 								; computes it as
 								; (table_C360_rpm(RPM)*table_C370_ect(ECT))
 								; /64, saturated - see that ROM's own
 								; comment. Consumed here via mult_rArX in
-								; scale_by_dmarx_167, not traced further.
-dmarx_iscv_duty:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
+								; scale_by_dmarx_241, not traced further.
+dmarx_status1_242:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
+								; Purpose unconfirmed. CPU2 writes it once, from an RPM-indexed
+								;   lookup (table_C3EE on 0471, table_C376_rpm on 9661), and CPU1
+								;   reads it at eight sites - in update_diag_obd it BIT-TESTS bits
+								;   3 and 4 (`cmpb` is a bitwise AND, opcode 0xCE). Bit 3 feeds
+								;   var_error_flags2 bit 7, which on the ST205 CPU1 becomes
+								;   diagnostic code 54; bit 4 feeds bit 2.
+								;
+								;   UNRESOLVED CONFLICT - do not build on either side of it.
+								;   Statically, the source table is flat: with the interpolator's
+								;   format now traced (word[0..1] = map_min, byte[2] = map_max,
+								;   then map_max+1 values - see gen3/session_journal.md), this
+								;   table decodes to 0x80 at 800, 2400 and 4000 rpm, so the byte
+								;   should be a constant 0x80 and neither bit 3 nor bit 4 should
+								;   ever be set. The same decode gives a proper rising curve for
+								;   the neighbouring ignition tables and reproduces a breakpoint
+								;   annotation made independently in 9661, so the format is not
+								;   in doubt.
+								;   But diagnostic code 54 is observed on the car. Note that the
+								;   NV diagnostic bytes are OR-only - the commit does
+								;   `or b, nv_diag_errors_2` and never clears - so the bit latches
+								;   once set and a single transient would be enough. Candidates:
+								;   a different CPU2 part in that car, a transient on the
+								;   inter-CPU DMA (CPU1 does no frame-integrity check on the
+								;   received block), or a setter not yet found.
 								; divide_d_by_x+C86↓r ...
 								; 242.0	-
 								; 242.1	-
@@ -3455,7 +3556,7 @@ dmarx_iscv_duty:		.block 1			; DATA XREF: divide_d_by_x+98B↓r
 								; 242.6	- Set when open	loop mode should be used
 								; 242.7	-
 								;
-dmarx_status1_169:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EEC7↓r
+dmarx_diag_mode_243:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EEC7↓r
 								; = CPU2's dmatx_status1_169 (0xDA offset):
 								; a packed status snapshot, not an
 								; independently meaningful value - see
@@ -3463,21 +3564,21 @@ dmarx_status1_169:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EEC7↓r
 								; the exact bit-to-source mapping
 								; (var_flags_40.6/var_flags_47.2/.3,
 								; var_enrich_flags.5/.6, all inverted).
-damrx_unk_244:			.block 1			; DATA XREF: factory_self_test+1EB↓r
+dmarx_status2_244:			.block 1			; DATA XREF: factory_self_test+1EB↓r
 								; READ-ONLY in this file: read by loc_E2F3, with
 								; no bit- or byte-level write site found here -
 								; so it holds whatever clear_variables left (0)
 								; unless something writes it by a path this
 								; sweep missed.
-dmarx_status2_16B:		.block 1			; DATA XREF: factory_self_test+1E4↓r
+dmarx_ign_advance_hi_245:		.block 1			; DATA XREF: factory_self_test+1E4↓r
 								; = CPU2's dmatx_status2_16B (0xDA offset):
 								; same packed-snapshot pattern as
-								; dmarx_status1_169 above (var_input_bits.
+								; dmarx_diag_mode_243 above (var_input_bits.
 								; 5/.6/.7, PORTC.7, PORTD_ASRIN.5, all
 								; inverted) - see CPU2's
 								; update_dmatx_status_flags.
-dmarx_ign_advance_hi:	.block 1			; DATA XREF: iv6_ne_process+123↓r
-dmarx_ign_advance_lo:	.block 1			; DATA XREF: divide_d_by_x+DA↓o
+dmarx_word_246_hi:	.block 1			; DATA XREF: iv6_ne_process+123↓r
+dmarx_unk_246_lo:	.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12B↓r
 byte_248:			.block 0B7h			; DATA XREF: copy_dma_rx+B↓o
 stack_top:			.block 1			; DATA XREF: ROM:C663↓o
@@ -3722,8 +3823,8 @@ table_ign_blend_weight:		.dw 0100h			; DATA XREF: update_ign_timing_blend+CB↓o
 								; yield a weight, which is then multiplied
 								; into the SECOND timing source (chosen by
 								; var_diag_errors_5.0 between
-								; dmarx_ign_timing_unk_166 and
-								; dmarx_ign_timing_fallback2) and saturated.
+								; dmarx_unk_240 and
+								; dmarx_ign_timing_unk_23F) and saturated.
 								;
 								; If 0x80 is unity in Q7 - which the value
 								; strongly suggests but nothing here proves -
@@ -5944,9 +6045,9 @@ reset_vector:							; DATA XREF: ROM:FFFE↓o
 				ld	#0F9h, TIMER3		; Timer3 LSB
 
 ; Inter-CPU DMA serial link: program ASR2/ASR3 with buffer addresses
-				ld	d, #81DEh		; DMA RX buffer base address
+				ld	d, #8000h + var_dma_rx_buffer		; DMA RX buffer base address
 				st	d, ASR2			; ASR2 = DMA receive channel
-				ld	d, #9200h		; DMA TX buffer base address
+				ld	d, #9000h + dmatx_pim2		; DMA TX buffer base address
 				st	d, ASR3			; ASR3 = DMA transmit channel
 				ld	#0FCh, ASR1P		; ASR1 pos edge counter MSB
 
@@ -6003,12 +6104,12 @@ loc_C66B:							; CODE XREF: divide_d_by_x+D4↓j
 				cmp	y, #unk_7F		; Reached end of byte region?
 				ble	loc_C66B		; No: continue
 
-; Phase 2b: Zero-fill word RAM (var_diag_errors_4..dmarx_ign_advance_lo)
+; Phase 2b: Zero-fill word RAM (var_diag_errors_4..dmarx_unk_246_lo)
 				ld	y, #var_diag_errors_4	; Y = start of word RAM region (D=0x0000)
 
 loc_C674:							; CODE XREF: divide_d_by_x+DD↓j
 				st	d, [y]			; Zero word at Y; Y auto-increments by 2
-				cmp	y, #dmarx_ign_advance_lo	; Reached end of word region?
+				cmp	y, #dmarx_unk_246_lo	; Reached end of word region?
 				ble	loc_C674		; No: continue
 
 
@@ -6175,9 +6276,9 @@ loc_C749:							; CODE XREF: divide_d_by_x+2484↓j
 				ld	#0FCh, ASR1P		; ASR1 pos edge	counter	value MSB
 				ld	#30h, ASR0NL		; ASR0 neg edge	counter	value LSB
 				ld	#00h, unk_1D
-				ld	d, #81DEh
+				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
-				ld	d, #9200h
+				ld	d, #9000h + dmatx_pim2
 				st	d, ASR3			; ASR3 edge counter value MSB
 				tbbs	bit7, var_flags_46, loc_C7AD
 
@@ -8009,7 +8110,7 @@ loc_CDDB:							; CODE XREF: divide_d_by_x+836↑j
 				cmp	a, var_cnt_D4
 				bcc	loc_CE18
 
-				ld	a, dmarx_fuel_enrich	; Check	fuel enrichment
+				ld	a, dmarx_fuel_enrichment	; Check	fuel enrichment
 				cmp	a, #04h			; Is it	less than 4
 				bcs	loc_CE18		; Jump if it is
 
@@ -8333,7 +8434,7 @@ check_open_or_closed_loop:					; CODE XREF: divide_d_by_x+97E↑j
 
 				tbbs	bit0, var_flags_46, open_loop_CF51
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_status1_242
 				cmpb	a, #40h
 				bne	open_loop_CF51
 
@@ -8706,11 +8807,11 @@ loc_D0C6:							; CODE XREF: divide_d_by_x+B27↑j
 
 				tbbs	bit3, var_error_flags1,	open_loop_mode_D0A9
 
-				ld	a, dmarx_fuel_trim_231
-				or	a, dmarx_enrich_232
-				or	a, dmarx_enrich_233
-				or	a, dmarx_warmup_enrich
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_231
+				or	a, dmarx_enrichment_unk_232
+				or	a, dmarx_enrichment_unk_233
+				or	a, dmarx_warmup_enrichment_230
+				or	a, dmarx_enrichment_unk_236
 				bne	open_loop_mode_D0A9
 
 				cmp	#93h, var_adc_battery	; 11.4v
@@ -8989,7 +9090,7 @@ locret_D1DC:							; CODE XREF: read_nv_afr_trim+2↑j
 ;     loc_D2D2 (injection already scheduled this cycle - same guard pattern
 ;     as calc_4ms_corrections). Otherwise a var_cnt_trim_settle readiness gate is
 ;     maintained (cleared unless var_limiter_flags upper bits are clear,
-;     var_ign_blend_out is near a fixed threshold, and dmarx_iscv_duty == 0x40).
+;     var_ign_blend_out is near a fixed threshold, and dmarx_status1_242 == 0x40).
 ;  3) (closed_loop_control, D23E-D2BC) A SECOND closed-loop lambda trim
 ;     system, distinct from the RPM/MAP-zone nv_afr_trim_base system in
 ;     calc_4ms_corrections' chunk CE6C. Gated on ECT 83-104C, off-idle,
@@ -9051,7 +9152,7 @@ loc_D213:							; CODE XREF: divide_d_by_x+C73↑j
 				cmp	d, #0FFE7h
 				blta	loc_D228
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_status1_242
 				cmpb	a, #40h
 				beq	loc_D22A
 
@@ -9093,8 +9194,8 @@ closed_loop_control:						; CODE XREF: divide_d_by_x:loc_D23E↑j
 				cmp	d, #0EF80h		; 103.8	deg
 				bcc	loc_D2BC		; Jump if coolant temperature too high
 
-				ld	a, dmarx_fuel_trim_231
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_231
+				or	a, dmarx_enrichment_unk_236
 				bne	loc_D2BC
 
 				cmp	#80h, var_rpm_div_25	; Check	RPM is greater than 3200rpm...
@@ -9803,7 +9904,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     (var_flags_4E.4), decays -8/tick otherwise
 ;   - unk_1A9: fixed 0x300 during startup window, then decays -4/tick
 ;   - unk_1AB: 0x200 during the first 15 ticks if CPU2 cold-enrichment
-;     (dmarx_idle_enrich) is active, else 0 once var_cnt_EA elapses
+;     (dmarx_enrichment_unk_236) is active, else 0 once var_cnt_EA elapses
 ;   - unk_1AD: ramps +/-2/tick toward a load-dependent set-point selected
 ;     from byte_C36C/C372/C374 via var_flags_4F bits 1/2/3/4 (hypothesis:
 ;     these consolidate raw A/C (var_diag_errors_5.5) and PS/IDUP
@@ -9872,7 +9973,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;
 ; Reads: var_rpm_x_5p12, var_rpm_div_25, var_rpm_delta, var_ect, var_tha,
 ;   var_pim2, var_speed_kph, var_cnt_startup, var_cnt_EA, var_4ms_cnt_B1,
-;   var_flags_46, var_flags_4F, var_io_input2, dmarx_idle_enrich
+;   var_flags_46, var_flags_4F, var_io_input2, dmarx_enrichment_unk_236
 ; Writes: var_iscv_target_rpm, var_iscv_rpm_cmp_197, var_iscv_pim_flare,
 ;   var_iscv_startup_flare, var_iscv_unk_1A9, var_iscv_unk_1AB,
 ;   var_iscv_unk_1AD, var_flags_4E, var_diag_errors_5, var_cnt_DE,
@@ -10006,7 +10107,7 @@ loc_D54A:							; CODE XREF: calc_iscv+75↑j
 				cmp	#0Fh, var_cnt_startup
 				bgt	loc_D55E
 
-				ld	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_236
 				cmp	a, #0Dh
 				bcs	loc_D55E
 
@@ -10432,8 +10533,8 @@ loc_D730:							; CODE XREF: calc_iscv+252↑j
 				cmp	#0E8h, var_ect
 				bcs	loc_D752
 
-				ld	a, dmarx_fuel_trim_231
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_231
+				or	a, dmarx_enrichment_unk_236
 				bne	loc_D752
 
 				cmp	#93h, var_adc_battery
@@ -10893,13 +10994,13 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ;     var_cnt_EA (warm-up elapsed), diagnostic-check mode, ECT (with a
 ;     trim_state-dependent threshold, 0xE1 or 0xE3), CPU2 enrichment
 ;     request flags, var_flags_40.7, var_flags_46.1 (real closed-loop flag) and
-;     dmarx_iscv_duty. Calls init_pw_closed_loop (closed-loop path init: var_pw_loop_mode=0xC8)
+;     dmarx_status1_242. Calls init_pw_closed_loop (closed-loop path init: var_pw_loop_mode=0xC8)
 ;     or init_pw_open_loop (open-loop path init: var_pw_loop_mode=0), which forward into
 ;     shared init code setting unk_1C0/unk_1C6.
 ;  3) (D998-DA10) VE-map candidate calculation: combines CPU2's DMA'd
-;     speed-density fuel terms - dmarx_word_226 (MAP-only VE correction
-;     table), dmarx_word_228 (MAP+TPS bilinear VE correction, zeroed during
-;     idle debounce), dmarx_word_22A (VE*MAP*RPM load term, CPU2's
+;     speed-density fuel terms - dmarx_ve_corr_map (MAP-only VE correction
+;     table), dmarx_ve_corr_map_tps (MAP+TPS bilinear VE correction, zeroed during
+;     idle debounce), dmarx_ve_x_pim_x_rpm (VE*MAP*RPM load term, CPU2's
 ;     var_ve_x_pim_x_rpm_unk_10C - confirmed by cross-referencing
 ;     3S-GTE/D151803-9661/Claude/D151803-9661.asm, see
 ;     docs/fuel_calculation_system.md) - by a fixed constant (0x1EB8) and
@@ -10981,16 +11082,16 @@ loc_D965:							; CODE XREF: divide_d_by_x+13C5↑j
 				cmp	a, var_ect
 				bgt	loc_D986
 
-				ld	a, dmarx_fuel_trim_231
-				or	a, dmarx_warmup_enrich
-				or	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_231
+				or	a, dmarx_warmup_enrichment_230
+				or	a, dmarx_enrichment_unk_236
 				bne	loc_D986
 
 				tbbs	bit7, var_flags_40, loc_D986
 
 				tbbs	bit1, var_flags_46, loc_D98E ; Jump if closed loop mode
 
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_status1_242
 				cmpb	a, #40h
 				beq	loc_D986
 
@@ -11022,10 +11123,10 @@ loc_D98E:							; CODE XREF: divide_d_by_x+13DC↑j
 
 loc_D998:							; CODE XREF: divide_d_by_x+13F8↑j
 				clr	var_4ms_cnt_B4
-				ld	d, dmarx_word_226	; CPU2's MAP-only VE correction table result
-				st	d, var_temp_w		; var_temp_w = dmarx_word_226
-				ld	d, dmarx_word_228	; CPU2's MAP+TPS bilinear VE correction
-				st	d, var_temp_7A		; var_temp_7A = dmarx_word_228
+				ld	d, dmarx_ve_corr_map	; CPU2's MAP-only VE correction table result
+				st	d, var_temp_w		; var_temp_w = dmarx_ve_corr_map
+				ld	d, dmarx_ve_corr_map_tps	; CPU2's MAP+TPS bilinear VE correction
+				st	d, var_temp_7A		; var_temp_7A = dmarx_ve_corr_map_tps
 				ld	d, var_inj_pw_base	; D = current base PW (default candidate input)
 				tbbc	bit0, var_trim_state_alias, loc_D9B0
 
@@ -11038,8 +11139,8 @@ loc_D9B0:							; CODE XREF: divide_d_by_x+140C↑j
 				ld	x, #1EB8h
 				jsr	mult_rDrX		; D = D * 0x1EB8 / 256 (fixed-point scale)
 
-				ld	x, dmarx_word_22A	; CPU2's VE*MAP*RPM load term (var_ve_x_pim_x_rpm_unk_10C)
-				jsr	mult_rDrX		; D = D * dmarx_word_22A / 256, auto-saturated to
+				ld	x, dmarx_ve_x_pim_x_rpm	; CPU2's VE*MAP*RPM load term (var_ve_x_pim_x_rpm_unk_10C)
+				jsr	mult_rDrX		; D = D * dmarx_ve_x_pim_x_rpm / 256, auto-saturated to
 									; 0xFFFF if this overflowed (mult_rDrX's own
 									; behavior); X = the true high word regardless
 ; NOTE: "mov" is src,dest - opposite of ld/st (see note above calc_iscv and
@@ -11048,24 +11149,24 @@ loc_D9B0:							; CODE XREF: divide_d_by_x+140C↑j
 ; (coarser-scale) magnitude from X, so an overflowing product isn't just
 ; pinned to max - see docs/fuel_calculation_system.md.
 				mov	x, d			; D = X (true high word, replacing any 0xFFFF clip)
-				sub	d, var_temp_7A		; D = (product high word) - dmarx_word_228
-				ble	loc_D9E3			; High word <= dmarx_word_228: use the simple path
+				sub	d, var_temp_7A		; D = (product high word) - dmarx_ve_corr_map_tps
+				ble	loc_D9E3			; High word <= dmarx_ve_corr_map_tps: use the simple path
 
-; High word > dmarx_word_228 (the product was large enough that even its
+; High word > dmarx_ve_corr_map_tps (the product was large enough that even its
 ; high word exceeds the reference - i.e. it overflowed badly):
 				mov	d, x			; X = D (stash the excess amount into X)
 				ld	a, #0C8h		; A = 0xC8 (200/256 = ~78% scale factor)
 				jsr	mult_rArX		; D = 0xC8 * (excess) / 256; X = same as D
 
-				ld	d, var_temp_w		; D = dmarx_word_226
-				jsr	divide_d_by_x		; D = dmarx_word_226 / (0.78 * excess)
+				ld	d, var_temp_w		; D = dmarx_ve_corr_map
+				jsr	divide_d_by_x		; D = dmarx_ve_corr_map / (0.78 * excess)
 
 				cmp	d, #00C8h
 				bcs	loc_D9DA		; Quotient < 200: use the div-based candidate path
 
 ; Quotient >= 200:
-				ld	d, var_temp_w		; D = dmarx_word_226
-				add	d, var_temp_7A		; D = dmarx_word_226 + dmarx_word_228
+				ld	d, var_temp_w		; D = dmarx_ve_corr_map
+				add	d, var_temp_7A		; D = dmarx_ve_corr_map + dmarx_ve_corr_map_tps
 				mov	d, x			; X = D (both now hold word226+word228; D unchanged)
 				ld	b, #0C8h
 				bra	loc_D9E6
@@ -11083,20 +11184,20 @@ loc_D9DA:							; CODE XREF: divide_d_by_x+1434↑j
 
 loc_D9E3:							; CODE XREF: divide_d_by_x+1424↑j
 				clr	b			; B = 0 (simple path: no 0xC8 tag)
-				ld	x, var_temp_7A		; X = dmarx_word_228
+				ld	x, var_temp_7A		; X = dmarx_ve_corr_map_tps
 
 loc_D9E6:							; CODE XREF: divide_d_by_x+143D↑j
 				push	b			; Save B (0xC8 tag, or 0 from the simple path)
-				push	x			; Save X (word226+word228, or dmarx_word_228)
-				ld	d, dmarx_word_22A
+				push	x			; Save X (word226+word228, or dmarx_ve_corr_map_tps)
+				ld	d, dmarx_ve_x_pim_x_rpm
 				ld	x, #1EB8h
-				jsr	mult_rDrX		; D = dmarx_word_22A * 0x1EB8 / 256 (auto-saturated
+				jsr	mult_rDrX		; D = dmarx_ve_x_pim_x_rpm * 0x1EB8 / 256 (auto-saturated
 									; on overflow); X = true high word regardless
 
 				mov	x, d			; D = X (override any 0xFFFF clip with the true
 									; high word - same technique as above)
 				pull	x			; X = whatever was pushed above (word226+word228,
-									; or dmarx_word_228)
+									; or dmarx_ve_corr_map_tps)
 				jsr	divide_d_by_x		; D = (high word) / X
 
 
@@ -11205,7 +11306,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_iscv_duty, var_adc_lambda, var_cnt_6A, var_flags_46,
+; Reads: dmarx_status1_242, var_adc_lambda, var_cnt_6A, var_flags_46,
 ; var_inj_pw_base, var_pim2, var_rpm_x_5p12
 ; Writes: unk_1C4, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
 ;    var_trim_state_alias
@@ -11257,7 +11358,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; var_flags_4E's.
 ;
 ; Reads: var_rpm_x_5p12, var_pim2, var_flags_46, var_adc_lambda,
-;   var_lambda_avg, var_inj_pw_base, var_cnt_6A, dmarx_iscv_duty,
+;   var_lambda_avg, var_inj_pw_base, var_cnt_6A, dmarx_status1_242,
 ;   var_stft_dwell_cnt
 ; Writes: var_lambda_integrator, var_lambda_avg, unk_1C4,
 ;   var_trim_state_alias, var_stft_dwell_cnt
@@ -11318,7 +11419,7 @@ loc_DA94:							; CODE XREF: ROM:DA85↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_DAA1:							; CODE XREF: ROM:DA7F↑j
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_status1_242
 				cmpb	a, #40h
 				bne	loc_DABA
 
@@ -12202,7 +12303,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_iscv_duty, unk_1CF, var_adc_o2_heater, var_flags_46,
+; Reads: dmarx_status1_242, unk_1CF, var_adc_o2_heater, var_flags_46,
 ; var_flags_4F_saved, var_inj_battery_adjust, var_inj_pw_inj1,
 ; var_io_input1, var_iscv_pwm, var_pim2, var_rpm_x_5p12, var_speed_kph
 ; Writes: dmatx_obd_inj, dmatx_obd_iscv, var_o2_heater_unk_185, var_cnt_187,
@@ -12214,7 +12315,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; update_diag_obd (was update_diag_obd): diagnostic / OBD snapshot update.
 ;
 ; Opens with the ISC self-check documented on var_error_flags2 bits 2 and 7:
-; dmarx_iscv_duty is compared against 0x08 and 0x10, each mismatch setting
+; dmarx_status1_242 is compared against 0x08 and 0x10, each mismatch setting
 ; its own error bit and each match clearing it.
 ;
 ; It then goes on to populate the OBD snapshot bytes CPU2 serializes
@@ -12228,7 +12329,7 @@ loc_DD66:							; CODE XREF: divide_d_by_x+17C1↑j
 ; role; do not assume the details.
 ; ---------------------------------------------------------------------------
 update_diag_obd:							; CODE XREF: divide_d_by_x+1E05↓p
-				ld	a, dmarx_iscv_duty
+				ld	a, dmarx_status1_242
 				cmpb	a, #08h
 				beq	loc_DD73
 
@@ -13187,7 +13288,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ;
 ; Reads: var_io_input1, var_io_input2, var_trac_tps_raw, var_tps_raw,
 ;   var_nv_tps, var_rpm_x_5p12, var_speed_kph, unk_100, unk_C000,
-;   dmarx_status2_16B, damrx_unk_244
+;   dmarx_ign_advance_hi_245, dmarx_status2_244
 ; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, unk_223,
 ;   word_224
 ; Calls: selftest_io_cycle, watchdog_kick
@@ -13651,11 +13752,11 @@ loc_E2F3:							; CODE XREF: factory_self_test:loc_E2DA↑j
 				cmp	b, #18h
 				bcs	loc_E358
 
-				ld	a, dmarx_status2_16B
+				ld	a, dmarx_ign_advance_hi_245
 				cmp	b, #26h
 				bcs	loc_E35D
 
-				ld	a, damrx_unk_244
+				ld	a, dmarx_status2_244
 				cmp	b, #3Ah
 				bcs	loc_E35A
 
@@ -13999,7 +14100,7 @@ loc_E452:							; CODE XREF: divide_d_by_x+1E14↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_fuel_enrich, unk_1C6, var_flags_44, var_flags_4D,
+; Reads: dmarx_fuel_enrichment, unk_1C6, var_flags_44, var_flags_4D,
 ; var_fuel_enrich_rpm, var_lambda_integrator, var_scaled_ve_tham
 ; Writes: var_inj_pw_unk_1CA, var_enrich_unk_138, var_flags_4E, var_temp_w,
 ;    var_trim_state
@@ -14009,15 +14110,15 @@ loc_E452:							; CODE XREF: divide_d_by_x+1E14↑j
 apply_enrich_and_trims:							; CODE XREF: divide_d_by_x+48B↑p
 								; divide_d_by_x:loc_E3A6↑p
 				ld	x, var_scaled_ve_tham
-				ld	a, dmarx_fuel_enrich
+				ld	a, dmarx_fuel_enrichment
 				beq	no_enrichment		; Jump if no fuel enrichment required
 
 				tbbc	bit2, var_flags_44, loc_E469
 
 				tbbc	bit2, var_flags_4D, loc_E469
 
-				mul	a, #80h			; rD = rA * 128	(dmarx_fuel_enrich * 128)
-				shl	d			; rD = rD * 2	(dmarx_fuel_enrich * 256)
+				mul	a, #80h			; rD = rA * 128	(dmarx_fuel_enrichment * 128)
+				shl	d			; rD = rD * 2	(dmarx_fuel_enrichment * 256)
 				bcc	loc_E469		; Jump if overflow
 
 				ld	a, #0FFh		; Set rA to maximum
@@ -14091,31 +14192,31 @@ loc_E4B1:							; CODE XREF: apply_enrich_and_trims+59↑j
 
 loc_E4B9:							; CODE XREF: divide_d_by_x:loc_E452↑j
 				ld	x, #0080h
-				ld	a, dmarx_warmup_enrich
+				ld	a, dmarx_warmup_enrichment_230
 				add	x, a			; rX = 128 + unk230
-				ld	a, dmarx_fuel_trim_231
+				ld	a, dmarx_enrichment_unk_231
 				add	x, a
 				add	x, a			; rX = 128 + unk230 + 2*unk231
-				ld	a, dmarx_enrich_unk_234
+				ld	a, dmarx_unk_enrich
 				add	x, a
 				add	x, a
 				add	x, a
 				add	x, a			; rX = 128 + unk230 + 2*unk231 + 4*unk234
 				tbbc	bit2, var_flags_46, loc_E4D4
 
-				ld	a, dmarx_enrich_233
+				ld	a, dmarx_enrichment_unk_233
 				add	x, a
 				add	x, a			; rX = 128 + unk230 + 2*unk231 + 4*unk234 + 2*unk233
 
 loc_E4D4:							; CODE XREF: divide_d_by_x+1F31↑j
-				ld	a, dmarx_idle_enrich
+				ld	a, dmarx_enrichment_unk_236
 				add	x, a
 				mov	x, d
 				sub	b, var_accel_enrich
 				subc	a, #00h
 				shl	d
 				mov	d, x
-				ld	b, dmarx_max_retard_23B_161
+				ld	b, dmarx_lambda_trim_23B
 				cmp	b, #80h
 				beq	loc_E4EB
 
@@ -14127,7 +14228,7 @@ loc_E4EB:							; CODE XREF: divide_d_by_x+1F4A↑j
 ; dmarx_scaled_ve = CPU2's dmatx_scaled_ve (verified via the 0xDA DMA
 ; offset formula - see docs/fuel_calculation_system.md), a rescaled copy
 ; of CPU2's base VE map (mult_rDrX_saturate(var_map_ve+0x51, 0x200F)) -
-; distinct from dmarx_word_226/228/22A (the speed-density terms consumed
+; distinct from dmarx_ve_corr_map/228/22A (the speed-density terms consumed
 ; by calc_inj_pw_base). Used here purely as a mult_rDrX scale operand for
 ; this chunk's accel/idle-enrichment combination.
 				ld	d, dmarx_scaled_ve
@@ -14141,7 +14242,7 @@ loc_E4EB:							; CODE XREF: divide_d_by_x+1F4A↑j
 
 
 loc_E4FA:							; CODE XREF: divide_d_by_x+1F57↑j
-				ld	b, dmarx_tham_enrich_unk
+				ld	b, dmarx_tham_enrich
 				jsr	add_d_base_offset
 
 				st	d, var_scaled_ve_tham
@@ -15008,7 +15109,7 @@ loc_E7FD:							; CODE XREF: divide_d_by_x+2245↑j
 				ld	d, #0FFFFh
 
 loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
-				bsr	scale_by_dmarx_167
+				bsr	scale_by_dmarx_241
 
 				st	d, var_ign_blend_pos
 				ld	y, #table_ect_C19F
@@ -15020,7 +15121,7 @@ loc_E815:							; CODE XREF: divide_d_by_x+2275↑j
 
 				bsr	scale_by_nv_trim_o2
 
-				bsr	scale_by_dmarx_167
+				bsr	scale_by_dmarx_241
 
 				st	d, var_ign_blend_neg
 				jmp	loc_EA17
@@ -15094,20 +15195,20 @@ loc_E84B:							; CODE XREF: scale_by_nv_trim_o2+3↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_unk_241_167, var_temp_w
+; Reads: dmarx_unk_241, var_temp_w
 ; Writes: (none)
 ; Calls: mult_rArX
 ; ---------------------------------------------------------------------------
-scale_by_dmarx_167:							; CODE XREF: divide_d_by_x:loc_E815↑p
+scale_by_dmarx_241:							; CODE XREF: divide_d_by_x:loc_E815↑p
 								; divide_d_by_x+228F↑p
 				add	d, var_temp_w
 				bcc	loc_E856
 
 				ld	d, #0FFFFh
 
-loc_E856:							; CODE XREF: scale_by_dmarx_167+2↑j
+loc_E856:							; CODE XREF: scale_by_dmarx_241+2↑j
 				mov	d, x
-				ld	a, dmarx_unk_241_167
+				ld	a, dmarx_unk_241
 				jsr	mult_rArX
 
 				add	a, #04h
@@ -15115,10 +15216,10 @@ loc_E856:							; CODE XREF: scale_by_dmarx_167+2↑j
 
 				ld	d, #0FFFFh
 
-locret_E864:							; CODE XREF: scale_by_dmarx_167+10↑j
+locret_E864:							; CODE XREF: scale_by_dmarx_241+10↑j
 				ret
 
-; End of function scale_by_dmarx_167
+; End of function scale_by_dmarx_241
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -15152,7 +15253,7 @@ locret_E864:							; CODE XREF: scale_by_dmarx_167+10↑j
 ;                                    contributes
 ;   mov d, x                         X = D  - the magnitude becomes the
 ;                                    MULTIPLIER
-;   A = dmarx_ign_timing_unk_166, or dmarx_ign_timing_fallback2 when the
+;   A = dmarx_unk_240, or dmarx_ign_timing_unk_23F when the
 ;       flag says the value was pulled down
 ;   neg a / (if 0 then 0xFF)         A = 256 - timing as an unsigned byte,
 ;                                    forced non-zero. An INVERSION: less
@@ -15190,9 +15291,9 @@ locret_E864:							; CODE XREF: scale_by_dmarx_167+10↑j
 ; meaning (the second lookup, at loc_E92B onward, feeding var_ign_blend_out).
 ;
 ; Reads: var_schedule_flag_41, dmatx_pim, var_flags_44, var_ign_blend_hist2,
-;   var_ign_blend_hist0, dmarx_ign_timing_unk_166, dmarx_ign_timing_fallback2,
-;   var_ign_blend_accum, var_limiter_flags, var_fuelcut_recovery_cnt, var_flags_46, dmarx_ign_timing,
-;   dmarx_ign_timing_fallback1, var_ign_rpm_term, var_ign_blend_pos, var_ign_blend_neg
+;   var_ign_blend_hist0, dmarx_unk_240, dmarx_ign_timing_unk_23F,
+;   var_ign_blend_accum, var_limiter_flags, var_fuelcut_recovery_cnt, var_flags_46, dmarx_ign_timing_fallback1,
+;   dmarx_ign_timing_fallback2, var_ign_rpm_term, var_ign_blend_pos, var_ign_blend_neg
 ; Writes: var_ign_blend_hist0, var_ign_blend_hist1, var_ign_blend_hist2, var_ign_blend_accum, var_ign_blend_out, var_fuelcut_recovery_cnt,
 ;   var_diag_errors_5, var_temp_w, var_temp_7A, var_temp_b, var_temp_7B,
 ;   var_temp_7C
@@ -15249,8 +15350,8 @@ loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 ; handling despite the flag's name (see set_knock_sensor_err_flag's own
 ; header comment above: it's a repo-wide reused negate/abs() remember-
 ; bit, unrelated to real knock sensor state outside the actual knock
-; subsystem). That flag then selects dmarx_ign_timing_fallback1/2 vs the
-; primary dmarx_ign_timing/dmarx_ign_timing_unk_166 for a multiply/
+; subsystem). That flag then selects dmarx_ign_timing_fallback2/2 vs the
+; primary dmarx_ign_timing_fallback1/dmarx_unk_240 for a multiply/
 ; table_ign_blend_weight blend feeding the var_ign_blend_accum accumulator, then a
 ; table_pair_interpolate lookup (selected by var_ign_blend_pos/var_ign_blend_neg) feeding
 ; var_ign_blend_out, before calling decay_ign_ect_term.
@@ -15283,10 +15384,10 @@ loc_E8B5:							; CODE XREF: update_ign_timing_blend+4B↑j
 				bcs	loc_E8E3
 
 				mov	d, x			; X = D (src,dest): excursion becomes the multiplier
-				ld	a, dmarx_ign_timing_unk_166
+				ld	a, dmarx_unk_240
 				tbbc	bit0, var_diag_errors_5, loc_E8C4
 
-				ld	a, dmarx_ign_timing_fallback2	; Value was pulled DOWN: use the fallback timing
+				ld	a, dmarx_ign_timing_unk_23F	; Value was pulled DOWN: use the fallback timing
 
 loc_E8C4:							; CODE XREF: update_ign_timing_blend+59↑j
 				neg	a			; A = 256 - timing (an inversion: less timing, more weight)
@@ -15361,10 +15462,10 @@ loc_E907:							; CODE XREF: update_ign_timing_blend+98↑j
 
 loc_E921:							; CODE XREF: update_ign_timing_blend+B7↑j
 				mov	d, x
-				ld	b, dmarx_ign_timing
+				ld	b, dmarx_ign_timing_fallback1
 				tbbc	bit0, var_diag_errors_5, loc_E92B ; Jump if no knock sensor error
 
-				ld	b, dmarx_ign_timing_fallback1
+				ld	b, dmarx_ign_timing_fallback2
 
 loc_E92B:							; CODE XREF: update_ign_timing_blend+C0↑j
 				jsr	mult_rBrX2
@@ -15374,10 +15475,10 @@ loc_E92B:							; CODE XREF: update_ign_timing_blend+C0↑j
 				jsr	table_rD_fixed2_interpolate
 
 				st	a, var_temp_7A
-				ld	a, dmarx_ign_timing_fallback2
+				ld	a, dmarx_ign_timing_unk_23F
 				tbbc	bit0, var_diag_errors_5, loc_E941 ; Jump if no knock sensor error
 
-				ld	a, dmarx_ign_timing_unk_166
+				ld	a, dmarx_unk_240
 
 loc_E941:							; CODE XREF: update_ign_timing_blend+D6↑j
 				mul	a, var_temp_7A
@@ -16586,7 +16687,7 @@ loc_EDC1:							; CODE XREF: calc_4ms_corrections+368↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_lambda_trim, va_ne_count_2, var_cnt_cyl_rough_dwell, var_cyl_rpm_dev,
+; Reads: dmarx_ign_timing, va_ne_count_2, var_cnt_cyl_rough_dwell, var_cyl_rpm_dev,
 ; var_flags_42, var_flags_46, var_flags_4E, var_ign_advance_trim,
 ; var_limiter_flags, var_ne_sum3, var_rpm_div_25
 ; Writes: var_cyl_proc_idx, var_flags_4E_temp, var_ign_corr_combined,
@@ -16682,7 +16783,7 @@ loc_EE10:							; CODE XREF: ROM:EE07↑j
 loc_EE1D:							; CODE XREF: calc_4ms_corrections+3A7↑j
 				ld	a, var_flags_4E
 				st	a, var_flags_4E_temp
-				ld	a, dmarx_lambda_trim
+				ld	a, dmarx_ign_timing
 				tbbc	bit2, var_flags_46, loc_EE5F
 
 				mov	a, b
@@ -16859,7 +16960,7 @@ loc_EEBD:							; CODE XREF: calc_4ms_corrections+46F↑j
 				ld	a, #0FFh
 
 loc_EEC7:							; CODE XREF: calc_4ms_corrections+4A1↑j
-				ld	b, dmarx_status1_169
+				ld	b, dmarx_diag_mode_243
 				cmpb	b, #0Fh
 				beq	loc_EED4
 
@@ -16989,7 +17090,7 @@ loc_EF48:							; CODE XREF: calc_4ms_corrections+508↑j
 				ld	b, var_lambda_ign_corr
 				add	b, var_open_loop_ign_corr
 				rolc	a
-				add	b, dmarx_fuel_ign_corr
+				add	b, dmarx_knock_unk_239
 				addc	a, #00h
 				sub	d, #0085h
 				bmi	loc_EF6A
@@ -17328,7 +17429,7 @@ int_vector_e_ne_F04F:						; CODE XREF: ROM:F01E↑j
 ;   var_rpm_x_5p12, var_rpm_div_25, var_cnt_C7, var_flags_40, var_flags_46,
 ;   var_flags_4D, var_io_input1, var_ign_advance_max, var_ign_advance_trim,
 ;   var_ign_cold_advance, var_ign_dwell_offset, var_ign_knock_retard_base,
-;   var_ign_timing_min, dmarx_ign_advance_hi, dmarx_ign_advance_lo,
+;   var_ign_timing_min, dmarx_word_246_hi, dmarx_unk_246_lo,
 ;   dmatx_knock_retard
 ; Writes: DOUT, var_asr2_time, var_prev_asr2_time, var_ne_sum3,
 ;   var_ign_advance_raw, var_ign_nr_pulses, var_ign_temp,
@@ -17612,11 +17713,11 @@ loc_F16A:							; CODE XREF: iv6_ne_process+10C↑j
 
 loc_F17B:							; CODE XREF: iv6_ne_process+11E↑j
 				mov	d, x
-				ld	a, dmarx_ign_advance_hi
+				ld	a, dmarx_word_246_hi
 				cmp	#30h, va_ne_count_2
 				bcc	loc_F187
 
-				ld	a, dmarx_ign_advance_lo
+				ld	a, dmarx_unk_246_lo
 
 loc_F187:							; CODE XREF: iv6_ne_process+129↑j
 				add	x, a
@@ -18803,7 +18904,7 @@ locret_F529:							; CODE XREF: knock_mcu_update+1E↑j
 ; var_knock_retard / var_knock_retard_max, which the ignition path then
 ; subtracts from base advance. The result is also handed to CPU2 through
 ; dmatx_ign_corr_cpu2, and CPU2's own view arrives back as
-; dmarx_knock_retard_cpu2 - so the two MCUs each hold a knock opinion and
+; dmarx_max_retard_23A - so the two MCUs each hold a knock opinion and
 ; this is where CPU1's is formed.
 ;
 ; Not a register-convention subroutine: takes and returns nothing in
@@ -18811,7 +18912,7 @@ locret_F529:							; CODE XREF: knock_mcu_update+1E↑j
 ;
 ; Reads: va_ne_count_2, var_knock_info, var_ign_knock_retard_base,
 ;   var_rpm_x_5p12, var_rpm_div_25, var_rpm_delta, var_ect, var_flags_46,
-;   dmarx_knock_retard_cpu2, var_knock_gate_168
+;   dmarx_max_retard_23A, var_knock_gate_168
 ; Writes: PORTB, var_knock_retard, var_knock_retard_max,
 ;   var_knock_retard_prev, var_knock_retard_prev2, var_knock_cyl_idx,
 ;   var_knock_event_cnt, var_cnt_knock_decay, var_cnt_CC, var_diag_errors_5,
@@ -18860,7 +18961,7 @@ loc_F547:							; CODE XREF: ROM:F542↑j
 
 				tbbs	bit2, var_flags_46, loc_F573
 
-				ld	a, dmarx_knock_retard_cpu2
+				ld	a, dmarx_max_retard_23A
 				cmp	a, #04h
 				bcs	loc_F573
 
@@ -18989,7 +19090,7 @@ loc_F5D7:							; CODE XREF: ROM:F5D4↑j
 				shl	b
 				bcs	loc_F5F4
 
-				sub	b, dmarx_knock_retard_cpu2
+				sub	b, dmarx_max_retard_23A
 				bcc	loc_F5F4
 
 				add	b, var_knock_retard_prev
@@ -19067,7 +19168,7 @@ loc_F631:							; CODE XREF: ROM:F61C↑j
 loc_F634:							; CODE XREF: ROM:F62F↑j
 				bcc	loc_F63E
 
-				add	a, dmarx_knock_retard_cpu2
+				add	a, dmarx_max_retard_23A
 				bcs	loc_F641
 
 				clr	a
@@ -19076,7 +19177,7 @@ loc_F634:							; CODE XREF: ROM:F62F↑j
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_F63E:							; CODE XREF: ROM:loc_F634↑j
-				ld	a, dmarx_knock_retard_cpu2
+				ld	a, dmarx_max_retard_23A
 
 loc_F641:							; CODE XREF: ROM:F60F↑j
 								; ROM:F639↑j ...
@@ -19540,7 +19641,7 @@ loc_F7C0:							; Clear	flag to	run 4ms	background code
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: TIMER, dmarx_iscv_duty, var_rpm_x_5p12, var_speed_kph
+; Reads: TIMER, dmarx_status1_242, var_rpm_x_5p12, var_speed_kph
 ; Writes: DOUT, var_4ms_cnt_speed_update, var_cnt_C6,
 ; var_error_flags_6D, var_flags_42, var_flags_46, var_flags_47,
 ; var_gearing, var_iscv_error_cnt, var_iscv_relay_cnt,
@@ -19566,7 +19667,7 @@ iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+F↓p
 				tbs	bit3, DOUT			; Test DOUT.3 (ISC relay): is it active?
 				beq	loc_F81D			; DOUT.3 off: skip ISC monitoring
 
-				ld	a, dmarx_iscv_duty		; A = ISC duty command from CPU2
+				ld	a, dmarx_status1_242		; A = ISC duty command from CPU2
 				cmpb	a, #04h				; Does CPU2 command match expected state (4)?
 				beq	loc_F7E4			; Yes: matching - healthy path
 
@@ -19755,7 +19856,7 @@ loc_F899:							; CODE XREF: start_dma+19↑j
 				or	a, #40h
 				st	a, var_asr0n_shadow_1DD
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
-				ld	d, #9200h
+				ld	d, #9000h + dmatx_pim2
 				st	d, ASR3			; ASR3 edge counter value MSB
 				ld	#0B7h, TIMER3		; Timer	LSB (bit0~bit2)
 
@@ -19786,7 +19887,7 @@ loc_F8C4:							; CODE XREF: start_dma+32↑j
 				or	a, #80h
 				st	a, var_asr0n_shadow_1DD
 				st	a, ASR0N		; ASR0 neg edge	counter	value MSB
-				ld	d, #81DEh
+				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, var_cnt_unk_77
@@ -19848,7 +19949,7 @@ loc_F90D:							; CODE XREF: IV0+A↑j
 loc_F911:							; CODE XREF: IV0+17↑j
 								; IV0+1A↑j
 				st	b, var_cnt_unk_76
-				ld	d, #81DEh
+				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, RAMST		; Built-in RAM status
@@ -19885,7 +19986,7 @@ loc_F911:							; CODE XREF: IV0+17↑j
 ; conditions that have no single source variable - comparisons against
 ; var_flags_4E_copy2/var_flags_4F_saved, var_io_input1.1/.3 and
 ; var_flags_4D.2 - the same "packed snapshot" idea CPU2 uses in the other
-; direction for dmarx_status1_169/dmarx_status2_16B.
+; direction for dmarx_diag_mode_243/dmarx_ign_advance_hi_245.
 ;
 ; Reads: var_nv_trim_unk_96, var_nv_trim_unk_98, var_flags_42, var_flags_46,
 ;   var_flags_4D, var_flags_4E_copy2, var_flags_4E_copy_2,
@@ -19985,11 +20086,11 @@ loc_F992:							; CODE XREF: copy_dma_tx:loc_F98D↑j
 
 
 ; ---------------------------------------------------------------------------
-; Reads: dmarx_word_226, var_dma_rx_buffer
+; Reads: dmarx_ve_corr_map, var_dma_rx_buffer
 ; Writes: (none)
 ; ---------------------------------------------------------------------------
 copy_dma_rx:							; CODE XREF: IV0+F↑p
-				ld	x, #dmarx_word_226
+				ld	x, #dmarx_ve_corr_map
 				ld	y, #var_dma_rx_buffer
 
 loc_F9A1:							; CODE XREF: copy_dma_rx+E↓j

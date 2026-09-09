@@ -96,6 +96,37 @@ TAIT:				.block 1			; C85E↓r ...
 LDOUT:				.block 1			; Latch	DOUT
 DOUT:				.block 1			; C86B↓r ...
 								; DOUT Data Register
+								;
+								; *** This is CPU2's DOUT. It is a different register on a different chip
+								; from CPU1's DOUT, and the bit assignments have nothing in common. ***
+								; CPU1's DOUT.0 is the IGT coil driver and its .4-.7 are the four injectors
+								; (see D151803-9651 and gen3/ignition_system.md). None of that applies here.
+								;
+								; CPU2 touches exactly three bits, and every access is a setb/clrb - the
+								; register is never read or written whole:
+								;
+								;   DOUT.0 - Closed-loop indicator, driven by drive_DOUT0. That routine is a
+								;            software-PWM comparator, but the value it compares comes from
+								;            CPU1's var_pw_loop_mode, which is only ever 0 or 0C8h, so the
+								;            duty is only ever 0% or 100%. In practice the pin just follows
+								;            whether CPU1 is running closed loop. Physical device unconfirmed.
+								;            See drive_DOUT0's header and gen3/dma_link_system.md §6.
+								;   DOUT.1 - never touched.
+								;   DOUT.2 - TVSV boost-control solenoid, driven by drive_DOUT2_tvsv. This
+								;            one IS a real PWM: var_tvsv_cnt free-runs 0->192 (+8/call,
+								;            wrapping at 0C8h) and the duty var_tvsv_117 genuinely varies,
+								;            computed by the block at loc_CE86. Do not confuse it with
+								;            DOUT.0 above - the boost control is bit 2, not bit 0.
+								;   DOUT.3 - only ever CLEARED, once, unconditionally, in the pin-park block
+								;            at loc_D084. Never set anywhere in this ROM. Note the ST205
+								;            CPU2 (D151804-0471) has conditional drive code on this same pin
+								;            whose thresholds cannot be met - see the annotation there.
+								;   DOUT.4-.7 - never touched.
+								;
+								; DOM is written 0 at reset, on re-prime and in factory_selfcheck, so DOUT
+								; writes here take effect immediately. That is the other difference from
+								; CPU1, where DOM latches DOUT transitions to a CPR timer match to get
+								; ignition and injection edges placed precisely.
 DOM:				.block 1			; C86E↓r ...
 								; DOUT Control Register
 PORTC:				.block 1			; loc_CD1D↓r ...
@@ -972,8 +1003,27 @@ dmarx_knock:			.block 1			; CA10↓r
 								; CPU1's knock level; indexes
 								; table_knock_enrichment here to give
 								; var_knock_enrichment.
-dmarx_dout0_duty_E1:			.block 2			; CE79↓r
-								; CPU1's DOUT0 duty value.
+dmarx_pw_loop_mode:			.block 1			; CE79↓r
+								; CPU1's var_pw_loop_mode, received over DMA.
+								;   Named for a duty because drive_DOUT0 treats it
+								;   as one - it compares it against a 0..198
+								;   sawtooth (var_unk_115, +6 per call, wrapping
+								;   at 0C8h) and drives DOUT.0 while it exceeds
+								;   it, which is a software PWM on a 0-200 scale.
+								;   But CPU1 only ever writes 0 or 0C8h to it:
+								;   it is an open-loop(0)/closed-loop(0C8h) fuel
+								;   selector, per its own declaration there. So
+								;   the duty is only ever 0 or full, and DOUT.0
+								;   is in practice a straight digital indication
+								;   of whether CPU1 is in closed loop - the PWM
+								;   is machinery that never varies.
+								;   Was dmarx_dout0_duty_E1, declared .block 2.
+								;   The second byte is a separate field (below),
+								;   not the low half of a 16-bit value: drive_DOUT0
+								;   reads this with `ld b`, one byte.
+dmarx_tps_delta_E2:			.block 1
+								; CPU1's dmatx_tps_delta (021Dh). Received but
+								;   never read anywhere in this ROM.
 var_spd_edge_count:		.block 1			; D580↓o ...
 								; Count	of speed signal	edges
 				.block 1
@@ -1133,7 +1183,31 @@ dmatx_unk_167:			.block 1			; CC50↓w
 								; unresolved (see calc_params' inline
 								; comment), so no further specificity is
 								; available from either side yet.
-dmatx_iscv_duty:			.block 1			; CC1A↓w
+dmatx_unk_168:			.block 1			; CC1A↓w
+								; Purpose unconfirmed. CPU2 writes it once, from an RPM-indexed
+								;   lookup (table_C3EE on 0471, table_C376_rpm on 9661), and CPU1
+								;   reads it at eight sites - in update_diag_obd it BIT-TESTS bits
+								;   3 and 4 (`cmpb` is a bitwise AND, opcode 0xCE). Bit 3 feeds
+								;   var_error_flags2 bit 7, which on the ST205 CPU1 becomes
+								;   diagnostic code 54; bit 4 feeds bit 2.
+								;
+								;   UNRESOLVED CONFLICT - do not build on either side of it.
+								;   Statically, the source table is flat: with the interpolator's
+								;   format now traced (word[0..1] = map_min, byte[2] = map_max,
+								;   then map_max+1 values - see gen3/session_journal.md), this
+								;   table decodes to 0x80 at 800, 2400 and 4000 rpm, so the byte
+								;   should be a constant 0x80 and neither bit 3 nor bit 4 should
+								;   ever be set. The same decode gives a proper rising curve for
+								;   the neighbouring ignition tables and reproduces a breakpoint
+								;   annotation made independently in 9661, so the format is not
+								;   in doubt.
+								;   But diagnostic code 54 is observed on the car. Note that the
+								;   NV diagnostic bytes are OR-only - the commit does
+								;   `or b, nv_diag_errors_2` and never clears - so the bit latches
+								;   once set and a single transient would be enough. Candidates:
+								;   a different CPU2 part in that car, a transient on the
+								;   inter-CPU DMA (CPU1 does no frame-integrity check on the
+								;   received block), or a setter not yet found.
 								; = CPU1's dmarx_iscv_duty (0xDA offset, exact match;
 								; CPU1 originally named it dmarx_unk_242_168, embedding
 								; this address in its own name before being simplified -
@@ -2023,7 +2097,7 @@ table_C370_ect:			.db  1Fh			; CC38↓o
 ; RPM table
 
 table_C376_rpm:			.dw 0080h			; CC12↓o
-								; RPM-indexed; the result becomes dmatx_iscv_duty,
+								; RPM-indexed; the result becomes dmatx_unk_168,
 								; the ISC duty CPU1 cross-checks against DOUT.3 in
 								; its relay health monitor.
 				.db  02h
@@ -4094,7 +4168,7 @@ locret_CBFB:							; CBEE↑j
 ;   var_spd, dmarx_flags_1, dmarx_cnt_startup, dmarx_unk_D6 (via
 ;   dmarx_lambda_state), var_ne_sum, var_rpm_smooth_ea
 ; Writes: dmatx_ign_timing_fallback1, dmatx_ign_timing_fallback2,
-;   dmatx_iscv_duty, dmatx_ign_timing_unk_166, dmatx_unk_167, var_map_ve,
+;   dmatx_unk_168, dmatx_ign_timing_unk_166, dmatx_unk_167, var_map_ve,
 ;   dmatx_scaled_ve, var_ve_x_pim_x_rpm, dmatx_ve_x_pim_x_rpm,
 ;   dmatx_lambda_trim_162, var_map_temp_x
 ; ---------------------------------------------------------------------------
@@ -4119,13 +4193,13 @@ calc_params:							; loc_CBE9↑j
 				st	a, dmatx_ign_timing_fallback2
 
 
-; dmatx_iscv_duty = table_C376_rpm(RPM)/32 - see its declaration comment
+; dmatx_unk_168 = table_C376_rpm(RPM)/32 - see its declaration comment
 ; above.
 
 				ld	y, #table_C376_rpm
 				ld	d, var_rpm_x_5p12
 				jsr	table_rD_fixed32_interpolate
-				st	a, dmatx_iscv_duty
+				st	a, dmatx_unk_168
 
 
 ; dmatx_ign_timing_unk_166 = (table_C356_rpm(RPM) * table_C36A_ect(ECT))/64,
@@ -4636,11 +4710,21 @@ loc_CE67:							; CE53↑j
 
 ; ---------------------------------------------------------------------------
 ; drive_DOUT0: software-PWM comparator driving DOUT.0, the same idiom as
-; drive_DOUT2_tvsv (see its header below) but with the duty cycle received
-; directly from CPU1 over DMA (dmarx_dout0_duty_E1) rather than computed locally:
-; var_unk_115 free-runs 0->200 (+6/call, wraps at 0xC8), and DOUT.0 is
-; driven high while var_unk_115 < dmarx_dout0_duty_E1. What DOUT.0 physically
-; drives, and dmarx_dout0_duty_E1's meaning on CPU1's side, aren't confirmed.
+; drive_DOUT2_tvsv (see its header below) but with the duty received from
+; CPU1 over DMA rather than computed locally: var_unk_115 free-runs 0->198
+; (+6/call, wrapping at 0C8h) and DOUT.0 is driven high while the received
+; value exceeds it.
+;
+; The duty never actually varies. CPU1 writes only 0 or 0C8h to the source
+; variable (var_pw_loop_mode - its open-loop/closed-loop fuel selector), and
+; the sawtooth peaks at 198, so the comparison yields 'always clear' at 0 and
+; 'always set' at 0C8h. DOUT.0 is therefore a straight digital indication of
+; whether CPU1 is running closed loop, expressed through PWM machinery that
+; is never exercised. What DOUT.0 physically drives is still unconfirmed.
+;
+; Note it reads ONE byte (`ld b`). The declaration used to be `.block 2`,
+; which made the pair look like a 16-bit value; the second byte is CPU1's
+; separate dmatx_tps_delta and nothing here reads it.
 ; ---------------------------------------------------------------------------
 drive_DOUT0:							; D477↓p
 				ld	b, var_unk_115
@@ -4651,7 +4735,7 @@ drive_DOUT0:							; D477↓p
 
 loc_CE76:							; CE73↑j
 				st	b, var_unk_115
-				ld	b, dmarx_dout0_duty_E1
+				ld	b, dmarx_pw_loop_mode
 				cmp	b, var_unk_115
 				ble	loc_CE83
 				setb	bit0, DOUT
@@ -5107,6 +5191,15 @@ loc_D084:							; D07B↑j ...
 ; The three port writes just below (PORTB.4 clear, PORTB.1 set, DOUT.3
 ; clear) are unrelated one-off pin inits, not part of either warning
 ; block - probably just sharing this tick since it's a convenient place.
+; 
+; Worth knowing when comparing against the ST205: D151804-0471 writes these
+; same three pins in the same order at this same point in its tick, but
+; through conditional blocks gated on dmarx_ect and var_rpm_x_5p12 rather
+; than unconditionally. Those thresholds turn out to be unreachable (over
+; 100 degC coolant AND over 8000 RPM, past the fuel cut), so 0471 lands on
+; the same pin states this ROM writes outright - the difference is in how
+; they get there, not in what the pins end up doing. See the annotation in
+; 0471 and gen3/session_journal.md.
 ;
 ; 2) PORTA.3 warning (from the tbbs below), gated on var_flags_40.0
 ;    clear: resets var_cnt32ms_B5 unless ECT/speed/RPM/PIM/THAM ALL
