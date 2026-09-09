@@ -15,6 +15,69 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The chargecooler pump drive: search closed, it is not in these ROMs
+A negative result, but a well-bounded one. The question that started this
+whole thread was where the ST205's ECU-controlled chargecooler pump is driven.
+It is not driven by either CPU of the ECU pair we have.
+
+The method was to compare the MR2 pair (no chargecooler) against the ST205
+pair (has one) for any output the ST205 drives and the MR2 does not:
+
+- **CPU2, 9661 vs 0471:** the only difference is the three conditional blocks
+  on PORTB.4 / PORTB.1 / DOUT.3, and their two conditions cannot both be met —
+  over ~110 degC coolant *and* over 8000 rpm, when every other RPM threshold in
+  that same ROM converts to a sensible engine speed (3200, 3800, 4000, 5200,
+  and 7200/7400 as an obvious fuel-cut pair). `0A0h` alone sits above all of
+  them, which reads like a feature deliberately calibrated off rather than an
+  accident.
+- **CPU1, 9651 vs 0461:** identical sets of output bits touched, register for
+  register and bit for bit. The single count difference is `PORTB.1`, which the
+  ST205 writes *fewer* times, not more. Nothing ST205-specific is driven there.
+
+Both variables the 0471 blocks test were re-verified rather than assumed:
+`dmarx_ect`, `dmarx_tps`, `dmarx_pim2` and `dmarx_battery` all sit at exactly
+`+0x133` from their CPU1 counterparts, so the ECT reading is the right
+variable, and the branch senses were re-read after the `cmp`/`bcs` semantics
+were established.
+
+**So the ECU monitors the chargecooler and does not drive it.** The monitor is
+solid and traced end to end: PORTC.6 on CPU2, ~2.9 s debounce, through
+`var_flags_47.2` and `dmatx_status1` to CPU1's `update_diag_obd` and out as
+diagnostic code 54. Both ST205 CPU1s carry it — 0461 and 0481 share the `97h`
+commit mask where the MR2's 9651 uses `1Fh`.
+
+One gap remains, and it is the only place left to look: **`D151804-0491`, the
+UK ST205 CPU2, has no ROM image in the repo.** If the drive is enabled on any
+variant, that is the one variant not checked. Otherwise the pump is switched
+by something other than the ECU on this car, with the ECU only watching a
+level or feedback line.
+
+### A repo-wide build check: roms/verify_all_roms.py
+Renames are supposed to be inert and this asserts it across every source at
+once, rather than relying on remembering which files a session touched.
+
+    python roms/verify_all_roms.py                  # every source
+    python roms/verify_all_roms.py --vs-ref master  # also diff against a ref
+
+Two things it gets right that a naive version does not. It finds the shipped
+image for a `Claude/` working copy in the *parent* ECU directory, which is
+where images live — those copies are the files most worth checking and a
+same-directory lookup silently skips every one of them. And it distinguishes
+"a ROM that stopped building" from "an .asm that was never a ROM": the repo
+holds extracted routines kept as annotation examples and standalone bring-up
+programs, and reporting those as failures buries a real regression. Only a
+source with an image beside it counts as a failure when it will not assemble.
+
+On the 3S-GTE family: 24 sources, 8 image comparisons, 0 failures.
+
+Two pre-existing issues it surfaced, neither caused here:
+`D151804-0471/toyotune/D151804-0471_DIAG16_32K_JS.ASM` does not assemble, and
+`D151804-0481`'s image is named `D151804-0481_ORIGNAL.bin` — the typo is in
+the filename, and the matcher now tolerates a suffix like that when it is
+unambiguous.
+
+---
+
 ### D151804-0481 (UK ST205 CPU1) ported from 0461
 The cheapest port yet, because the two ROMs are the same car for different
 markets: **their RAM layouts are identical.** 209 hand-named symbols are

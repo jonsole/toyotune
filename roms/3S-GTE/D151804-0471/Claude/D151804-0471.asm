@@ -4423,8 +4423,24 @@ loc_D1A4:							; CODE XREF: check_startup-325↑j
 ; carries diagnostic code 54 (chargecooler pump/level) where D151803-9651
 ; does not. But as calibrated this code never actuates, so it is not a
 ; working thermostatic pump drive, and calling it one would be wrong. It may
-; be a severe overheat/overspeed failsafe, or a disabled feature. The actual
-; pump drive, if it is in this ROM at all, has not been found.
+; be a severe overheat/overspeed failsafe, or, more likely, a feature
+; calibrated off: every other RPM threshold in this ROM converts to a
+; sensible engine speed (3200, 3800, 4000, 5200, 7200/7400 for the fuel-cut
+; pair) and 0A0h alone sits above all of them.
+;
+; SEARCH CLOSED - the pump drive is not in either ROM of this pair.
+; Comparing the MR2 pair (no chargecooler) against the ST205 pair (has one)
+; for any output the ST205 drives and the MR2 does not:
+;   CPU2  9661 vs 0471: the ONLY difference is the three blocks above,
+;         and their conditions cannot both be met.
+;   CPU1  9651 vs 0461: identical sets of output bits touched. The one
+;         count difference is PORTB.1, which the ST205 writes FEWER
+;         times, not more. No ST205-specific drive exists there.
+; So this ECU MONITORS the chargecooler (PORTC.6 -> diagnostic 54) but
+; does not drive its pump. Either the pump is switched by something other
+; than the ECU on this car, or the drive is enabled only on a variant not
+; present here - note D151804-0491, the UK CPU2, has no ROM image in the
+; repo, so that one variant remains unchecked.
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_D1AB:							; CODE XREF: check_startup-31F↑j
