@@ -574,7 +574,7 @@ dmatx_diag_mode_16D:			.block 1			; DATA XREF: check_startup-950↓r
 								; check_startup:loc_CFF0↓r ...
 dmatx_status2_16E:			.block 1			; DATA XREF: update_dmatx_status_flags:loc_D7BA↓w
 unk_16F:			.block 1			; DATA XREF: factory_selfcheck+2↓w
-unk_170:			.block 1			; DATA XREF: check_startup:loc_CE22↓w
+dmatx_ign_retard_pair:			.block 1			; DATA XREF: check_startup:loc_CE22↓w
 				.block 1
 				.block 1
 				.block 1
@@ -3654,7 +3654,7 @@ loc_CE20:							; CODE XREF: check_startup-6A6↑j
 
 loc_CE22:							; CODE XREF: check_startup-6AF↑j
 								; check_startup-6AC↑j
-				st	d, unk_170
+				st	d, dmatx_ign_retard_pair
 				ld	d, var_pim2_peak
 				jsr	divide_rD_16
 

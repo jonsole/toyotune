@@ -3478,8 +3478,8 @@ word_224:			.block 2			; DATA XREF: factory_self_test+46↓w
 								;   0243h dmarx_diag_mode_243            <- 016Ah dmatx_diag_mode_16A
 								;   0244h dmarx_status2_244              <- 016Bh dmatx_status2_16B
 								;   0245h dmarx_ign_advance_hi_245       <- 016Ch dmatx_ign_advance_hi_16C
-								;   0246h dmarx_word_246_hi              <- 016Dh word_16D
-								;   0247h dmarx_unk_246_lo               <- 016Eh (no symbol)
+								;   0246h dmarx_ign_retard_hi              <- 016Dh word_16D
+								;   0247h dmarx_ign_retard_lo               <- 016Eh (no symbol)
 								; ===========================================================================
 dmarx_ve_corr_map:			.block 2			; DATA XREF: divide_d_by_x+13FF↓r
 								; copy_dma_rx↓o
@@ -3501,7 +3501,12 @@ dmarx_enrichment_unk_236:		.block 1			; DATA XREF: divide_d_by_x+B45↓r
 								; divide_d_by_x+CB8↓r ...
 dmarx_fuel_enrichment:		.block 1			; DATA XREF: divide_d_by_x+866↓r
 								; apply_enrich_and_trims+3↓r
-				.block 1
+dmarx_unk_238:			.block 1
+								; Receives CPU2's dmatx_unk_15F, which
+								;   calc_ignition_timing writes. Nothing in
+								;   this ROM reads it. Previously an unnamed
+								;   .block 1, which is why it looked like a
+								;   hole in the received block.
 dmarx_knock_unk_239:		.block 1			; DATA XREF: calc_4ms_corrections+533↓r
 dmarx_max_retard_23A:	.block 1			; DATA XREF: ROM:F554↓r
 								; ROM:F5DD↓r ...
@@ -3577,8 +3582,8 @@ dmarx_ign_advance_hi_245:		.block 1			; DATA XREF: factory_self_test+1E4↓r
 								; 5/.6/.7, PORTC.7, PORTD_ASRIN.5, all
 								; inverted) - see CPU2's
 								; update_dmatx_status_flags.
-dmarx_word_246_hi:	.block 1			; DATA XREF: iv6_ne_process+123↓r
-dmarx_unk_246_lo:	.block 1			; DATA XREF: divide_d_by_x+DA↓o
+dmarx_ign_retard_hi:	.block 1			; DATA XREF: iv6_ne_process+123↓r
+dmarx_ign_retard_lo:	.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12B↓r
 byte_248:			.block 0B7h			; DATA XREF: copy_dma_rx+B↓o
 stack_top:			.block 1			; DATA XREF: ROM:C663↓o
@@ -6104,12 +6109,12 @@ loc_C66B:							; CODE XREF: divide_d_by_x+D4↓j
 				cmp	y, #unk_7F		; Reached end of byte region?
 				ble	loc_C66B		; No: continue
 
-; Phase 2b: Zero-fill word RAM (var_diag_errors_4..dmarx_unk_246_lo)
+; Phase 2b: Zero-fill word RAM (var_diag_errors_4..dmarx_ign_retard_lo)
 				ld	y, #var_diag_errors_4	; Y = start of word RAM region (D=0x0000)
 
 loc_C674:							; CODE XREF: divide_d_by_x+DD↓j
 				st	d, [y]			; Zero word at Y; Y auto-increments by 2
-				cmp	y, #dmarx_unk_246_lo	; Reached end of word region?
+				cmp	y, #dmarx_ign_retard_lo	; Reached end of word region?
 				ble	loc_C674		; No: continue
 
 
@@ -17429,7 +17434,7 @@ int_vector_e_ne_F04F:						; CODE XREF: ROM:F01E↑j
 ;   var_rpm_x_5p12, var_rpm_div_25, var_cnt_C7, var_flags_40, var_flags_46,
 ;   var_flags_4D, var_io_input1, var_ign_advance_max, var_ign_advance_trim,
 ;   var_ign_cold_advance, var_ign_dwell_offset, var_ign_knock_retard_base,
-;   var_ign_timing_min, dmarx_word_246_hi, dmarx_unk_246_lo,
+;   var_ign_timing_min, dmarx_ign_retard_hi, dmarx_ign_retard_lo,
 ;   dmatx_knock_retard
 ; Writes: DOUT, var_asr2_time, var_prev_asr2_time, var_ne_sum3,
 ;   var_ign_advance_raw, var_ign_nr_pulses, var_ign_temp,
@@ -17713,11 +17718,11 @@ loc_F16A:							; CODE XREF: iv6_ne_process+10C↑j
 
 loc_F17B:							; CODE XREF: iv6_ne_process+11E↑j
 				mov	d, x
-				ld	a, dmarx_word_246_hi
+				ld	a, dmarx_ign_retard_hi
 				cmp	#30h, va_ne_count_2
 				bcc	loc_F187
 
-				ld	a, dmarx_unk_246_lo
+				ld	a, dmarx_ign_retard_lo
 
 loc_F187:							; CODE XREF: iv6_ne_process+129↑j
 				add	x, a

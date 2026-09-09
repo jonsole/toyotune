@@ -310,7 +310,7 @@ runs in interrupt context where the other direction's runs in `main_loop`.
 | `0x15C` | `dmatx_tham_enrich` | 1 | `calc_ignition_timing` | `0x235` | `dmarx_tham_enrich` | `no_enrichment` |
 | `0x15D` | `dmatx_enrichment_unk_15D` | 1 | `decay_..._100, decay_var_..._103` | `0x236` | `dmarx_enrichment_unk_236` | `calc_inj_pw_base, calc_iscv, closed_loop_control` |
 | `0x15E` | `dmatx_fuel_enrichment` | 1 | `open_loop` | `0x237` | `dmarx_fuel_enrichment` | `apply_enrich_and_trims` |
-| `0x15F` | `dmatx_unk_15F` | 1 | `calc_ignition_timing` | `0x238` | `*(no CPU1 symbol)*` | `-- see §6` |
+| `0x15F` | `dmatx_unk_15F` | 1 | `calc_ignition_timing` | `0x238` | `dmarx_unk_238` | none -- see §6 |
 | `0x160` | `dmatx_knock_unk_160` | 1 | `calc_ignition_timing` | `0x239` | `dmarx_knock_unk_239` | `check_set_overrun_flag` |
 | `0x161` | `dmatx_max_retard_161` | 1 | `calc_ignition_timing` | `0x23A` | `dmarx_max_retard_23A` | `knock_processing` |
 | `0x162` | `dmatx_lambda_trim_162` | 1 | `calc_params` | `0x23B` | `dmarx_lambda_trim_23B` | `no_enrichment` |
@@ -324,7 +324,7 @@ runs in interrupt context where the other direction's runs in `main_loop`.
 | `0x16A` | `dmatx_diag_mode_16A` | 1 | `output_odb_bit_return` | `0x243` | `dmarx_diag_mode_243` | `check_clear_speed_limiter_rev` |
 | `0x16B` | `dmatx_status2_16B` | 1 | `update_dmatx_status_flags` | `0x244` | `dmarx_status2_244` | `watchdog_kick` |
 | `0x16C` | `dmatx_ign_advance_hi_16C` | 1 | `factory_selfcheck` | `0x245` | `dmarx_ign_advance_hi_245` | `watchdog_kick` |
-| `0x16D` | `word_16D` | 2 | `**no writer found**` | `0x246-0x247` | `dmarx_word_246_hi / dmarx_unk_246_lo` | `bg_ne_process_F108, clear_variables` |
+| `0x16D` | `dmatx_ign_retard_pair` | 2 | `calc_ignition_timing` | `0x246-0x247` | `dmarx_ign_retard_hi / dmarx_ign_retard_lo` | `bg_ne_process_F108, clear_variables` |
 
 `dmarx_status1_242` is the most-consumed byte in this direction, and it is the
 one `update_diag_obd` bit-tests: bit 3 of it becomes diagnostic code 54 on the
@@ -383,6 +383,35 @@ The apparent 16-bit read was a mis-declaration: `drive_DOUT0` reads one byte
 `dmarx_pw_loop_mode` and `dmarx_tps_delta_E2`, the latter receiving CPU1's
 `dmatx_tps_delta` — which has no writer on CPU1 and no reader on CPU2, so it
 carries whatever `0x21D` last held.
+
+**Resolved: the pair at `0x16D` is two retard values, not a 16-bit number.**
+`calc_ignition_timing` selects a two-byte entry from
+`table_rpm_ignition_retard` and stores both with one `st d`. CPU1 uses *one*
+of them, chosen by crank position: `bg_ne_process` loads the high byte,
+substitutes the low byte when `va_ne_count_2 < 30h`, and adds it to the
+ignition timing. Two alternative retard amounts for different parts of the
+crank cycle, which is why CPU2 writes them together and CPU1 never reads them
+together. Now `dmatx_ign_retard_pair` and `dmarx_ign_retard_hi`/`_lo` in both
+ECU pairs, the ST205 code checked instruction by instruction rather than
+assumed parallel.
+
+An earlier version of this section recorded it as having **no writer on
+CPU2** — a bug in the search, not a fact about the ROM: the scan matched only
+stores to names beginning `dmatx_`, and this one was called `word_16D`. Same
+shape as the `table_odb` miss above.
+
+**Resolved: `dmatx_unk_15F` is sent and never read.** It arrives at CPU1
+`0x238`, which was an unnamed `.block 1` between two named fields — hence
+appearing to be a hole in the received block — and is now `dmarx_unk_238`.
+Nothing in CPU1 reads it, the mirror of the unread fields in the other
+direction.
+
+**Several enrichment slots have two writers each.** As described in §5.2, one
+stage of the decay chain writes a slot and the next rewrites it. Because
+transmit streams live RAM with no snapshot, which stage's value CPU1 receives
+depends on where in the chain the engine happened to read that byte. Probably
+harmless for a decaying value, but worth knowing before treating any of these
+as a stable reading.
 
 **CPU2 receives 35 bytes; CPU1 sends 38.** `var_serbus_rx` is 35 bytes and
 `copy_serbus_rx` consumes exactly 35. Whether the engine actually transfers
