@@ -15,7 +15,62 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The chargecooler pump drive: found, PORTA.3 on CPU2
+Jon described the behaviour precisely — the pump runs about 30 seconds after
+the throttle is moved, stops if the car is left at idle, and does not run at
+all when a water-level fault is present. That is enough of a fingerprint to
+search for, and it is all there in `D151804-0471`.
+
+**PORTA.3, active low.** Two ~1 second counters, each reset by a condition,
+each compared against a threshold. The pin is driven LOW only while both are
+under their limit; if either runs past, PORTA.3 goes high and both counters
+are slammed to `0FFh` so the pump stays off until something resets them.
+
+    var_cnt1s_throttle_C4   reset while dmarx_var_flags_46 bit 2 is CLEAR,
+                            which is CPU1's var_flags_46.2 - "cleared when
+                            throttle open, set when closed for a certain
+                            period". Threshold 1Eh = 30 -> ~30 s of running
+                            after throttle movement, then off.
+
+    var_cnt1s_level_C3      reset while var_input_bits bit 3 is SET, i.e.
+                            while PORTC.6 reads LOW - the healthy state of the
+                            level input. Threshold 19h = 25 -> a sustained
+                            level fault stops the pump.
+
+The ~1 s tick is a two-stage prescale: `increment_counters` bumps `0C3h`-`0C4h`
+only when `var_cnt8ms_1s_prescale_B0` reaches `7Ah`, and that prescaler is
+incremented in `process_8ms`. 122 x 8 ms = 976 ms.
+
+So the same PORTC.6 input does both jobs: at ~2.9 s it raises diagnostic 54,
+and at ~25 s it inhibits the pump. That is why the monitor was findable and
+the drive was not — they share an input but nothing else.
+
+**Why the previous entry got this wrong, which is the part worth keeping.**
+It compared the MR2 pair against the ST205 pair asking *which output bits does
+each ROM touch*, found the sets identical on CPU1 and only the unreachable
+blocks differing on CPU2, and concluded the ECU does not drive the pump. But
+**PORTA.3 is driven in both ROMs** — in `D151803-9661` by an overheat/high-load
+warning gated on ECT/speed/RPM/PIM/THAM with a 32 ms counter, and in
+`D151804-0471` by this. Same pin, different function per car. A bit-set
+comparison cannot see that, and no amount of rerunning it would have.
+
+The lesson is narrower than "I was wrong": a comparison is only as good as the
+thing it compares, and "which pins are touched" is a much weaker question than
+"what decides each pin". The negative result was stated far more confidently
+than a method that coarse could support.
+
+Also of note: the three conditional blocks earlier in the same file — the ones
+with the unreachable ECT-and-RPM thresholds — are still unexplained. They are
+not the pump. Their annotation now says so and points here.
+
+---
+
 ### The chargecooler pump drive: search closed, it is not in these ROMs
+
+> **⚠** Wrong — see "The chargecooler pump drive: found, PORTA.3 on CPU2"
+> above. The drive is PORTA.3, a pin *both* ROMs touch, so the bit-set
+> comparison this entry rests on could never have found it. The ECU does
+> control the pump.
 A negative result, but a well-bounded one. The question that started this
 whole thread was where the ST205's ECU-controlled chargecooler pump is driven.
 It is not driven by either CPU of the ECU pair we have.

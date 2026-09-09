@@ -285,7 +285,7 @@ var_cnt4ms_AE:				.block 1			; DATA XREF: check_startup-B7D↓r
 								; serial_dma_start↓r ...
 var_cnt8ms_AF:				.block 1			; DATA XREF: check_startup-B89↓r
 								; check_startup-AB8↓r
-unk_B0:				.block 1			; DATA XREF: check_startup:loc_CE62↓r
+var_cnt8ms_1s_prescale_B0:				.block 1			; DATA XREF: check_startup:loc_CE62↓r
 								; check_startup-65A↓w
 				.block 1
 var_cnt32ms_B2:				.block 1			; DATA XREF: check_startup-AEC↓w
@@ -321,9 +321,9 @@ var_cnt64ms_C0:				.block 1			; DATA XREF: update_odb_flags+CB↓r
 unk_C1:				.block 1			; DATA XREF: check_startup+42↓r
 								; check_startup+45↓w
 				.block 1
-unk_C3:				.block 1			; DATA XREF: check_startup-B75↓r
+var_cnt1s_level_C3:				.block 1			; DATA XREF: check_startup-B75↓r
 								; check_startup-2C6↓w ...
-unk_C4:				.block 1			; DATA XREF: check_startup-B72↓r
+var_cnt1s_throttle_C4:				.block 1			; DATA XREF: check_startup-B72↓r
 								; check_startup-2C1↓w ...
 var_rpm_x_5p12:			.block 1			; DATA XREF: table_pair_interpolate_rpm_entry+2↓r
 								; check_startup:loc_CA21↓w ...
@@ -2623,8 +2623,8 @@ loc_C931:							; CODE XREF: check_startup+31↓j
 				ld	#0FEh, var_cnt4ms_AE
 				ld	a, #0F4h
 				st	a, var_asr0n_shadow_129
-				ld	#0FFh, unk_C3
-				ld	#0FFh, unk_C4
+				ld	#0FFh, var_cnt1s_level_C3
+				ld	#0FFh, var_cnt1s_throttle_C4
 				ld	#0FFh, var_cnt32ms_tvsv_limiter
 				ld	a, #0DEh
 				st	a, var_odb_byte_count
@@ -3691,10 +3691,10 @@ loc_CE58:							; CODE XREF: check_startup-685↑j
 
 
 loc_CE62:							; CODE XREF: check_startup-667↑j
-				cmp	#7Ah, unk_B0
+				cmp	#7Ah, var_cnt8ms_1s_prescale_B0
 				bcs	loc_CE75
 
-				clr	unk_B0
+				clr	var_cnt8ms_1s_prescale_B0
 				ld	d, #0C302h
 				jsr	increment_counters
 
@@ -4428,19 +4428,13 @@ loc_D1A4:							; CODE XREF: check_startup-325↑j
 ; sensible engine speed (3200, 3800, 4000, 5200, 7200/7400 for the fuel-cut
 ; pair) and 0A0h alone sits above all of them.
 ;
-; SEARCH CLOSED - the pump drive is not in either ROM of this pair.
-; Comparing the MR2 pair (no chargecooler) against the ST205 pair (has one)
-; for any output the ST205 drives and the MR2 does not:
-;   CPU2  9661 vs 0471: the ONLY difference is the three blocks above,
-;         and their conditions cannot both be met.
-;   CPU1  9651 vs 0461: identical sets of output bits touched. The one
-;         count difference is PORTB.1, which the ST205 writes FEWER
-;         times, not more. No ST205-specific drive exists there.
-; So this ECU MONITORS the chargecooler (PORTC.6 -> diagnostic 54) but
-; does not drive its pump. Either the pump is switched by something other
-; than the ECU on this car, or the drive is enabled only on a variant not
-; present here - note D151804-0491, the UK CPU2, has no ROM image in the
-; repo, so that one variant remains unchecked.
+; WRONG - and left here because the reasoning is worth seeing. An earlier
+; pass concluded from this that the pump was not driven at all, on the
+; strength of comparing WHICH output bits each ROM touches. The drive is
+; PORTA.3, which both ROMs touch, so that comparison could never have
+; found it - the two ROMs differ in the logic behind the pin, not in the
+; set of pins. See the CHARGECOOLER PUMP DRIVE block further down.
+; These three blocks remain unexplained and genuinely unreachable.
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_D1AB:							; CODE XREF: check_startup-31F↑j
@@ -4497,6 +4491,46 @@ loc_D1E2:							; CODE XREF: check_startup-2EF↑j
 loc_D1E4:							; CODE XREF: check_startup-2E5↑j
 				clrb	bit3, DOUT
 
+; ───────────────────────────────────────────────────────────────────────────
+; CHARGECOOLER PUMP DRIVE - PORTA.3, active low.
+;
+; Confirmed against observed behaviour on the car: the pump runs for about 30
+; seconds after the throttle is moved, stops if the engine is left at idle,
+; and does not run at all when a water-level fault is present.
+;
+; Two ~1 second counters, both reset by a condition and both compared against
+; a threshold. PORTA.3 is driven LOW (pump on) only while BOTH are still under
+; their limit; if either has run past it, PORTA.3 goes high and both counters
+; are slammed to 0FFh so the pump stays off until something resets them.
+;
+;   var_cnt1s_throttle_C4  reset while dmarx_var_flags_46 bit 2 is CLEAR.
+;       That bit is CPU1's var_flags_46.2 - "cleared when throttle open, set
+;       when closed for a certain period". So moving the throttle zeroes this
+;       counter; leaving the car at idle lets it climb.
+;       Threshold 1Eh = 30 -> the pump runs for ~30 s after throttle movement
+;       and then stops. This is the behaviour above.
+;
+;   var_cnt1s_level_C3     reset while var_input_bits bit 3 is SET, i.e. while
+;       PORTC.6 reads LOW - the healthy state of the chargecooler level input
+;       (the same pin whose opposite state raises diagnostic code 54 after a
+;       ~2.9 s debounce; see update_odb_flags below).
+;       Threshold 19h = 25 -> a sustained level fault stops the pump.
+;
+; The ~1 s tick: increment_counters bumps 0C3h-0C4h only when
+; var_cnt8ms_1s_prescale_B0 has reached 7Ah, and that prescaler is itself
+; incremented in process_8ms. 122 * 8 ms = 976 ms.
+;
+; The outer gates are dmatx_diag_mode_16D == 7 and an engine-speed threshold
+; (0Fh, or 04h when PORTA.3 is already high - a small hysteresis).
+;
+; NOTE FOR ANYONE COMPARING ROMS: PORTA.3 is driven in D151803-9661 too, but
+; by completely different code - an overheat/high-load warning gated on
+; ECT/speed/RPM/PIM/THAM with a 32 ms counter. Same pin, different function
+; per car. Comparing *which* output bits a ROM touches will not reveal this;
+; only comparing the logic will. An earlier pass through this file concluded
+; the pump was not driven at all on the strength of a bit-set comparison, and
+; was wrong.
+; ───────────────────────────────────────────────────────────────────────────
 loc_D1E6:							; CODE XREF: check_startup-2E1↑j
 				ld	a, dmatx_diag_mode_16D
 				cmpb	a, #07h
@@ -4513,18 +4547,18 @@ loc_D1F4:							; CODE XREF: check_startup-2D2↑j
 
 				tbbc	bit3, var_input_bits, loc_D1FD
 
-				clr	unk_C3
+				clr	var_cnt1s_level_C3
 
 loc_D1FD:							; CODE XREF: check_startup-2C9↑j
 				tbbs	bit2, dmarx_var_flags_46, loc_D202
 
-				clr	unk_C4
+				clr	var_cnt1s_throttle_C4
 
 loc_D202:							; CODE XREF: check_startup:loc_D1FD↑j
-				cmp	#19h, unk_C3
+				cmp	#19h, var_cnt1s_level_C3
 				bgt	loc_D210
 
-				cmp	#1Eh, unk_C4
+				cmp	#1Eh, var_cnt1s_throttle_C4
 				bgt	loc_D210
 
 				clrb	bit3, PORTA
@@ -4535,8 +4569,8 @@ loc_D202:							; CODE XREF: check_startup:loc_D1FD↑j
 loc_D210:							; CODE XREF: check_startup-2D6↑j
 								; check_startup-2CB↑j ...
 				setb	bit3, PORTA
-				ld	#0FFh, unk_C3
-				ld	#0FFh, unk_C4
+				ld	#0FFh, var_cnt1s_level_C3
+				ld	#0FFh, var_cnt1s_throttle_C4
 
 loc_D218:							; CODE XREF: check_startup-2B3↑j
 				jmp	loc_D3A3
