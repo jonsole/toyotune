@@ -131,6 +131,23 @@ class TestNameAdaptation(unittest.TestCase):
         self.assertEqual(name, 'divide_rD_32')
         self.assertEqual(unresolved, [])
 
+    def test_mid_name_rom_address_is_adapted(self):
+        # Plenty of table/map names carry their own ROM address in the middle
+        # rather than at the end. Reading only the trailing token missed those,
+        # and the tool refused 13 otherwise-good renames on the 9661 -> 0471
+        # pass because of it.
+        name, unresolved = adapt_name('table_C356_rpm', 'table_C3CE', {}, {}, {})
+        self.assertEqual(name, 'table_C3CE_rpm')
+        self.assertEqual(unresolved, [])
+
+    def test_two_rom_addresses_in_a_name_are_ambiguous(self):
+        # With two candidates there is no way to tell which is the symbol's
+        # own, so refuse rather than pick one.
+        from planner import _embedded_rom_address
+        self.assertIsNone(_embedded_rom_address('map_C403_to_C490'))
+        self.assertEqual(_embedded_rom_address('table_C356_rpm'), 0xC356)
+        self.assertIsNone(_embedded_rom_address('var_cnt_0080'))  # RAM, not ROM
+
     def test_ambiguous_fragment_is_refused_not_mangled(self):
         # If a scale factor did collide with a mapped address we cannot tell
         # them apart -- the tool must refuse the name, never rewrite it. A

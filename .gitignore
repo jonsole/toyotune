@@ -105,3 +105,6 @@ flash_backup_*.bin
 # rename scripts. The tooling never reads them back, and the results that
 # matter are recorded in the ROMs' own warning blocks.
 roms/rom_port/*.json
+
+# verify_all_roms.py scratch, if ever pointed back inside the repo
+.verify_tmp/

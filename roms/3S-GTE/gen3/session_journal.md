@@ -15,6 +15,189 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The ECT threshold ladder, and a trap in the calibration spreadsheet
+Following up the three unreachable blocks. They are still unexplained, but two
+useful things came out of looking properly.
+
+**There is a ladder of ECT thresholds in `D151804-0471`**, five of them, and
+`0F7C0h` — the one in those blocks — is the highest:
+
+| threshold | what it gates |
+|---|---|
+| `0ED40h` / `0EF80h` | **PORTB.3**, a hysteresis pair: set above, clear below |
+| `0F140h` | a block also testing `unk_E4` and RPM |
+| `0F240h` / `0F3C0h` | `var_flags_44` bit 1, another hysteresis pair |
+| `0F300h` | a block also testing `dmarx_tha` |
+| `0F7C0h` | the three unexplained blocks |
+
+The hysteresis pairs are worth noting in their own right — **PORTB.3 is driven
+thermostatically off coolant temperature**, on at `0EF80h` and off at `0ED40h`.
+That is a genuine temperature-controlled output, unlike the `0F7C0h` blocks.
+
+So `0F7C0h` is not an impossible value, just the hottest thing this ROM tests
+for. **It is the RPM half that makes the pair unreachable** — `0A0h` is 8000
+rpm, above this same ROM's fuel-cut thresholds of 7200/7400. A severe-overheat
+response with a second condition that can never be met reads like a feature
+disabled by calibration rather than by deleting the code, which is an ordinary
+thing to find. That is inference, not evidence, and is labelled as such.
+
+**The trap: do not extrapolate from `temp_sensor_calibration.xlsx`'s tail.**
+Its last points are 236 -> 95.0, 236 -> 96.4, 237 -> 98.6, 238 -> 100.6,
+239 -> 100.0 degC. Noisy and non-monotonic, because that is measurement scatter
+at boiling — the data simply stops where the kettle did. I tried to convert
+`0F7h` = 247 to a temperature by extending the last two points and got 95 degC,
+i.e. *cooler* than the 239 point, because those two have a negative slope. The
+only defensible statement about anything above 239 is "well above 100 degC".
+The earlier entries that quote "~110 degC" and "over 100 degC" for this
+threshold should be read with that in mind: the direction is right, the number
+is not supportable.
+
+---
+
+### The chargecooler pump drive: found, PORTA.3 on CPU2
+Jon described the behaviour precisely — the pump runs about 30 seconds after
+the throttle is moved, stops if the car is left at idle, and does not run at
+all when a water-level fault is present. That is enough of a fingerprint to
+search for, and it is all there in `D151804-0471`.
+
+**PORTA.3, active low.** Two ~1 second counters, each reset by a condition,
+each compared against a threshold. The pin is driven LOW only while both are
+under their limit; if either runs past, PORTA.3 goes high and both counters
+are slammed to `0FFh` so the pump stays off until something resets them.
+
+    var_cnt1s_throttle_C4   reset while dmarx_var_flags_46 bit 2 is CLEAR,
+                            which is CPU1's var_flags_46.2 - "cleared when
+                            throttle open, set when closed for a certain
+                            period". Threshold 1Eh = 30 -> ~30 s of running
+                            after throttle movement, then off.
+
+    var_cnt1s_level_C3      reset while var_input_bits bit 3 is SET, i.e.
+                            while PORTC.6 reads LOW - the healthy state of the
+                            level input. Threshold 19h = 25 -> a sustained
+                            level fault stops the pump.
+
+The ~1 s tick is a two-stage prescale: `increment_counters` bumps `0C3h`-`0C4h`
+only when `var_cnt8ms_1s_prescale_B0` reaches `7Ah`, and that prescaler is
+incremented in `process_8ms`. 122 x 8 ms = 976 ms.
+
+So the same PORTC.6 input does both jobs: at ~2.9 s it raises diagnostic 54,
+and at ~25 s it inhibits the pump. That is why the monitor was findable and
+the drive was not — they share an input but nothing else.
+
+**Why the previous entry got this wrong, which is the part worth keeping.**
+It compared the MR2 pair against the ST205 pair asking *which output bits does
+each ROM touch*, found the sets identical on CPU1 and only the unreachable
+blocks differing on CPU2, and concluded the ECU does not drive the pump. But
+**PORTA.3 is driven in both ROMs** — in `D151803-9661` by an overheat/high-load
+warning gated on ECT/speed/RPM/PIM/THAM with a 32 ms counter, and in
+`D151804-0471` by this. Same pin, different function per car. A bit-set
+comparison cannot see that, and no amount of rerunning it would have.
+
+The lesson is narrower than "I was wrong": a comparison is only as good as the
+thing it compares, and "which pins are touched" is a much weaker question than
+"what decides each pin". The negative result was stated far more confidently
+than a method that coarse could support.
+
+Also of note: the three conditional blocks earlier in the same file — the ones
+with the unreachable ECT-and-RPM thresholds — are still unexplained. They are
+not the pump. Their annotation now says so and points here.
+
+---
+
+### The chargecooler pump drive: search closed, it is not in these ROMs
+
+> **⚠** Wrong — see "The chargecooler pump drive: found, PORTA.3 on CPU2"
+> above. The drive is PORTA.3, a pin *both* ROMs touch, so the bit-set
+> comparison this entry rests on could never have found it. The ECU does
+> control the pump.
+A negative result, but a well-bounded one. The question that started this
+whole thread was where the ST205's ECU-controlled chargecooler pump is driven.
+It is not driven by either CPU of the ECU pair we have.
+
+The method was to compare the MR2 pair (no chargecooler) against the ST205
+pair (has one) for any output the ST205 drives and the MR2 does not:
+
+- **CPU2, 9661 vs 0471:** the only difference is the three conditional blocks
+  on PORTB.4 / PORTB.1 / DOUT.3, and their two conditions cannot both be met —
+  over ~110 degC coolant *and* over 8000 rpm, when every other RPM threshold in
+  that same ROM converts to a sensible engine speed (3200, 3800, 4000, 5200,
+  and 7200/7400 as an obvious fuel-cut pair). `0A0h` alone sits above all of
+  them, which reads like a feature deliberately calibrated off rather than an
+  accident.
+- **CPU1, 9651 vs 0461:** identical sets of output bits touched, register for
+  register and bit for bit. The single count difference is `PORTB.1`, which the
+  ST205 writes *fewer* times, not more. Nothing ST205-specific is driven there.
+
+Both variables the 0471 blocks test were re-verified rather than assumed:
+`dmarx_ect`, `dmarx_tps`, `dmarx_pim2` and `dmarx_battery` all sit at exactly
+`+0x133` from their CPU1 counterparts, so the ECT reading is the right
+variable, and the branch senses were re-read after the `cmp`/`bcs` semantics
+were established.
+
+**So the ECU monitors the chargecooler and does not drive it.** The monitor is
+solid and traced end to end: PORTC.6 on CPU2, ~2.9 s debounce, through
+`var_flags_47.2` and `dmatx_status1` to CPU1's `update_diag_obd` and out as
+diagnostic code 54. Both ST205 CPU1s carry it — 0461 and 0481 share the `97h`
+commit mask where the MR2's 9651 uses `1Fh`.
+
+One gap remains, and it is the only place left to look: **`D151804-0491`, the
+UK ST205 CPU2, has no ROM image in the repo.** If the drive is enabled on any
+variant, that is the one variant not checked. Otherwise the pump is switched
+by something other than the ECU on this car, with the ECU only watching a
+level or feedback line.
+
+### A repo-wide build check: roms/verify_all_roms.py
+Renames are supposed to be inert and this asserts it across every source at
+once, rather than relying on remembering which files a session touched.
+
+    python roms/verify_all_roms.py                  # every source
+    python roms/verify_all_roms.py --vs-ref master  # also diff against a ref
+
+Two things it gets right that a naive version does not. It finds the shipped
+image for a `Claude/` working copy in the *parent* ECU directory, which is
+where images live — those copies are the files most worth checking and a
+same-directory lookup silently skips every one of them. And it distinguishes
+"a ROM that stopped building" from "an .asm that was never a ROM": the repo
+holds extracted routines kept as annotation examples and standalone bring-up
+programs, and reporting those as failures buries a real regression. Only a
+source with an image beside it counts as a failure when it will not assemble.
+
+On the 3S-GTE family: 24 sources, 8 image comparisons, 0 failures.
+
+Two pre-existing issues it surfaced, neither caused here:
+`D151804-0471/toyotune/D151804-0471_DIAG16_32K_JS.ASM` does not assemble, and
+`D151804-0481`'s image is named `D151804-0481_ORIGNAL.bin` — the typo is in
+the filename, and the matcher now tolerates a suffix like that when it is
+unambiguous.
+
+---
+
+### D151804-0481 (UK ST205 CPU1) ported from 0461
+The cheapest port yet, because the two ROMs are the same car for different
+markets: **their RAM layouts are identical.** 209 hand-named symbols are
+shared and every one sits at the same address, none shifted — where
+9651 -> 0461 had piecewise shifts of 0, -4, -6 and -8 across the map. Only
+the ROM addresses moved, so RAM variable names port verbatim and only table
+and label names needed their embedded address adapted.
+
+New `Claude/D151804-0481.asm` (CP437 -> UTF-8, no replacement characters).
+Two passes: 87 exact function-signature matches gave 287 new names and 4
+updates (IDA's bare `IV4`/`IV6`/`IV9`/`IVc` vectors gaining descriptive
+names), then a windowed pass over 18018 uniquely-matching instruction
+windows gave 313 more with **zero** conflicts against what the first pass had
+just set. Nothing was rejected in the first pass at all.
+
+**0481 goes from 6 to 662 hand-named symbols**, and assembles byte-identical
+to `D151804-0481_ORIGNAL.bin` (its shipped image — the filename's typo is
+pre-existing).
+
+Worth noting what made this one clean where the first port was not: 0461 had
+already been corrected, so the DMA names it carries are the shifted-correct
+ones, and none of the off-by-one propagated onward. Porting from a corrected
+source is the whole difference.
+
+---
+
 ### The dmarx_* shift applied
 Renamed every `dmarx_*` in both CPU1 ROMs to the identity of the CPU2 variable
 it actually receives: **28 in 9651, 27 in 0461**, plus `scale_by_dmarx_167` ->
