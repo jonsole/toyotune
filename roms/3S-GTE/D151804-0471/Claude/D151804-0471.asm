@@ -4434,7 +4434,27 @@ loc_D1A4:							; CODE XREF: check_startup-325↑j
 ; PORTA.3, which both ROMs touch, so that comparison could never have
 ; found it - the two ROMs differ in the logic behind the pin, not in the
 ; set of pins. See the CHARGECOOLER PUMP DRIVE block further down.
-; These three blocks remain unexplained and genuinely unreachable.
+; These three blocks remain unexplained. What is now known about them:
+;
+; - 0F7C0h is the HIGHEST of five ECT thresholds in this ROM. The others
+;   are 0ED40h/0EF80h (a hysteresis pair driving PORTB.3 thermostatically),
+;   0F140h, 0F240h/0F3C0h (another hysteresis pair, driving
+;   var_flags_44 bit 1) and 0F300h. So it is not an impossible value, just
+;   the hottest thing this ROM tests for.
+; - It is above the end of 3S-GTE/temp_sensor_calibration.xlsx, whose data
+;   stops at boiling: its last few points are 236->95.0, 236->96.4,
+;   237->98.6, 238->100.6, 239->100.0 degC - noisy and non-monotonic,
+;   because that is measurement scatter at 100 degC. DO NOT extrapolate a
+;   temperature from that tail; taking the last two points gives a
+;   NEGATIVE slope and a nonsense answer. All that can be said is 'well
+;   above 100 degC'.
+; - So the ECT condition alone is a severe-overheat test, and reachable.
+;   It is the RPM half that makes the pair unreachable: 0A0h is 8000 rpm,
+;   above this ROM's own fuel-cut thresholds of 7200/7400.
+;
+; A severe-overheat response whose second condition can never be met is a
+; feature disabled by calibration rather than by deleting the code, which
+; is a normal thing to find. But that is inference, not evidence.
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_D1AB:							; CODE XREF: check_startup-31F↑j

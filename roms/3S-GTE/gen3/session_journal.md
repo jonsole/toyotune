@@ -15,6 +15,45 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The ECT threshold ladder, and a trap in the calibration spreadsheet
+Following up the three unreachable blocks. They are still unexplained, but two
+useful things came out of looking properly.
+
+**There is a ladder of ECT thresholds in `D151804-0471`**, five of them, and
+`0F7C0h` — the one in those blocks — is the highest:
+
+| threshold | what it gates |
+|---|---|
+| `0ED40h` / `0EF80h` | **PORTB.3**, a hysteresis pair: set above, clear below |
+| `0F140h` | a block also testing `unk_E4` and RPM |
+| `0F240h` / `0F3C0h` | `var_flags_44` bit 1, another hysteresis pair |
+| `0F300h` | a block also testing `dmarx_tha` |
+| `0F7C0h` | the three unexplained blocks |
+
+The hysteresis pairs are worth noting in their own right — **PORTB.3 is driven
+thermostatically off coolant temperature**, on at `0EF80h` and off at `0ED40h`.
+That is a genuine temperature-controlled output, unlike the `0F7C0h` blocks.
+
+So `0F7C0h` is not an impossible value, just the hottest thing this ROM tests
+for. **It is the RPM half that makes the pair unreachable** — `0A0h` is 8000
+rpm, above this same ROM's fuel-cut thresholds of 7200/7400. A severe-overheat
+response with a second condition that can never be met reads like a feature
+disabled by calibration rather than by deleting the code, which is an ordinary
+thing to find. That is inference, not evidence, and is labelled as such.
+
+**The trap: do not extrapolate from `temp_sensor_calibration.xlsx`'s tail.**
+Its last points are 236 -> 95.0, 236 -> 96.4, 237 -> 98.6, 238 -> 100.6,
+239 -> 100.0 degC. Noisy and non-monotonic, because that is measurement scatter
+at boiling — the data simply stops where the kettle did. I tried to convert
+`0F7h` = 247 to a temperature by extending the last two points and got 95 degC,
+i.e. *cooler* than the 239 point, because those two have a negative slope. The
+only defensible statement about anything above 239 is "well above 100 degC".
+The earlier entries that quote "~110 degC" and "over 100 degC" for this
+threshold should be read with that in mind: the direction is right, the number
+is not supportable.
+
+---
+
 ### The chargecooler pump drive: found, PORTA.3 on CPU2
 Jon described the behaviour precisely — the pump runs about 30 seconds after
 the throttle is moved, stops if the car is left at idle, and does not run at
