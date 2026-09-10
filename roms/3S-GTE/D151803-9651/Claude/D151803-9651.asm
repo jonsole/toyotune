@@ -2206,7 +2206,12 @@ var_cnt_idle_dwell:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
 								; counter, and the read at loc_D791 is an
 								; elapsed-time test, not a plain value load.
 								; Purpose still not established.
-unk_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
+var_cnt_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
+								; Named var_cnt_E3 rather than left unk_: that it IS a counter is
+								; established (64 ms, saturating, member of the 0E1h-0E7h block
+								; advanced by COUNTER_ARG(var_cnt_E1, 7)); only its purpose is not.
+								; That is the same standing as var_cnt_E0/E1/E9/EA/EB around it,
+								; and it was the only unk_ left in an otherwise named run.
 								; Saturating counter, advanced every 64ms by
 								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
 								; called from bg_64ms_dispatch.
@@ -19025,7 +19030,7 @@ locret_F529:							; CODE XREF: knock_mcu_update+1E↑j
 ; Writes: PORTB, var_knock_retard, var_knock_retard_max,
 ;   var_knock_retard_prev, var_knock_retard_prev2, var_knock_cyl_idx,
 ;   var_knock_event_cnt, var_cnt_knock_decay, var_cnt_CC, var_diag_errors_5,
-;   dmatx_ign_corr_cpu2, unk_E3, var_knock_retard_latch
+;   dmatx_ign_corr_cpu2, var_cnt_E3, var_knock_retard_latch
 ; ---------------------------------------------------------------------------
 
 knock_processing:							; CODE XREF: iv6_ne_process:bg_ne_process_F3AF↑p
@@ -19097,7 +19102,7 @@ loc_F573:							; CODE XREF: ROM:F54F↑j
 				ld	a, #1Ah
 
 loc_F577:							; CODE XREF: ROM:F568↑j
-				clr	unk_E3
+				clr	var_cnt_E3
 				jmp	loc_F600
 
 ; ───────────────────────────────────────────────────────────────────────────
