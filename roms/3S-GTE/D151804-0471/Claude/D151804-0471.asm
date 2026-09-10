@@ -4455,6 +4455,28 @@ loc_D1A4:							; CODE XREF: check_startup-325↑j
 ; A severe-overheat response whose second condition can never be met is a
 ; feature disabled by calibration rather than by deleting the code, which
 ; is a normal thing to find. But that is inference, not evidence.
+;
+; WHAT ELSE IS KNOWN, after exhausting the static angles:
+;
+; - PORTB.1 and PORTB.4 are touched NOWHERE ELSE in this ROM, and nowhere
+;   else in D151803-9661 either. They exist solely for these blocks. By
+;   contrast PORTB.2, .3 and .5 all have other roles, and PORTB.3 is
+;   driven thermostatically with hysteresis.
+; - The three pins are driven as a GROUP, and PORTB.1 is inverted relative
+;   to the other two. Condition met: PORTB.4 high, PORTB.1 low, DOUT.3
+;   high for up to ~1.95 s (var_cnt32ms unk_B9, 3Dh ticks at ~32 ms) and
+;   then low. Condition not met: PORTB.4 low, PORTB.1 high, DOUT.3 low -
+;   which is exactly the state 9661 writes unconditionally.
+; - Jon_ST205_ECU's own D151804-0471 build has the identical thresholds,
+;   so no tuner has ever adjusted them.
+;
+; THE EXPERIMENT THAT WOULD SETTLE IT. Static analysis cannot say what
+; these pins physically drive; the bench can. Force RPM to 8000 with the
+; stimulator (VRG_SetRpm / sw/python/set_rpm.py) and substitute a resistor
+; for the coolant sensor to fake an over-temperature reading, then watch
+; PORTB.1, PORTB.4 and DOUT.3. Note the stimulator's DAC drives MAP and
+; throttle only, not ECT, so the coolant side has to be done with a
+; resistor rather than in firmware.
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_D1AB:							; CODE XREF: check_startup-31F↑j

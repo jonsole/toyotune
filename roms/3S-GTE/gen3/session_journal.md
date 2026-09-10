@@ -15,6 +15,35 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### The three unreachable blocks: as far as static analysis goes
+Exhausted the comparative angles on 0471's PORTB.4 / PORTB.1 / DOUT.3 blocks.
+They remain unexplained, but the characterisation is now complete enough that
+the next step is a bench test rather than more reading.
+
+- **PORTB.1 and PORTB.4 are touched nowhere else** — not in 0471, not in 9661.
+  They exist solely for these blocks. PORTB.2, .3 and .5 all have other roles,
+  and PORTB.3 is the thermostatic output with hysteresis found earlier.
+- **The three pins move as a group, with PORTB.1 inverted** relative to the
+  other two. Condition met: PORTB.4 high, PORTB.1 low, DOUT.3 high for up to
+  ~1.95 s (`unk_B9`, `3Dh` ticks at ~32 ms) then low. Condition not met:
+  PORTB.4 low, PORTB.1 high, DOUT.3 low — exactly the state 9661 writes
+  unconditionally.
+- **`Jon_ST205_ECU`'s own 0471 build has identical thresholds**, so nobody has
+  ever tuned them. Stock and unreachable in every ST205 CPU2 image here.
+- No UK CPU2 image exists (`D151804-0491`), so there is no fourth variant to
+  compare against.
+
+**The experiment.** Force RPM to 8000 with the stimulator and fake an
+over-temperature coolant reading, then watch the three pins. Worth noting the
+stimulator's DAC drives MAP and throttle only — `spi_dac.h` says so — so ECT
+has to be faked with a resistor in place of the sensor rather than in
+firmware. Everything else needed is already on the bench.
+
+That is where I would leave it: the static evidence is exhausted, and one
+bench run would answer it outright.
+
+---
+
 ### Two DMA loose ends closed, and a paragraph I silently deleted
 **`word_16D` had a writer all along.** Recorded as "no writer found on CPU2",
 which was not a finding: my writer scan matched only stores to names beginning
