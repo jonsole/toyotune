@@ -2799,19 +2799,45 @@ a sweep.
 
 ### `unk_` pass 4: the MR2 tail is done
 
-CPU1 is down to **18**, and **all 18 are deliberately unnamed** with the
-reason recorded at each declaration:
+CPU1 was down to **18** at the time of this entry. A later pass took that to
+**7** - see the revision below; the table as written then was:
 
 | kept as `unk_` | why |
 |---|---|
 | `unk_1C0/1C2/1C4/1C6/1C8` | the ramp-limiter cluster - no single fixed identity by design |
 | `unk_1CF` | the short-lived alias |
-| `rom_start` (was `unk_C000`) | The ROM base at C000h, and the address factory_self_test's checksum loop sums from. Earlier described here as "ROM signature bytes", which was wrong |
+| `unk_C000` | ROM signature bytes |
 | `unk_7F` | RAM-region boundary sentinel |
 | `unk_1C`, `unk_1D` | reserved-range hardware registers |
 | `unk_223` | factory-self-test scratch |
 | `unk_14A` | permanently zero - a disabled rev-limiter offset |
 | `unk_100`, `unk_145`, `unk_1AF`, `unk_E3`, `unk_FC`, `damrx_unk_244` | single-site, write-only or read-only; noted as such |
+
+> **Revision - 11 of those 18 have since been resolved, and several of the
+> reasons above were wrong rather than merely incomplete.**
+>
+> | then | now | what changed |
+> |---|---|---|
+> | `unk_1C2` | `var_pw_ramp_ratio` | every site agrees on the role; "no fixed identity by design" was true of only two of the five |
+> | `unk_1C4` | `var_fuel_trim_slow` | carries a complete long-term-trim control law |
+> | `unk_1C8` | `var_pw_ramp_ceiling` | only ever used as an upper bound |
+> | `unk_C000` | `rom_start` | NOT signature bytes - it is the ROM base and the checksum loop's start address |
+> | `unk_7F` | `clear_vars_end` | a genuine address: the last byte `clear_variables` zeroes |
+> | `unk_1C`, `unk_1D` | `REG_1C`, `REG_1D` | hardware registers, so `unk_` put them in the wrong category entirely |
+> | `unk_223` | `dmatx_selftest_code1` | not scratch - it is byte 23h of the DMA transmit block, sent every 4 ms and dropped at the far end |
+> | `unk_E3` | `var_cnt_E3` | the misclassification flagged below; it is a counter, and this repo spells that `var_cnt_<addr>` |
+> | `unk_100` | *label removed* | never a variable: IDA symbolised the immediate `0100h`, which is the checksum loop's word COUNT |
+> | `damrx_unk_244` | `dmarx_unk_244` | typo |
+>
+> Still `unk_`, all deliberate: `unk_1C0`, `unk_1C6` (genuinely multi-role
+> scratch), `unk_1CF` (the alias), `unk_14A` (permanently zero), and
+> `unk_145`, `unk_1AF`, `unk_FC` (single-site, no named reader).
+>
+> One reason recurred across the last group and is worth stating once:
+> "no write site found" meant *no site naming the symbol*. `clear_variables`'
+> second loop zeroes `00A0h..0247h` with `st d, [y]` in 2-byte steps and
+> covers all of them without naming anything, so a per-symbol search cannot
+> see it - and a reader could hide the same way.
 
 > **⚠ `unk_E3` is misclassified here** — it is a counter in an
 > `increment_counters` range, so its explicit write is a reset, not its only
@@ -2919,7 +2945,7 @@ on CPU1:
 | metric | value |
 |---|---|
 | call targets with a meaningful name | **150 / 150** |
-| `unk_` variables outstanding | **18**, all deliberate |
+| `unk_` variables outstanding | **7**, all deliberate (was 18 - see the revision in `unk_` pass 4) |
 | counters with a stated purpose | **60 / 85** |
 | instruction lines with an explanatory comment nearby | **38%** |
 | instructions in blocks with *no* header prose and *no* meaningful inline comments | **48%** |

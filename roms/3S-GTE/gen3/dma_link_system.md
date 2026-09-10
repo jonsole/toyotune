@@ -161,7 +161,7 @@ not describe this direction**:
 
    Applying `+0x13B` to any of these gives a wrong address.
 
-Frame bytes `0x23`–`0x25` (CPU1's `unk_223`/`word_224`) are received into
+Frame bytes `0x23`–`0x25` (CPU1's `dmatx_selftest_code1`/`dmatx_selftest_code2`) are received into
 `var_serbus_rx` but never copied out: CPU2 does not consume them.
 
 ---
@@ -220,7 +220,7 @@ every 4 ms and are dropped at the far end; the consumer, if any, is a factory
 tester on the line rather than code in either ROM.
 
 `0x225` genuinely has no writer at all. It was previously the unwritten
-second half of a `word_224` declared `.block 2`, which implied a 16-bit value
+second half of a `dmatx_selftest_code2` declared `.block 2`, which implied a 16-bit value
 that never existed - every store to `0x224` is a byte store.
 
 **`dmatx_flags_1`**, built in `copy_dma_tx`:
