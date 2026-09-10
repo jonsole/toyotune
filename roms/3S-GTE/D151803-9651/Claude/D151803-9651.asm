@@ -3153,14 +3153,41 @@ unk_1C2:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; "ramp-limiter ratio" better than the
 								; existing docs already do.
 				.block 1
-unk_1C4:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
+var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
+								; A SLOW fuel trim, distinct from the STFT.
+								;   var_lambda_integrator is the short-term trim - fast, neutral
+								;   8000h, swinging with every O2 crossing. This one is slower and
+								;   has its own neutral of 0CCCDh, the bias the whole PW ramp
+								;   limiter works in (reset_pw_ramp_limiter puts it back there).
+								;   Two update paths, both in update_lambda_stft:
+								;     coarse  +/- 07AEh on var_lambda_avg leaving the 4Dh..0B3h
+								;             deadband - rich adds, lean subtracts;
+								;     fine    +/- 0010h, gated on var_adc_lambda's sign AND on the
+								;             STFT itself sitting past 85h / below 76h, i.e. it only
+								;             creeps when the short-term trim is persistently
+								;             off-centre. That is the classic long-term-trim
+								;             relationship.
+								;   Saturates at 0 and 0FFFFh rather than wrapping.
+								;   Applied as a DIVISOR on var_inj_pw_base (ramp_limit_inj_pw_simple:
+								;   unbias it into X, then divide_d_by_x), so a larger value means
+								;   less fuel - which is the right direction, since it rises when the
+								;   mixture reads rich.
+								;   Lives in ordinary RAM; nothing writes it to NV. Was unk_1C4.
 								; ROM:DAC1↓r ...
-								; Carried-forward PW-scale value at
-								; ramp_limit_inj_pw's entry, but
-								; overwritten with the unk_1C8 ceiling or
-								; the ratio-deviation result depending on
-								; path - no single fixed identity. Same
-								; cluster/doc reference as unk_1C0 above.
+								;   Earlier notes called this a carried-forward PW-scale value with "no
+								;   single fixed identity", because ramp_limit_inj_pw writes it from two
+								;   further places. Both are the limiter acting ON the trim rather than a
+								;   rival meaning for the slot:
+								;     loc_DC17  stores the popped unk_1C8 back into it - a CLAMP. unk_1C8
+								;               is in the same 0CCCDh-biased space (loc_DBF1 computes
+								;               0CCCDh-unk_1C8 as its divisor), and loc_DBDE reads this
+								;               variable only to ask whether it already exceeds that
+								;               ceiling.
+								;     ROM:DA0D  calc_inj_pw_base stores ramp_limit_inj_pw's returned D -
+								;               the rate-limited value written back.
+								;   So the limiter clamps and rate-limits the trim; it does not repurpose
+								;   the slot. unk_1C0/unk_1C6 ARE still genuine multi-role scratch - that
+								;   half of the old finding stands, and they keep their unk_ names.
 				.block 1
 unk_1C6:			.block 1			; DATA XREF: divide_d_by_x+11E↓w
 								; init_pw_closed_loop+D↓w ...
@@ -11233,7 +11260,7 @@ loc_D9FA:							; CODE XREF: divide_d_by_x+1440↑j
 				setb	bit4, var_trim_state_alias
 				jsr	ramp_limit_inj_pw
 
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 
 loc_DA10:							; CODE XREF: divide_d_by_x+13FA↑j
 								; divide_d_by_x+1465↑j ...
@@ -11324,7 +11351,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; ---------------------------------------------------------------------------
 ; Reads: dmarx_status1_242, var_adc_lambda, var_cnt_6A, var_flags_46,
 ; var_inj_pw_base, var_pim2, var_rpm_x_5p12
-; Writes: unk_1C4, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
+; Writes: var_fuel_trim_slow, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
 ;    var_trim_state_alias
 ; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, clear_trim_state_bit2,
 ;    clear_trim_state_bit0
@@ -11342,14 +11369,14 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; law, and both halves are visible here:
 ;
 ;   JUMP (proportional, large, on a rich/lean transition) - loc_DABF:
-;     var_lambda_avg >= 0xB3  -> rich  -> unk_1C4 += 0x07AE (saturating)
-;     var_lambda_avg <= 0x4D  -> lean  -> unk_1C4 -= 0x07AE (to 0)
+;     var_lambda_avg >= 0xB3  -> rich  -> var_fuel_trim_slow += 0x07AE (saturating)
+;     var_lambda_avg <= 0x4D  -> lean  -> var_fuel_trim_slow -= 0x07AE (to 0)
 ;     0x4E..0xB2 is a deadband: no jump, the routine simply exits. That
 ;     deadband is what stops the loop chattering around stoich.
 ;
 ;   RAMP (integral, small, every tick while held on one side) - loc_DB41:
-;     var_adc_lambda positive -> unk_1C4 += 0x0010
-;     var_adc_lambda negative -> unk_1C4 -= 0x0010
+;     var_adc_lambda positive -> var_fuel_trim_slow += 0x0010
+;     var_adc_lambda negative -> var_fuel_trim_slow -= 0x0010
 ;     each further gated on var_lambda_integrator not already being past
 ;     its 0x85 / 0x76 limit, so the ramp stops at the rails.
 ;
@@ -11376,7 +11403,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; Reads: var_rpm_x_5p12, var_pim2, var_flags_46, var_adc_lambda,
 ;   var_lambda_avg, var_inj_pw_base, var_cnt_6A, dmarx_status1_242,
 ;   var_stft_dwell_cnt
-; Writes: var_lambda_integrator, var_lambda_avg, unk_1C4,
+; Writes: var_lambda_integrator, var_lambda_avg, var_fuel_trim_slow,
 ;   var_trim_state_alias, var_stft_dwell_cnt
 ; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, clear_trim_state_bit2, clear_trim_state_bit0
 ; ---------------------------------------------------------------------------
@@ -11466,7 +11493,7 @@ loc_DABA:							; CODE XREF: ROM:DA9F↑j
 
 loc_DABF:							; CODE XREF: ROM:loc_DA7C↑j
 				clrb	bit6, var_trim_state_alias
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				clrb	bit7, var_trim_state_alias
 				cmp	#0B3h, var_lambda_avg
 				bcc	loc_DADB
@@ -11492,7 +11519,7 @@ loc_DADB:							; CODE XREF: ROM:DAC9↑j
 
 loc_DAE3:							; CODE XREF: ROM:DAD5↑j
 								; ROM:DAD9↑j ...
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 				ld	d, var_lambda_integrator
 				tbbs	bit7, var_trim_state_alias, loc_DB07
 
@@ -11579,7 +11606,7 @@ loc_DB34:							; CODE XREF: ROM:DA91↑j
 				setb	bit5, var_trim_state_alias
 
 loc_DB41:							; CODE XREF: ROM:loc_DB34↑j
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				ld	x, var_adc_lambda
 				bmi	loc_DB57
 
@@ -11608,7 +11635,7 @@ loc_DB57:							; CODE XREF: ROM:DB46↑j
 
 loc_DB66:							; CODE XREF: ROM:DB4B↑j
 								; ROM:DB50↑j ...
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 				ld	d, var_inj_pw_base
 				cmp	d, #004Dh
 				bcs	locret_DB74
@@ -11652,7 +11679,7 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DAB7↑p
 ; ---------------------------------------------------------------------------
 ; reset_pw_ramp_limiter: reset the fuel pulse-width ramp-limiter state
 ;
-; Resets unk_1C2/var_inj_pw_base/unk_1C4 to 0xCCCD (the ~0.8x ramp-limiter
+; Resets unk_1C2/var_inj_pw_base/var_fuel_trim_slow to 0xCCCD (the ~0.8x ramp-limiter
 ; ratio constant used throughout this cluster - see ramp_limit_inj_pw/ramp_limit_inj_pw_simple) and
 ; clears var_flags_4E.5 (really var_trim_state.5 - see the aliasing note
 ; above calc_inj_pw_base). Called from loc_DA94's area (not deep-dived this
@@ -11662,7 +11689,7 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DAB7↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: (none)
-; Writes: unk_1C2, unk_1C4, var_inj_pw_base, var_trim_state_alias
+; Writes: unk_1C2, var_fuel_trim_slow, var_inj_pw_base, var_trim_state_alias
 ; ---------------------------------------------------------------------------
 reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 				ld	d, #0CCCDh
@@ -11672,7 +11699,7 @@ reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 				clr	b
 				st	d, var_inj_pw_base
 				ld	d, #0CCCDh
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 ; End of function reset_pw_ramp_limiter
 
 
@@ -11750,11 +11777,11 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;   candidate via mult_rDrX) and flags var_diag_errors_5.0 via
 ;   negate_rD_mark if unk_1C2 was below nominal - the result is
 ;   left in D for the CALLER to consume (calc_inj_pw_base's loc_D9FA does
-;   exactly this, storing the return value into unk_1C4) and none of
+;   exactly this, storing the return value into var_fuel_trim_slow) and none of
 ;   var_inj_pw_base/unk_1C0/unk_1C6 are touched. Exits via loc_DC3A, which
 ;   clears trim_state.4 (the flag is "consumed" by being handled).
 ; - trim_state.4 clear + unk_1C0 == var_inj_pw_base (candidate unchanged):
-;   fast path, D = unk_1C4 (last carried-forward value), straight to the
+;   fast path, D = var_fuel_trim_slow (last carried-forward value), straight to the
 ;   ceiling check (loc_DBDE) - no error-flag pass runs.
 ; - trim_state.4 clear + candidate changed: runs the same ratio-deviation
 ;   computation as the diagnostic-only path, then continues into the
@@ -11765,13 +11792,13 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;   involving var_pim_tps_est/var_pim_est_fast/135/var_nv_trim_unk_98 is not itself
 ;   traced - see docs/fuel_calculation_system.md Open Questions).
 ;   - D <= unk_1C8: falls into loc_DBF1 (blend-toward-ceiling path).
-;   - D > unk_1C8 and trim_state bits 0 AND 1 both set and unk_1C4 (the
+;   - D > unk_1C8 and trim_state bits 0 AND 1 both set and var_fuel_trim_slow (the
 ;     prior carried-forward value) is NOT itself already above unk_1C8:
 ;     also falls into loc_DBF1.
 ;   - D > unk_1C8 and (trim_state.0 clear OR trim_state.1 clear): simplest
 ;     exit - clears trim_state.3, stores D into unk_1C6, done (var_inj_pw_base/
-;     unk_1C0/unk_1C4 untouched).
-;   - D > unk_1C8 and unk_1C4 also already > unk_1C8 (i.e. sustained
+;     unk_1C0/var_fuel_trim_slow untouched).
+;   - D > unk_1C8 and var_fuel_trim_slow also already > unk_1C8 (i.e. sustained
 ;     over-ceiling): loc_DC24 - in closed-loop mode (var_pw_loop_mode == 0xC8) only,
 ;     resets unk_1C0 back to var_inj_pw_base (discards the stale candidate);
 ;     either way clears trim_state.3 and stores the original loc_DBDE-entry
@@ -11785,12 +11812,12 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;     stored into unk_1C0 - i.e. the candidate itself gets refined here,
 ;     not just var_inj_pw_base.
 ;   Either way: if trim_state.0 is clear, commits D to var_inj_pw_base and
-;   stashes the ceiling (unk_1C8, popped back off the stack) into unk_1C4;
-;   if trim_state.0 is set, var_inj_pw_base/unk_1C4 are left alone. unk_1C6
+;   stashes the ceiling (unk_1C8, popped back off the stack) into var_fuel_trim_slow;
+;   if trim_state.0 is set, var_inj_pw_base/var_fuel_trim_slow are left alone. unk_1C6
 ;   always ends up holding the ceiling value (unk_1C8) on this path,
 ;   regardless of trim_state.0.
 ;
-; Net effect: unk_1C0/unk_1C4/unk_1C6 do NOT have single fixed identities
+; Net effect: unk_1C0/var_fuel_trim_slow/unk_1C6 do NOT have single fixed identities
 ; ("the candidate" / "the carried-forward value" / "the ceiling") - each
 ; gets overwritten with a different one of {fresh candidate, ceiling,
 ; ratio-deviation result, var_inj_pw_base} depending on which branch runs.
@@ -11802,7 +11829,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: unk_1C2, unk_1C8, var_pw_loop_mode
-; Writes: unk_1C0, unk_1C4, unk_1C6, var_diag_errors_5, var_inj_pw_base,
+; Writes: unk_1C0, var_fuel_trim_slow, unk_1C6, var_diag_errors_5, var_inj_pw_base,
 ;    var_trim_state_alias
 ; Calls: mult_rDrX, negate_rD_mark
 ; ---------------------------------------------------------------------------
@@ -11815,7 +11842,7 @@ ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+146F↑p
 				cmp	x, var_inj_pw_base
 				bne	loc_DBB5
 
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				bra	loc_DBDE
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -11867,7 +11894,7 @@ loc_DBDE:							; CODE XREF: ramp_limit_inj_pw+10↑j
 
 				tbbc	bit1, var_trim_state_alias, loc_DC35
 
-				ld	x, unk_1C4
+				ld	x, var_fuel_trim_slow
 				cmp	x, unk_1C8
 				bgt	loc_DC24
 
@@ -11903,7 +11930,7 @@ loc_DC17:							; CODE XREF: ramp_limit_inj_pw+67↑j
 				tbbs	bit0, var_trim_state_alias, loc_DC21
 
 				st	d, var_inj_pw_base
-				st	x, unk_1C4
+				st	x, var_fuel_trim_slow
 
 loc_DC21:							; CODE XREF: ramp_limit_inj_pw+75↑j
 				mov	x, d
@@ -11948,11 +11975,11 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ;
 ; Same 0xCCCD ramp-ratio pattern as ramp_limit_inj_pw (error-flags via
 ; negate_rD_mark on overflow, same variable cluster), but a
-; shorter, single-path version: D = var_inj_pw_base / (unk_1C4 - 0xCCCD)
+; shorter, single-path version: D = var_inj_pw_base / (var_fuel_trim_slow - 0xCCCD)
 ; via divide_d_by_x, then the result is +/-0xCCCD-adjusted (sign per
 ; whether the divide's error flag fired) and stored to unk_1C2 - i.e. this
 ; function's "output" register (unk_1C2) is a different one of the pool
-; than the ones it reads (unk_1C4/var_inj_pw_base). Also sets/clears
+; than the ones it reads (var_fuel_trim_slow/var_inj_pw_base). Also sets/clears
 ; var_flags_4E.2 (== var_trim_state.2, per the aliasing note above
 ; calc_inj_pw_base) based on whether the result exceeds 0xC7AE.
 ;
@@ -11967,14 +11994,14 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: unk_1C4, var_inj_pw_base
+; Reads: var_fuel_trim_slow, var_inj_pw_base
 ; Writes: unk_1C2, var_diag_errors_5, var_trim_state_alias
 ; Calls: negate_rD_mark
 ; ---------------------------------------------------------------------------
 ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+14C2↑p
 								; ROM:DAAF↑p ...
 				clrb	bit0, var_diag_errors_5
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				sub	d, #0CCCDh
 				bcc	loc_DC4A
 

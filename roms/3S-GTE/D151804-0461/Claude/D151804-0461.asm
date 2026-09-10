@@ -935,7 +935,27 @@ unk_1B8:			.block 1			; DATA XREF: divide_d_by_x+13CF↓r
 unk_1BA:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; ROM:loc_DB51↓r ...
 				.block 1
-unk_1BC:			.block 1			; DATA XREF: divide_d_by_x+142F↓w
+var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+142F↓w
+								; A SLOW fuel trim, distinct from the STFT. Same variable as 9651's
+								; var_fuel_trim_slow (there at 0x1C4) - every constant below was checked
+								; against this ROM, not assumed from the sibling.
+								;   var_lambda_integrator is the short-term trim - fast, neutral 8000h,
+								;   swinging with every O2 crossing. This one is slower and has its own
+								;   neutral of 0CCCDh, the bias the whole PW ramp limiter works in
+								;   (reset_pw_ramp_limiter puts it back there).
+								;   Two update paths:
+								;     coarse  +/- 07AEh on var_lambda_avg leaving the 4Dh..0B3h deadband
+								;             - rich adds, lean subtracts;
+								;     fine    +/- 0010h, gated on var_adc_lambda's sign AND on the STFT
+								;             itself sitting past 85h / below 76h, i.e. it only creeps
+								;             when the short-term trim is persistently off-centre. That
+								;             is the classic long-term-trim relationship.
+								;   Saturates at 0 and 0FFFFh rather than wrapping.
+								;   Applied as a DIVISOR on var_inj_pw_base (ramp_limit_inj_pw_simple:
+								;   unbias it into X, then divide_d_by_x), so a larger value means less
+								;   fuel - which is the right direction, since it rises when the mixture
+								;   reads rich.
+								;   Lives in ordinary RAM; nothing writes it to NV. Was unk_1BC.
 								; ROM:DA5D↓r ...
 				.block 1
 unk_1BE:			.block 1			; DATA XREF: divide_d_by_x+117↓w
@@ -7571,7 +7591,7 @@ loc_D996:							; CODE XREF: divide_d_by_x+13FD↑j
 				setb	bit4, var_flags_4E
 				jsr	ramp_limit_inj_pw
 
-				st	d, unk_1BC
+				st	d, var_fuel_trim_slow
 
 loc_D9AC:							; CODE XREF: divide_d_by_x+13B7↑j
 								; divide_d_by_x+1422↑j ...
@@ -7733,7 +7753,7 @@ loc_DA56:							; CODE XREF: ROM:DA3B↑j
 
 loc_DA5B:							; CODE XREF: ROM:loc_DA18↑j
 				clrb	bit6, var_flags_4E
-				ld	d, unk_1BC
+				ld	d, var_fuel_trim_slow
 				clrb	bit7, var_flags_4E
 				cmp	#0B3h, var_lambda_avg
 				bcc	loc_DA77
@@ -7759,7 +7779,7 @@ loc_DA77:							; CODE XREF: ROM:DA65↑j
 
 loc_DA7F:							; CODE XREF: ROM:DA71↑j
 								; ROM:DA75↑j ...
-				st	d, unk_1BC
+				st	d, var_fuel_trim_slow
 				ld	d, var_lambda_integrator
 				tbbs	bit7, var_flags_4E, loc_DAA3
 
@@ -7846,7 +7866,7 @@ loc_DAD0:							; CODE XREF: ROM:DA2D↑j
 				setb	bit5, var_flags_4E
 
 loc_DADD:							; CODE XREF: ROM:loc_DAD0↑j
-				ld	d, unk_1BC
+				ld	d, var_fuel_trim_slow
 				ld	x, var_adc_lambda
 				bmi	loc_DAF3
 
@@ -7875,7 +7895,7 @@ loc_DAF3:							; CODE XREF: ROM:DAE2↑j
 
 loc_DB02:							; CODE XREF: ROM:DAE7↑j
 								; ROM:DAEC↑j ...
-				st	d, unk_1BC
+				st	d, var_fuel_trim_slow
 				ld	d, var_inj_pw_base
 				cmp	d, #004Dh
 				bcs	locret_DB10
@@ -7916,7 +7936,7 @@ reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DA44↑p
 				clr	b
 				st	d, var_inj_pw_base
 				ld	d, #0CCCDh
-				st	d, unk_1BC
+				st	d, var_fuel_trim_slow
 ; End of function reset_pw_ramp_limiter
 
 
@@ -7959,7 +7979,7 @@ ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+142C↑p
 				cmp	x, var_inj_pw_base
 				bne	loc_DB51
 
-				ld	d, unk_1BC
+				ld	d, var_fuel_trim_slow
 				bra	loc_DB7D
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -8015,7 +8035,7 @@ loc_DB7D:							; CODE XREF: ROM:DB4F↑j
 
 				tbbc	bit1, var_flags_4E, loc_DBD4
 
-				ld	x, unk_1BC
+				ld	x, var_fuel_trim_slow
 				cmp	x, unk_1C3
 				bgt	loc_DBC3
 
@@ -8051,7 +8071,7 @@ loc_DBB6:							; CODE XREF: ROM:DBA9↑j
 				tbbs	bit0, var_flags_4E, loc_DBC0
 
 				st	d, var_inj_pw_base
-				st	x, unk_1BC
+				st	x, var_fuel_trim_slow
 
 loc_DBC0:							; CODE XREF: ROM:DBB7↑j
 				mov	x, d
@@ -8186,7 +8206,7 @@ loc_DC47:							; CODE XREF: ROM:DB7A↑j
 ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+147F↑p
 								; ROM:DA4B↑p ...
 				clrb	bit0, var_diag_errors_5
-				ld	d, unk_1BC
+				ld	d, var_fuel_trim_slow
 				sub	d, #0CCCDh
 				bcc	loc_DC57
 

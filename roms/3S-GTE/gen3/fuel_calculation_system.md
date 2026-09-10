@@ -467,7 +467,7 @@ toward a new target each time it's applied, rather than jumping straight to
 it. This is a very standard technique to avoid abrupt injector pulse-width
 steps causing driveability issues.
 
-- **`reset_pw_ramp_limiter`**: resets `unk_1C2`/`var_inj_pw_base`/`unk_1C4` all to
+- **`reset_pw_ramp_limiter`**: resets `unk_1C2`/`var_inj_pw_base`/`var_fuel_trim_slow` all to
   `0xCCCD`, and clears `var_trim_state.5` (via the alias). Called from
   `loc_DA94`'s area (not deep-dived) - likely on a mode transition that
   should discard the ramp state entirely.
@@ -478,7 +478,7 @@ steps causing driveability issues.
   below). Fully traced - see "Branch-by-branch trace" below for the
   complete walkthrough.
 - **`ramp_limit_inj_pw_simple`**: a shorter, single-path variant of the same
-  pattern: `D = var_inj_pw_base / (unk_1C4 - 0xCCCD)` via `divide_d_by_x`,
+  pattern: `D = var_inj_pw_base / (var_fuel_trim_slow - 0xCCCD)` via `divide_d_by_x`,
   then `+/-0xCCCD`-adjusted (sign depending on whether the divide's error
   flag fired) and stored to `unk_1C2`. Also sets/clears `var_trim_state.2`
   (via the alias) based on a `0xC7AE` threshold.
@@ -507,11 +507,11 @@ read/written throughout (via the alias - real `var_flags_4E` bits, not
    `var_inj_pw_base`/`unk_1C0`/`unk_1C6` - the computed `D` is left for the
    *caller* to consume. `calc_inj_pw_base`'s `loc_D9FA` is exactly this
    caller: it force-sets `var_inj_pw_base` itself, sets `trim_state.4`, calls
-   `ramp_limit_inj_pw`, then stores the returned `D` into `unk_1C4`.
+   `ramp_limit_inj_pw`, then stores the returned `D` into `var_fuel_trim_slow`.
    `loc_DC3A` clears `trim_state.4` - the flag is "consumed" by being
    handled once.
 2. **`trim_state.4` clear + `unk_1C0 == var_inj_pw_base`** (candidate
-   unchanged since last call): fast path, `D = unk_1C4` (last
+   unchanged since last call): fast path, `D = var_fuel_trim_slow` (last
    carried-forward value), skips straight to the ceiling check
    (`loc_DBDE`) - no ratio/error-flag pass runs at all.
 3. **`trim_state.4` clear + candidate changed**: runs the same
@@ -520,13 +520,13 @@ read/written throughout (via the alias - real `var_flags_4E` bits, not
 4. **`loc_DBDE`** compares `D` against `unk_1C8` (see below for what this
    is):
    - `D <= unk_1C8`: falls into `loc_DBF1` (blend-toward-ceiling).
-   - `D > unk_1C8`, `trim_state` bits 0 **and** 1 both set, and `unk_1C4`
+   - `D > unk_1C8`, `trim_state` bits 0 **and** 1 both set, and `var_fuel_trim_slow`
      (the prior carried-forward value) is **not** itself already above
      `unk_1C8`: also falls into `loc_DBF1`.
    - `D > unk_1C8` and (`trim_state.0` clear **or** `trim_state.1` clear):
      simplest exit (`loc_DC35`/`DC37`) - clears `trim_state.3`, stores `D`
-     into `unk_1C6`, done. `var_inj_pw_base`/`unk_1C0`/`unk_1C4` untouched.
-   - `D > unk_1C8` **and** `unk_1C4` also already `> unk_1C8` (sustained
+     into `unk_1C6`, done. `var_inj_pw_base`/`unk_1C0`/`var_fuel_trim_slow` untouched.
+   - `D > unk_1C8` **and** `var_fuel_trim_slow` also already `> unk_1C8` (sustained
      over-ceiling): `loc_DC24` - in closed-loop mode (`var_pw_loop_mode == 0xC8`)
      only, resets `unk_1C0` back to `var_inj_pw_base` (discards the stale
      candidate); either way clears `trim_state.3` and stores the original
@@ -543,20 +543,39 @@ read/written throughout (via the alias - real `var_flags_4E` bits, not
 
      Either way: if `trim_state.0` is clear, commits `D` to
      `var_inj_pw_base` and stashes the ceiling (`unk_1C8`, popped back off
-     the stack) into `unk_1C4`; if `trim_state.0` is set, both are left
+     the stack) into `var_fuel_trim_slow`; if `trim_state.0` is set, both are left
      alone. `unk_1C6` always ends up holding the ceiling value (`unk_1C8`)
      on this path, regardless of `trim_state.0`.
 
-**Key finding:** `unk_1C0`/`unk_1C4`/`unk_1C6` do **not** have single fixed
-identities ("the candidate" / "the carried-forward value" / "the
-ceiling"). Each gets overwritten with a different one of {fresh VE-map
-candidate, `var_adc_lambda`, the `unk_1C8` ceiling, the ratio-deviation
-result, `var_inj_pw_base`} depending on which branch runs - see the
-Variable Reference below for the full per-branch inventory. This is why a
-clean per-variable rename was never found even after this full trace:
-there isn't one to find. `unk_1C2` is the one exception with a stable
-role - it's `ramp_limit_inj_pw_simple`'s output and `ramp_limit_inj_pw`'s
-deviation input, always a ratio nominally around `0xCCCD`.
+**Key finding (revised).** `unk_1C0`/`unk_1C6` do **not** have single fixed
+identities ("the candidate" / "the ceiling"). Each gets overwritten with a
+different one of {fresh VE-map candidate, `var_adc_lambda`, the `unk_1C8`
+ceiling, the ratio-deviation result, `var_inj_pw_base`} depending on which
+branch runs - see the Variable Reference below for the full per-branch
+inventory. For those two, a clean rename isn't available because there
+isn't one to find.
+
+**`0x1C4` was originally in that list and has since been taken out of it.**
+It is `var_fuel_trim_slow`, a long-term fuel trim, and the evidence is a
+complete control law rather than a single site: neutral `0xCCCD`, coarse
+`+/-0x07AE` when `var_lambda_avg` leaves the `0x4D..0xB3` deadband, fine
+`+/-0x0010` gated on the STFT sitting past its `0x85`/`0x76` rails,
+saturating at `0`/`0xFFFF`, and applied as a divisor on `var_inj_pw_base`.
+The two writes inside `ramp_limit_inj_pw` that prompted the original "no
+fixed identity" reading are the limiter acting *on* that trim, not rival
+meanings for the slot:
+
+- `loc_DC17` stores the popped `unk_1C8` back into it - a **clamp**.
+  `unk_1C8` is expressed in the same `0xCCCD`-biased space (`loc_DBF1`
+  computes `0xCCCD-unk_1C8` as its divisor), and `loc_DBDE` reads `0x1C4`
+  only to ask whether it already exceeds that ceiling.
+- `calc_inj_pw_base` at `ROM:DA0D` stores `ramp_limit_inj_pw`'s returned
+  `D` - the rate-limited value written back.
+
+`unk_1C2` also has a stable role - `ramp_limit_inj_pw_simple`'s output and
+`ramp_limit_inj_pw`'s deviation input, always a ratio nominally around
+`0xCCCD` - but no short name captures "ramp-limiter ratio" better than this
+doc already does, so it keeps its `unk_` name.
 
 **`unk_1C8`'s producer - RESOLVED:** its immediate write site is `loc_E6A8`
 (`st d, unk_1C8`), fed by a `dmatx_pim`/`var_pim2`-linked computation, which
@@ -590,6 +609,45 @@ transient" rule. Any future work on this ECU's short-term vs long-term trim
 split should start from there.
 
 ---
+
+### Which sibling ROMs have this subsystem
+
+| ROM | vehicle / CPU | ramp limiter | slow trim |
+|-----|---------------|--------------|-----------|
+| `D151803-9651` | SW20 MR2 Gen 3, CPU1 | yes | `var_fuel_trim_slow` @ `0x1C4` |
+| `D151804-0461` | JDM ST205, CPU1 | yes | `var_fuel_trim_slow` @ `0x1BC` |
+| `D151804-0481` | UK ST205, CPU1 | **absent** | **absent** |
+
+`0461` is an instruction-for-instruction match on the control law - the same
+`0xCCCD` neutral, the same `+/-0x07AE` coarse step and `0x4D..0xB3` deadband,
+the same `+/-0x0010` fine step gated on `0x85`/`0x76`, the same saturation -
+and its `jsr ramp_limit_inj_pw` / `st d, <trim>` pairing is identical. Only
+the RAM address moves.
+
+**`0481` genuinely does not have it**, and that is worth stating carefully
+because "not found" has been wrong three times in this repo's history. The
+claim rests on the ROM image, not the disassembly - `0481`'s `.asm` has ~1300
+more `.db` lines than `0461`'s, so a symbol search alone would prove nothing:
+
+- The byte pair `CC CD` does not occur **anywhere** in `D151804-0481`'s 16 KB
+  image. The `0xCCCD` neutral is therefore not present at all.
+- A fuzzy byte scan (slide `0461`'s function bytes over all of `0481`, score
+  by matching bytes) puts `ramp_limit_inj_pw_simple` at 16% and
+  `reset_pw_ramp_limiter` at 32% - at or below the noise floor.
+- The controls that make those numbers meaningful: the same scan finds
+  `ramp_fuel_enrich_rpm` at 100%, `scale_by_nv_trim_o2` at 92%,
+  `validate_nv_trim_o2` at 77% and `apply_enrich_and_trims` at 49%, each as
+  the top hit at its true address, each clearly ahead of its runner-up.
+- Structurally: `0461` has six `jsr` sites into the limiter, `0481` has zero,
+  and `0481` has no `var_inj_pw_base` or `var_trim_state` either. Both ROMs
+  have the same 21 `div` sites, so the shared maths library is intact - this
+  is a missing subsystem, not a differently-built disassembly.
+
+Note the porting tool cannot see this on its own: `normalise_operand` keeps
+numeric immediates deliberately, so a sibling that kept the code but changed
+a calibration constant would fail to match for the same reason a sibling that
+dropped the code entirely does. Distinguishing the two takes the byte-level
+check above.
 
 ## Injection dispatch, enrichment and cut — the surrounding logic
 
@@ -669,7 +727,7 @@ Its controller is **`update_lambda_stft`**, a textbook
 **jump-and-ramp** (proportional + integral) O2 control law:
 
 - **Jump** - proportional, large, on a rich/lean transition (`loc_DABF`):
-  `var_lambda_avg >= 0xB3` (rich) adds `0x07AE` to `unk_1C4`; `<= 0x4D`
+  `var_lambda_avg >= 0xB3` (rich) adds `0x07AE` to `var_fuel_trim_slow`; `<= 0x4D`
   (lean) subtracts it. `0x4E`-`0xB2` is a **deadband** that exits without
   acting - that is what keeps the loop from chattering around stoich.
 - **Ramp** - integral, small, every tick while held on one side
@@ -754,7 +812,7 @@ only adapt once the fast and slow pressure estimates reconverge.
 | `var_pw_loop_mode` | Open-loop (0) vs closed-loop (0xC8) path selector, set by `init_pw_open_loop`/`init_pw_closed_loop` |
 | `unk_1C0` | The VE-map candidate, but reused as scratch: also overwritten with `var_adc_lambda` (DA10-DA60, closed-loop), the `unk_1C8` ceiling-driven divide result (`ramp_limit_inj_pw`'s `loc_DBF1`), or `var_inj_pw_base` (`loc_DC24`, closed-loop). No single fixed identity - see `ramp_limit_inj_pw`'s branch trace |
 | `unk_1C2` | Ratio value nominally `0xCCCD` (~0.8 in Q16) - `ramp_limit_inj_pw_simple`'s output, `ramp_limit_inj_pw`'s deviation input. The one variable in this cluster with a stable role |
-| `unk_1C4` | Carried-forward PW-scale value at `ramp_limit_inj_pw`'s entry, but overwritten with the `unk_1C8` ceiling in `loc_DBF1` when `trim_state.0` clear, or with the ratio-deviation result by `calc_inj_pw_base`'s diagnostic-only call. No single fixed identity |
+| `var_fuel_trim_slow` (`0x1C4`) | The long-term fuel trim: neutral `0xCCCD`, coarse `+/-0x07AE` on `var_lambda_avg` leaving the `0x4D..0xB3` deadband, fine `+/-0x0010` gated on the STFT's `0x85`/`0x76` rails, saturating, applied as a divisor on `var_inj_pw_base`. `ramp_limit_inj_pw` additionally clamps it to `unk_1C8` (`loc_DC17`) and writes back its rate-limited result (`ROM:DA0D`) - both act on the trim rather than repurposing the slot. Was `unk_1C4` |
 | `unk_1C6` | The final per-call output register of `ramp_limit_inj_pw` - ends up holding the ceiling (`unk_1C8`) on the `loc_DBF1` path, or the candidate/blend value on the `loc_DC24`/`loc_DC35` paths |
 | `unk_1C8` | A PIM/MAP-pressure-linked bound compared against PW-scale values in `ramp_limit_inj_pw`. Producer partially traced to `loc_E665` (~`E620`-`E6B0`), which folds `var_pim2`-derived `dmatx_pim` into it - the rest of that computation isn't traced (see Open Questions) |
 | `var_cnt_6A` | Reset by `calc_inj_pw_base`'s entry gate; consumer not traced |

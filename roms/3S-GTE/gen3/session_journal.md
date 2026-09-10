@@ -59,6 +59,16 @@ the 16 remaining, being one coherent subsystem, but they are not named here —
 I could describe the arithmetic without being able to say what each term *is*,
 and a guessed name is worse than none.
 
+*Update:* one of the five has since been named. `unk_1C4` is
+`var_fuel_trim_slow`, the long-term fuel trim — it turned out to carry a
+complete control law, which is what a guessed name would never have
+captured and what made it nameable on evidence (see the revision note
+further down, and `fuel_calculation_system.md`). The other four keep their
+`unk_` names on exactly the reasoning above: `unk_1C0`/`unk_1C6` are
+genuinely multi-role scratch, `unk_1C2` has a stable role but no name
+shorter than its description, and `unk_1C8` is a partially-traced
+pressure-linked bound.
+
 ---
 
 ### The three unreachable blocks: as far as static analysis goes
@@ -1955,14 +1965,24 @@ fuel_calculation_system.md's "Branch-by-branch trace" section; header
 comments added at `ramp_limit_inj_pw`, `ramp_limit_inj_pw_simple`, and
 `calc_inj_pw_base` in the ASM.
 
-**Key finding:** `unk_1C0`/`unk_1C4`/`unk_1C6` do not have single fixed
-identities (candidate / carried-forward value / ceiling) - each gets
-overwritten with a different one of {fresh VE-map candidate,
-`var_adc_lambda`, the `unk_1C8` ceiling, a ratio-deviation result,
-`var_inj_pw_base`} depending on which branch runs. This explains why no
-clean rename was found in earlier passes - there isn't one to find.
+**Key finding (later revised - see below):** `unk_1C0`/`unk_1C4`/`unk_1C6` do
+not have single fixed identities (candidate / carried-forward value /
+ceiling) - each gets overwritten with a different one of {fresh VE-map
+candidate, `var_adc_lambda`, the `unk_1C8` ceiling, a ratio-deviation
+result, `var_inj_pw_base`} depending on which branch runs. This explains why
+no clean rename was found in earlier passes - there isn't one to find.
 `unk_1C2` is the one variable in this cluster with a stable role (a ratio,
 nominally `0xCCCD`).
+
+> **Revision:** `unk_1C4` has since been taken out of that list and named
+> `var_fuel_trim_slow`. It carries a complete long-term-trim control law
+> (coarse `+/-0x07AE` on the `var_lambda_avg` deadband, fine `+/-0x0010`
+> gated on the STFT rails, saturating, applied as a divisor on
+> `var_inj_pw_base`). The two `ramp_limit_inj_pw` writes that motivated the
+> original reading are the limiter *clamping* it to `unk_1C8` and writing
+> back its rate-limited result - operations on the trim, not rival meanings
+> for the slot. `unk_1C0`/`unk_1C6` keep their `unk_` names; that half of
+> the finding stands. See `fuel_calculation_system.md`.
 
 **Correction to a prior-session claim:** `ramp_limit_inj_pw_simple` is
 called from `loc_DA58` when `var_adc_lambda` (signed lambda sensor

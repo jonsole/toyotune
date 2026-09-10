@@ -242,7 +242,7 @@ deadband that surrounds it are visible in four instructions:
 
 ```asm
 loc_DABF:
-        ld      d, unk_1C4
+        ld      d, var_fuel_trim_slow
         cmp     #0B3h, var_lambda_avg   ; rich threshold
         bcc     loc_DADB
         cmp     #4Dh, var_lambda_avg    ; lean threshold
