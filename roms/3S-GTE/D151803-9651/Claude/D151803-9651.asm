@@ -3714,7 +3714,10 @@ dmarx_ign_advance_hi_245:		.block 1			; DATA XREF: factory_self_test+1E4↓r
 dmarx_ign_retard_hi:	.block 1			; DATA XREF: iv6_ne_process+123↓r
 dmarx_ign_retard_lo:	.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12B↓r
-byte_248:			.block 0B7h			; DATA XREF: copy_dma_rx+B↓o
+dmarx_end:			.block 0B7h			; DATA XREF: copy_dma_rx+B↓o
+								; One past the last byte copy_dma_rx writes, and used as the loop bound
+								; (`cmp x, #dmarx_end`). The received block ends at dmarx_ign_retard_lo
+								; (0247h); the bytes this spans are the stack area below stack_top.
 stack_top:			.block 1			; DATA XREF: ROM:C663↓o
 								; watchdog_kick+2D↓o ...
 var_nv_tps:			.block 1			; DATA XREF: divide_d_by_x+23C↓o
@@ -20327,7 +20330,7 @@ loc_F9A1:							; CODE XREF: copy_dma_rx+E↓j
 				st	d, x + 00h
 				inc	x
 				inc	x
-				cmp	x, #byte_248
+				cmp	x, #dmarx_end
 				bcs	loc_F9A1
 
 				ret
