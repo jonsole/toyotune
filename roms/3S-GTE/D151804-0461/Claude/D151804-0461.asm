@@ -445,7 +445,11 @@ nv_diag_errors_3:		.block 2			; DATA XREF: ROM:DD56↓r
 								; 84.7 -
 nv_unk_trim_86:			.block 2			; DATA XREF: clear_nv_ram+22↓o
 								; divide_d_by_x:check_nv_trims↓t ...
-word_88:			.block 2			; DATA XREF: read_nv_afr_trim+29↓o
+				.block 2
+								; 0088h-0089h, interior of the NV AFR trim table that starts at 0086h.
+								; read_nv_afr_trim does `ld y, #0088h / add y, a` - base+2, indexing the
+								; table by the doubled cell index - and IDA turned that immediate into a
+								; symbol. 9651 writes the identical literal. Label removed.
 				.block 1
 				.block 1
 				.block 1
@@ -633,6 +637,10 @@ var_pim_baseline:				.block 1			; DATA XREF: ROM:FB6C↓w
 var_gearing:				.block 1			; DATA XREF: divide_d_by_x+3DD↓r
 								; calc_4ms_corrections+9C↓r	...
 unk_F6:				.block 1			; DATA XREF: divide_d_by_x+206C↓w
+								; = 9651's unk_FC. Write-only: one writer, no named reader. NOT consumed by
+								; CPU2 - outside both DMA windows. See 9651's declaration for the full note,
+								; including that clear_variables' second indexed loop writes it without
+								; naming it, which is why "no write site" searches mislead here.
 var_adc_cmd:				.block 1			; DATA XREF: divide_d_by_x+176↓w
 								; int_4ms_watchdog+12↓w	...
 var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
@@ -659,7 +667,12 @@ var_inj_pw_inj1:		.block 1			; DATA XREF: divide_d_by_x+55D↓r
 				.block 1
 var_inj_pw_inj2:			.block 1			; DATA XREF: divide_d_by_x+1E21↓w
 								; divide_d_by_x+2136↓w
-unk_107:			.block 1			; DATA XREF: divide_d_by_x+1B3↓o
+				.block 1
+								; 0107h. Had an unk_107 label because IDA read `ld d, #0107h` - the value
+								; written to DDRA, the port-direction register - as a reference to this
+								; address. 9651 writes the same constant, once even as a binary literal.
+								; Same artifact as the unk_100 case there. The byte itself is the low half
+								; of var_inj_pw_inj2 above.
 var_inj_pw_inj3:			.block 1			; DATA XREF: divide_d_by_x+1E24↓w
 								; divide_d_by_x+2139↓w
 				.block 1
@@ -694,6 +707,9 @@ var_lambda_step_lo:			.block 1			; DATA XREF: divide_d_by_x+9DB↓w
 								; divide_d_by_x:loc_CF69↓o ...
 var_lambda_step_hi:			.block 1			; DATA XREF: divide_d_by_x+9E7↓w
 unk_11F:			.block 1			; DATA XREF: ROM:FB4F↓w
+								; Holds a partial product across a two-step multiply: `mul a, #49h /
+								; st d, <this>` then later `add d, <this>`. A scratch temporary; 9651's
+								; equivalent (word_125) is unnamed too, so nothing to port.
 								; ROM:FB57↓r
 				.block 1
 var_ign_blend_out:			.block 1			; DATA XREF: divide_d_by_x+C4B↓r
@@ -744,7 +760,15 @@ var_unk_tps_13D:			.block 1			; DATA XREF: divide_d_by_x:loc_E4A8↓w
 var_pim_trim_scale:			.block 1			; DATA XREF: divide_d_by_x+E4A↓r
 								; calc_dmatx_pim+A↓r ...
 unk_13F:			.block 1			; DATA XREF: calc_dmatx_pim+7↓w
-unk_140:			.block 1			; DATA XREF: divide_d_by_x:loc_D1E3↓r
+								; = 9651's unk_145. Write-only, single site. See 9651 for the detail - and
+								; note the trap recorded there: the two adjacent `st a` stores in
+								; calc_dmatx_pim do NOT store the same value, because the `mov` between
+								; them is D <- X.
+var_pim_trans_est:			.block 1			; DATA XREF: divide_d_by_x:loc_D1E3↓r
+								; Transient indicator, the 9651 variable of the same name (there at 0146h).
+								; Confirmed from context, not from layout arithmetic alone: both ROMs do
+								; `st a, <this>` immediately followed by `ld d, var_pim_est_fast`, and both
+								; read it back with `ld b, <this>` / `bpz`.
 								; divide_d_by_x+C92↓r ...
 var_pim_trans_fast:			.block 1			; DATA XREF: divide_d_by_x:loc_E5C5↓w
 								; calc_4ms_corrections+5B↓r	...
@@ -753,6 +777,10 @@ var_ect_unk_142:			.block 1			; DATA XREF: divide_d_by_x+101↓w
 var_rpm_limit:			.block 1			; DATA XREF: divide_d_by_x:loc_CBC7↓r
 								; divide_d_by_x:loc_CBD6↓w ...
 unk_144:			.block 1			; DATA XREF: divide_d_by_x+662↓r
+								; = 9651's unk_14A. Read-only and therefore permanently zero: one reference,
+								; `sub a, <this>`, and no writer but the init clear - so the subtract is a
+								; no-op. Reads like a rev-limiter hysteresis offset that was disabled by
+								; zeroing it. Deliberately unnamed; see 9651.
 var_inj_active:			.block 1			; DATA XREF: iv6_ne_process+26C↓w
 								; iv6_ne_process+288↓r ...
 var_inj_pw_next:			.block 1			; DATA XREF: iv6_ne_process+2A4↓r
@@ -843,7 +871,13 @@ var_cyl_rough_cnt_hi:			.block 1			; DATA XREF: calc_4ms_corrections+2E4↓w
 				.block 1
 diag_code_delay:			.block 1			; DATA XREF: ROM:DF5B↓r
 								; ROM:DF98↓w ...
-unk_17C:			.block 1			; DATA XREF: ROM:FC42↓w
+var_cnt_tps_closed_check:			.block 1			; DATA XREF: ROM:FC42↓w
+								; Debounce counter for the closed-throttle TPS range check. Under
+								; `tbbc bit1, var_io_input1` (idle contact closed) the reading is checked
+								; against tps_closed_limits; in range clears this counter and clears
+								; var_flags_46.3, out of range increments it, and at 2 the code falls past
+								; loc_FC45 leaving that flag set. var_flags_46.3 is recorded as "some TPS
+								; flag" in the var_flags_46 declaration - this is what drives it.
 								; ROM:FC5D↓r ...
 var_o2_heater_unk_17D:			.block 1			; DATA XREF: ROM:DDA1↓r
 								; ROM:loc_DDBD↓w ...
@@ -915,6 +949,9 @@ var_iscv_unk_1A5:		.block 1			; DATA XREF: calc_iscv+B0↓r
 								; calc_iscv:loc_D535↓w ...
 				.block 1
 unk_1A7:			.block 1			; DATA XREF: divide_d_by_x+163↓w
+								; = 9651's unk_1AF. Write-only, a power-on default written once. 9651 used
+								; to assert this was an "injection timing default"; nothing supported it
+								; and that claim was withdrawn.
 				.block 1
 				.block 1
 				.block 1
@@ -942,6 +979,11 @@ var_inj_pw_base:			.block 1			; DATA XREF: divide_d_by_x+13C6↓r
 								; divide_d_by_x+1400↓r ...
 				.block 1
 unk_1B8:			.block 1			; DATA XREF: divide_d_by_x+13CF↓r
+								; = 9651's unk_1C0 (7 references here against 8 there, so not quite
+								; instruction-for-instruction). One of the two PW-ramp cluster variables
+								; that genuinely has no single fixed identity - it is overwritten with a
+								; different quantity depending on which branch of ramp_limit_inj_pw runs.
+								; Deliberately unnamed; see docs/fuel_calculation_system.md.
 								; divide_d_by_x:loc_D992↓w ...
 				.block 1
 var_pw_ramp_ratio:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
@@ -971,12 +1013,29 @@ var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+142F↓w
 								; ROM:DA5D↓r ...
 				.block 1
 unk_1BE:			.block 1			; DATA XREF: divide_d_by_x+117↓w
+								; CORRECTION - the "= 9651's unk_1C6" claim first written here is not
+								; safe. This ROM's PW-ramp cluster has MORE slots than 9651's: init sets
+								; both unk_1BE and unk_1C0 to 0CCCDh where 9651 sets only unk_1C6, and
+								; the `ld d, <x> / jsr divide_rD_128` that reads unk_1C6 in 9651 reads
+								; unk_1C0 here. So layout arithmetic and usage disagree, and the
+								; correspondence is not 1:1. Left unnamed. What 9651 says of unk_1C6:
+								; a genuinely multi-role PW-ramp scratch slot -
+								; ramp_limit_inj_pw's final per-call output register, holding the ceiling
+								; or the candidate/blend value depending on path. Deliberately unnamed.
 								; init_pw_closed_loop+D↓w ...
 				.block 1
 unk_1C0:			.block 1			; DATA XREF: divide_d_by_x+11A↓w
+								; Part of this ROM's PW-ramp cluster, which has more slots than 9651's -
+								; see the correction at unk_1BE above. Initialised to 0CCCDh alongside
+								; unk_1BE, and read by the `ld d, <this> / jsr divide_rD_128` that reads
+								; unk_1C6 in 9651. Not named: whether this or unk_1BE is 9651's unk_1C6
+								; cannot be settled from the evidence here, and both may be neither.
 								; ROM:loc_DC44↓w ...
 				.block 1
 unk_1C2:			.block 1			; DATA XREF: divide_d_by_x+11F↓w
+								; Same cluster. Initialised to 0FFh - a value 9651 gives to nothing in
+								; this group - and elsewhere set to 0FFh or compared with `cmpb a, #02h`.
+								; Looks ST205-specific rather than a counterpart of anything in 9651.
 								; ROM:DBE5↓r ...
 var_pw_ramp_ceiling:			.block 1			; DATA XREF: divide_d_by_x+125↓w
 								; ROM:loc_DB7D↓r ...
@@ -992,8 +1051,18 @@ var_adc_iscv_3:			.block 1			; DATA XREF: factory_self_test+1EE↓r
 var_adc_iscv_4:			.block 1			; DATA XREF: factory_self_test+1E8↓r
 								; ROM:adc_handler_iscv_4↓w
 unk_1CA:			.block 1			; DATA XREF: divide_d_by_x+1713↓r
+								; = 9651's unk_1CF. An aliased slot reused for two short-lived purposes in
+								; two separate windows; it never represents one coherent variable long
+								; enough to name. Deliberately unnamed; see 9651.
 								; divide_d_by_x+1742↓w ...
-unk_1CB:			.block 1			; DATA XREF: divide_d_by_x:main_CD76↓r
+var_flags_4E_copy_1CB:			.block 1			; DATA XREF: divide_d_by_x:main_CD76↓r
+								; A save/restore slot for var_flags_4E. 9651 calls its equivalent
+								; var_flags_4E_copy_D0 after its own address (01D0h); this one lives at
+								; 01CBh, so the name is adapted rather than copied - the stamped form is
+								; exactly what rom_port refuses to port, and rightly.
+								; Confirmed by context: `ld a, <this> / st a, var_flags_4E` at main_CD76
+								; and `ld a, var_flags_4E / st a, <this> / ld a, var_flags_4F` at loc_D189,
+								; matching 9651's main_CDCA and loc_D1DD instruction for instruction.
 								; divide_d_by_x+C11↓w
 var_trim_state:			.block 1			; DATA XREF: divide_d_by_x+B1F↓r
 								; divide_d_by_x+CA6↓r ...
@@ -1014,8 +1083,24 @@ var_flags_4F_copy2:			.block 1			; DATA XREF: divide_d_by_x+D0F↓r
 var_flags_4F_saved:			.block 1			; DATA XREF: divide_d_by_x:loc_CEA1↓r
 								; divide_d_by_x+C16↓w ...
 unk_1D5:			.block 1			; DATA XREF: divide_d_by_x+90E↓r
+								; NOT SAFELY NAMEABLE, and the reason is structural rather than a gap in
+								; the analysis. Between var_flags_4F_saved and var_asr0n_shadow_1D7 this
+								; ROM has TWO slots (01D5h, 01D6h) where 9651 has THREE
+								; (var_flags_4F_copy3, var_flags_4F_copy4, var_flags_1DC) - the layout
+								; anchors either side are consistent at -5 below and -6 above, so one of
+								; 9651's three has no counterpart here.
+								; Both this and unk_1D6 show contexts matching 9651's var_flags_1DC, which
+								; is a 2-into-3 correspondence, not a 1-to-1 one. rom_port refused both
+								; for exactly that reason ("source also claimed by"). Naming either would
+								; be picking one of two readings with no evidence to separate them.
+								; This one carries the bit-manipulation role: ld a / mov a, b / and b with
+								; 0FEh or 0FDh / st b, under di...ei.
 								; divide_d_by_x+914↓w ...
 unk_1D6:			.block 1			; DATA XREF: divide_d_by_x:loc_C84D↓r
+								; NOT SAFELY NAMEABLE - see unk_1D5 above for the 2-into-3 slot mismatch
+								; against 9651. This one carries the schedule-flag role: tested against
+								; var_schedule_flag_41 bit 0 and compared with `cmpb a, #02h` (9651's
+								; equivalent site uses #01h, so even the constant differs).
 								; divide_d_by_x:loc_C85A↓w ...
 var_asr0n_shadow_1D7:			.block 1			; DATA XREF: divide_d_by_x+130↓w
 								; divide_d_by_x+1D6↓r ...
@@ -1076,9 +1161,11 @@ dmatx_cnt_unk_209:			.block 1			; DATA XREF: copy_dma_tx+1B↓w
 dmatx_nv_trim_o2:			.block 1			; DATA XREF: copy_dma_tx:loc_F8AD↓w
 dmatx_lambda_state:			.block 1			; DATA XREF: copy_dma_tx+20↓w
 dmatx_adc_lambda:		.block 1			; DATA XREF: ROM:FC13↓w
-dmatx_knock_retard_info:			.block 1			; DATA XREF: copy_dma_tx+2C↓w
-				.block 1
-unk_20F:			.block 1			; DATA XREF: copy_dma_tx+32↓w
+dmatx_knock_retard_info:			.block 3			; DATA XREF: copy_dma_tx+2C↓w
+								; Three bytes, declared as one symbol to match 9651. It was split here into
+								; a 1-byte symbol, an anonymous byte and a separate unk_20F for the third,
+								; so the third byte read as an unrelated variable. 9651 writes the same
+								; field as `st d, <this>` plus `st a, <this>+2`, and this ROM now does too.
 								; Third byte of the knock-info triplet that
 								; starts at dmatx_knock_retard_info - it is
 								; written separately (nv_table_knock_info+2)
@@ -1230,7 +1317,12 @@ dmarx_ign_advance_hi_23F:			.block 1			; DATA XREF: factory_self_test+1DA↓r
 dmarx_ign_retard_hi:			.block 1			; DATA XREF: iv6_ne_process+122↓r
 dmarx_ign_retard_lo:			.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12A↓r
-byte_242:			.block 0BDh			; DATA XREF: copy_dma_rx+B↓o
+dmarx_end:			.block 0BDh			; DATA XREF: copy_dma_rx+B↓o
+								; One past the last byte copy_dma_rx writes, and used as exactly that: the
+								; loop runs `st d, x + 00h / inc x / inc x / cmp x, #dmarx_end / bcs`. So
+								; the received block ends at dmarx_ign_retard_lo (0241h) and this address is
+								; the bound, not a variable. The 0BDh bytes it spans are the stack area
+								; below stack_top. 9651's equivalent was byte_248, now also dmarx_end.
 stack_top:			.block 1			; DATA XREF: ROM:C642↓o
 								; divide_d_by_x+1B8↓o ...
 var_nv_tps:			.block 1			; DATA XREF: divide_d_by_x+23D↓o
@@ -2219,7 +2311,10 @@ table_iscv_C372:			.db  00h			; DATA XREF: calc_iscv+112↓o
 				.db  10h
 
 
-unk_C375:			.db  20h			; DATA XREF: ROM:F4FD↓o
+table_unk_C375:			.db  20h			; DATA XREF: ROM:F4FD↓o
+								; Four-entry byte table indexed by a 2-bit value (`and a, #03h` then
+								; add y, a / ld a, y + 00h). Prefixed table_ because that much is certain;
+								; what it selects is not established.
 				.db  02h
 				.db  04h
 				.db  06h
@@ -2283,7 +2378,13 @@ tha_adc_limits:			.db 0FCh, 07h			; DATA XREF: ROM:adc_handler_tha↓o
 tham_adc_limits:		.db 0FCh, 07h			; DATA XREF: ROM:adc_handler_tham↓o
 ect_adc_limits:			.db 0FCh, 07h			; DATA XREF: ROM:adc_handler_ect↓o
 tps_adc_limits:			.db 0FBh, 05h			; DATA XREF: ROM:FC1C↓o
-byte_C3B2:			.db 31h, 05h			; DATA XREF: ROM:FC56↓o
+tps_closed_limits:			.db 31h, 05h			; DATA XREF: ROM:FC56↓o
+								; Limit pair for the closed-throttle TPS check, reached by the usual
+								; ld y, #<label> / jsr y + <clamp offset> idiom with `bcs` taken when the
+								; value is out of range. It was the only unnamed entry in a run of limit
+								; pairs - tham_adc_limits, ect_adc_limits, tps_adc_limits, HERE,
+								; nv_tps_limits - and sits in the TPS ADC handler, gated on the idle
+								; contact. See var_cnt_tps_closed_check for what consumes the result.
 nv_tps_limits:			.db 0C3h, 14h			; DATA XREF: divide_d_by_x+25E↓o
 								; ROM:FCD2↓o
 
@@ -3440,7 +3541,7 @@ loc_C722:							; CODE XREF: divide_d_by_x:loc_C714↑j
 loc_C729:							; CODE XREF: divide_d_by_x+2419↓j
 				clr	var_4m_cnt_AD
 				clr	PBCS			; Port B Control Register
-				ld	d, #unk_107
+				ld	d, #0107h
 				st	d, DDRA			; Port A i/o config
 				ld	s, #stack_top
 				clrb	bit3, SSD
@@ -4951,7 +5052,7 @@ locret_CD75:							; CODE XREF: overrun_end_injection+3↑j
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
 main_CD76:							; CODE XREF: divide_d_by_x:main_CD63↑j
-				ld	a, unk_1CB
+				ld	a, var_flags_4E_copy_1CB
 				st	a, var_flags_4E
 				ld	a, #80h
 				tbbs	bit2, var_flags_44, loc_CD87
@@ -5814,7 +5915,7 @@ loc_D171:							; CODE XREF: read_nv_afr_trim+1E↑j
 
 				push	b
 				shl	a
-				ld	y, #word_88
+				ld	y, #0088h
 				add	y, a
 				ld	a, y + 00h
 				ld	b, y + 02h
@@ -5839,7 +5940,7 @@ locret_D188:							; CODE XREF: read_nv_afr_trim+2↑j
 
 loc_D189:							; CODE XREF: divide_d_by_x+BB6↑j
 				ld	a, var_flags_4E
-				st	a, unk_1CB
+				st	a, var_flags_4E_copy_1CB
 				ld	a, var_flags_4F
 				st	a, var_flags_4F_saved
 				tbs	bit6, var_schedule_flag_41
@@ -5904,7 +6005,7 @@ loc_D1D6:							; CODE XREF: divide_d_by_x+C58↑j
 				mov	b, a
 
 loc_D1E3:							; CODE XREF: divide_d_by_x+C66↑j
-				cmp	a, unk_140
+				cmp	a, var_pim_trans_est
 				bgta	loc_D1EA
 
 
@@ -5935,7 +6036,7 @@ closed_loop_control:							; CODE XREF: divide_d_by_x:loc_D1EA↑j
 
 				tbbs	bit1, var_io_input1, loc_D268
 
-				ld	a, unk_140
+				ld	a, var_pim_trans_est
 				cmp	a, #0FEh
 				blta	loc_D268
 
@@ -10382,7 +10483,7 @@ loc_E5AC:							; CODE XREF: divide_d_by_x+202A↑j
 
 loc_E5B0:							; CODE XREF: divide_d_by_x+202C↑j
 								; divide_d_by_x+2030↑j ...
-				st	a, unk_140
+				st	a, var_pim_trans_est
 				ld	d, var_pim_est_fast
 				sub	d, var_pim_est_slow
 				bcs	loc_E5C1
@@ -13907,7 +14008,7 @@ loc_F4F6:							; CODE XREF: ROM:F4DC↑j
 				and	a, #03h
 				beq	loc_F537
 
-				ld	y, #unk_C375
+				ld	y, #table_unk_C375
 				add	y, a
 				ld	a, y + 00h
 				ld	b, var_knock_event_cnt
@@ -14779,7 +14880,7 @@ loc_F8AD:							; CODE XREF: copy_dma_tx+C↑j
 				ld	d, nv_table_knock_info
 				st	d, dmatx_knock_retard_info
 				ld	a, nv_table_knock_info+2
-				st	a, unk_20F
+				st	a, dmatx_knock_retard_info+2
 				ld	a, var_pw_loop_mode
 				st	a, dmatx_pw_loop_mode
 				ld	a, var_tps_delta
@@ -14845,7 +14946,7 @@ loc_F920:							; CODE XREF: copy_dma_rx+E↓j
 				st	d, x + 00h
 				inc	x
 				inc	x
-				cmp	x, #byte_242
+				cmp	x, #dmarx_end
 				bcs	loc_F920
 
 				ret
@@ -15603,7 +15704,7 @@ loc_FC3B:							; CODE XREF: ROM:FC34↑j
 loc_FC41:							; CODE XREF: ROM:FC53↓j
 								; ROM:FC5B↓j
 				clr	b
-				st	b, unk_17C
+				st	b, var_cnt_tps_closed_check
 
 loc_FC45:							; CODE XREF: ROM:FC66↓j
 				clrb	bit3, var_flags_46
@@ -15622,14 +15723,14 @@ loc_FC50:							; CODE XREF: ROM:FC4B↑j
 
 				tbbc	bit1, var_io_input1, loc_FC41
 
-				ld	y, #byte_C3B2
+				ld	y, #tps_closed_limits
 				jsr	y + 04h
 
 				bcs	loc_FC41
 
-				ld	b, unk_17C
+				ld	b, var_cnt_tps_closed_check
 				inc	b
-				st	b, unk_17C
+				st	b, var_cnt_tps_closed_check
 				cmp	b, #02h
 				bcs	loc_FC45
 
@@ -15852,7 +15953,7 @@ loc_FD43:							; CODE XREF: ROM:FD3E↑j
 				ld	a, #7Fh
 
 loc_FD45:							; CODE XREF: ROM:FD34↑j
-				ld	b, unk_140
+				ld	b, var_pim_trans_est
 				bpz	loc_FD4B
 
 				neg	b

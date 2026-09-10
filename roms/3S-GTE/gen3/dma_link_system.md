@@ -197,7 +197,7 @@ sites). Sizes in bytes.
 | 1A | `0x21A` | `dmatx_obd_o2_sensor` | 1 | OBD output code | `0xDF` | `dmarx_obd_o2_sensor` | `next_odb_byte` via `table_odb`, `output_odb_bit` |
 | 1B | `0x21B` | `dmatx_knock_retard` | 1 | `check_clear_speed_limiter_rev` | `0xE0` | `dmarx_knock` | `table_knock_enrichment`, `main_continue_2` |
 | 1C | `0x21C` | `dmatx_pw_loop_mode` | 1 | `copy_dma_tx` ← `var_pw_loop_mode` | `0xE1` | `dmarx_pw_loop_mode` | `drive_DOUT0` — see §6 |
-| 1D | `0x21D` | `dmatx_tps_delta` | 1 | **no writer found** | `0xE2` | `dmarx_tps_delta_E2` | **none** |
+| 1D | `0x21D` | `dmatx_tps_delta` | 1 | **no writer found** *(on this pair — see below)* | `0xE2` | `dmarx_tps_delta_E2` | **none** *(on this pair)* |
 | 1E | `0x21E` | `dmatx_error_flags1` | 1 | `copy_dma_tx` ← `var_error_flags1` (`st d`, both bytes) | `0x4B` | `dmarx_unk_4B` (2) | `drive_DOUT0` |
 | 1F | `0x21F` | `dmatx_error_flags2` | 1 | (second byte of the above) | `0x4C` | | |
 | 20 | `0x220` | `dmatx_flags_46` | 1 | `copy_dma_tx` ← `var_flags_46` | `0x42` | `dmarx_var_flags_46` | 16 sites — the most-read byte in the frame |
@@ -222,6 +222,20 @@ tester on the line rather than code in either ROM.
 `0x225` genuinely has no writer at all. It was previously the unwritten
 second half of a `dmatx_selftest_code2` declared `.block 2`, which implied a 16-bit value
 that never existed - every store to `0x224` is a byte store.
+
+**`dmatx_tps_delta` is dead on the MR2 but LIVE on the ST205.** This table
+describes the `9651`/`9661` pair, where the field has no writer on CPU1 and no
+reader on CPU2 — so it reads as a vestigial slot. It is not one. On the
+`0461`/`0471` pair the same field is used at both ends: `0461` fills it with
+`ld a, var_tps_delta` / `st a, dmatx_tps_delta` in `copy_dma_tx`, and `0471`
+reads it (as `dmarx_tps_delta_E4`, at `0x0E4` — this pair's CPU1→CPU2 offset is
+`+0x133`, not `+0x13B`) as one term of a gate: intake air below `0xD7`, coolant
+below `0xF140`, and the throttle delta inside a signed window of roughly
+`±0x0C`, i.e. throttle steady.
+
+So "no writer found" here is a statement about one ECU pair, not about the
+frame layout. Before concluding a field is unused, check the sibling pair — the
+layout is shared but which fields are populated is not.
 
 **`dmatx_flags_1`**, built in `copy_dma_tx`:
 
