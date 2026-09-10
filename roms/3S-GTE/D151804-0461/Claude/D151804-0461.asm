@@ -790,7 +790,7 @@ var_idle_timing_ramp:			.block 1			; DATA XREF: divide_d_by_x+143↓w
 var_ign_min_cand:			.block 1			; DATA XREF: divide_d_by_x+146↓w
 								; calc_ign_timing_min+80↓w
 var_ect_unk_158:			.block 1			; DATA XREF: calc_ign_timing_min:loc_EB56↓r
-								; sub_EB8E+6↓w
+								; calc_ect_unk_158+6↓w
 var_cyl_rpm_delta:			.block 1			; DATA XREF: calc_ign_timing_min:loc_EAF8↓w
 								; calc_ign_timing_min:loc_EB27↓r
 var_cyl_rpm_filtered:			.block 1			; DATA XREF: calc_4ms_corrections+12A↓w
@@ -2076,7 +2076,7 @@ table_unk_C2BA:			.db  00h			; DATA XREF: calc_ign_timing_min:loc_EB30↓o
 				.db  33h ; 3
 				.db  40h ; @
 				.db  40h ; @
-unk_C2C1:			.db  02h			; DATA XREF: sub_EB8E↓o
+table_ect_corr_158:			.db  02h			; DATA XREF: calc_ect_unk_158↓o
 				.db 0D2h ; ╥
 				.db  40h ; @
 				.db 0E4h ; Σ
@@ -2123,7 +2123,9 @@ table_rpm_c2fc:			.db 50h, 30h			; DATA XREF: calc_iscv+448↓o
 
 table_ect_idle_C302:		.db 12h				; DATA XREF: divide_d_by_x+B4F↓o
 								; calc_ect_iscv↓o
-byte_C303:			.db 038, 127
+				.db 038, 127
+								; table_ect_idle_C302's data body, not a table of its own - IDA had a
+								; byte_C303 label here and nothing referenced it. Removed.
 				.db 058, 100
 				.db 081, 084
 				.db 107, 077
@@ -2186,7 +2188,7 @@ iscv_override_trim:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
 iscv_override_trim_eco:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
 
 
-table_ect_C357:			.db 0Ch				; DATA XREF: sub_D456↓o
+table_ect_corr_18C:			.db 0Ch				; DATA XREF: calc_ect_unk_18C↓o
 				.db 26h, 0F3h
 				.db 51h, 0F1h
 				.db 6Bh, 0E8h
@@ -2261,7 +2263,16 @@ nv_98_limits:			.db 64h, 37h			; DATA XREF: ROM:FBA1↓o
 ign_advance_trim_limits:			.db 88h, 2Ah			; DATA XREF: calc_4ms_corrections:loc_ED35↓o
 
 
-word_C3A2:			.dw 0500h, 0000h		; DATA XREF: divide_d_by_x:loc_D9E1↓o
+inj_pw_base_limits:			.dw 0500h, 0000h		; DATA XREF: divide_d_by_x:loc_D9E1↓o
+								; The [0, 0500h] clamp applied to var_inj_pw_base. Named for WHAT IT CLAMPS
+								; rather than for an address: 9651 called this ram_1BE_limits after
+								; var_inj_pw_base's address there (01BEh), but the same variable sits at
+								; 01B6h in 0461, so the address-stamped form needs adapting on every port
+								; and rom_port refused to - it cannot justify a RAM address embedded in a
+								; name. This form ports verbatim.
+								; Reached by the usual ld y, #<label> / jsr y + <clamp offset> idiom; the
+								; second use site clamps the ratio-deviation result the same way.
+								; D151804-0481 has no equivalent - it has no PW ramp limiter at all.
 								; ROM:DBAE↓o
 
 
@@ -5376,7 +5387,7 @@ loc_CF75:							; CODE XREF: divide_d_by_x+9F8↑j
 				cmpb	a, var_temp_b
 				beq	loc_CFCC
 
-				jsr	sub_DDDC
+				jsr	check_cnt_17F_window
 
 				jsr	update_lambda_avg
 
@@ -6503,14 +6514,14 @@ loc_D453:							; CODE XREF: clamp_min_ect_18C+2↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_D456:							; CODE XREF: divide_d_by_x+1D8A↓p
-				ld	y, #table_ect_C357
+calc_ect_unk_18C:							; CODE XREF: divide_d_by_x+1D8A↓p
+				ld	y, #table_ect_corr_18C
 				jsr	table_ect_pair_interpolate
 
 				st	a, var_ect_unk_18C
 				ret
 
-; End of function sub_D456
+; End of function calc_ect_unk_18C
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -7654,7 +7665,7 @@ loc_D9D5:							; CODE XREF: divide_d_by_x+1446↑j
 
 loc_D9E1:							; CODE XREF: divide_d_by_x+1459↑j
 								; divide_d_by_x+1463↑j
-				ld	y, #word_C3A2
+				ld	y, #inj_pw_base_limits
 				jsr	y + 1Dh
 
 				st	d, var_inj_pw_base
@@ -8077,7 +8088,7 @@ loc_DB90:							; CODE XREF: ROM:DB80↑j
 loc_DBAB:							; CODE XREF: ROM:DBA4↑j
 				jsr	divide_d_by_x
 
-				ld	y, #word_C3A2
+				ld	y, #inj_pw_base_limits
 				jsr	y + 1Dh
 
 				st	d, unk_1B8
@@ -8576,7 +8587,7 @@ loc_DDDA:							; CODE XREF: ROM:DDB4↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_DDDC:							; CODE XREF: divide_d_by_x+A05↑p
+check_cnt_17F_window:							; CODE XREF: divide_d_by_x+A05↑p
 				clrb	bit7, var_flags_4F
 				ld	x, var_cnt_17F
 				cmp	x, #0003h
@@ -8587,14 +8598,14 @@ sub_DDDC:							; CODE XREF: divide_d_by_x+A05↑p
 
 				setb	bit7, var_flags_4F
 
-loc_DDED:							; CODE XREF: sub_DDDC+8↑j
-								; sub_DDDC+D↑j
+loc_DDED:							; CODE XREF: check_cnt_17F_window+8↑j
+								; check_cnt_17F_window+D↑j
 				clr	a
 				clr	b
 				st	d, var_cnt_17F
 				ret
 
-; End of function sub_DDDC
+; End of function check_cnt_17F_window
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -9790,13 +9801,13 @@ loc_E2F3:							; CODE XREF: divide_d_by_x+1D71↑j
 
 				jsr	calc_ect_unk_142
 
-				jsr	sub_EB8E
+				jsr	calc_ect_unk_158
 
 				jsr	calc_ect_iscv
 
 				ld	a, var_flags_4E_copy2
 				st	a, var_flags_4E
-				jsr	sub_D456
+				jsr	calc_ect_unk_18C
 
 				ld	a, var_trim_state
 				st	a, var_flags_4E
@@ -11641,14 +11652,14 @@ loc_EB8A:							; CODE XREF: ramp_misfire_correction+4↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_EB8E:							; CODE XREF: divide_d_by_x+1D7F↑p
-				ld	y, #unk_C2C1
+calc_ect_unk_158:							; CODE XREF: divide_d_by_x+1D7F↑p
+				ld	y, #table_ect_corr_158
 				jsr	table_ect_pair_interpolate
 
 				st	a, var_ect_unk_158
 				ret
 
-; End of function sub_EB8E
+; End of function calc_ect_unk_158
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR calc_4ms_corrections

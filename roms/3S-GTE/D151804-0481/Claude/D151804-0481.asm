@@ -2715,9 +2715,9 @@ divide_rD_2_signed:				; CODE XREF: ROM:F797↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_C4CA:				; CODE XREF: watchdog_kick-15AA↓p
+divide_rD_128_saturate:				; CODE XREF: watchdog_kick-15AA↓p
 		shr	d
-; End of function sub_C4CA
+; End of function divide_rD_128_saturate
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -3484,7 +3484,7 @@ loc_C88B:				; CODE XREF: watchdog_kick-15DC↑j
 
 loc_C88E:				; CODE XREF: watchdog_kick-15B1↑j
 		st	d, var_rpm_x_5p12
-		jsr	sub_C4CA
+		jsr	divide_rD_128_saturate
 		st	b, var_rpm_div_25
 		bra	loc_C8C5
 ; END OF FUNCTION CHUNK	FOR watchdog_kick

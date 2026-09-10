@@ -384,13 +384,20 @@ var_spd_time:				.block 1			; DATA XREF: int_vector_4_kph+14↓r
 								; int_vector_4_kph+1B↓r ...
 				.block 1
 var_spd_prev:				.block 1			; DATA XREF: update_spd+15↓w
-var_rpm_smooth_e8:				.block 1			; DATA XREF: check_startup-AB1↓w
+var_rpm_smooth_ea:				.block 1			; DATA XREF: check_startup-AB1↓w
+								; NOTE: these three were mis-stamped. They carried 9661's addresses
+								; (e8/ea/ec) while sitting at 00EAh/00ECh/00EEh here - every one off by two
+								; slots, so looking up var_rpm_smooth_ea in this ROM landed you on the
+								; variable actually named var_rpm_smooth_e8. Same class of error as the
+								; dmarx_* shift corrected earlier: a name carrying the SOURCE ROM's address
+								; survived a port because nothing checked it against the target's layout.
+								; Renamed simultaneously (e8->ea, ea->ec, ec->ee); sequentially they collide.
 								; check_startup-A53↓r ...
 				.block 1
-var_rpm_smooth_ea:				.block 1			; DATA XREF: check_startup-AAF↓w
+var_rpm_smooth_ec:				.block 1			; DATA XREF: check_startup-AAF↓w
 								; check_startup-743↓r ...
 				.block 1
-var_rpm_smooth_ec:				.block 1			; DATA XREF: check_startup-AAD↓w
+var_rpm_smooth_ee:				.block 1			; DATA XREF: check_startup-AAD↓w
 								; update_rpm_smooth_filter+2↓r ...
 				.block 1
 var_rpm_div_spd:		.block 1			; DATA XREF: check_startup-43D↓r
@@ -2406,7 +2413,7 @@ mult_rArX:							; CODE XREF: ROM:C841↓p
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-signed_proportional_update:							; CODE XREF: sub_CDA0+C↓p
+signed_proportional_update:							; CODE XREF: update_rpm_filter_EC+C↓p
 				push	b
 				mov	x, d
 				sub	d, y + 00h
@@ -2765,9 +2772,9 @@ loc_CA06:							; CODE XREF: check_startup-AC0↑j
 
 				clr	a
 				clr	b
-				st	d, var_rpm_smooth_e8
 				st	d, var_rpm_smooth_ea
 				st	d, var_rpm_smooth_ec
+				st	d, var_rpm_smooth_ee
 				jsr	init_ne_counters
 
 				ei
@@ -2863,7 +2870,7 @@ loc_CA60:							; CODE XREF: check_startup:main_continue↑j
 				cmp	a, #19h
 				bcc	loc_CA7F
 
-				sub	d, var_rpm_smooth_e8
+				sub	d, var_rpm_smooth_ea
 				beq	loc_CA81
 
 				rorc	a
@@ -2876,14 +2883,14 @@ loc_CA60:							; CODE XREF: check_startup:main_continue↑j
 				inc	b
 
 loc_CA7D:							; CODE XREF: check_startup-A47↑j
-				add	d, var_rpm_smooth_e8
+				add	d, var_rpm_smooth_ea
 
 loc_CA7F:							; CODE XREF: check_startup-A5D↑j
 								; check_startup-A59↑j ...
-				st	d, var_rpm_smooth_e8
+				st	d, var_rpm_smooth_ea
 
 loc_CA81:							; CODE XREF: check_startup-A51↑j
-				jsr	sub_CDA0
+				jsr	update_rpm_filter_EC
 
 
 loc_CA84:							; CODE XREF: check_startup-A63↑j
@@ -2896,7 +2903,7 @@ loc_CA84:							; CODE XREF: check_startup-A63↑j
 
 update_rpm_smooth_filter:							; CODE XREF: check_startup-67D↓p
 				clrb	bit0, var_flags_48
-				ld	d, var_rpm_smooth_ec
+				ld	d, var_rpm_smooth_ee
 				sub	d, var_rpm_x_5p12
 				bcc	loc_CA94
 
@@ -2917,10 +2924,10 @@ loc_CA9C:							; CODE XREF: update_rpm_smooth_filter+12↑j
 				add	b, #80h
 				st	b, var_rpm_deviation_51
 				ld	d, var_rpm_x_5p12
-				add	d, var_rpm_smooth_ec
+				add	d, var_rpm_smooth_ee
 				rorc	a
 				rorc	b
-				st	d, var_rpm_smooth_ec
+				st	d, var_rpm_smooth_ee
 				ret
 
 ; End of function update_rpm_smooth_filter
@@ -3514,7 +3521,7 @@ loc_CD61:							; CODE XREF: check_startup-765↑j
 				ld	b, #70h
 				jsr	mult_rBrX2
 
-				ld	x, var_rpm_smooth_ea
+				ld	x, var_rpm_smooth_ec
 				jsr	mult_rDrX
 
 				mov	x, d
@@ -3543,20 +3550,20 @@ loc_CD9B:							; CODE XREF: check_startup-75B↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_CDA0:							; CODE XREF: check_startup:loc_CA81↑p
+update_rpm_filter_EC:							; CODE XREF: check_startup:loc_CA81↑p
 				ld	x, var_rpm_x_5p12
 				tbbc	bit0, dmarx_var_flags_46, loc_CDA7
 
-				st	x, var_rpm_smooth_ea
+				st	x, var_rpm_smooth_ec
 
-loc_CDA7:							; CODE XREF: sub_CDA0+2↑j
+loc_CDA7:							; CODE XREF: update_rpm_filter_EC+2↑j
 				ld	y, #00ECh
 				ld	b, #20h
 				jsr	signed_proportional_update
 
 				ret
 
-; End of function sub_CDA0
+; End of function update_rpm_filter_EC
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR check_startup

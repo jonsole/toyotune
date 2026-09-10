@@ -379,7 +379,7 @@ specific thresholds
 
 Every ~488ms (`var_4ms_cnt_B5 >= 0x7A`): nudges `var_inj_pw_base` by
 `+0x0C`/`-0x02` based on `var_lambda_integrator` vs `var_adc_lambda`'s
-sign, clamped via `ram_1BE_limits` (range `0x0000`-`0x0500`, i.e.
+sign, clamped via `inj_pw_base_limits` (range `0x0000`-`0x0500`, i.e.
 0-~5.12ms of injector time - matches known PW constants elsewhere, e.g.
 `injector_cold_start`'s `0x04E2`/`0x09C4`). In closed-loop mode
 (`var_pw_loop_mode == 0xC8`) also overwrites `unk_1C0` with `var_adc_lambda` itself.
@@ -489,7 +489,7 @@ steps causing driveability issues.
   `var_adc_lambda` at `loc_DA17` and never reloaded before the `loc_DA58`
   gate - `var_inj_pw_base` is loaded into `D` in that same block for an
   unrelated small lambda-driven nudge (`+0x0C`/`-0x02`, clamped via
-  `ram_1BE_limits`) that has already completed by the time the gate is
+  `inj_pw_base_limits`) that has already completed by the time the gate is
   checked.
 
 ### Branch-by-branch trace of `ramp_limit_inj_pw`
@@ -538,7 +538,7 @@ read/written throughout (via the alias - real `var_flags_4E` bits, not
      unchanged, skip the divide.
    - `var_pw_ramp_ratio < 0xCCCD` (below nominal): `D = (0xCCCD-var_pw_ramp_ratio) /
      (0xCCCD-var_pw_ramp_ceiling)` via `divide_d_by_x`, clamped to `[0,0x0500]` via
-     `ram_1BE_limits`, and stored into **`unk_1C0`** - the candidate itself
+     `inj_pw_base_limits`, and stored into **`unk_1C0`** - the candidate itself
      gets refined here, not just `var_inj_pw_base`.
 
      Either way: if `trim_state.0` is clear, commits `D` to
@@ -816,7 +816,7 @@ only adapt once the fast and slow pressure estimates reconverge.
 
 | Variable | Description |
 |---|---|
-| `var_inj_pw_base` | Working base injector pulse-width, clamped to 0x0000-0x0500 via `ram_1BE_limits` |
+| `var_inj_pw_base` | Working base injector pulse-width, clamped to 0x0000-0x0500 via `inj_pw_base_limits` |
 | `var_pw_loop_mode` | Open-loop (0) vs closed-loop (0xC8) path selector, set by `init_pw_open_loop`/`init_pw_closed_loop` |
 | `unk_1C0` | The VE-map candidate, but reused as scratch: also overwritten with `var_adc_lambda` (DA10-DA60, closed-loop), the `var_pw_ramp_ceiling` ceiling-driven divide result (`ramp_limit_inj_pw`'s `loc_DBF1`), or `var_inj_pw_base` (`loc_DC24`, closed-loop). No single fixed identity - see `ramp_limit_inj_pw`'s branch trace |
 | `var_pw_ramp_ratio` (`0x1C2`) | Ratio value nominally `0xCCCD` (~0.8 in Q16) - `ramp_limit_inj_pw_simple`'s output, `ramp_limit_inj_pw`'s deviation input. Was `unk_1C2`; described here as "the one variable in this cluster with a stable role" until `var_fuel_trim_slow` and `var_pw_ramp_ceiling` turned out to have stable roles too |
