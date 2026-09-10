@@ -2427,9 +2427,22 @@ var_gearing:			.block 1			; DATA XREF: calc_4ms_corrections+9C↓r
 								; calc_4ms_corrections+EC↓r	...
 unk_FC:				.block 1			; DATA XREF: divide_d_by_x+20D7↓w
 								; WRITE-ONLY in this file: written by loc_E66C,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+								; Holds ((61h - var_nv_trim_unk_98) * 12h) / 64, saturating, low
+								; byte only. The subtraction clamps to 0 on borrow. Note the
+								; UNDIVIDED product is what loc_E66C then adds to dmatx_pim (it is
+								; pushed before the divide and pulled after), so this variable is a
+								; separately-scaled copy of that PIM correction term rather than
+								; anything the pressure path itself consumes.
+								; but no read site exists anywhere here.
+								; NOT consumed by CPU2: this address is outside
+								; both DMA windows. CPU1 transmits 0200h-0225h
+								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
+								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
+								; 22h bytes) before copy_dma_rx moves it to 0226h+.
+								; So it is vestigial, or read through indexed/indirect
+								; addressing - a pointer walk over a RAM region would
+								; not show up as a symbol reference at all, which is
+								; the one way a "no read site" search can still be wrong.
 var_adc_cmd:		.block 1			; DATA XREF: divide_d_by_x+175↓w
 								; int_4ms_watchdog+12↓w	...
 var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
@@ -2696,9 +2709,30 @@ var_pim_trim_scale:			.block 1			; DATA XREF: divide_d_by_x+E83↓r
 								; throttle-derived estimate into real PIM units.
 unk_145:			.block 1			; DATA XREF: calc_dmatx_pim+7↓w
 								; WRITE-ONLY in this file: written by calc_dmatx_pim,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+								; CAREFUL - this does NOT hold the TPS load, though the two
+								; adjacent stores in calc_dmatx_pim make it look as if it does:
+								;     jsr get_tps_load_div8   ; D = TPS load/8; X untouched
+								;     st  a, var_unk_tps_inj_137
+								;     mov x, d                ; D <- X  (NOT X <- D; opcode 3Ch)
+								;     st  a, unk_145          ; so this is X's HIGH BYTE
+								; The mov clobbers D between the two stores, so the second one
+								; captures the high byte of X, not the load. X arrives from the
+								; caller - both call sites run apply_enrich_and_trims immediately
+								; before - and is what mult_rBrX2 then multiplies by
+								; var_pim_trim_scale into var_pim_tps_est. X's provenance through
+								; the multiply library is NOT traced, so what its high byte means
+								; is still open; only the fact that it is X and not the load is
+								; settled here (mov direction confirmed against the opcode table).
+								; but no read site exists anywhere here.
+								; NOT consumed by CPU2: this address is outside
+								; both DMA windows. CPU1 transmits 0200h-0225h
+								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
+								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
+								; 22h bytes) before copy_dma_rx moves it to 0226h+.
+								; So it is vestigial, or read through indexed/indirect
+								; addressing - a pointer walk over a RAM region would
+								; not show up as a symbol reference at all, which is
+								; the one way a "no read site" search can still be wrong.
 var_pim_trans_est:			.block 1			; DATA XREF: divide_d_by_x:loc_E63C↓w
 								; ROM:loc_FDDB↓r
 								; Transient indicator: the sign of (var_pim_tps_est -
@@ -3082,9 +3116,16 @@ var_iscv_unk_1AD:		.block 1			; DATA XREF: calc_iscv+B0↓r
 				.block 1
 unk_1AF:			.block 1			; DATA XREF: divide_d_by_x+162↓w
 								; WRITE-ONLY in this file: written by loc_C67A,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+								; but no read site exists anywhere here.
+								; NOT consumed by CPU2: this address is outside
+								; both DMA windows. CPU1 transmits 0200h-0225h
+								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
+								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
+								; 22h bytes) before copy_dma_rx moves it to 0226h+.
+								; So it is vestigial, or read through indexed/indirect
+								; addressing - a pointer walk over a RAM region would
+								; not show up as a symbol reference at all, which is
+								; the one way a "no read site" search can still be wrong.
 				.block 1
 				.block 1
 				.block 1
@@ -3443,14 +3484,35 @@ dmatx_error_flags2:		.block 1
 dmatx_flags_46:			.block 1			; DATA XREF: copy_dma_tx+42↓w
 dmatx_flags_1:			.block 1			; DATA XREF: copy_dma_tx:loc_F992↓w
 dmatx_limiter_flags:		.block 1			; DATA XREF: copy_dma_tx+75↓w
-unk_223:			.block 1			; DATA XREF: factory_self_test+3F↓w
+dmatx_selftest_code1:		.block 1			; DATA XREF: factory_self_test+3F↓w
 								; factory_self_test:loc_E172↓w
-								; Scratch register local to factory_self_test's
-								; factory self-test/RAM-test sequence -
-								; not traced further (that whole routine
-								; is out of scope for this pass).
-word_224:			.block 2			; DATA XREF: factory_self_test+46↓w
+								; Factory self-test I/O readback code 1 of 2. Byte 23h of the 38-byte
+								; CPU1 -> CPU2 DMA block, so it IS transmitted every 4 ms - but CPU2's
+								; copy_serbus_rx unpacks only bytes 0-1Dh plus four named tail bytes, so
+								; 23h-25h are transmitted and dropped. Nothing in EITHER ROM reads them.
+								; Written only on the factory self-test path (factory_self_test and the
+								; routine it calls at +A1h), never elsewhere, and write-only throughout.
+								; Encodes observed input state against a nominal bit pattern: loc_E152
+								; stores a fixed 0Ah, while loc_E172 starts from 15h and flips bit0 if
+								; PORTD_ASRIN.5 is set and bit2 if PORTB.7 is clear - so a reading that
+								; matches expectations leaves the base pattern intact and a mismatched
+								; pin shows up as a flipped bit. Presumably read off the DMA line by a
+								; factory tester; that consumer is outside this ROM either way.
+dmatx_selftest_code2:		.block 1			; DATA XREF: factory_self_test+46↓w
 								; factory_self_test:loc_E183↓w ...
+								; Factory self-test I/O readback code 2 of 2, byte 24h of the same block
+								; and the same story as dmatx_selftest_code1 above - write-only, four
+								; store sites, all on the self-test path, never read by either CPU.
+								; Its values carry a step tag in the high nibble over a small payload:
+								; 15h|0C0h, 0Ah|0A0h, 80h, 09h|0E0h. The 0A0h case then flips bit2/bit3
+								; from var_io_input2.1/.0, the same observed-vs-nominal encoding.
+								; Was dmatx_selftest_code2, declared .block 2 - but every store is a BYTE store, so
+								; 0x225 was never written by anything. Split out below rather than left
+								; inside a 2-byte declaration implying a 16-bit value that does not exist.
+dmatx_selftest_unused_225:	.block 1
+								; Byte 25h, the last byte of the CPU1 -> CPU2 block. Transmitted every
+								; frame; no writer anywhere in this ROM and no reader in either. Was the
+								; unwritten second half of dmatx_selftest_code2.
 								; ===========================================================================
 								; The CPU2 -> CPU1 DMA block. Inter-CPU offset for this pair is +0D9h.
 								;
@@ -6217,7 +6279,11 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				ld	d, #08A4h
 				st	d, var_iscv_idle_base		; 0x08A4 = 2212 (fuel base default)
 				ld	d, #0400h
-				st	d, unk_1AF		; 0x0400 = 1024 (injection timing default)
+				st	d, unk_1AF		; = 0400h. One of a run of power-on defaults.
+								; "injection timing default" used to be asserted here; nothing
+								; supports it. 1AFh is write-only (this is the sole store) and
+								; outside both DMA windows, so no consumer is visible to name it
+								; from. Note the store is 16-bit, covering 1AFh-1B0h.
 				ld	a, var_nv_idle_trim
 				st	a, var_idle_trim	; Restore NV idle trim to working variable
 				clr	a
@@ -13324,7 +13390,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ;
 ; NOT traced: the exact test sequence and its pass/fail reporting protocol -
 ; the PORTB bit patterns at loc_E1DF, selftest_io_cycle's body, and what the
-; unk_223/word_224 scratch pair accumulates. Only the entry interlock, the
+; dmatx_selftest_code1/dmatx_selftest_code2 scratch pair accumulates. Only the entry interlock, the
 ; RAM-test loop and the var_flags_40.0 interaction are established here; that
 ; was enough to resolve why var_flags_40.0 is read so widely, which is what
 ; this pass needed.
@@ -13332,8 +13398,8 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ; Reads: var_io_input1, var_io_input2, var_trac_tps_raw, var_tps_raw,
 ;   var_nv_tps, var_rpm_x_5p12, var_speed_kph, unk_100, unk_C000,
 ;   dmarx_ign_advance_hi_245, dmarx_status2_244
-; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, unk_223,
-;   word_224
+; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, dmatx_selftest_code1,
+;   dmatx_selftest_code2
 ; Calls: selftest_io_cycle, watchdog_kick
 ; ---------------------------------------------------------------------------
 
@@ -13395,10 +13461,10 @@ loc_E149:							; CODE XREF: factory_self_test+86↓j
 
 loc_E152:							; CODE XREF: factory_self_test+37↑j
 				ld	a, #0Ah
-				st	a, unk_223
+				st	a, dmatx_selftest_code1
 				ld	b, #15h
 				or	b, #0C0h
-				st	b, word_224
+				st	b, dmatx_selftest_code2
 				ld	#01h, PORTD_ASRIN	; Port D Data Register / ASR Input Data
 				ld	#0Dh, DOUT		; DOUT Data Register
 				bra	loc_E18C
@@ -13417,7 +13483,7 @@ loc_E16D:							; CODE XREF: factory_self_test+53↑j
 				xor	a, #04h
 
 loc_E172:							; CODE XREF: factory_self_test:loc_E16D↑j
-				st	a, unk_223
+				st	a, dmatx_selftest_code1
 				ld	a, #0Ah
 				or	a, #0A0h
 				tbbc	bit1, var_io_input2, loc_E17E
@@ -13430,7 +13496,7 @@ loc_E17E:							; CODE XREF: factory_self_test+64↑j
 				xor	a, #08h
 
 loc_E183:							; CODE XREF: factory_self_test:loc_E17E↑j
-				st	a, word_224
+				st	a, dmatx_selftest_code2
 				ld	#02h, PORTD_ASRIN	; Port D Data Register / ASR Input Data
 				ld	#0Eh, DOUT		; DOUT Data Register
 
@@ -13459,7 +13525,7 @@ loc_E19D:							; CODE XREF: factory_self_test+3A↑j
 				clr	b
 				st	d, IMASK		; Interrupt Request Mask MSB
 				ld	a, #80h
-				st	a, word_224
+				st	a, dmatx_selftest_code2
 				ld	x, #0F9C8h		; Delay	loop
 
 loc_E1AA:							; CODE XREF: factory_self_test+96↓j
@@ -13739,7 +13805,7 @@ loc_E2B5:							; CODE XREF: factory_self_test:loc_E13F↑j
 loc_E2BB:							; CODE XREF: factory_self_test:loc_E2B5↑j
 				ld	a, #09h
 				or	a, #0E0h
-				st	a, word_224
+				st	a, dmatx_selftest_code2
 				clr	a
 				tbbs	bit1, var_io_input1, loc_E2DC ;	Jump if	throttle closed	(IDL high)
 
