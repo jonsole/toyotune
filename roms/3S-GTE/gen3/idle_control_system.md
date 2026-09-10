@@ -91,7 +91,7 @@ RPM** (`var_iscv_target_rpm`, in `var_rpm_x_5p12` units):
 | `var_iscv_unk_1AB` | `0x200` for the first 15 ticks if CPU2 cold-enrichment (`dmarx_idle_enrich`) is active, else cleared once `var_cnt_EA` elapses |
 | `var_iscv_unk_1AD` | Ramps ±2/tick toward a load-dependent set-point (see below) |
 
-`var_iscv_unk_1AD`'s set-point is selected from `byte_C372`/`byte_C374` based on
+`var_iscv_unk_1AD`'s set-point is selected from `iscv_override_trim`/`iscv_override_trim_eco` based on
 `var_flags_4F.1`, further offset via `inc_rX_if` (gated on `var_flags_4F`
 bits 2/3). **Hypothesis (unconfirmed):** `var_flags_4F` bits 1-4 consolidate
 debounced Air-Con (`var_diag_errors_5.5`) and PS/IDUP (`var_io_input2.3`)
@@ -99,7 +99,7 @@ switch state specifically for idle-up compensation, since those are the only
 two "extra electrical/mechanical load" switches documented elsewhere in the
 ROM. The raw bits have not been traced back to their source.
 
-A separate threshold check (`byte_C36C`/`C36E`/`C370`, also switch-selected)
+A separate threshold check (`idle_trim`/`C36E`/`C370`, also switch-selected)
 sets `var_diag_errors_5.0` and feeds both `check_knock_sensor_err_flag` and
 an accumulator `var_iscv_diag_term`. `set_knock_sensor_err_flag`/
 `check_knock_sensor_err_flag` share one fall-through tail with `negate_rD`
@@ -147,7 +147,7 @@ flagged as an open question below.
 
 ### Phase 3 — ECT and secondary RPM-band terms
 
-- `var_iscv_ect_term`: ECT-indexed 4-entry lookup (`byte_C352`/`C354` via
+- `var_iscv_ect_term`: ECT-indexed 4-entry lookup (`table_iscv_diag_pair_C352`/`C354` via
   `table_ect_fixed4_interpolate`), refined against `var_iscv_diag_term` via
   `interp_y_pair`.
 - `var_iscv_idle_base`: mirrors Phase 2's RPM-band search but against
@@ -250,7 +250,7 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 | `var_iscv_idle_base` | Secondary RPM-band running value, rate-limited (Phase 3) |
 | `var_iscv_rpm_droop` | Stall-recovery/derivative-like term from RPM slope (Phase 5) |
 | `var_rpm_smoothed` | Low-pass filtered ("smoothed") RPM reference (Phase 5) |
-| `var_iscv_diag_term` | Diagnostic-linked accumulator from the `byte_C36C` threshold check (Phase 1), reused in Phase 3 |
+| `var_iscv_diag_term` | Diagnostic-linked accumulator from the `idle_trim` threshold check (Phase 1), reused in Phase 3 |
 | `var_iscv_unk_1A9` | Post-start decaying flare term (Phase 1) |
 | `var_iscv_unk_1AB` | Cold/CPU2-enrichment-linked flare term (Phase 1) |
 | `var_iscv_unk_1AD` | AC/PS-load-dependent ramp term (Phase 1, hypothesis) |
@@ -267,7 +267,7 @@ drive_dout1_iscv  [4ms tick, from int_4ms_watchdog]
 | `table_iscv_C391` | `var_io_input2` bits 6/7 (4 combinations) | Phase 1 load compensation, added to target RPM |
 | `table_iscv_rpm_C357` | `var_iscv_rpm_cmp_197` (ascending band search) | Phase 2 `var_iscv_target_base` step |
 | `table_iscv_rpm_C361` | `var_iscv_rpm_cmp_197` (ascending band search) | Phase 3 `var_iscv_idle_base` step |
-| `byte_C352`/`byte_C354` | ECT (`table_ect_fixed4_interpolate`) | Phase 3 `var_iscv_ect_term` |
+| `table_iscv_diag_pair_C352`/`table_ect_unk_C354` | ECT (`table_ect_fixed4_interpolate`) | Phase 3 `var_iscv_ect_term` |
 | `idle_trim_limits` | — (min/max pair: `0x78`/`0x45`) | Phase 4 clamp for `var_idle_trim` nudges |
 | `table_idle_C2FE` | RPM error + load (bilinear, `map_rD_rX_interpolate`) | Phase 6 primary duty map |
 | `table_unk_C34A` | A/C-adjacent flags + `var_flags_42.6` (4-way select) | Phase 6 load compensation |

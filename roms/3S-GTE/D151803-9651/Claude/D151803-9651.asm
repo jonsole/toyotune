@@ -70,19 +70,29 @@ ASR3:				.block 1			; DATA XREF: ROM:C61E↓w
 								; divide_d_by_x+201↓w ...
 								; ASR3 edge counter value MSB
 ASR3L:				.block 1			; ASR3 edge counter value LSB
-unk_1C:				.block 1			; DATA XREF: IV0+29↓r
-								; docs/toshiba-8x-technical-reference.md
-								; lists $1C-$1E as "Unused/reserved" in
-								; the hardware register map, yet this
-								; address is read from IV0 (the NE
-								; interrupt vector) - undocumented/shadow
-								; register behavior, not a RAM variable.
-								; Not renamed pending further hardware
-								; investigation.
-unk_1D:				.block 1			; DATA XREF: ROM:C60A↓r
+REG_1C:				.block 1			; DATA XREF: IV0+29↓r
+								; A hardware REGISTER, not a RAM variable - which is why it is now named in
+								; the uppercase style of its neighbours rather than left as unk_1C. That
+								; prefix means "variable not yet understood" in this file and put it in the
+								; wrong category entirely; the address is 001Ch, inside the register map.
+								; docs/toshiba-8x-technical-reference.md lists $1C-$1E as "Unused/reserved",
+								; yet the ROM uses both 1Ch and 1Dh, so the reference is incomplete here.
+								; It sits immediately after ASR3L, closing the ASR0P..ASR3L run at 0010h-
+								; 001Bh, and IV0 (the NE interrupt) reads it with `ld b, REG_1C` directly
+								; after `ld b, RAMST` - two status registers read back to back.
+								; Function still unknown: the position and the read pairing are suggestive
+								; of an ASR status register but neither proves it, so the name claims only
+								; "register at 1Ch".
+REG_1D:				.block 1			; DATA XREF: ROM:C60A↓r
 								; divide_d_by_x+1F6↓r
-								; Same "Unused/reserved" register range
-								; as unk_1C above - see that note.
+								; Register at 001Dh, same reserved range as REG_1C above - see that note.
+								; Stronger evidence here than for 1Ch: both writes are `ld #00h, REG_1D`
+								; sitting INSIDE a run of ASR initialisation, e.g.
+								;     ld #0E3h, ASR0PL / ld #18h, ASR0P / ld #0FCh, ASR1P
+								;     ld #30h, ASR0NL  / ld #00h, REG_1D / ld d, #8000h+var_dma_rx_buffer
+								;     st d, ASR2
+								; so whatever it is, it is set up as part of the ASR/DMA block and cleared
+								; to zero. Never read anywhere - write-only, twice, both at init.
 				.block 1
 OMODE:				.block 1			; DATA XREF: ROM:reset_vector↓r
 								; Mode control Register
@@ -1300,12 +1310,15 @@ var_temp_7B:			.block 1			; DATA XREF: map_rD_rX_interpolate+27↓w
 var_temp_7C:			.block 1			; DATA XREF: update_ign_timing_blend+178↓w
 								; calc_4ms_corrections+248↓w
 				.block 2
-unk_7F:				.block 1			; DATA XREF: divide_d_by_x+D1↓o
-								; READ-ONLY in this file: read by loc_C66B, with
-								; no bit- or byte-level write site found here -
-								; so it holds whatever clear_variables left (0)
-								; unless something writes it by a path this
-								; sweep missed.
+clear_vars_end:				.block 1			; DATA XREF: divide_d_by_x+D1↓o
+								; The last byte clear_variables zeroes, and named for that because it is
+								; the byte's only role in this ROM. The loop walks Y from var_flags_40:
+								;     loc_C66B: st a, [y] / cmp y, #clear_vars_end / ble loc_C66B
+								; so the region cleared is var_flags_40..007Fh inclusive. The single
+								; reference is that bound, an ADDRESS - unlike 0100h two declarations
+								; down, which looked the same in IDA but was really an immediate count.
+								; The byte itself is written by the very loop it bounds - the region is
+								; inclusive, so 007Fh is cleared like the rest. Nothing reads it.
 nv_diag_errors_1:		.block 2			; DATA XREF: divide_d_by_x:loc_C7E6↓o
 								; clear_nv_ram+5↓o ...
 								; 80.0 - RPM G1	or G2 signal
@@ -2444,22 +2457,28 @@ unk_FC:				.block 1			; DATA XREF: divide_d_by_x+20D7↓w
 								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
 								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
 								; 22h bytes) before copy_dma_rx moves it to 0226h+.
-								; So it is vestigial, or read through indexed/indirect
-								; addressing - a pointer walk over a RAM region would
-								; not show up as a symbol reference at all, which is
-								; the one way a "no read site" search can still be wrong.
+								; The indexed-access caveat is not hypothetical here, and
+								; this address proves it from the write side: clear_variables'
+								; second loop zeroes 00A0h..0247h with `st d, [y]` in 2-byte
+								; steps and covers this byte, yet names no symbol, so no
+								; per-symbol search can see it. A reader could hide the same
+								; way. So: no NAMED reader, and vestigial is likely but not
+								; established.
 var_adc_cmd:		.block 1			; DATA XREF: divide_d_by_x+175↓w
 								; int_4ms_watchdog+12↓w	...
 var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
 								; int_4ms_watchdog:loc_F7B4↓w ...
 var_tps_2:			.block 1			; DATA XREF: ROM:loc_FDAA↓r
 								; ROM:FE07↓w
-unk_100:			.block 1			; DATA XREF: factory_self_test:loc_E208↓o
-								; READ-ONLY in this file: read by loc_E208, with
-								; no bit- or byte-level write site found here -
-								; so it holds whatever clear_variables left (0)
-								; unless something writes it by a path this
-								; sweep missed.
+				.block 1
+								; 0100h. Had an unk_100 label and a "READ-ONLY, so it holds whatever
+								; clear_variables left" note, both of which were wrong: its only apparent
+								; reader was factory_self_test's `ld y, #0100h`, where 0100h is the word
+								; COUNT of the checksum loop and never touches this address. Label removed
+								; (the .block stays - dropping it would shift every RAM address after it).
+								; It IS written, though not by anything that names it: clear_variables'
+								; second loop zeroes 00A0h..0247h with `st d, [y]` in 2-byte steps, and
+								; 0100h is inside that range. Nothing reads it.
 var_tps_closed_ref:		.block 1			; DATA XREF: divide_d_by_x+FA↓w
 								; update_tps_closed_ref+10↓r	...
 								; Slew-limited "throttle has settled
@@ -2734,10 +2753,13 @@ unk_145:			.block 1			; DATA XREF: calc_dmatx_pim+7↓w
 								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
 								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
 								; 22h bytes) before copy_dma_rx moves it to 0226h+.
-								; So it is vestigial, or read through indexed/indirect
-								; addressing - a pointer walk over a RAM region would
-								; not show up as a symbol reference at all, which is
-								; the one way a "no read site" search can still be wrong.
+								; The indexed-access caveat is not hypothetical here, and
+								; this address proves it from the write side: clear_variables'
+								; second loop zeroes 00A0h..0247h with `st d, [y]` in 2-byte
+								; steps and covers this byte, yet names no symbol, so no
+								; per-symbol search can see it. A reader could hide the same
+								; way. So: no NAMED reader, and vestigial is likely but not
+								; established.
 var_pim_trans_est:			.block 1			; DATA XREF: divide_d_by_x:loc_E63C↓w
 								; ROM:loc_FDDB↓r
 								; Transient indicator: the sign of (var_pim_tps_est -
@@ -3127,10 +3149,13 @@ unk_1AF:			.block 1			; DATA XREF: divide_d_by_x+162↓w
 								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
 								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
 								; 22h bytes) before copy_dma_rx moves it to 0226h+.
-								; So it is vestigial, or read through indexed/indirect
-								; addressing - a pointer walk over a RAM region would
-								; not show up as a symbol reference at all, which is
-								; the one way a "no read site" search can still be wrong.
+								; The indexed-access caveat is not hypothetical here, and
+								; this address proves it from the write side: clear_variables'
+								; second loop zeroes 00A0h..0247h with `st d, [y]` in 2-byte
+								; steps and covers this byte, yet names no symbol, so no
+								; per-symbol search can see it. A reader could hide the same
+								; way. So: no NAMED reader, and vestigial is likely but not
+								; established.
 				.block 1
 				.block 1
 				.block 1
@@ -3186,7 +3211,7 @@ unk_1C0:			.block 1			; DATA XREF: divide_d_by_x+1412↓r
 								; ramp-limiter cluster table/trace (same
 								; as var_pw_loop_mode/1C2/1C4/1C6/1C8).
 				.block 1
-unk_1C2:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
+var_pw_ramp_ratio:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; ramp_limit_inj_pw:loc_DBB5↓r ...
 								; The one variable in this cluster WITH a
 								; confirmed stable role: ratio value
@@ -3194,10 +3219,12 @@ unk_1C2:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; ramp_limit_inj_pw_simple's output and
 								; ramp_limit_inj_pw's deviation input -
 								; see docs/fuel_calculation_system.md.
-								; Not renamed further than this comment
-								; since no natural short name captures
-								; "ramp-limiter ratio" better than the
-								; existing docs already do.
+								; Previously left as unk_1C2 on the grounds that no short name captured
+								; "ramp-limiter ratio" better than the docs. Named now because all four
+								; sites agree on the role - reset_pw_ramp_limiter sets it to the 0CCCDh
+								; neutral, loc_DC69 stores ramp_limit_inj_pw_simple's output into it, and
+								; the readers use it as the ratio (loc_DBF1 does 0CCCDh - this, giving the
+								; deviation) - and a name beats an address when navigating 22k lines.
 				.block 1
 var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
 								; A SLOW fuel trim, distinct from the STFT.
@@ -3224,9 +3251,9 @@ var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
 								;   single fixed identity", because ramp_limit_inj_pw writes it from two
 								;   further places. Both are the limiter acting ON the trim rather than a
 								;   rival meaning for the slot:
-								;     loc_DC17  stores the popped unk_1C8 back into it - a CLAMP. unk_1C8
+								;     loc_DC17  stores the popped var_pw_ramp_ceiling back into it - a CLAMP. var_pw_ramp_ceiling
 								;               is in the same 0CCCDh-biased space (loc_DBF1 computes
-								;               0CCCDh-unk_1C8 as its divisor), and loc_DBDE reads this
+								;               0CCCDh-var_pw_ramp_ceiling as its divisor), and loc_DBDE reads this
 								;               variable only to ask whether it already exceeds that
 								;               ceiling.
 								;     ROM:DA0D  calc_inj_pw_base stores ramp_limit_inj_pw's returned D -
@@ -3238,12 +3265,20 @@ var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
 unk_1C6:			.block 1			; DATA XREF: divide_d_by_x+11E↓w
 								; init_pw_closed_loop+D↓w ...
 								; ramp_limit_inj_pw's final per-call
-								; output register - holds the unk_1C8
+								; output register - holds the var_pw_ramp_ceiling
 								; ceiling or the candidate/blend value
 								; depending on path. Same cluster/doc
 								; reference as unk_1C0 above.
 				.block 1
-unk_1C8:			.block 1			; DATA XREF: divide_d_by_x+124↓w
+var_pw_ramp_ceiling:			.block 1			; DATA XREF: divide_d_by_x+124↓w
+								; Named for its role, which every site agrees on: the upper bound
+								; ramp_limit_inj_pw checks PW-scale values against. Two writers (init to 0,
+								; and loc_E6A8 storing a computed value floored at 0); all three readers use
+								; it as a bound - cmp d, / cmp x, / and loc_DBF1's 0CCCDh - ceiling divisor,
+								; which also places it in the same biased space as var_pw_ramp_ratio and
+								; var_fuel_trim_slow. Its PRODUCER is still only partially traced (loc_E665,
+								; folding var_pim2-derived dmatx_pim in) - see the Open Questions in
+								; docs/fuel_calculation_system.md. The name claims the role, not the source.
 								; ramp_limit_inj_pw:loc_DBDE↓r ...
 								; A PIM/MAP-pressure-linked bound compared
 								; against PW-scale values in
@@ -4436,10 +4471,11 @@ table_idle_C2FE:		.dw 0600h			; DATA XREF: calc_iscv:loc_D87F↓o
 
 table_rpm_c31d:			.db 50h, 30h			; DATA XREF: calc_iscv+454↓o
 								; Indexed by var_rpm_div_25 via table_rB_fixed_16_interpolate.
-byte_C31F:			.db 00h, 66h, 9Ah, 0CDh
-								; No #reference - data continuing from the block
-								; above it rather than an independently addressed
-								; table.
+				.db 00h, 66h, 9Ah, 0CDh	; table_rpm_c31d's payload: 0, 66h, 9Ah, 0CDh
+								; ~ 0, 0.4, 0.6, 0.8 of full scale. IDA had put a
+								; byte_C31F label here; nothing referenced it, and a
+								; label in the middle of a table's data reads as a
+								; separately addressable symbol when it is not. Removed.
 
 
 table_ect_idle_C323:		.db 12h				; DATA XREF: calc_ect_iscv↓o
@@ -4484,11 +4520,22 @@ table_idle_pim:			.db 21h, 30h			; DATA XREF: calc_iscv+4B↓o
 				.db 00h, 26h, 26h, 26h
 
 
-byte_C352:			.db 1Ah, 20h			; DATA XREF: calc_iscv+1C1↓o
+								; Two-entry table indexed by var_iscv_diag_term >> 2: if the high byte is
+								; zero, interp_y_pair interpolates between the two entries using the low
+								; byte as the fraction; if not, loc_D69B takes entry 1 outright. Either way
+								; the result has var_temp_w (the table_ect_unk_C354 lookup) subtracted from
+								; it, floored at 0, and becomes var_iscv_ect_term.
+								; The `clr a / add y, a` before it adds zero and is a genuine no-op here.
+table_iscv_diag_pair_C352:			.db 1Ah, 20h			; DATA XREF: calc_iscv+1C1↓o
 								; Base of a small byte array indexed by a computed
 								; offset (clr a / add y, a) alongside
 								; var_iscv_diag_term in calc_iscv.
-byte_C354:			.db 92h, 40h, 00h		; DATA XREF: calc_iscv+1B9↓o
+								; ECT-indexed table header consumed by table_ect_fixed4_interpolate, result
+								; stashed in var_temp_w and then subtracted to form var_iscv_ect_term.
+								; Named for its confirmed axis only, matching table_ect_unk_C147 elsewhere
+								; in this file - the purpose is not established, and neither 0461 (unk_C335)
+								; nor 0481 (unk_C350) names its equivalent, so there was nothing to port.
+table_ect_unk_C354:			.db 92h, 40h, 00h		; DATA XREF: calc_iscv+1B9↓o
 								; ECT-indexed - the table_ect_* interpolators load
 								; var_ect themselves, so no index appears at the
 								; call site. Read via table_ect_fixed4_interpolate
@@ -4534,14 +4581,23 @@ idle_trim_els:			.db 0A0h, 0B0h			; DATA XREF: calc_iscv+E1↓o
 								; idle_trim_eco by var_flags_4F.1 - see idle_trim.
 idle_trim_eco:			.db 70h, 90h			; DATA XREF: calc_iscv+E7↓o
 								; Alternate ISC set-point - see idle_trim.
-byte_C372:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
-								; ISC set-point pair with byte_C374, selected by
+								; ISCV trim pair used while var_flags_46.6 is SET, i.e. while the ISCV is in
+								; fixed/override opening mode (46.6's meaning is established in
+								; docs/idle_control_system.md). Selected by var_flags_4F.1 = ECO high:
+								; ECO clear keeps this one, ECO set takes iscv_override_trim_eco - exactly
+								; the selector idle_trim/idle_trim_eco use at the later stage, which is what
+								; the names are modelled on.
+								; Both stages run only in override mode: calc_iscv+98 branches past this
+								; pair when 46.6 is clear, and the els/eco block at loc_D59B is likewise
+								; skipped to loc_D5CE when it is clear.
+iscv_override_trim:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
+								; ISC set-point pair with iscv_override_trim_eco, selected by
 								; var_flags_4F.1 and reached only when
 								; var_flags_46.6 is set. idle_control_system.md
 								; describes these as var_iscv_unk_1AD's
 								; load-dependent set-point.
-byte_C374:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
-								; The var_flags_4F.1 counterpart of byte_C372.
+iscv_override_trim_eco:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
+								; The var_flags_4F.1 counterpart of iscv_override_trim.
 
 
 table_ect_corr_194:			.db 0Ch				; DATA XREF: calc_ect_unk_194↓o
@@ -6180,7 +6236,7 @@ reset_vector:							; DATA XREF: ROM:FFFE↓o
 
 ; ASR timer configuration
 				ld	#18h, ASR0P		; ASR0 pos edge counter MSB
-				ld	#00h, unk_1D
+				ld	#00h, REG_1D
 				ld	#30h, ASR0NL		; ASR0 neg edge counter LSB
 				ld	#0F4h, ASR0N		; ASR0 neg edge counter MSB
 				ld	#0F9h, TIMER3		; Timer3 LSB
@@ -6233,7 +6289,7 @@ reset_vector:							; DATA XREF: ROM:FFFE↓o
 				setb	bit3, DOUT		; DOUT.3 high (injector enable / ISC relay)
 				ld	s, #stack_top		; Initialise stack pointer
 
-; Phase 2a: Zero-fill byte RAM (var_flags_40..unk_7F)
+; Phase 2a: Zero-fill byte RAM (var_flags_40..clear_vars_end)
 clear_variables:
 				clr	a			; A = 0 (byte fill value)
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
@@ -6242,7 +6298,7 @@ clear_variables:
 
 loc_C66B:							; CODE XREF: divide_d_by_x+D4↓j
 				st	a, [y]			; Zero byte at Y; Y auto-increments
-				cmp	y, #unk_7F		; Reached end of byte region?
+				cmp	y, #clear_vars_end		; Reached end of byte region?
 				ble	loc_C66B		; No: continue
 
 ; Phase 2b: Zero-fill word RAM (var_diag_errors_4..dmarx_ign_retard_lo)
@@ -6289,7 +6345,7 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				ld	d, #0CCCDh
 				st	d, unk_1C6		; 0xCCCD ~ 0.8 (80%) default fuel scale
 				ld	d, #0000h
-				st	d, unk_1C8
+				st	d, var_pw_ramp_ceiling
 				ld	#0FEh, var_4ms_cnt_C4
 				ld	#0FEh, var_4ms_cnt_C5
 				ld	a, #0F4h
@@ -6420,7 +6476,7 @@ loc_C749:							; CODE XREF: divide_d_by_x+2484↓j
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
 				ld	#0FCh, ASR1P		; ASR1 pos edge	counter	value MSB
 				ld	#30h, ASR0NL		; ASR0 neg edge	counter	value LSB
-				ld	#00h, unk_1D
+				ld	#00h, REG_1D
 				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	d, #9000h + dmatx_pim2
@@ -10087,7 +10143,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     var_iscv_target_base only ratchets, never drops, except when clamped
 ;
 ; SECTION 3 (D67F..D6C9): ECT/PIM-based var_iscv_ect_term and var_iscv_idle_base duty terms
-;   - var_iscv_ect_term: ECT-indexed (byte_C352/C354, table_ect_fixed4_interpolate)
+;   - var_iscv_ect_term: ECT-indexed (table_iscv_diag_pair_C352/C354, table_ect_fixed4_interpolate)
 ;     correction, combined with var_iscv_diag_term via interp_y_pair
 ;   - var_iscv_idle_base: second RPM-band lookup (table_iscv_rpm_C361, same search
 ;     pattern as table_iscv_rpm_C357) when idle detected, else falls back
@@ -10290,10 +10346,10 @@ loc_D568:							; CODE XREF: calc_iscv+98↑j
 				clr	b
 				tbbc	bit6, var_flags_46, loc_D59B
 
-				ld	x, #byte_C372
+				ld	x, #iscv_override_trim
 				tbbc	bit1, var_flags_4F, loc_D576
 
-				ld	x, #byte_C374
+				ld	x, #iscv_override_trim_eco
 
 loc_D576:							; CODE XREF: calc_iscv+A7↑j
 				jsr	inc_rX_if
@@ -10548,11 +10604,11 @@ loc_D67C:							; CODE XREF: calc_iscv+1A8↑j
 loc_D67F:							; CODE XREF: calc_iscv:loc_D64F↑j
 				tbbc	bit6, var_flags_46, loc_D6A5	; var_flags_46.6 clear: skip ECT term update (see note above calc_iscv)
 
-				ld	y, #byte_C354
+				ld	y, #table_ect_unk_C354
 				jsr	table_ect_fixed4_interpolate	; ECT-indexed 4-entry lookup
 
 				st	a, var_temp_w
-				ld	y, #byte_C352
+				ld	y, #table_iscv_diag_pair_C352
 				clr	a
 				add	y, a
 				ld	d, var_iscv_diag_term		; Diagnostic-linked term from Section 1
@@ -11189,12 +11245,12 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ; per ramp_limit_inj_pw's full branch-by-branch trace (see its header
 ; and docs/fuel_calculation_system.md), unk_1C0/1C4/1C6 genuinely do not
 ; have single fixed identities - each gets overwritten with a different
-; one of {fresh VE-map candidate, var_adc_lambda, the unk_1C8 ceiling,
+; one of {fresh VE-map candidate, var_adc_lambda, the var_pw_ramp_ceiling ceiling,
 ; ratio-deviation result, var_inj_pw_base} depending on which branch
 ; runs, so a clean per-variable rename would misrepresent the code.
 ;
-; unk_1C2 is the ramp_limit_inj_pw_simple output / ramp_limit_inj_pw's
-; deviation input (a ratio, nominal 0xCCCD). unk_1C8 is read as a bound
+; var_pw_ramp_ratio is the ramp_limit_inj_pw_simple output / ramp_limit_inj_pw's
+; deviation input (a ratio, nominal 0xCCCD). var_pw_ramp_ceiling is read as a bound
 ; comparable to PW-scale values and traced (partially) to a
 ; var_pim2/dmatx_pim-linked producer near loc_E665 (E620-E6B0) - not
 ; renamed since that producer's own logic
@@ -11794,7 +11850,7 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DAB7↑p
 ; ---------------------------------------------------------------------------
 ; reset_pw_ramp_limiter: reset the fuel pulse-width ramp-limiter state
 ;
-; Resets unk_1C2/var_inj_pw_base/var_fuel_trim_slow to 0xCCCD (the ~0.8x ramp-limiter
+; Resets var_pw_ramp_ratio/var_inj_pw_base/var_fuel_trim_slow to 0xCCCD (the ~0.8x ramp-limiter
 ; ratio constant used throughout this cluster - see ramp_limit_inj_pw/ramp_limit_inj_pw_simple) and
 ; clears var_flags_4E.5 (really var_trim_state.5 - see the aliasing note
 ; above calc_inj_pw_base). Called from loc_DA94's area (not deep-dived this
@@ -11804,11 +11860,11 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DAB7↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: (none)
-; Writes: unk_1C2, var_fuel_trim_slow, var_inj_pw_base, var_trim_state_alias
+; Writes: var_pw_ramp_ratio, var_fuel_trim_slow, var_inj_pw_base, var_trim_state_alias
 ; ---------------------------------------------------------------------------
 reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 				ld	d, #0CCCDh
-				st	d, unk_1C2
+				st	d, var_pw_ramp_ratio
 				clrb	bit5, var_trim_state_alias
 				clr	a
 				clr	b
@@ -11888,9 +11944,9 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;
 ; - trim_state.4 set on entry (or discovered set again at loc_DBDB, since
 ;   nothing in between modifies it): "diagnostic-only" mode. Only computes a
-;   ratio-deviation value (unk_1C2 vs 0xCCCD, scaled by the unk_1C0
+;   ratio-deviation value (var_pw_ramp_ratio vs 0xCCCD, scaled by the unk_1C0
 ;   candidate via mult_rDrX) and flags var_diag_errors_5.0 via
-;   negate_rD_mark if unk_1C2 was below nominal - the result is
+;   negate_rD_mark if var_pw_ramp_ratio was below nominal - the result is
 ;   left in D for the CALLER to consume (calc_inj_pw_base's loc_D9FA does
 ;   exactly this, storing the return value into var_fuel_trim_slow) and none of
 ;   var_inj_pw_base/unk_1C0/unk_1C6 are touched. Exits via loc_DC3A, which
@@ -11901,35 +11957,35 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ; - trim_state.4 clear + candidate changed: runs the same ratio-deviation
 ;   computation as the diagnostic-only path, then continues into the
 ;   ceiling check with the freshly-computed D.
-; - loc_DBDE compares D against unk_1C8 (a PIM/MAP-pressure-linked bound -
+; - loc_DBDE compares D against var_pw_ramp_ceiling (a PIM/MAP-pressure-linked bound -
 ;   traced its producer to loc_E665's area near E620-E6B0, which folds
 ;   var_pim2-derived dmatx_pim into it; the surrounding computation
 ;   involving var_pim_tps_est/var_pim_est_fast/135/var_nv_trim_unk_98 is not itself
 ;   traced - see docs/fuel_calculation_system.md Open Questions).
-;   - D <= unk_1C8: falls into loc_DBF1 (blend-toward-ceiling path).
-;   - D > unk_1C8 and trim_state bits 0 AND 1 both set and var_fuel_trim_slow (the
-;     prior carried-forward value) is NOT itself already above unk_1C8:
+;   - D <= var_pw_ramp_ceiling: falls into loc_DBF1 (blend-toward-ceiling path).
+;   - D > var_pw_ramp_ceiling and trim_state bits 0 AND 1 both set and var_fuel_trim_slow (the
+;     prior carried-forward value) is NOT itself already above var_pw_ramp_ceiling:
 ;     also falls into loc_DBF1.
-;   - D > unk_1C8 and (trim_state.0 clear OR trim_state.1 clear): simplest
+;   - D > var_pw_ramp_ceiling and (trim_state.0 clear OR trim_state.1 clear): simplest
 ;     exit - clears trim_state.3, stores D into unk_1C6, done (var_inj_pw_base/
 ;     unk_1C0/var_fuel_trim_slow untouched).
-;   - D > unk_1C8 and var_fuel_trim_slow also already > unk_1C8 (i.e. sustained
+;   - D > var_pw_ramp_ceiling and var_fuel_trim_slow also already > var_pw_ramp_ceiling (i.e. sustained
 ;     over-ceiling): loc_DC24 - in closed-loop mode (var_pw_loop_mode == 0xC8) only,
 ;     resets unk_1C0 back to var_inj_pw_base (discards the stale candidate);
 ;     either way clears trim_state.3 and stores the original loc_DBDE-entry
 ;     D (the candidate/blend value itself, NOT the ceiling) into unk_1C6.
 ; - loc_DBF1 (blend-toward-ceiling): sets trim_state.3, computes
-;   X = 0xCCCD - unk_1C8, then D = 0xCCCD - unk_1C2.
-;   - unk_1C2 >= 0xCCCD (at/above nominal ratio): D = var_inj_pw_base
+;   X = 0xCCCD - var_pw_ramp_ceiling, then D = 0xCCCD - var_pw_ramp_ratio.
+;   - var_pw_ramp_ratio >= 0xCCCD (at/above nominal ratio): D = var_inj_pw_base
 ;     unchanged, skip the divide.
-;   - unk_1C2 < 0xCCCD (below nominal): D = (0xCCCD-unk_1C2)/(0xCCCD-unk_1C8)
+;   - var_pw_ramp_ratio < 0xCCCD (below nominal): D = (0xCCCD-var_pw_ramp_ratio)/(0xCCCD-var_pw_ramp_ceiling)
 ;     via divide_d_by_x, clamped to [0,0x0500] via ram_1BE_limits, and
 ;     stored into unk_1C0 - i.e. the candidate itself gets refined here,
 ;     not just var_inj_pw_base.
 ;   Either way: if trim_state.0 is clear, commits D to var_inj_pw_base and
-;   stashes the ceiling (unk_1C8, popped back off the stack) into var_fuel_trim_slow;
+;   stashes the ceiling (var_pw_ramp_ceiling, popped back off the stack) into var_fuel_trim_slow;
 ;   if trim_state.0 is set, var_inj_pw_base/var_fuel_trim_slow are left alone. unk_1C6
-;   always ends up holding the ceiling value (unk_1C8) on this path,
+;   always ends up holding the ceiling value (var_pw_ramp_ceiling) on this path,
 ;   regardless of trim_state.0.
 ;
 ; Net effect: unk_1C0/var_fuel_trim_slow/unk_1C6 do NOT have single fixed identities
@@ -11943,7 +11999,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: unk_1C2, unk_1C8, var_pw_loop_mode
+; Reads: var_pw_ramp_ratio, var_pw_ramp_ceiling, var_pw_loop_mode
 ; Writes: unk_1C0, var_fuel_trim_slow, unk_1C6, var_diag_errors_5, var_inj_pw_base,
 ;    var_trim_state_alias
 ; Calls: mult_rDrX, negate_rD_mark
@@ -11964,7 +12020,7 @@ ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+146F↑p
 
 loc_DBB5:							; CODE XREF: ramp_limit_inj_pw+5↑j
 								; ramp_limit_inj_pw+B↑j
-				ld	d, unk_1C2
+				ld	d, var_pw_ramp_ratio
 				sub	d, #0CCCDh
 				bcc	loc_DBC0
 
@@ -12002,7 +12058,7 @@ loc_DBDB:							; CODE XREF: ramp_limit_inj_pw+26↑j
 
 
 loc_DBDE:							; CODE XREF: ramp_limit_inj_pw+10↑j
-				cmp	d, unk_1C8
+				cmp	d, var_pw_ramp_ceiling
 				ble	loc_DBF1
 
 				tbbc	bit0, var_trim_state_alias, loc_DC35
@@ -12010,13 +12066,13 @@ loc_DBDE:							; CODE XREF: ramp_limit_inj_pw+10↑j
 				tbbc	bit1, var_trim_state_alias, loc_DC35
 
 				ld	x, var_fuel_trim_slow
-				cmp	x, unk_1C8
+				cmp	x, var_pw_ramp_ceiling
 				bgt	loc_DC24
 
 
 loc_DBF1:							; CODE XREF: ramp_limit_inj_pw+3E↑j
 				setb	bit3, var_trim_state_alias
-				ld	d, unk_1C8
+				ld	d, var_pw_ramp_ceiling
 				push	d
 				sub	d, #0CCCDh
 				neg	a
@@ -12024,7 +12080,7 @@ loc_DBF1:							; CODE XREF: ramp_limit_inj_pw+3E↑j
 				subc	a, #00h
 				mov	d, x
 				ld	d, #0CCCDh
-				sub	d, unk_1C2
+				sub	d, var_pw_ramp_ratio
 				bgt	loc_DC0C
 
 				ld	d, var_inj_pw_base
@@ -12092,8 +12148,8 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ; negate_rD_mark on overflow, same variable cluster), but a
 ; shorter, single-path version: D = var_inj_pw_base / (var_fuel_trim_slow - 0xCCCD)
 ; via divide_d_by_x, then the result is +/-0xCCCD-adjusted (sign per
-; whether the divide's error flag fired) and stored to unk_1C2 - i.e. this
-; function's "output" register (unk_1C2) is a different one of the pool
+; whether the divide's error flag fired) and stored to var_pw_ramp_ratio - i.e. this
+; function's "output" register (var_pw_ramp_ratio) is a different one of the pool
 ; than the ones it reads (var_fuel_trim_slow/var_inj_pw_base). Also sets/clears
 ; var_flags_4E.2 (== var_trim_state.2, per the aliasing note above
 ; calc_inj_pw_base) based on whether the result exceeds 0xC7AE.
@@ -12110,7 +12166,7 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: var_fuel_trim_slow, var_inj_pw_base
-; Writes: unk_1C2, var_diag_errors_5, var_trim_state_alias
+; Writes: var_pw_ramp_ratio, var_diag_errors_5, var_trim_state_alias
 ; Calls: negate_rD_mark
 ; ---------------------------------------------------------------------------
 ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+14C2↑p
@@ -12152,7 +12208,7 @@ loc_DC65:							; CODE XREF: ramp_limit_inj_pw_simple+24↑j
 
 loc_DC69:							; CODE XREF: ramp_limit_inj_pw_simple+1A↑j
 								; ramp_limit_inj_pw_simple+1F↑j
-				st	d, unk_1C2
+				st	d, var_pw_ramp_ratio
 				cmp	d, #0C7AEh
 				bgt	loc_DC74
 
@@ -13379,10 +13435,11 @@ table_diag:			.db nv_diag_errors_1		; DATA XREF: check_diag_flags↑t
 				.db 74h				; 47 Secondary throttle	position
 				.db var_diag_errors_5
 				.db 20h
-byte_E107:			.db 15h				; 51 Air-con switch signal
-								; No #reference - a continuation of the table_diag
-								; records above it. check_diag_flags walks that
-								; block in 3-byte steps and runs past this label.
+				.db 15h				; 51 Air-con switch signal
+								; IDA had put a byte_E107 label here. Nothing
+								; references it: check_diag_flags walks these records
+								; in 3-byte steps and runs straight past. Removed, so
+								; the table reads as the one block it is.
 				.db nv_diag_errors_2
 				.db 01h
 				.db 25h				; 52 Knock signal
@@ -13664,7 +13721,12 @@ loc_E1F2:							; CODE XREF: factory_self_test+E5↓j
 				clr	b
 
 loc_E208:							; CODE XREF: factory_self_test+103↓j
-				ld	y, #unk_100		; Checksum 256 words of	ROM
+				ld	y, #0100h		; Checksum 256 words of	ROM - a COUNT, not an address.
+								; IDA rendered this immediate as #unk_100 because 0100h also
+								; happens to be a RAM address, inventing a cross-reference to a
+								; variable that is never involved: the very next lines are dec y
+								; / bne, so Y is the word counter. CLAUDE.md quotes this loop as
+								; `ld y, #0100h` for the same reason. Written as a literal now.
 
 loc_E20B:							; CODE XREF: factory_self_test+FB↓j
 				add	d, x + 00h		; Add ROM 16 bit word to checksum
@@ -14861,7 +14923,7 @@ loc_E69E:							; CODE XREF: divide_d_by_x+20FD↑j
 				clr	b
 
 loc_E6A8:							; CODE XREF: divide_d_by_x+2109↑j
-				st	d, unk_1C8
+				st	d, var_pw_ramp_ceiling
 				pull	x
 				ld	d, var_enrich_unk_138
 				jsr	divide_rD_16
@@ -20111,7 +20173,7 @@ loc_F911:							; CODE XREF: IV0+17↑j
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, RAMST		; Built-in RAM status
-				ld	b, unk_1C
+				ld	b, REG_1C
 				pull	y
 				pull	x
 				reti
@@ -20597,7 +20659,7 @@ loc_FAA5:							; CODE XREF: ROM:loc_FA9E↑j
 				bne	loc_FAB4			; No: normal diagnostic path
 
 ; Calibration trigger: D == 0x001F - initiate calibration data read from ROM
-				ld	d, #word_FFDC			; D = pointer to calibration data in ROM
+				ld	d, #diag_cal_ptr_FFDC			; D = pointer to calibration data in ROM
 ; Opcode trick: 0x41h = 'cmp x, #xx' (IMM) - skips next ld d, [y] when D != 001Fh
 				.db  41h
 
@@ -22157,11 +22219,15 @@ adc_handler_complete:						; DATA XREF: ROM:table_adc_handler↑o
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  5Fh ; _
 				.dw 5FC4h
-word_FFDC:			.dw 8288h			; DATA XREF: ROM:FAB0↑o
-								; A constant loaded as an immediate address (ld d,
-								; #word_FFDC) and then shifted - used as a value,
-								; not read as a table. Sits at the very top of ROM
-								; near the vectors.
+diag_cal_ptr_FFDC:			.dw 8288h			; DATA XREF: ROM:FAB0↑o
+								; Named for the one thing that is confirmed: its ADDRESS is the pointer
+								; constant the serial diagnostic handler uses for the calibration read.
+								; loc_FAA5 compares the requested index against 001Fh and, on a match, does
+								; ld d, #diag_cal_ptr_FFDC before the shl d / mov d, y / ld d, [y] that every
+								; index goes through. So the label is used as a VALUE, and the .dw 8288h
+								; stored at it is not what that path reads - the shl means the pointer lands
+								; elsewhere. Which word it finally reads is not traced.
+								; Sits at the top of ROM immediately before the interrupt vectors.
 				.dw IV0				; External interrupt 0
 				.dw int_vector_1_serial_rx	; External interrupt 1
 				.dw IVf				; External interrupt 2
