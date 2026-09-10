@@ -70,8 +70,14 @@ ASR2L:				.block 1			; ASR2 edge counter value LSB
 ASR3:				.block 1			; C841↓w ...
 								; ASR3 edge counter value MSB
 ASR3L:				.block 1			; ASR3 edge counter value LSB
-UNK1C:				.block 1			; D570↓r
-UNK1D:				.block 1			; C82D↓r ...
+REG_1C:				.block 1			; D570↓r
+				; A hardware REGISTER at 001Ch. Was UNK1C here while the other four ROMs
+				; in the family said unk_1C - same register, three spellings. Now REG_1C
+				; everywhere. Read by `ld b, REG_1C`; the technical reference calls
+				; $1C-$1E "Unused/reserved", but every ROM here uses it.
+REG_1D:				.block 1			; C82D↓r ...
+				; Register at 001Dh. Both writes are `ld #00h, REG_1D` inside the ASR
+				; initialisation run, matching all four siblings. Never read.
 				.block 1
 OMODE:				.block 1			; reset_vector↓r
 								; Mode control Register
@@ -3341,7 +3347,7 @@ reset_vector:							; FFFE↓o
 				ld	#07h, OMODE		; Mode control Register
 				di
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
-				ld	#00h, UNK1D
+				ld	#00h, REG_1D
 				ld	#0B0h, ASR0NL		; ASR0 neg edge	counter	value LSB
 				ld	#0F4h, ASR0N		; ASR0 neg edge	counter	value MSB
 				ld	#0F9h, TIMER3		; Timer	LSB (bit0~bit2)
@@ -3493,7 +3499,7 @@ main_loop:							; D391↓j
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
 				ld	#0FCh, ASR1P		; ASR1 pos edge	counter	value MSB
 				ld	#0B0h, ASR0NL		; ASR0 neg edge	counter	value LSB
-				ld	#00h, UNK1D
+				ld	#00h, REG_1D
 				ld	d, #9000h + var_serbus_rx
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	d, #8000h + 14Dh
@@ -6464,7 +6470,7 @@ locret_D543:							; D51B↑j
 ; periodic (~353Hz) IV0 tick that drives the same RX re-arm/timeout state
 ; (var_dma_sync_timeout_55, var_flags_47.5, ASR2, TIMER3).
 ;
-; Reads: var_dma_sync_timeout_55, TIMER3, RAMST, UNK1C
+; Reads: var_dma_sync_timeout_55, TIMER3, RAMST, REG_1C
 ; Writes: var_dma_sync_timeout_55, var_cnt4ms_AD, var_dma_rearm_cnt_56, var_flags_47, ASR2, TIMER3
 
 				; public int_vector_0
@@ -6508,7 +6514,7 @@ loc_D564:							; D55C↑j ...
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, RAMST		; Built-in RAM status
-				ld	b, UNK1C
+				ld	b, REG_1C
 				pull	y
 				pull	x
 				reti
