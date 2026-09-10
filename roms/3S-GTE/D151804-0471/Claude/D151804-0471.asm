@@ -68,8 +68,16 @@ ASR3:				.block 1			; DATA XREF: ROM:C8E4↓w
 								; check_startup-AFB↓w ...
 								; ASR3 edge counter value MSB
 ASR3L:				.block 1			; ASR3 edge counter value LSB
-unk_1C:				.block 1			; DATA XREF: IV0+2C↓r
-unk_1D:				.block 1			; DATA XREF: ROM:C8D0↓r
+REG_1C:				.block 1			; DATA XREF: IV0+2C↓r
+				; A hardware REGISTER at 001Ch, not a RAM variable - unk_ put it in the
+				; wrong category. Sits right after ASR3L, and the NE interrupt reads it
+				; with `ld b, REG_1C`. The technical reference calls $1C-$1E
+				; "Unused/reserved", but this ROM uses it, so that entry is incomplete.
+				; Full write-up at the same register in D151803-9651.
+REG_1D:				.block 1			; DATA XREF: ROM:C8D0↓r
+				; Register at 001Dh, same reserved range as REG_1C. Both writes are
+				; `ld #00h, REG_1D` inside a run of ASR initialisation, so it is set up
+				; with the ASR/DMA block. Never read. See D151803-9651 for the detail.
 								; check_startup-B06↓r
 				.block 1
 OMODE:				.block 1			; DATA XREF: ROM:__RESET↓r
@@ -2561,7 +2569,7 @@ __RESET:							; DATA XREF: ROM:FFFE↓o
 				ld	#07h, OMODE		; Mode control Register
 				di
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
-				ld	#00h, unk_1D
+				ld	#00h, REG_1D
 				ld	#0B0h, ASR0NL		; ASR0 neg edge	counter	value LSB
 				ld	#0F4h, ASR0N		; ASR0 neg edge	counter	value MSB
 				ld	#0F9h, TIMER3		; Timer	LSB (bit0~bit2)
@@ -2680,7 +2688,7 @@ main_loop:							; CODE XREF: check_startup+AF↓j
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
 				ld	#0FCh, ASR1P		; ASR1 pos edge	counter	value MSB
 				ld	#0B0h, ASR0NL		; ASR0 neg edge	counter	value LSB
-				ld	#00h, unk_1D
+				ld	#00h, REG_1D
 				ld	d, #912Ah
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	d, #8150h
@@ -6009,7 +6017,7 @@ loc_D743:							; CODE XREF: IV0+18↑j
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, RAMST		; Built-in RAM status
-				ld	b, unk_1C
+				ld	b, REG_1C
 				pull	y
 				pull	x
 				reti

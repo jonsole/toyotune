@@ -72,8 +72,16 @@ ASR3:				.block 1			; DATA XREF: ROM:C5FD↓w
 								; divide_d_by_x+202↓w ...
 								; ASR3 edge counter value MSB
 ASR3L:				.block 1			; ASR3 edge counter value LSB
-unk_1C:				.block 1			; DATA XREF: IV0+29↓r
-unk_1D:				.block 1			; DATA XREF: ROM:C5E9↓r
+REG_1C:				.block 1			; DATA XREF: IV0+29↓r
+				; A hardware REGISTER at 001Ch, not a RAM variable - unk_ put it in the
+				; wrong category. Sits right after ASR3L, and the NE interrupt reads it
+				; with `ld b, REG_1C`. The technical reference calls $1C-$1E
+				; "Unused/reserved", but this ROM uses it, so that entry is incomplete.
+				; Full write-up at the same register in D151803-9651.
+REG_1D:				.block 1			; DATA XREF: ROM:C5E9↓r
+				; Register at 001Dh, same reserved range as REG_1C. Both writes are
+				; `ld #00h, REG_1D` inside a run of ASR initialisation, so it is set up
+				; with the ASR/DMA block. Never read. See D151803-9651 for the detail.
 								; divide_d_by_x+1F7↓r
 				.block 1
 OMODE:				.block 1			; DATA XREF: ROM:reset_vector↓r
@@ -398,7 +406,11 @@ var_temp_7C:				.block 1			; DATA XREF: update_ign_timing_blend+178↓w
 								; calc_4ms_corrections+248↓w
 				.block 1
 				.block 1
-unk_7F:				.block 1			; DATA XREF: divide_d_by_x+D1↓o
+clear_vars_end:				.block 1			; DATA XREF: divide_d_by_x+D1↓o
+				; The last byte clear_variables zeroes: the loop walks Y from var_flags_40
+				; doing st a, [y] while y <= this address, so the cleared region is
+				; var_flags_40..007Fh inclusive. An ADDRESS used as a bound - the byte
+				; itself is cleared by that same loop and never read.
 nv_diag_errors_1:		.block 2			; DATA XREF: divide_d_by_x:loc_C7C6↓o
 								; clear_nv_ram+5↓o ...
 								; 80.0 - RPM G1	or G2 signal
@@ -932,7 +944,7 @@ var_inj_pw_base:			.block 1			; DATA XREF: divide_d_by_x+13C6↓r
 unk_1B8:			.block 1			; DATA XREF: divide_d_by_x+13CF↓r
 								; divide_d_by_x:loc_D992↓w ...
 				.block 1
-unk_1BA:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
+var_pw_ramp_ratio:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; ROM:loc_DB51↓r ...
 				.block 1
 var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+142F↓w
@@ -1486,7 +1498,11 @@ nv_table_knock_info:		.block 3			; DATA XREF: divide_d_by_x:loc_C7BA↓o
 ; Segment type:	Pure code
 				;.segment ROM
 				.org 0C000h
-unk_C000:			.db  5Fh ; _			; DATA XREF: factory_self_test+E4↓o
+rom_start:			.db  5Fh ; _			; DATA XREF: factory_self_test+E4↓o
+				; The ROM base at C000h and the start address of the checksum self test
+				; (ld x, #rom_start / clr a / clr b / ld y, #0100h / sum 256 words).
+				; Matches what the DIAG16 variants have always called it. Not "ROM
+				; signature bytes" - the session journal said that and was wrong.
 				.db  5Fh ; _
 				.db  5Fh ; _
 
@@ -3243,7 +3259,7 @@ reset_vector:							; DATA XREF: ROM:FFFE↓o
 				ld	#07h, OMODE		; Mode control Register
 				di
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
-				ld	#00h, unk_1D
+				ld	#00h, REG_1D
 				ld	#30h, ASR0NL		; ASR0 neg edge	counter	value LSB
 				ld	#0F4h, ASR0N		; ASR0 neg edge	counter	value MSB
 				ld	#0F9h, TIMER3		; Timer	LSB (bit0~bit2)
@@ -3291,7 +3307,7 @@ clear_variables:
 
 loc_C64A:							; CODE XREF: divide_d_by_x+D4↓j
 				st	a, [y]
-				cmp	y, #unk_7F
+				cmp	y, #clear_vars_end
 				ble	loc_C64A
 
 				ld	y, #var_diag_errors_4
@@ -3443,7 +3459,7 @@ loc_C729:							; CODE XREF: divide_d_by_x+2419↓j
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
 				ld	#0FCh, ASR1P		; ASR1 pos edge	counter	value MSB
 				ld	#30h, ASR0NL		; ASR0 neg edge	counter	value LSB
-				ld	#00h, unk_1D
+				ld	#00h, REG_1D
 				ld	d, #8000h + var_dma_rx_buffer
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	d, #9000h + dmatx_pim2
@@ -7930,7 +7946,7 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DA53↑p
 
 reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DA44↑p
 				ld	d, #0CCCDh
-				st	d, unk_1BA
+				st	d, var_pw_ramp_ratio
 				clrb	bit5, var_flags_4E
 				clr	a
 				clr	b
@@ -7986,7 +8002,7 @@ ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+142C↑p
 
 loc_DB51:							; CODE XREF: ROM:DB44↑j
 								; ROM:DB4A↑j
-				ld	d, unk_1BA
+				ld	d, var_pw_ramp_ratio
 				sub	d, #0CCCDh
 				bcc	loc_DB5C
 
@@ -8050,7 +8066,7 @@ loc_DB90:							; CODE XREF: ROM:DB80↑j
 				subc	a, #00h
 				mov	d, x
 				ld	d, #0CCCDh
-				sub	d, unk_1BA
+				sub	d, var_pw_ramp_ratio
 				bgt	loc_DBAB
 
 				ld	d, var_inj_pw_base
@@ -8242,7 +8258,7 @@ loc_DC72:							; CODE XREF: ramp_limit_inj_pw_simple+24↑j
 
 loc_DC76:							; CODE XREF: ramp_limit_inj_pw_simple+1A↑j
 								; ramp_limit_inj_pw_simple+1F↑j
-				st	d, unk_1BA
+				st	d, var_pw_ramp_ratio
 				cmp	d, #0C7AEh
 				bgt	loc_DC81
 
@@ -9423,7 +9439,7 @@ loc_E167:							; CODE XREF: factory_self_test+DB↓j
 				mov	b, a
 				bne	loc_E159
 
-				ld	x, #unk_C000
+				ld	x, #rom_start
 				clr	a
 				clr	b
 
@@ -14714,7 +14730,7 @@ loc_F88B:							; CODE XREF: IV0+17↑j
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, RAMST		; Built-in RAM status
-				ld	b, unk_1C
+				ld	b, REG_1C
 				pull	y
 				pull	x
 				reti
@@ -15096,7 +15112,7 @@ loc_FA24:							; CODE XREF: ROM:loc_FA1D↑j
 				cmp	d, #001Fh
 				bne	loc_FA33
 
-				ld	d, #word_FFDC
+				ld	d, #diag_cal_ptr_FFDC
 ; ───────────────────────────────────────────────────────────────────────────
 				.db 41h
 ; ───────────────────────────────────────────────────────────────────────────
@@ -16462,7 +16478,7 @@ adc_handler_complete:						; DATA XREF: ROM:table_adc_handler↑o
 				.db  5Fh ; _
 				.db  5Fh ; _
 				.dw 5076h
-word_FFDC:			.dw 8305h			; DATA XREF: ROM:FA2F↑o
+diag_cal_ptr_FFDC:			.dw 8305h			; DATA XREF: ROM:FA2F↑o
 				.dw IV0				; External interrupt 0
 				.dw int_vector_1_serial_rx	; External interrupt 1
 				.dw IVf				; External interrupt 2

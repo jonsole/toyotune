@@ -59,8 +59,16 @@ ASR2L:		.block 1		; ASR2 edge counter value LSB
 ASR3:		.block 1		; DATA XREF: ROM:C60E↓w	watchdog_kick-16C1↓w	...
 					; ASR3 edge counter value MSB
 ASR3L:		.block 1		; ASR3 edge counter value LSB
-unk_1C:		.block 1		; DATA XREF: IV0+29↓r
-unk_1D:		.block 1		; DATA XREF: ROM:C5FA↓r	watchdog_kick-16CC↓r
+REG_1C:		.block 1		; DATA XREF: IV0+29↓r
+				; A hardware REGISTER at 001Ch, not a RAM variable - unk_ put it in the
+				; wrong category. Sits right after ASR3L, and the NE interrupt reads it
+				; with `ld b, REG_1C`. The technical reference calls $1C-$1E
+				; "Unused/reserved", but this ROM uses it, so that entry is incomplete.
+				; Full write-up at the same register in D151803-9651.
+REG_1D:		.block 1		; DATA XREF: ROM:C5FA↓r	watchdog_kick-16CC↓r
+				; Register at 001Dh, same reserved range as REG_1C. Both writes are
+				; `ld #00h, REG_1D` inside a run of ASR initialisation, so it is set up
+				; with the ASR/DMA block. Never read. See D151803-9651 for the detail.
 		.block 1
 OMODE:		.block 1		; DATA XREF: ROM:__RESET↓r
 					; Mode control Register
@@ -221,7 +229,11 @@ var_temp_7C:		.block 1		; DATA XREF: watchdog_kick-F2D↓w
 					; watchdog_kick:loc_CF96↓r ...
 		.block 1
 		.block 1
-unk_7F:		.block 1		; DATA XREF: ROM:C65C↓o
+clear_vars_end:		.block 1		; DATA XREF: ROM:C65C↓o
+				; The last byte clear_variables zeroes: the loop walks Y from var_flags_40
+				; doing st a, [y] while y <= this address, so the cleared region is
+				; var_flags_40..007Fh inclusive. An ADDRESS used as a bound - the byte
+				; itself is cleared by that same loop and never read.
 nv_diag_errors_1:		.block 1		; DATA XREF: watchdog_kick:loc_C7C3↓o
 					; clear_nv_ram+5↓o ...
 		.block 1
@@ -1266,7 +1278,11 @@ unk_304:	.block 1		; DATA XREF: clear_nv_ram+59↓w ROM:F1C7↓r ...
 ; Segment type:	Pure code
 		;.segment ROM
 		.org 0C000h
-unk_C000:	.db  5Fh ; _		; DATA XREF: sub_DCF4+DA↓o
+rom_start:	.db  5Fh ; _		; DATA XREF: sub_DCF4+DA↓o
+				; The ROM base at C000h and the start address of the checksum self test
+				; (ld x, #rom_start / clr a / clr b / ld y, #0100h / sum 256 words).
+				; Matches what the DIAG16 variants have always called it. Not "ROM
+				; signature bytes" - the session journal said that and was wrong.
 		.db  5Fh ; _
 		.db  5Fh ; _
 
@@ -3092,7 +3108,7 @@ __RESET:				; DATA XREF: ROM:FFFE↓o
 		ld	#07h, OMODE	; Mode control Register
 		di
 		ld	#18h, ASR0P	; ASR0 pos edge	counter	value MSB
-		ld	#00h, unk_1D
+		ld	#00h, REG_1D
 		ld	#30h, ASR0NL	; ASR0 neg edge	counter	value LSB
 		ld	#0F4h, ASR0N	; ASR0 neg edge	counter	value MSB
 		ld	#0F9h, TIMER3	; Timer	LSB (bit0~bit2)
@@ -3137,7 +3153,7 @@ __RESET:				; DATA XREF: ROM:FFFE↓o
 
 loc_C65B:				; CODE XREF: ROM:C65F↓j
 		st	a, [y]
-		cmp	y, #unk_7F
+		cmp	y, #clear_vars_end
 		ble	loc_C65B
 		ld	y, #var_diag_errors_4
 
@@ -3270,7 +3286,7 @@ loc_C726:				; CODE XREF: watchdog_kick+77C↓j
 		ld	#18h, ASR0P	; ASR0 pos edge	counter	value MSB
 		ld	#0FCh, ASR1P	; ASR1 pos edge	counter	value MSB
 		ld	#30h, ASR0NL	; ASR0 neg edge	counter	value LSB
-		ld	#00h, unk_1D
+		ld	#00h, REG_1D
 		ld	d, #81D8h
 		st	d, ASR2		; ASR2 edge counter value MSB
 		ld	d, #91FAh
@@ -7400,7 +7416,7 @@ loc_DDBD:				; CODE XREF: sub_DCF4+D1↓j
 		inc	b
 		mov	b, a
 		bne	loc_DDAF
-		ld	x, #unk_C000
+		ld	x, #rom_start
 		clr	a
 		clr	b
 
@@ -11716,7 +11732,7 @@ loc_F4A9:				; CODE XREF: IV0+17↑j IV0+1A↑j
 		st	d, ASR2		; ASR2 edge counter value MSB
 		ld	#4Fh, TIMER3	; Timer	LSB (bit0~bit2)
 		ld	b, RAMST	; Built-in RAM status
-		ld	b, unk_1C
+		ld	b, REG_1C
 		pull	y
 		pull	x
 		reti
