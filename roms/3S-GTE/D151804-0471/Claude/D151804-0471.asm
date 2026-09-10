@@ -342,7 +342,7 @@ dmarx_pim2:			.block 1			; DATA XREF: check_startup:loc_CADC↓r
 dmarx_tps:			.block 1			; DATA XREF: check_startup-993↓r
 								; check_startup-5A9↓r ...
 				.block 1
-dmarx_ect:				.block 1			; DATA XREF: sub_C6B4↓r
+dmarx_ect:				.block 1			; DATA XREF: table_ect_pair_interpolate↓r
 								; table_rb_fixed_64_ect_interp↓r ...
 				.block 1
 dmarx_inj_pw_inj1:				.block 1			; DATA XREF: check_startup-33B↓r
@@ -429,7 +429,7 @@ var_enrichment_unk_102:			.block 1			; DATA XREF: check_startup:loc_CC54↓w
 				.block 1
 var_fuel_enrichment:			.block 1			; DATA XREF: check_startup:loc_CB82↓w
 var_enrichment_unk_105:			.block 1			; DATA XREF: check_startup:loc_CC9A↓w
-								; sub_CCA2↓r ...
+								; decay_enrichment_unk_105↓r ...
 				.block 1
 var_tham_enrich_unk:			.block 1			; DATA XREF: check_startup-66F↓w
 var_knock_fuel_enrichment:	.block 1			; DATA XREF: check_startup:loc_CB18↓w
@@ -548,7 +548,7 @@ dmatx_enrichment_unk_15D:			.block 1			; DATA XREF: check_startup-86A↓w
 dmatx_unk_enrich:			.block 1			; DATA XREF: check_startup-892↓w
 dmatx_tham_enrich:			.block 1			; DATA XREF: check_startup-66C↓w
 dmatx_enrichment_unk_160:			.block 1			; DATA XREF: check_startup-824↓w
-								; sub_CCA2+D↓w
+								; decay_enrichment_unk_105+D↓w
 dmatx_fuel_enrichment:			.block 1			; DATA XREF: check_startup-93B↓w
 dmatx_unk_162:			.block 1			; DATA XREF: check_startup-5CC↓w
 dmatx_knock_unk_163:			.block 1			; DATA XREF: check_startup-5C5↓w
@@ -1813,9 +1813,13 @@ min_max_done:							; CODE XREF: clamp_rD+8↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_C6B4:							; CODE XREF: check_startup-8E7↓p
+table_ect_pair_interpolate:							; CODE XREF: check_startup-8E7↓p
+				; One-instruction entry wrapper that loads ECT and falls into the pair
+				; interpolator, same as 9651's. It reads dmarx_ect rather than var_ect
+				; because CPU2 has no coolant sensor of its own - the value arrives over
+				; the DMA link. Same function, differing only in where ECT comes from.
 				ld	a, dmarx_ect
-; End of function sub_C6B4
+; End of function table_ect_pair_interpolate
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -2223,9 +2227,9 @@ divide_rD_16_signed:							; CODE XREF: check_startup-A4D↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_C7A0:							; CODE XREF: check_startup-A9B↓p
+divide_rD_128_saturate:							; CODE XREF: check_startup-A9B↓p
 				shr	d
-; End of function sub_C7A0
+; End of function divide_rD_128_saturate
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -2275,7 +2279,7 @@ locret_C7AC:							; CODE XREF: divide_rD_16_saturate+5↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_C7BB:							; CODE XREF: check_startup-78D↓p
+mult_rDrX_saturate:							; CODE XREF: check_startup-78D↓p
 				bsr	mult_rDrX
 
 				mov	y, d
@@ -2289,16 +2293,16 @@ sub_C7BB:							; CODE XREF: check_startup-78D↓p
 				ld	d, #0FFFFh
 				setc
 
-loc_C7CA:							; CODE XREF: sub_C7BB+9↑j
+loc_C7CA:							; CODE XREF: mult_rDrX_saturate+9↑j
 				xch	a, b
 				rorc	b
 				ret
 
-; End of function sub_C7BB
+; End of function mult_rDrX_saturate
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-mult_rDrX:							; CODE XREF: sub_C7BB↑p
+mult_rDrX:							; CODE XREF: mult_rDrX_saturate↑p
 								; check_startup-870↓p ...
 				push	d
 				push	x
@@ -2792,7 +2796,7 @@ loc_CA1E:							; CODE XREF: check_startup-AB5↑j
 loc_CA21:							; CODE XREF: check_startup-AA5↑j
 				st	d, var_rpm_x_5p12
 				st	d, dmatx_rpm_x_5p12
-				jsr	sub_C7A0
+				jsr	divide_rD_128_saturate
 
 				st	b, var_rpm_div_25
 				bra	main_continue
@@ -3189,7 +3193,7 @@ loc_CBD2:							; CODE XREF: check_startup-908↑j
 				st	d, var_enrichment_unk_53
 				st	a, dmatx_enrichment_unk_15B
 				ld	y, #0C3FDh
-				jsr	sub_C6B4
+				jsr	table_ect_pair_interpolate
 
 				st	a, unk_55
 
@@ -3382,7 +3386,7 @@ loc_CCA0:							; CODE XREF: check_startup-837↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_CCA2:							; CODE XREF: check_startup-64F↓p
+decay_enrichment_unk_105:							; CODE XREF: check_startup-64F↓p
 				ld	x, var_enrichment_unk_105
 				beq	locret_CCB2
 
@@ -3392,10 +3396,10 @@ sub_CCA2:							; CODE XREF: check_startup-64F↓p
 				st	d, var_enrichment_unk_105
 				st	a, dmatx_enrichment_unk_160
 
-locret_CCB2:							; CODE XREF: sub_CCA2+3↑j
+locret_CCB2:							; CODE XREF: decay_enrichment_unk_105+3↑j
 				ret
 
-; End of function sub_CCA2
+; End of function decay_enrichment_unk_105
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR check_startup
@@ -3473,7 +3477,7 @@ loc_CD27:							; CODE XREF: check_startup-7A0↑j
 				clr	a
 				add	d, #0033h
 				ld	x, #200Fh
-				jsr	sub_C7BB
+				jsr	mult_rDrX_saturate
 
 				st	d, unk_156
 				ld	x, #8C4Eh
@@ -3715,7 +3719,7 @@ loc_CE62:							; CODE XREF: check_startup-667↑j
 
 				jsr	decay_enrichment_unk_53
 
-				jsr	sub_CCA2
+				jsr	decay_enrichment_unk_105
 
 
 loc_CE75:							; CODE XREF: check_startup-65C↑j

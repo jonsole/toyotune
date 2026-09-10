@@ -533,7 +533,7 @@ var_idle_timing_ramp:	.block 1		; DATA XREF: watchdog_kick-1780↓w
 var_ign_min_cand:	.block 1		; DATA XREF: watchdog_kick-177D↓w
 					; calc_ign_timing_min+80↓w
 var_ect_unk_158:	.block 1		; DATA XREF: calc_ign_timing_min:loc_E779↓r
-					; sub_E7B1+6↓w
+					; calc_ect_unk_158+6↓w
 var_cyl_rpm_delta:	.block 1		; DATA XREF: calc_ign_timing_min:loc_E71B↓w
 					; calc_ign_timing_min:loc_E74A↓r
 var_cyl_rpm_filtered:	.block 1		; DATA XREF: calc_4ms_corrections+12A↓w
@@ -2006,7 +2006,7 @@ table_unk_C2BD:	.db  00h		; DATA XREF: calc_ign_timing_min:loc_E753↓o
 		.db  33h ; 3
 		.db  40h ; @
 		.db  40h ; @
-unk_C2C4:	.db  02h		; DATA XREF: sub_E7B1↓o
+table_ect_corr_158:	.db  02h		; DATA XREF: calc_ect_unk_158↓o
 		.db 0D2h ; ╥
 		.db  40h ; @
 		.db 0E4h ; Σ
@@ -2174,7 +2174,7 @@ idle_trim:	.db  60h ; `		; DATA XREF: calc_iscv:loc_D4F7↓o
 		.db  70h ; p
 unk_C36A:	.db 0A0h ; á		; DATA XREF: calc_iscv+AB↓o
 		.db 0B0h ; ░
-table_ect_C36C:	.db  0Ch		; DATA XREF: sub_D446+5↓o
+table_ect_corr_18C:	.db  0Ch		; DATA XREF: calc_ect_unk_18C+5↓o
 		.db  26h ; &
 		.db 0F3h ; ≤
 		.db  51h ; Q
@@ -4844,7 +4844,7 @@ loc_CF76:				; CODE XREF: watchdog_kick-EE3↑j
 		ld	a, #10h
 		cmpb	a, var_temp_b
 		beq	loc_CFE4
-		jsr	sub_DA3C
+		jsr	check_cnt_17F_window
 		jsr	update_lambda_avg
 		ld	a, var_flags_4E_copy2
 		or	a, #01h
@@ -5748,16 +5748,19 @@ loc_D443:				; CODE XREF: clamp_min_ect_18C+2↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_D446:				; CODE XREF: watchdog_kick+120↓p
+calc_ect_unk_18C:				; CODE XREF: watchdog_kick+120↓p
+		; Same role and output as 0461's, but NOT instruction-identical: this one
+		; guards the lookup with var_flags_4E.3 and falls back to a fixed 0F3h.
+		; Named for what it produces (var_ect_unk_18C), which both agree on.
 		ld	a, #0F3h
 		tbbs	bit3, var_flags_4E, loc_D451
-		ld	y, #table_ect_C36C
+		ld	y, #table_ect_corr_18C
 		jsr	table_ect_pair_interpolate
 
-loc_D451:				; CODE XREF: sub_D446+2↑j
+loc_D451:				; CODE XREF: calc_ect_unk_18C+2↑j
 		st	a, var_ect_unk_18C
 		ret
-; End of function sub_D446
+; End of function calc_ect_unk_18C
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR watchdog_kick
@@ -6773,7 +6776,7 @@ loc_DA3A:				; CODE XREF: ROM:DA14↑j	ROM:DA16↑j ...
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_DA3C:				; CODE XREF: watchdog_kick-EBE↑p
+check_cnt_17F_window:				; CODE XREF: watchdog_kick-EBE↑p
 		clrb	bit7, var_flags_4F
 		ld	x, var_cnt_17F
 		cmp	x, #0003h
@@ -6782,12 +6785,12 @@ sub_DA3C:				; CODE XREF: watchdog_kick-EBE↑p
 		bcc	loc_DA4D
 		setb	bit7, var_flags_4F
 
-loc_DA4D:				; CODE XREF: sub_DA3C+8↑j sub_DA3C+D↑j
+loc_DA4D:				; CODE XREF: check_cnt_17F_window+8↑j check_cnt_17F_window+D↑j
 		clr	a
 		clr	b
 		st	d, var_cnt_17F
 		ret
-; End of function sub_DA3C
+; End of function check_cnt_17F_window
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -7723,11 +7726,11 @@ loc_DF34:				; CODE XREF: watchdog_kick+F5↑j
 loc_DF49:				; CODE XREF: watchdog_kick+107↑j
 		jsr	update_crank_cnt
 		jsr	calc_ect_unk_142
-		jsr	sub_E7B1
+		jsr	calc_ect_unk_158
 		jsr	calc_ect_iscv
 		ld	a, var_flags_4E_copy2
 		st	a, var_flags_4E
-		jsr	sub_D446
+		jsr	calc_ect_unk_18C
 		jsr	loc_D94B
 		jsr	factory_self_test
 
@@ -9188,12 +9191,12 @@ loc_E7AD:				; CODE XREF: ramp_misfire_correction+4↑j ramp_misfire_correction+
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-sub_E7B1:				; CODE XREF: watchdog_kick+115↑p
-		ld	y, #unk_C2C4
+calc_ect_unk_158:				; CODE XREF: watchdog_kick+115↑p
+		ld	y, #table_ect_corr_158
 		jsr	table_ect_pair_interpolate
 		st	a, var_ect_unk_158
 		ret
-; End of function sub_E7B1
+; End of function calc_ect_unk_158
 
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR calc_4ms_corrections
