@@ -265,12 +265,15 @@ Gated on:
 - `var_cnt_EA` (warm-up elapsed)
 - `var_io_input1.5` (diagnostic check mode - skip if active)
 - ECT, against a trim_state-dependent threshold (0xE1 or 0xE3)
-- CPU2 enrichment request flags (`dmarx_fuel_trim_231`,
-  `dmarx_warmup_enrich`, `dmarx_idle_enrich` - any nonzero forces the
+- CPU2 enrichment request flags (`dmarx_enrichment_unk_231`,
+  `dmarx_warmup_enrichment_230`, `dmarx_idle_enrich` (**stale name — no symbol of
+  that name exists in any ROM now; the CPU1 enrichment block is `0x230`-`0x237`
+  and which slot this meant is not re-derived**) - any nonzero forces the
   fallback/open-loop path)
 - `var_flags_40.7`
 - `var_flags_46.1` (the *real* closed-loop flag, not aliased)
-- `dmarx_iscv_duty == 0x40` (nominal idle duty - if already at nominal,
+- `dmarx_status1_242 == 0x40` (this was described as "nominal idle duty"; it is
+  CPU2's status byte — see the corrected row below — if already at that value,
   skip the closed-loop-specific init)
 
 Calls `init_pw_closed_loop` (closed-loop init: `var_pw_loop_mode = 0xC8`) or `init_pw_open_loop`
@@ -280,8 +283,8 @@ constant below).
 
 ### 3) VE-map candidate calculation (`D998`-`DA10`)
 
-Multiplies CPU2's DMA'd VE-map words - `dmarx_word_226`, `dmarx_word_228`,
-`dmarx_word_22A` - by a fixed constant (`0x1EB8`) via `mult_rDrX` (16x16→32
+Multiplies CPU2's DMA'd VE-map words - `dmarx_ve_corr_map`, `dmarx_ve_corr_map_tps`,
+`dmarx_ve_x_pim_x_rpm` - by a fixed constant (`0x1EB8`) via `mult_rDrX` (16x16→32
 unsigned multiply, `D = D*X/256`, `X` = the product's high word/overflow
 indicator).
 
@@ -289,13 +292,13 @@ At several points the code deliberately substitutes a multiply's high word
 (from `X`, via `mov x, d` meaning `D = X`) in place of the normal
 `/256`-scaled result. Reading `mov` the wrong way round here makes it look
 like a harmless copy of the scaled result instead. Specifically:
-after the second `mult_rDrX` (by `dmarx_word_22A`), the high word is
-compared against `dmarx_word_228`; if it exceeds it, the excess is scaled
+after the second `mult_rDrX` (by `dmarx_ve_x_pim_x_rpm`), the high word is
+compared against `dmarx_ve_corr_map_tps`; if it exceeds it, the excess is scaled
 by a `0xC8/256` (~78%) factor via `mult_rArX` and divided into
-`dmarx_word_226`, with the quotient checked against `200`. Both the
+`dmarx_ve_corr_map`, with the quotient checked against `200`. Both the
 "exceeds" and "doesn't exceed" paths converge on a second `mult_rDrX` (by
-`dmarx_word_22A` again) whose high word is divided by either
-`dmarx_word_226+dmarx_word_228` or `dmarx_word_228` alone, producing the
+`dmarx_ve_x_pim_x_rpm` again) whose high word is divided by either
+`dmarx_word_226+dmarx_word_228` or `dmarx_ve_corr_map_tps` alone, producing the
 final candidate stored in `unk_1C0`. The `0xC8`/`200` value doubles as a
 tag carried in `var_pw_loop_mode` for the two paths.
 
@@ -314,19 +317,23 @@ preserve dynamic range), not an oddity.
 **Which DMA word is which:** cross-referenced against CPU2's ROM
 (`D151803-9661`, working copy now at `3S-GTE/D151803-9661/Claude/`). CPU1
 and CPU2 share the same physical DMA buffer at a fixed address offset
-(CPU1_addr = CPU2_addr + `0xDA`, confirmed via three independent
-already-cross-named variable pairs, e.g. CPU1's `dmarx_max_retard_23B_161`
-= CPU2's `dmatx_max_retard_161`). The three words matched by structural
-position (three consecutive word-sized DMA slots on both sides - the exact
-offset has a 1-byte discrepancy specifically in this region, likely a
-padding/alignment byte elsewhere in the buffer, so position-matching was
+(CPU1_addr = CPU2_addr + `0xD9`). **This paragraph used to say `0xDA`,
+"confirmed via three independent already-cross-named variable pairs", and
+explained away "a 1-byte discrepancy specifically in this region" as a
+likely padding/alignment byte. That discrepancy WAS the error.** Several
+`dmarx_*` names sat on the wrong byte of a 16-bit variable, so the modal
+name difference came out one too high; the offset is derived from the DMA
+hardware registers in `dma_link_system.md`, and the names have since been
+shifted onto the variables they actually receive. The three words matched
+by structural position (three consecutive word-sized DMA slots on both
+sides, so position-matching was
 used instead of the numeric formula):
 
 | CPU1 name | CPU2 name | CPU2 computation |
 |---|---|---|
-| `dmarx_word_226` | `dmatx_ve_corr_map` | `table_ve_corr_map` lookup indexed by `dmarx_pim2` (MAP, received from CPU1), `/32` - a MAP-only VE/fuel correction table. Computed inside `calc_ignition_timing`, not `calc_params` - see that ASM's own header comments |
-| `dmarx_word_228` | `dmatx_ve_corr_map_tps` | `map_ve_corr_map_tps` bilinear lookup indexed by `dmarx_pim2` (MAP) and `dmarx_tps` (TPS, from CPU1), `/32` - forced to 0 when `dmarx_var_flags_46.2` is set (CPU1's idle-debounce flag, relayed back to CPU2 via DMA). Also computed inside `calc_ignition_timing` |
-| `dmarx_word_22A` | `dmatx_ve_x_pim_x_rpm` (= `var_ve_x_pim_x_rpm`, saturated) | `var_map_ve` (CPU2's base VE map, `map_c006_ve`, indexed by RPM and MAP) multiplied by `var_rpm_x_5p12` and by `dmarx_pim2/16`, i.e. **VE × MAP × RPM** - the classic speed-density airflow/load term |
+| `dmarx_ve_corr_map` | `dmatx_ve_corr_map` | `table_ve_corr_map` lookup indexed by `dmarx_pim2` (MAP, received from CPU1), `/32` - a MAP-only VE/fuel correction table. Computed inside `calc_ignition_timing`, not `calc_params` - see that ASM's own header comments |
+| `dmarx_ve_corr_map_tps` | `dmatx_ve_corr_map_tps` | `map_ve_corr_map_tps` bilinear lookup indexed by `dmarx_pim2` (MAP) and `dmarx_tps` (TPS, from CPU1), `/32` - forced to 0 when `dmarx_var_flags_46.2` is set (CPU1's idle-debounce flag, relayed back to CPU2 via DMA). Also computed inside `calc_ignition_timing` |
+| `dmarx_ve_x_pim_x_rpm` | `dmatx_ve_x_pim_x_rpm` (= `var_ve_x_pim_x_rpm`, saturated) | `var_map_ve` (CPU2's base VE map, `map_c006_ve`, indexed by RPM and MAP) multiplied by `var_rpm_x_5p12` and by `dmarx_pim2/16`, i.e. **VE × MAP × RPM** - the classic speed-density airflow/load term |
 
 **Separate from the three DMA words above:** CPU1's
 `dmarx_scaled_ve` (`0x022C`) = CPU2's `dmatx_scaled_ve` (`0x0153`, verified
@@ -345,20 +352,20 @@ discrepancy for these, unlike the three words above):
 |---|---|---|
 | `dmarx_ign_timing_fallback1` | `dmatx_ign_timing_fallback1` | `table_ign_rpm1(RPM)` - substituted for `dmatx_ign_timing` by CPU1's `update_ign_timing_blend` when `var_diag_errors_5.0` is set at that point in its own computation - **not** a knock-sensor fault despite the flag's name; the flag is a generic abs() remember-bit, see `knock_sensor_system.md` |
 | `dmarx_ign_timing_fallback2` | `dmatx_ign_timing_fallback2` | `table_ign_rpm2(RPM)` - same fallback role, substituted for `dmatx_ign_timing_unk_166` |
-| `dmarx_iscv_duty` | `dmatx_iscv_duty` | `table_C376_rpm(RPM)/32` - base/nominal ISCV duty, refined by CPU1's own idle control loop (see `idle_control_system.md`) |
-| `dmarx_ign_timing_unk_166` | `dmatx_ign_timing_unk_166` | `(table_C356_rpm(RPM) * table_C36A_ect(ECT))/64`, saturated |
-| `dmarx_unk_241_167` | `dmatx_unk_167` | `(table_C360_rpm(RPM) * table_C370_ect(ECT))/64`, saturated |
+| `dmarx_status1_242` | `dmatx_status1_169` | **CORRECTED.** This row read `dmarx_iscv_duty` / `dmatx_iscv_duty`, "`table_C376_rpm(RPM)/32` — base/nominal ISCV duty". There is no ISCV-duty field in this block. That reading came from the CPU2→CPU1 offset being off by one (`+0xDA` rather than `+0xD9`), which lands a byte early and makes CPU2's status byte look like a flat calibration value — see the offset derivation in `dma_link_system.md` |
+| `dmarx_ign_timing_unk_23F` | `dmatx_ign_timing_unk_166` | `(table_C356_rpm(RPM) * table_C36A_ect(ECT))/64`, saturated |
+| `dmarx_unk_240` | `dmatx_unk_167` | `(table_C360_rpm(RPM) * table_C370_ect(ECT))/64`, saturated |
 
 `update_ign_timing_blend`, CPU1's consumer of all five (plus the primary `dmarx_ign_timing`
-and `dmarx_ign_timing_unk_166`), has since been partially traced (see
+and `dmarx_ign_timing_unk_23F`), has since been partially traced (see
 session_journal.md): a PIM-table-baseline-vs-clamp update involving
 `var_ign_blend_accum`/`12B`/`12D`/`12F` state, self-re-armed to run once per ~32ms via
 `var_schedule_flag_41.3`'s `tbs`-based one-shot gate (see that variable's
 ASM declaration comment for the mechanism).
 The fallback-vs-primary selection is **not** knock-sensor
 fault handling despite `var_diag_errors_5.0`'s name and the function's
-proximity to real knock code - `set_knock_sensor_err_flag`/
-`check_knock_sensor_err_flag` are a repo-wide reused negate/abs() idiom
+proximity to real knock code - `negate_rD_mark`/
+`negate_rD_if_marked` are a repo-wide reused negate/abs() idiom
 (see their own header comment and session_journal.md's architecture notes),
 and `update_ign_timing_blend` uses that bit purely as its own local "did the clamped
 PIM-baseline value drop since last tick" signal. The middle blend's exact
@@ -367,9 +374,9 @@ fully re-derived with confidence and is still open CPU1 work.
 
 So this calculation is confirmed to be a **speed-density base fuel
 load computation**: CPU2 looks up VE from a MAP/RPM table, forms the
-VE×MAP×RPM product as the primary load term (`dmarx_word_22A`), and
+VE×MAP×RPM product as the primary load term (`dmarx_ve_x_pim_x_rpm`), and
 supplies two MAP-based correction/reference tables alongside it
-(`dmarx_word_226`, `dmarx_word_228`) that CPU1's `calc_inj_pw_base` uses as
+(`dmarx_ve_corr_map`, `dmarx_ve_corr_map_tps`) that CPU1's `calc_inj_pw_base` uses as
 the comparison/reference and correction terms in section 3 above. The
 specific thresholds
 (`200`, the `0xC8/256` ratio) and exactly what physical quantity the final
@@ -500,7 +507,7 @@ read/written throughout (via the alias - real `var_flags_4E` bits, not
 
 1. **`trim_state.4` set on entry** (checked again, unchanged, at `loc_DBDB`
    since nothing between clears it): "diagnostic-only" mode. Computes
-   `D = var_pw_ramp_ratio - 0xCCCD`, error-flags via `set_knock_sensor_err_flag` if
+   `D = var_pw_ramp_ratio - 0xCCCD`, error-flags via `negate_rD_mark` if
    negative (ratio below nominal), then `D = mult_rDrX(D, unk_1C0)`
    (deviation scaled by the candidate) `+/- 0xCCCD` (sign per whether the
    error flag fired), and exits via `loc_DC3A` **without** touching
@@ -594,8 +601,8 @@ computation sits at the tail of **`calc_dmatx_pim`** (
 An earlier pass guessed that function was a "knock/PIM-linked limiting
 calculation, possibly boost/overpressure-related". **That was wrong.** It is
 manifold-pressure transient compensation: its single exit stores to
-`dmatx_pim`, the value CPU2 fuels from. The `set_knock_sensor_err_flag` /
-`check_knock_sensor_err_flag` calls that suggested knock involvement are only
+`dmatx_pim`, the value CPU2 fuels from. The `negate_rD_mark` /
+`negate_rD_if_marked` calls that suggested knock involvement are only
 the generic abs()/restore-sign primitive those functions actually implement -
 they carry no knock meaning here, and the old `var_unk_knk_*` names on its
 state came from the same mistake.
@@ -824,9 +831,9 @@ only adapt once the fast and slow pressure estimates reconverge.
 | `unk_1C6` | The final per-call output register of `ramp_limit_inj_pw` - ends up holding the ceiling (`var_pw_ramp_ceiling`) on the `loc_DBF1` path, or the candidate/blend value on the `loc_DC24`/`loc_DC35` paths |
 | `var_pw_ramp_ceiling` (`0x1C8`) | Was `unk_1C8`. A PIM/MAP-pressure-linked bound compared against PW-scale values in `ramp_limit_inj_pw`. Producer partially traced to `loc_E665` (~`E620`-`E6B0`), which folds `var_pim2`-derived `dmatx_pim` into it - the rest of that computation isn't traced (see Open Questions) |
 | `var_cnt_6A` | Reset by `calc_inj_pw_base`'s entry gate; consumer not traced |
-| `dmarx_word_226` | CPU2's MAP-only VE/fuel correction table (`table_ve_corr_map`, indexed by MAP) |
-| `dmarx_word_228` | CPU2's MAP+TPS bilinear VE correction (`map_ve_corr_map_tps`), zeroed during idle debounce |
-| `dmarx_word_22A` | CPU2's VE×MAP×RPM speed-density load term (`var_ve_x_pim_x_rpm`, saturated) |
+| `dmarx_ve_corr_map` | CPU2's MAP-only VE/fuel correction table (`table_ve_corr_map`, indexed by MAP) |
+| `dmarx_ve_corr_map_tps` | CPU2's MAP+TPS bilinear VE correction (`map_ve_corr_map_tps`), zeroed during idle debounce |
+| `dmarx_ve_x_pim_x_rpm` | CPU2's VE×MAP×RPM speed-density load term (`var_ve_x_pim_x_rpm`, saturated) |
 | `var_trim_state` | Persistent trim-state value; aliased into `var_flags_4E` for a large span of the main loop (see above) |
 
 ---

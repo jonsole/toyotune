@@ -125,7 +125,7 @@ Selects between two DMA-received advance values based on `va_ne_count_2`:
 if va_ne_count_2 >= 0x30:
     timing += dmarx_ign_advance_hi
 else:
-    timing += dmarx_ign_advance_lo
+    timing += dmarx_ign_advance_lo   <-- name/meaning superseded, see the table note
 ```
 
 These are the RPM and load-based advance angles computed by CPU2 from the fuel/ignition maps.
@@ -431,7 +431,7 @@ term = (256 - timing) * |clamp excursion| / 512
 
 - The **excursion** is how far a clamp moved `var_ign_blend_hist0`; a
   `cmp d,#0100h` deadband discards small ones.
-- The **timing source** is `dmarx_ign_timing_unk_166`, or
+- The **timing source** is `dmarx_ign_timing_unk_23F`, or
   `dmarx_ign_timing_fallback2` when the clamp pulled the value down.
 - `neg a` **inverts** the timing byte, so *less* timing gives *more* weight.
 - The `/512` is the subtle part: `mult_rDrX` leaves `D = D*X/256` and
@@ -499,8 +499,7 @@ real-world units.
 | `var_igf_miss_count` | Count of consecutive missing IGF signals (max 0xFF) |
 | `var_igt_timer` | IGT active timer (detects stuck-on ignition) |
 | `var_ignition_flags` | Ignition state flags (see below) |
-| `dmarx_ign_advance_hi` | RPM advance from CPU2 (high RPM band) |
-| `dmarx_ign_advance_lo` | RPM advance from CPU2 (low RPM band) |
+| `dmarx_ign_retard_hi` / `dmarx_ign_retard_lo` | **NEEDS RE-READING.** These two rows described `dmarx_ign_advance_hi`/`_lo` as "RPM advance from CPU2 (high/low RPM band)". Both the names and that description predate two corrections: the CPU2→CPU1 offset moving to `+0xD9`, and the finding that CPU2's `dmatx_ign_retard_pair` holds a PAIR of single-byte **retard** values selected by crank position, not an advance split by RPM band. `dmarx_ign_advance_hi_245` (`0x245`) is a separate variable from the pair at `0x246`/`0x247`. The flow text above (§ the timing chain) still carries the old reading — treat `dma_link_system.md` as authoritative until this is re-derived from the code |
 | `dmatx_knock_retard` | Knock retard command (from CPU1 knock system, sent to CPU2) |
 | `dmatx_ign_obd` | Ignition timing in OBD1 format (sent to CPU2 for diagnostics) |
 

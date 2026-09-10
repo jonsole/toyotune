@@ -115,7 +115,9 @@ that lives at C2FC in the target. Note which way the remaining risk falls - a
 four-digit false positive (`_face_`, `_dead_`) costs a **refused** rename,
 never a wrong one.
 
-**A name can carry a CPU2 address.** `dmarx_max_retard_23B_161` holds a CPU1
+**A name can carry a CPU2 address.** `dmarx_max_retard_23B_161` (the name that ROM
+carried at the time; it is `dmarx_max_retard_23A` now, the pairing having been
+off by one) holds a CPU1
 address *and* a CPU2 one. Rewriting the CPU2 half with a CPU1 map silently
 lands on the wrong variable — see the next section. Any 3–4 digit fragment
 that is not the symbol's own address is refused.

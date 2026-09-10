@@ -88,7 +88,7 @@ RPM** (`var_iscv_target_rpm`, in `var_rpm_x_5p12` units):
 | `var_iscv_startup_flare` | Decays -1/tick once the startup window (`var_cnt_startup` ≥ 0x3D ≈ 244ms) has passed; before that, held at whatever `max(ECT, THA)/16` was on entry |
 | `var_iscv_pim_flare` | Set from a PIM-indexed table on throttle lift-off/deceleration (`var_flags_4E.4`, gated on RPM > 2000, speed < 5kph, small RPM delta); decays -8/tick otherwise |
 | `var_iscv_unk_1A9` | Fixed at `0x300` during the startup window, then decays -4/tick |
-| `var_iscv_unk_1AB` | `0x200` for the first 15 ticks if CPU2 cold-enrichment (`dmarx_idle_enrich`) is active, else cleared once `var_cnt_EA` elapses |
+| `var_iscv_unk_1AB` | `0x200` for the first 15 ticks if CPU2 cold-enrichment (`dmarx_idle_enrich` — **stale name, not re-derived; see the note in `fuel_calculation_system.md`**) is active, else cleared once `var_cnt_EA` elapses |
 | `var_iscv_unk_1AD` | Ramps ±2/tick toward a load-dependent set-point (see below) |
 
 `var_iscv_unk_1AD`'s set-point is selected from `iscv_override_trim`/`iscv_override_trim_eco` based on
@@ -100,15 +100,15 @@ two "extra electrical/mechanical load" switches documented elsewhere in the
 ROM. The raw bits have not been traced back to their source.
 
 A separate threshold check (`idle_trim`/`C36E`/`C370`, also switch-selected)
-sets `var_diag_errors_5.0` and feeds both `check_knock_sensor_err_flag` and
-an accumulator `var_iscv_diag_term`. `set_knock_sensor_err_flag`/
-`check_knock_sensor_err_flag` share one fall-through tail with `negate_rD`
+sets `var_diag_errors_5.0` and feeds both `negate_rD_if_marked` and
+an accumulator `var_iscv_diag_term`. `negate_rD_mark`/
+`negate_rD_if_marked` share one fall-through tail with `negate_rD`
 (see their own header comment in `D151803-9651.asm`), so `var_diag_errors_5.0`
 isn't knock-sensor-specific here — it's reused as a generic "did we negate D"
 remember-bit for a disguised abs()/restore-sign idiom. This site computes a
 delta that may go negative, takes its magnitude (recording the flip via the
 flag), sums it into `var_iscv_diag_term`, and presumably restores the sign
-later via `check_knock_sensor_err_flag` wherever `var_iscv_diag_term`
+later via `negate_rD_if_marked` wherever `var_iscv_diag_term`
 resurfaces in Phase 3. That last step has not been traced directly.
 
 The five terms are summed, plus a `table_iscv_C391` entry (values `0x00, 0x08,
@@ -131,7 +131,7 @@ downstream.
 - **Otherwise:** candidate is simply `nv_idle_trim * 16`, ratcheted up only
   (never down) against the current baseline.
 
-A second computation (always run) derives a ceiling from `nv_idle_trim`
+A second computation (always run) derives a ceiling from `var_nv_idle_trim`
 offset by a P/N-switch-selected range (`var_flags_4F.2`: `+0x148` or
 `-0x33+0x17B`). This is **not** the clean "clamp the RPM-band candidate to
 this ceiling" it first appears to be. Tracking the registers with `mov` read

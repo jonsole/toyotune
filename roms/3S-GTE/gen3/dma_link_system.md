@@ -263,10 +263,10 @@ These are cosmetic: the slot is the same on both sides.
 
 34 bytes at `0x14D`-`0x16E` on CPU2, arriving at `0x226`-`0x247` on CPU1. The
 window fits the variables exactly: it starts on the first byte of
-`dmatx_ve_corr_map` and ends on the last byte of `word_16D`, and the declared
+`dmatx_ve_corr_map` and ends on the last byte of `dmatx_ign_retard_pair`, and
 sizes between them total precisely 34. That is what fixes the offset at
 `+0xD9` -- at `+0xDA` the window would begin mid-variable and truncate
-`word_16D`, whose low byte would never be sent.
+`dmatx_ign_retard_pair`, whose low byte would never be sent.
 
 As in the other direction, `ASR3` points straight at the first live variable
 and the engine streams RAM, so **neither transmit path has a packing buffer**

@@ -184,7 +184,7 @@ On each NE cycle:
 3. If very recent start (counter check): double again
 4. Add step to `var_knock_retard`, saturate at 0xFF
 5. If `var_knock_retard > var_knock_retard_max`: clamp and update `var_knock_retard_max`
-6. Decay path: compare against `var_knock_retard_prev` and `dmarx_knock_retard_cpu2` (CPU2 contribution)
+6. Decay path: compare against `var_knock_retard_prev` and `dmarx_max_retard_23A` (CPU2 contribution)
 7. Clamp final value at 0x1A (26 counts ≈ 13°)
 8. Store to `nv_table_knock_info[var_knock_cyl_idx]`
 
@@ -225,13 +225,13 @@ and only then is retard reduced by 2 — so recovery proceeds at 2 counts per
 
 ## `var_diag_errors_5.0` is not a knock flag
 
-`set_knock_sensor_err_flag` and `check_knock_sensor_err_flag` are a **generic
+`negate_rD_mark` and `negate_rD_if_marked` are a **generic
 abs() idiom**, not knock handling. The pair works by deliberate fall-through
 into `negate_rD`:
 
-- `set_knock_sensor_err_flag` sets `var_diag_errors_5.0` **and**
+- `negate_rD_mark` sets `var_diag_errors_5.0` **and**
   unconditionally negates `D`;
-- `check_knock_sensor_err_flag` negates `D` only if that flag is set.
+- `negate_rD_if_marked` negates `D` only if that flag is set.
 
 The pattern at each call site is: compute a difference that may have
 underflowed, call `set_` to take its magnitude while remembering the flip, do
@@ -275,7 +275,7 @@ rather than removed.
 | `var_cnt_knock_signal` | RAM | Count of consecutive knock signals (threshold = 3) |
 | `nv_table_knock_info[3]` | PRAM | Per-cylinder learned knock retard (persists over ignition off) |
 | `dmatx_knock_retard_info[3]` | DMA TX | Copy of `nv_table_knock_info` sent to CPU2 every 4ms |
-| `dmarx_knock_retard_cpu2` | DMA RX | Knock retard contribution received from CPU2 |
+| `dmarx_max_retard_23A` | DMA RX | Knock retard contribution received from CPU2 |
 
 ---
 

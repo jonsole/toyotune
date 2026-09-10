@@ -148,7 +148,7 @@ charging, high is firing; dwell is simply the interval between two `CPR0`
 events, and the pending event is tracked by latching `DOM.0`.
 
 Because 15° of crank is coarse for spark timing, advance is interpolated
-*between* teeth. `ignition_timing_to_cpr` measures `ne_sum3` — the time for
+*between* teeth. `ignition_timing_to_cpr` measures `var_ne_sum3` — the time for
 the last 45°, three pulses — and converts:
 
 ```
@@ -379,7 +379,7 @@ snippet above is the whole mechanism.
 
 ### Function fall-through
 
-`set_knock_sensor_err_flag`, `check_knock_sensor_err_flag` and `negate_rD` are
+`negate_rD_mark`, `negate_rD_if_marked` and `negate_rD` are
 three separately-named functions with no `ret` between them. Each falls
 straight into the next:
 
