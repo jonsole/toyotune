@@ -3715,7 +3715,17 @@ nv_table_knock_info:		.block 3			; DATA XREF: divide_d_by_x:loc_C7DA↓o
 ; Segment type:	Pure code
 				;.segment ROM
 				.org 0C000h
-unk_C000:			.db  5Fh ; _			; DATA XREF: factory_self_test+EE↓o
+								; The ROM base, and the start address of the checksum self test:
+								; factory_self_test does ld x, #rom_start / clr a / clr b / ld y, #unk_100
+								; and sums 256 words. Named to match the DIAG16 variants, which have always
+								; written this as `ld x, #rom_start` (there the label sits under .org 8000h
+								; so their diagnostic block is covered by the sum too).
+								; NOT "ROM signature bytes" - session_journal.md said that in two places and
+								; it was wrong; 5Fh here is just the first fill byte at C000h.
+								; Renaming it is safe for tools: build_image.py locates the self test by its
+								; BYTE pattern in the finished image and reads the ld x operand, so it never
+								; sees this symbol name.
+rom_start:			.db  5Fh ; _			; DATA XREF: factory_self_test+EE↓o
 								; ROM origin (0xC000) itself - 3 bytes of
 								; 0x5F, read by factory_self_test's factory self-
 								; test/RAM-test routine, likely a known-
@@ -4501,16 +4511,29 @@ table_iscv_rpm_C361:		.db 7Dh, 6Ah, 7Ah, 85h,	95h	; DATA XREF: calc_iscv+1E7↓o
 				.db 7Dh
 
 
-byte_C36C:			.db 70h, 90h			; DATA XREF: calc_iscv+D5↓o
+								; Three alternate 2-byte idle-trim tables, selected in calc_iscv at
+								; +D5/+E1/+E7: the base pair, the electrical-load (ELS) pair when
+								; var_flags_4F.1 is clear, and the ECO pair otherwise. inc_rX_if picks
+								; which of the two bytes to read.
+								; Names taken from D151804-0461, which had them all along - the port
+								; that created that ROM ran 9651 -> 0461, so names 0461 already carried
+								; never travelled back. rom_port will not propose these: it only maps
+								; symbols through EXACTLY matching function pairs, and calc_iscv differs
+								; between the two ROMs by enough immediates to land in the fuzzy set.
+								; Verified by hand instead - the code around all three loads is
+								; instruction-for-instruction identical in both ROMs. The table VALUES
+								; differ (70h,90h here vs 60h,70h in 0461), which is calibration, not a
+								; different meaning.
+idle_trim:			.db 70h, 90h			; DATA XREF: calc_iscv+D5↓o
 								; ISC set-point byte stepped by inc_rX_if, one of
-								; the byte_C36C/C36E/C370 group selected by
+								; the idle_trim/C36E/C370 group selected by
 								; var_flags_4F.1. The result feeds
 								; var_iscv_unk_1AD's ramp.
-byte_C36E:			.db 0A0h, 0B0h			; DATA XREF: calc_iscv+E1↓o
+idle_trim_els:			.db 0A0h, 0B0h			; DATA XREF: calc_iscv+E1↓o
 								; Alternate ISC set-point, selected against
-								; byte_C370 by var_flags_4F.1 - see byte_C36C.
-byte_C370:			.db 70h, 90h			; DATA XREF: calc_iscv+E7↓o
-								; Alternate ISC set-point - see byte_C36C.
+								; idle_trim_eco by var_flags_4F.1 - see idle_trim.
+idle_trim_eco:			.db 70h, 90h			; DATA XREF: calc_iscv+E7↓o
+								; Alternate ISC set-point - see idle_trim.
 byte_C372:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
 								; ISC set-point pair with byte_C374, selected by
 								; var_flags_4F.1 and reached only when
@@ -4588,7 +4611,15 @@ inj_pw_limits:			.dw 7530h, 00AFh		; DATA XREF: divide_d_by_x:loc_E719↓o
 								; divide_d_by_x+2181↓t
 nv_98_limits:			.db 64h, 37h			; DATA XREF: adc_handler_pim+98↓o
 								; adc_handler_pim+9B↓t ...
-byte_C3BF:			.db 88h, 2Ah			; DATA XREF: calc_4ms_corrections:loc_EDC1↓o
+								; Clamp limit pair for var_ign_advance_trim, reached the same way as every
+								; other pair around it: ld y, #<label> then jsr y + (clamp_rB - <label>),
+								; with calc_4ms_corrections storing the clamped B straight into
+								; var_ign_advance_trim at loc_EDC1.
+								; It was the only unnamed entry in an otherwise named run of limit pairs
+								; (nv_96_limits, inj_pw_limits, nv_98_limits, HERE, ram_1BE_limits,
+								; idle_trim_limits, pim_adc_limits), which is what identifies it - the
+								; convention, the neighbours and the call idiom all agree.
+ign_advance_trim_limits:			.db 88h, 2Ah			; DATA XREF: calc_4ms_corrections:loc_EDC1↓o
 								; calc_4ms_corrections+3A2↓t
 ram_1BE_limits:			.dw 0500h, 0000h		; DATA XREF: divide_d_by_x:loc_DA45↓o
 								; divide_d_by_x+14AD↓t ...
@@ -8887,14 +8918,27 @@ open_loop_mode_D0A9:						; CODE XREF: divide_d_by_x+AEB↑j
 
 ; END OF FUNCTION CHUNK	FOR divide_d_by_x
 ; ───────────────────────────────────────────────────────────────────────────
-word_D0AC:			.dw 031Fh			; DATA XREF: divide_d_by_x:loc_D0AF↓o
+								; PIM (load) axis header for the NV AFR trim table - three bytes, in the
+								; layout table_rD_clamp documents: word 0 = x_start (031Fh), byte 2 =
+								; max_index (06h). Not a table itself; the y[] values it indexes live in
+								; battery-backed NV RAM at nv_afr_trim_base (0086h-0093h), not after this
+								; header, which is why it looks like a stray 3-byte constant.
+								; Both consumers use it the same way and both then index that NV table,
+								; which is what settles the name:
+								;   loc_D0AF          divide_rD_8, table_rD_clamp, inc a, shl a, then
+								;                     ld x, #nv_afr_trim_base / add x, a
+								;   read_nv_afr_trim  same clamp, then ld y, #0088h (= base+2) / add y, a,
+								;                     reading y+00h and y+02h as an interpolation pair
+								; max_index 6 with the index doubled covers the 12 payload bytes, which
+								; agrees with the cell count in docs/fuel_calculation_system.md.
+afr_trim_pim_axis:			.dw 031Fh			; DATA XREF: divide_d_by_x:loc_D0AF↓o
 								; read_nv_afr_trim:loc_D1AD↓o
 				.db 06h
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
 loc_D0AF:							; CODE XREF: divide_d_by_x+B0C↑j
-				ld	y, #word_D0AC
+				ld	y, #afr_trim_pim_axis
 				jsr	divide_rD_8
 
 				jsr	table_rD_clamp
@@ -9145,7 +9189,7 @@ read_nv_afr_trim:							; CODE XREF: apply_enrich_and_trims+28↓p
 ; ───────────────────────────────────────────────────────────────────────────
 
 loc_D1AD:							; CODE XREF: read_nv_afr_trim+5↑j
-				ld	y, #word_D0AC
+				ld	y, #afr_trim_pim_axis
 				ld	d, var_pim2
 				sub	d, #0409h
 				bcc	loc_D1B9
@@ -10020,10 +10064,10 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;   - unk_1AB: 0x200 during the first 15 ticks if CPU2 cold-enrichment
 ;     (dmarx_enrichment_unk_236) is active, else 0 once var_cnt_EA elapses
 ;   - unk_1AD: ramps +/-2/tick toward a load-dependent set-point selected
-;     from byte_C36C/C372/C374 via var_flags_4F bits 1/2/3/4 (hypothesis:
+;     from idle_trim/C372/C374 via var_flags_4F bits 1/2/3/4 (hypothesis:
 ;     these consolidate raw A/C (var_diag_errors_5.5) and PS/IDUP
 ;     (var_io_input2.3) switch state for idle-up compensation - not confirmed)
-;   - byte_C36C/C36E/C370 threshold check sets var_diag_errors_5.0 and feeds
+;   - idle_trim/C36E/C370 threshold check sets var_diag_errors_5.0 and feeds
 ;     negate_rD_if_marked + var_iscv_diag_term (exact meaning of this
 ;     diagnostic-linked term not confirmed)
 ;   - var_iscv_target_rpm = unk_1AD + unk_1A9 + unk_1AB + table_iscv_C391
@@ -10292,17 +10336,17 @@ loc_D59A:							; CODE XREF: calc_iscv+CA↑j
 
 loc_D59B:							; CODE XREF: calc_iscv+A1↑j
 				st	d, var_iscv_unk_1AD
-				ld	x, #byte_C36C
+				ld	x, #idle_trim
 				bsr	inc_rX_if
 
 				ld	a, x + 00h
 				tbbc	bit6, var_flags_46, loc_D5CE
 
 				clrb	bit0, var_diag_errors_5
-				ld	x, #byte_C36E
+				ld	x, #idle_trim_els
 				tbbc	bit1, var_flags_4F, loc_D5B3
 
-				ld	x, #byte_C370
+				ld	x, #idle_trim_eco
 
 loc_D5B3:							; CODE XREF: calc_iscv+E4↑j
 				bsr	inc_rX_if
@@ -13389,7 +13433,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ; var_flags_40.0's declaration comment.
 ;
 ; It also drives the MIL directly (PORTD_ASRIN.1) to report results, checks
-; the ROM signature bytes at unk_C000, and pats the watchdog itself
+; the ROM signature bytes at rom_start, and pats the watchdog itself
 ; (watchdog_kick) because the test loops run far longer than the normal
 ; service interval.
 ;
@@ -13401,7 +13445,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ; this pass needed.
 ;
 ; Reads: var_io_input1, var_io_input2, var_trac_tps_raw, var_tps_raw,
-;   var_nv_tps, var_rpm_x_5p12, var_speed_kph, unk_100, unk_C000,
+;   var_nv_tps, var_rpm_x_5p12, var_speed_kph, unk_100, rom_start,
 ;   dmarx_ign_advance_hi_245, dmarx_status2_244
 ; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, dmatx_selftest_code1,
 ;   dmatx_selftest_code2
@@ -13615,7 +13659,7 @@ loc_E1F2:							; CODE XREF: factory_self_test+E5↓j
 
 ;Start of ROM test, checksums ROM to make sure it sums to 0xAA55
 
-				ld	x, #unk_C000		; Load X with address of start of ROM
+				ld	x, #rom_start		; Load X with address of start of ROM
 				clr	a			; Clear	16 bit checksum
 				clr	b
 
@@ -16791,8 +16835,8 @@ loc_EDC0:							; CODE XREF: calc_4ms_corrections+399↑j
 
 loc_EDC1:							; CODE XREF: calc_4ms_corrections+368↑j
 								; calc_4ms_corrections+397↑j
-				ld	y, #byte_C3BF
-				jsr	y + (clamp_rB -	byte_C3BF)
+				ld	y, #ign_advance_trim_limits
+				jsr	y + (clamp_rB -	ign_advance_trim_limits)
 
 				st	b, var_ign_advance_trim
 				bra	loc_EE1D
