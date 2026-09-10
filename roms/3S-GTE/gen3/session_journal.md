@@ -2690,7 +2690,7 @@ actual code (comments stripped) gives the true figures:
 
 Of those, a good share are deliberately left: the ramp-limiter cluster
 (`unk_1C0/1C2/1C4/1C6/1C8`) has no single fixed identity by design, `unk_1CF`
-is the short-lived alias, `unk_C000` is ROM signature bytes, `unk_7F` is a
+is the short-lived alias, `rom_start` (was `unk_C000`) is the ROM base and the checksum self test's start address, not signature bytes, `unk_7F` is a
 RAM-region boundary sentinel, `unk_1C`/`unk_1D` are reserved-range hardware
 registers, and `unk_223` is factory-self-test scratch. Each says so at its
 declaration. Every one carries
@@ -2806,7 +2806,7 @@ reason recorded at each declaration:
 |---|---|
 | `unk_1C0/1C2/1C4/1C6/1C8` | the ramp-limiter cluster - no single fixed identity by design |
 | `unk_1CF` | the short-lived alias |
-| `unk_C000` | ROM signature bytes, not a variable |
+| `rom_start` (was `unk_C000`) | The ROM base at C000h, and the address factory_self_test's checksum loop sums from. Earlier described here as "ROM signature bytes", which was wrong |
 | `unk_7F` | RAM-region boundary sentinel |
 | `unk_1C`, `unk_1D` | reserved-range hardware registers |
 | `unk_223` | factory-self-test scratch |
