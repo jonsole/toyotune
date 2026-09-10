@@ -35,8 +35,12 @@ MATCHER = os.path.join(HERE, 'verify_assembly_match.py')
 
 #: Sources that are known not to assemble, with the reason. Skipped rather than
 #: reported as failures, so a real regression stays visible.
+#: Keys are compared case-INSENSITIVELY. This file is `.asm` on disk while the
+#: key was written `.ASM`, so the entry matched nothing and the source was
+#: reported as a fresh failure on every run - the exact noise this table exists
+#: to prevent.
 KNOWN_BAD = {
-    'D151804-0401_DIAG16_32K.ASM': 'does not assemble; see CLAUDE.md INSTALL.md note',
+    'd151804-0401_diag16_32k.asm': 'does not assemble; see CLAUDE.md INSTALL.md note',
 }
 
 
@@ -49,7 +53,36 @@ def digest(path):
         return hashlib.sha256(handle.read()).hexdigest()
 
 
+def ignored_by_git(relpaths):
+    """The subset of `relpaths` (repo-relative, / separated) that git ignores.
+
+    Scratch copies live in the tree on purpose - roms/d8x_assembler/ keeps two
+    ROM sources and a .BIN to test the assembler against, all listed in
+    .gitignore. They are not repo content, so a stale one must not be reported
+    as a repo-wide regression; that happened, and the "failure" was in a file
+    that would not exist in a fresh clone. Deleting them would be wrong - they
+    are deliberate - so skip them instead.
+
+    One `git check-ignore` call for the whole set rather than one per file. If
+    git is unavailable, ignore nothing rather than guessing.
+    """
+    if not relpaths:
+        return set()
+    try:
+        result = subprocess.run(['git', 'check-ignore', '--stdin'], cwd=REPO,
+                                input=chr(10).join(relpaths).encode(),
+                                capture_output=True)
+    except OSError:
+        return set()
+    # check-ignore exits 1 when nothing matched, which is not an error here.
+    if result.returncode not in (0, 1):
+        return set()
+    return {line.strip().replace(chr(92), '/')
+            for line in result.stdout.decode('utf-8', 'replace').splitlines() if line.strip()}
+
+
 def find_sources(roots):
+    found = []
     for root in roots:
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = [d for d in dirnames if d not in ('output', '__pycache__', '.git')]
@@ -58,7 +91,12 @@ def find_sources(roots):
                     continue
                 if ' - Copy' in name:           # superseded snapshots, see CLAUDE.md
                     continue
-                yield os.path.join(dirpath, name)
+                found.append(os.path.join(dirpath, name))
+    rels = [os.path.relpath(f, REPO).replace(os.sep, '/') for f in found]
+    ignored = ignored_by_git(rels)
+    for path, rel in zip(found, rels):
+        if rel not in ignored:
+            yield path
 
 
 def shipped_image(source):
@@ -126,8 +164,8 @@ def main(argv=None):
     for source in find_sources(args.roots):
         rel = os.path.relpath(source, REPO).replace('\\', '/')
         name = os.path.basename(source)
-        if name in KNOWN_BAD:
-            rows.append((rel, 'skipped', KNOWN_BAD[name], ''))
+        if name.lower() in KNOWN_BAD:
+            rows.append((rel, 'skipped', KNOWN_BAD[name.lower()], ''))
             continue
 
         image = shipped_image(source)
