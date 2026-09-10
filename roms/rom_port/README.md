@@ -104,7 +104,16 @@ must fall in RAM (≤0x3FF) or ROM (0xC000–0xFFFF); two-digit runs that are no
 an address anywhere in the pair, like the `32` in `divide_rD_32`, are left
 alone.
 
-**`adc` is three valid hex digits.** Fragments are matched uppercase-only.
+**`adc` is three valid hex digits.** Fragments are matched uppercase-only at
+two and three digits, for exactly this reason. **Four-digit fragments are
+matched in either case**, because hand-names here are inconsistent about it -
+`table_rpm_c2fc` and `map_3d_C006` are the same convention - and an
+uppercase-only rule silently skipped the lowercase ones. Skipped means not
+adapted *and* not refused, so the source ROM's address was copied straight
+into the target's name: `table_rpm_c31d` was proposed verbatim for a table
+that lives at C2FC in the target. Note which way the remaining risk falls - a
+four-digit false positive (`_face_`, `_dead_`) costs a **refused** rename,
+never a wrong one.
 
 **A name can carry a CPU2 address.** `dmarx_max_retard_23B_161` holds a CPU1
 address *and* a CPU2 one. Rewriting the CPU2 half with a CPU1 map silently

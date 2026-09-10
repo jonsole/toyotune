@@ -12,7 +12,17 @@ from d8x_source import (ram_symbols, defined_labels, AUTO, plausible_address)
 
 #: An address embedded in a name, e.g. the 187 in `inc_cnt_187`. Uppercase
 #: only: `adc` is three valid hex digits but is not an address.
-FRAGMENT = re.compile(r'(?<=_)([0-9A-F]{2,4})(?=_|$)')
+# Uppercase 2-4 digits, or FOUR digits of any case. The lowercase arm exists
+# because hand-names in this repo are inconsistent about it -- `table_rpm_c2fc`
+# and `map_3d_C006` are the same convention -- and an uppercase-only pattern
+# silently skipped the lowercase ones: not detected, so not adapted AND not
+# refused, leaving the source ROM's address stamped into the target's name.
+# `table_rpm_c2fc -> table_rpm_c31d` was a real instance.
+# Lowercase is allowed only at 4 digits: two-digit lowercase runs like the
+# `fe` in a hypothetical `var_fe_x` are plausible RAM addresses and would
+# false-positive constantly. At 4 digits a false positive costs a REFUSED
+# rename, never a wrong one, which is the safe direction to err in.
+FRAGMENT = re.compile(r'(?<=_)([0-9A-F]{2,4}|[0-9a-fA-F]{4})(?=_|$)')
 IDENTIFIER = re.compile(r'^[A-Za-z_]\w*$')
 
 
