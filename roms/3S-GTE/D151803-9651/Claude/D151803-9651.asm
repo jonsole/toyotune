@@ -724,7 +724,7 @@ var_flags_47:			.block 1			; DATA XREF: update_tps_closed_ref+3↓r
 								;   both likely feed acceleration/
 								;   deceleration enrichment logic
 								;   downstream, not yet traced that far.
-var_diag_errors_5:		.block 1			; DATA XREF: check_knock_sensor_err_flag↓r
+var_diag_errors_5:		.block 1			; DATA XREF: negate_rD_if_marked↓r
 								; calc_rpm_delta+12↓r	...
 								; 48.0 - NOT knock/RPM-specific despite
 								;   its name or the old "RPM rising or
@@ -732,7 +732,7 @@ var_diag_errors_5:		.block 1			; DATA XREF: check_knock_sensor_err_flag↓r
 								;   generic "did we negate D for an abs()"
 								;   remember-bit shared across unrelated
 								;   computations via set_knock_sensor_err_
-								;   flag/check_knock_sensor_err_flag's
+								;   flag/negate_rD_if_marked's
 								;   fall-through trick - see the full
 								;   writeup on those functions' own header
 								;   above (confirmed reused at
@@ -5423,20 +5423,20 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 
 
 ; ---------------------------------------------------------------------------
-; set_knock_sensor_err_flag / check_knock_sensor_err_flag / negate_rD: three
+; negate_rD_mark / negate_rD_if_marked / negate_rD: three
 ; functions sharing one tail, via deliberate fall-through (no `ret` between
 ; them) - not a bug, a ROM-space-saving trick in the same family as the
 ; documented "variable-aliasing code-reuse trick" (see architecture notes),
 ; just fall-through-based instead of aliasing-based:
 ;
-; - `set_knock_sensor_err_flag`: sets var_diag_errors_5.0, then falls
+; - `negate_rD_mark`: sets var_diag_errors_5.0, then falls
 ;   through into check's body below - since the flag it just set is now
 ;   guaranteed set, that unconditionally negates D too (falls all the way
 ;   through into negate_rD). So calling this doesn't just set a flag - it
 ;   ALSO unconditionally negates whatever's currently in D.
-; - `check_knock_sensor_err_flag`: if var_diag_errors_5.0 is clear, returns
+; - `negate_rD_if_marked`: if var_diag_errors_5.0 is clear, returns
 ;   immediately (unchanged D); if set, falls through into negate_rD and
-;   negates D. I.e. "negate D if the flag from a set_knock_sensor_err_flag
+;   negates D. I.e. "negate D if the flag from a negate_rD_mark
 ;   call earlier in this same computation is set."
 ; - `negate_rD`: plain two's-complement negate of D (A:B), standalone
 ;   entry point for callers that just want a negate with no flag involved.
@@ -5448,13 +5448,24 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 ; previously flagged that calc_iscv site's purpose as "not fully
 ; confirmed"; this is the resolution). The pattern at each call site:
 ; compute a delta that may have underflowed (carry set), conditionally
-; call set_knock_sensor_err_flag to negate it into a magnitude and record
+; call negate_rD_mark to negate it into a magnitude and record
 ; that a flip happened, do further math on the now-positive value, then
-; call check_knock_sensor_err_flag to flip the sign back before use/store -
+; call negate_rD_if_marked to flip the sign back before use/store -
 ; a disguised, flag-remembered abs()/restore-sign idiom. Only genuinely
 ; about the knock sensor at knock-subsystem call sites (e.g.
 ; knock_mcu_update) - elsewhere it's purely borrowed for this negate
 ; trick, unrelated to actual knock sensor state.
+;
+; CORRECTION: an earlier version of this header said the flag is "only
+; genuinely about the knock sensor at knock-subsystem call sites (e.g.
+; knock_mcu_update)". There are no such call sites. All 17 calls to the
+; two functions come from calc_dmatx_pim, no_enrichment, ramp_limit_inj_pw,
+; ramp_limit_inj_pw_simple, update_ign_timing_blend and calc_iscv -
+; manifold pressure, fuel, ignition and idle. knock_mcu_update calls
+; neither. The knock association was entirely in the names, which is why
+; they have now been changed: set_knock_sensor_err_flag -> negate_rD_mark
+; and check_knock_sensor_err_flag -> negate_rD_if_marked, matching the
+; existing negate_rD entry point they share.
 ; ---------------------------------------------------------------------------
 
 ;Inputs
@@ -5467,10 +5478,10 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 ; Reads: (none)
 ; Writes: var_diag_errors_5
 ; ---------------------------------------------------------------------------
-set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
+negate_rD_mark:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 								; ramp_limit_inj_pw_simple+A↓p ...
 				setb	bit0, var_diag_errors_5
-; End of function set_knock_sensor_err_flag
+; End of function negate_rD_mark
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -5478,7 +5489,7 @@ set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 
 ;Inputs
 ;    D - Value to conditionally negate.
-;    var_diag_errors_5.0 - Set by an earlier set_knock_sensor_err_flag
+;    var_diag_errors_5.0 - Set by an earlier negate_rD_mark
 ;        call in this same computation.
 ;Outputs
 ;    D - Negated if var_diag_errors_5.0 was set, else unchanged.
@@ -5487,11 +5498,11 @@ set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 ; Reads: var_diag_errors_5
 ; Writes: (none)
 ; ---------------------------------------------------------------------------
-check_knock_sensor_err_flag:					; CODE XREF: calc_iscv+F6↓p
+negate_rD_if_marked:					; CODE XREF: calc_iscv+F6↓p
 								; divide_d_by_x+1F85↓p ...
 				tbbc	bit0, var_diag_errors_5, locret_C4F0
 
-; End of function check_knock_sensor_err_flag
+; End of function negate_rD_if_marked
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -5508,7 +5519,7 @@ negate_rD:							; CODE XREF: divide_d_by_x+BAF↓p
 				neg	b
 				subc	a, #00h
 
-locret_C4F0:							; CODE XREF: check_knock_sensor_err_flag↑j
+locret_C4F0:							; CODE XREF: negate_rD_if_marked↑j
 				ret
 
 ; End of function negate_rD
@@ -5521,7 +5532,7 @@ locret_C4F0:							; CODE XREF: check_knock_sensor_err_flag↑j
 ; add_d_base_offset: zero-extend B to 16 bits and add a fixed 0x180 bias,
 ; then FALL THROUGH into the multiply family below (no `ret` here) - the
 ; same fall-through code-reuse trick documented for
-; set_knock_sensor_err_flag/negate_rD.
+; negate_rD_mark/negate_rD.
 ;
 ; Inputs
 ;    B - 8-bit value to bias (A is discarded, not read).
@@ -9915,7 +9926,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     these consolidate raw A/C (var_diag_errors_5.5) and PS/IDUP
 ;     (var_io_input2.3) switch state for idle-up compensation - not confirmed)
 ;   - byte_C36C/C36E/C370 threshold check sets var_diag_errors_5.0 and feeds
-;     check_knock_sensor_err_flag + var_iscv_diag_term (exact meaning of this
+;     negate_rD_if_marked + var_iscv_diag_term (exact meaning of this
 ;     diagnostic-linked term not confirmed)
 ;   - var_iscv_target_rpm = unk_1AD + unk_1A9 + unk_1AB + table_iscv_C391
 ;     entry (selected by var_io_input2 bits 6/7 - load switches, meaning
@@ -9986,7 +9997,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ; Calls: table_ect_pair_interpolate, table_rA_pair_interpolate,
 ;   table_rB_fixed_16_interpolate, map_rD_rX_interpolate, divide_rD_16,
 ;   divide_rD_16_saturate, divide_rD_64, inc_rX_if,
-;   check_knock_sensor_err_flag (for its negate side effect, NOT knock
+;   negate_rD_if_marked (for its negate side effect, NOT knock
 ;   handling - see that function's header), write_rB_nv_ram
 ; ---------------------------------------------------------------------------
 
@@ -10209,7 +10220,7 @@ loc_D5B3:							; CODE XREF: calc_iscv+E4↑j
 loc_D5BC:							; CODE XREF: calc_iscv+EE↑j
 				neg	a
 				mul	a, #10h
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				add	d, var_iscv_unk_1AD
 				bpz	loc_D5C9
@@ -11737,7 +11748,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;   nothing in between modifies it): "diagnostic-only" mode. Only computes a
 ;   ratio-deviation value (unk_1C2 vs 0xCCCD, scaled by the unk_1C0
 ;   candidate via mult_rDrX) and flags var_diag_errors_5.0 via
-;   set_knock_sensor_err_flag if unk_1C2 was below nominal - the result is
+;   negate_rD_mark if unk_1C2 was below nominal - the result is
 ;   left in D for the CALLER to consume (calc_inj_pw_base's loc_D9FA does
 ;   exactly this, storing the return value into unk_1C4) and none of
 ;   var_inj_pw_base/unk_1C0/unk_1C6 are touched. Exits via loc_DC3A, which
@@ -11793,7 +11804,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ; Reads: unk_1C2, unk_1C8, var_pw_loop_mode
 ; Writes: unk_1C0, unk_1C4, unk_1C6, var_diag_errors_5, var_inj_pw_base,
 ;    var_trim_state_alias
-; Calls: mult_rDrX, set_knock_sensor_err_flag
+; Calls: mult_rDrX, negate_rD_mark
 ; ---------------------------------------------------------------------------
 ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+146F↑p
 								; apply_enrich_and_trims+46↓p
@@ -11815,7 +11826,7 @@ loc_DBB5:							; CODE XREF: ramp_limit_inj_pw+5↑j
 				sub	d, #0CCCDh
 				bcc	loc_DBC0
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_DBC0:							; CODE XREF: ramp_limit_inj_pw+18↑j
@@ -11936,7 +11947,7 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ; ramp_limit_inj_pw_simple: fuel pulse-width limiter, alternate/simpler entry point
 ;
 ; Same 0xCCCD ramp-ratio pattern as ramp_limit_inj_pw (error-flags via
-; set_knock_sensor_err_flag on overflow, same variable cluster), but a
+; negate_rD_mark on overflow, same variable cluster), but a
 ; shorter, single-path version: D = var_inj_pw_base / (unk_1C4 - 0xCCCD)
 ; via divide_d_by_x, then the result is +/-0xCCCD-adjusted (sign per
 ; whether the divide's error flag fired) and stored to unk_1C2 - i.e. this
@@ -11958,7 +11969,7 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ; ---------------------------------------------------------------------------
 ; Reads: unk_1C4, var_inj_pw_base
 ; Writes: unk_1C2, var_diag_errors_5, var_trim_state_alias
-; Calls: set_knock_sensor_err_flag
+; Calls: negate_rD_mark
 ; ---------------------------------------------------------------------------
 ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+14C2↑p
 								; ROM:DAAF↑p ...
@@ -11967,7 +11978,7 @@ ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+14C2↑p
 				sub	d, #0CCCDh
 				bcc	loc_DC4A
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_DC4A:							; CODE XREF: ramp_limit_inj_pw_simple+8↑j
@@ -14264,7 +14275,7 @@ loc_E50C:							; CODE XREF: divide_d_by_x+1F6C↑j
 				sub	d, var_temp_b
 				bcc	loc_E51A
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E51A:							; CODE XREF: divide_d_by_x+1F7A↑j
@@ -14272,7 +14283,7 @@ loc_E51A:							; CODE XREF: divide_d_by_x+1F7A↑j
 				ld	a, #19h
 				jsr	mult_rArX
 
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				tbbc	bit1, var_diag_errors_5, loc_E52B
 
@@ -14357,7 +14368,7 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ; (hence the old var_unk_knk_* names on its state, now corrected). It is not
 ; knock-related at all: the give-away is loc_E627, its single exit point,
 ; which stores D to dmatx_pim. Everything above that exists to decide what
-; goes in there. The set_knock_sensor_err_flag / check_knock_sensor_err_flag
+; goes in there. The negate_rD_mark / negate_rD_if_marked
 ; pair it calls is only the generic abs()/restore-sign primitive - see those
 ; functions' own header.
 ;
@@ -14428,7 +14439,7 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ;   var_temp_7A, var_temp_7B
 ; Calls: get_tps_load_div8, get_tps_unk, calc_transient_terms, mult_rBrX2, mult_rArX, mult_rDrX,
 ;   divide_rD_32_saturate, divide_rD_64, signed_proportional_update,
-;   set_knock_sensor_err_flag, check_knock_sensor_err_flag
+;   negate_rD_mark, negate_rD_if_marked
 ; ---------------------------------------------------------------------------
 
 calc_dmatx_pim:							; CODE XREF: divide_d_by_x+48E↑p
@@ -14561,7 +14572,7 @@ loc_E5E4:							; CODE XREF: divide_d_by_x+2055↓j
 				sub	d, var_pim_est_slow
 				bcc	loc_E5FC
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E5FC:							; CODE XREF: divide_d_by_x+205C↑j
@@ -14583,7 +14594,7 @@ loc_E5FC:							; CODE XREF: divide_d_by_x+205C↑j
 
 loc_E611:							; CODE XREF: divide_d_by_x+2066↑j
 				pull	d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				tbbc	bit0, var_diag_errors_5, loc_E620
 
@@ -15276,7 +15287,7 @@ locret_E864:							; CODE XREF: scale_by_dmarx_241+10↑j
 ;
 ; not the /256 that mult_rDrX's normal D output would give.
 ;
-; check_knock_sensor_err_flag then restores the sign (its usual abs()/restore
+; negate_rD_if_marked then restores the sign (its usual abs()/restore
 ; role, nothing to do with knock), and the term accumulates into var_ign_blend_accum with
 ; SIGNED saturation: on overflow D is set to 0x7FFF, and if the sign flag is
 ; set the following `inc a`/`inc b` carries that 0x7FFF to 0x8000 - i.e. it
@@ -15352,7 +15363,7 @@ loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 ; (whichever's larger/smaller each becomes the clamp bound), using
 ; var_diag_errors_5.0 purely as this function's OWN local "did the
 ; clamped value drop since last tick" flag - NOT knock-sensor fault
-; handling despite the flag's name (see set_knock_sensor_err_flag's own
+; handling despite the flag's name (see negate_rD_mark's own
 ; header comment above: it's a repo-wide reused negate/abs() remember-
 ; bit, unrelated to real knock sensor state outside the actual knock
 ; subsystem). That flag then selects dmarx_ign_timing_fallback2/2 vs the
@@ -15381,7 +15392,7 @@ loc_E89D:							; CODE XREF: update_ign_timing_blend+32↑j
 				sub	d, var_ign_blend_hist0
 				bcc	loc_E8B5
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E8B5:							; CODE XREF: update_ign_timing_blend+4B↑j
@@ -15407,7 +15418,7 @@ loc_E8CA:							; CODE XREF: update_ign_timing_blend+62↑j
 
 				mov	x, d			; D = X (src,dest): take the MSW, DISCARDING mult_rDrX's D.
 								; Net effect is *128 then >>16, i.e. term = A*|excursion|/512
-				jsr	check_knock_sensor_err_flag	; Restore sign (generic abs() helper, not knock)
+				jsr	negate_rD_if_marked	; Restore sign (generic abs() helper, not knock)
 
 				add	d, var_ign_blend_accum		; Accumulate the blend term
 				bvc	loc_E8E0		; No signed overflow: store as-is
@@ -15462,7 +15473,7 @@ loc_E907:							; CODE XREF: update_ign_timing_blend+98↑j
 				clrb	bit0, var_diag_errors_5
 				bcc	loc_E921
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E921:							; CODE XREF: update_ign_timing_blend+B7↑j
@@ -15511,7 +15522,7 @@ loc_E94F:							; CODE XREF: update_ign_timing_blend+E7↑j
 				ld	d, #7FFFh
 
 loc_E95B:							; CODE XREF: update_ign_timing_blend+F1↑j
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				st	d, var_temp_7A
 				ld	x, var_temp_w
@@ -15520,14 +15531,14 @@ loc_E95B:							; CODE XREF: update_ign_timing_blend+F1↑j
 				jsr	mult_rDrX
 
 				mov	x, d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				st	d, var_temp_w
 				clrb	bit0, var_diag_errors_5
 				ld	d, var_ign_blend_accum
 				bpz	loc_E978
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E978:							; CODE XREF: update_ign_timing_blend+10E↑j
@@ -15551,7 +15562,7 @@ loc_E98D:							; CODE XREF: update_ign_timing_blend+124↑j
 				jsr	mult_rDrX
 
 				mov	x, d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				add	d, var_temp_w
 				bvc	loc_E9A0
@@ -15573,7 +15584,7 @@ loc_E9A0:							; CODE XREF: update_ign_timing_blend+131↑j
 
 				shr	d
 				shr	d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				add	d, var_temp_7A
 				bvc	loc_E9BC
@@ -15593,7 +15604,7 @@ loc_E9BC:							; CODE XREF: update_ign_timing_blend+14D↑j
 				cmpz	a
 				bpz	loc_E9C8
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 ; ---------------------------------------------------------------------------
@@ -15645,7 +15656,7 @@ loc_E9F9:							; CODE XREF: update_ign_timing_blend+189↑j
 
 				jsr	scale_d_by_a_frac
 
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 
 loc_EA05:

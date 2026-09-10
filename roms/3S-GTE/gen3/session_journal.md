@@ -15,6 +15,52 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Renaming the abs() helpers, and correcting what the header said about them
+Starting on 9651 itself, and the first thing worth knowing is that the "39%
+named" figure badly understates where it is. **All 158 functions are named**,
+and **409 of 425 RAM variables**. Of the 1178 symbols still carrying an IDA
+name, 1146 are `loc_`/`locret_` branch labels — internal jump targets, not
+things that want names. What actually remains is 16 unnamed RAM variables and
+about 30 ROM-side data tables. That is a finishable list, not a wall.
+
+**`set_knock_sensor_err_flag` and `check_knock_sensor_err_flag` have nothing to
+do with knock.** A previous session had already worked this out and written it
+up properly on `var_diag_errors_5`'s declaration and on the functions' own
+header: bit 0 is a generic "did I negate D for an abs()" remember-bit, and the
+pair is a disguised abs()/restore-sign idiom sharing a `negate_rD` tail. What
+never happened is the rename, so the misleading names stayed and kept doing
+their damage — they are what made me look twice at a knock reference in
+pulse-width code.
+
+Renamed to match the entry point they share:
+
+    set_knock_sensor_err_flag   -> negate_rD_mark
+    check_knock_sensor_err_flag -> negate_rD_if_marked
+
+Applied across 9651, 0461 and 0481 (9661 and 0471 have neither). All assemble
+byte-identical.
+
+**And a factual correction to that header.** It hedged that the flag is "only
+genuinely about the knock sensor at knock-subsystem call sites (e.g.
+`knock_mcu_update`)". There are no such call sites. All **17** calls come from
+`calc_dmatx_pim`, `no_enrichment`, `ramp_limit_inj_pw`,
+`ramp_limit_inj_pw_simple`, `update_ign_timing_blend` and `calc_iscv` —
+manifold pressure, fuel, ignition and idle. `knock_mcu_update` calls neither.
+The knock association existed only in the names.
+
+**Noted for whoever picks up the PW ramp limiter next:** `0CCCDh` is the zero
+point of a biased signed representation used throughout it —
+`reset_pw_ramp_limiter` initialises both `unk_1C2` and `unk_1C4` to exactly
+that, and every site does `sub d, #0CCCDh` to unbias, works on the magnitude,
+then `add d, #0CCCDh` to re-bias, with saturation to `0FFFFh` on overflow.
+`0CCCDh` is 0.8 x 65536, which is presumably where the choice comes from. The
+five variables in that cluster (`unk_1C0`-`unk_1C8`) are the most tractable of
+the 16 remaining, being one coherent subsystem, but they are not named here —
+I could describe the arithmetic without being able to say what each term *is*,
+and a guessed name is worse than none.
+
+---
+
 ### The three unreachable blocks: as far as static analysis goes
 Exhausted the comparative angles on 0471's PORTB.4 / PORTB.1 / DOUT.3 blocks.
 They remain unexplained, but the characterisation is now complete enough that

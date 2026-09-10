@@ -136,7 +136,7 @@ var_ignition_flags:		.block 1		; DATA XREF: iv6_ne_process+51↓r iv6_ne_process
 var_flags_46:		.block 1		; DATA XREF: watchdog_kick-16BF↓r
 					; watchdog_kick:loc_C92E↓r ...
 var_flags_47:		.block 1		; DATA XREF: update_tps_closed_ref+3↓r ROM:E121↓r ...
-var_diag_errors_5:		.block 1		; DATA XREF: check_knock_sensor_err_flag↓r	sub_C8F1+12↓r ...
+var_diag_errors_5:		.block 1		; DATA XREF: negate_rD_if_marked↓r	sub_C8F1+12↓r ...
 var_io_input1:		.block 1		; DATA XREF: watchdog_kick-1729↓r
 					; watchdog_kick-1726↓r ...
 var_io_input2:		.block 1		; DATA XREF: calc_iscv+D3↓r
@@ -2772,18 +2772,18 @@ locret_C4D6:				; CODE XREF: clamp_rD_FF+1↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-set_knock_sensor_err_flag:				; CODE XREF: watchdog_kick+292↓p ROM:E1AE↓p ...
+negate_rD_mark:				; CODE XREF: watchdog_kick+292↓p ROM:E1AE↓p ...
 		setb	bit0, var_diag_errors_5
-; End of function set_knock_sensor_err_flag
+; End of function negate_rD_mark
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_knock_sensor_err_flag:				; CODE XREF: calc_iscv+BA↓p
+negate_rD_if_marked:				; CODE XREF: calc_iscv+BA↓p
 					; watchdog_kick+29B↓p ...
 		tbbc	bit0, var_diag_errors_5, locret_C4E0
-; End of function check_knock_sensor_err_flag
+; End of function negate_rD_if_marked
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -2795,7 +2795,7 @@ negate_rD:				; CODE XREF: watchdog_kick-D39↓p
 		neg	b
 		subc	a, #00h
 
-locret_C4E0:				; CODE XREF: check_knock_sensor_err_flag↑j
+locret_C4E0:				; CODE XREF: negate_rD_if_marked↑j
 		ret
 ; End of function negate_rD
 
@@ -5873,7 +5873,7 @@ loc_D4F7:				; CODE XREF: calc_iscv+98↑j
 loc_D50F:				; CODE XREF: calc_iscv+B2↑j
 		neg	a
 		mul	a, #10h
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		bpz	loc_D519
 		clr	a
 		clr	b
@@ -7954,13 +7954,13 @@ loc_E0C5:				; CODE XREF: watchdog_kick+27B↑j
 loc_E0C8:				; CODE XREF: watchdog_kick+289↑j
 		sub	d, var_temp_b
 		bcc	loc_E0CF
-		jsr	set_knock_sensor_err_flag
+		jsr	negate_rD_mark
 
 loc_E0CF:				; CODE XREF: watchdog_kick+290↑j
 		mov	d, x
 		ld	a, #19h
 		jsr	mult_rArX
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		tbbc	bit1, var_diag_errors_5, loc_E0E0
 		add	d, #0010h
 		bvs	loc_E0E5
@@ -8117,7 +8117,7 @@ loc_E199:				; CODE XREF: ROM:E1A5↓j
 		clrb	bit0, var_diag_errors_5
 		sub	d, var_pim_est_slow
 		bcc	loc_E1B1
-		jsr	set_knock_sensor_err_flag
+		jsr	negate_rD_mark
 
 loc_E1B1:				; CODE XREF: ROM:E1AC↑j
 		push	d
@@ -8135,7 +8135,7 @@ loc_E1B1:				; CODE XREF: ROM:E1AC↑j
 
 loc_E1C6:				; CODE XREF: ROM:E1B6↑j
 		pull	d
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		tbbc	bit0, var_diag_errors_5, loc_E1D5
 		add	d, var_pim2
 		bcs	loc_E1DC
@@ -8585,7 +8585,7 @@ loc_E434:				; CODE XREF: update_ign_timing_blend+32↑j
 		clrb	bit0, var_diag_errors_5
 		sub	d, var_ign_blend_hist0
 		bcc	loc_E44C
-		jsr	set_knock_sensor_err_flag
+		jsr	negate_rD_mark
 
 loc_E44C:				; CODE XREF: update_ign_timing_blend+4B↑j
 		cmp	d, #0100h
@@ -8605,7 +8605,7 @@ loc_E461:				; CODE XREF: update_ign_timing_blend+62↑j
 		mul	a, #80h
 		jsr	mult_rDrX
 		mov	x, d
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		add	d, var_ign_blend_accum
 		bvc	loc_E477
 		ld	d, #7FFFh
@@ -8645,7 +8645,7 @@ loc_E49E:				; CODE XREF: update_ign_timing_blend+98↑j update_ign_timing_blend
 		st	x, var_ign_blend_hist0
 		clrb	bit0, var_diag_errors_5
 		bcc	loc_E4B8
-		jsr	set_knock_sensor_err_flag
+		jsr	negate_rD_mark
 
 loc_E4B8:				; CODE XREF: update_ign_timing_blend+B7↑j
 		mov	d, x
@@ -8685,19 +8685,19 @@ loc_E4E6:				; CODE XREF: update_ign_timing_blend+E7↑j
 		ld	d, #7FFFh
 
 loc_E4F2:				; CODE XREF: update_ign_timing_blend+F1↑j
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		st	d, var_temp_7A
 		ld	x, var_temp_w
 		pull	a
 		mul	a, #80h
 		jsr	mult_rDrX
 		mov	x, d
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		st	d, var_temp_w
 		clrb	bit0, var_diag_errors_5
 		ld	d, var_ign_blend_accum
 		bpz	loc_E50F
-		jsr	set_knock_sensor_err_flag
+		jsr	negate_rD_mark
 
 loc_E50F:				; CODE XREF: update_ign_timing_blend+10E↑j
 		mov	d, x
@@ -8718,7 +8718,7 @@ loc_E50F:				; CODE XREF: update_ign_timing_blend+10E↑j
 loc_E524:				; CODE XREF: update_ign_timing_blend+124↑j
 		jsr	mult_rDrX
 		mov	x, d
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		add	d, var_temp_w
 		bvc	loc_E537
 		ld	d, #7FFFh
@@ -8735,7 +8735,7 @@ loc_E537:				; CODE XREF: update_ign_timing_blend+131↑j
 		jsr	mult_rArX
 		shr	d
 		shr	d
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		add	d, var_temp_7A
 		bvc	loc_E553
 		ld	d, #7FFFh
@@ -8750,7 +8750,7 @@ loc_E553:				; CODE XREF: update_ign_timing_blend+14D↑j
 		clrb	bit0, var_diag_errors_5
 		cmpz	a
 		bpz	loc_E55F
-		jsr	set_knock_sensor_err_flag
+		jsr	negate_rD_mark
 
 loc_E55F:				; CODE XREF: update_ign_timing_blend+15E↑j
 		push	d
@@ -8785,7 +8785,7 @@ loc_E590:				; CODE XREF: update_ign_timing_blend+189↑j
 		shl	d
 		jsr	mult_rDrX
 		jsr	scale_d_by_a_frac
-		jsr	check_knock_sensor_err_flag
+		jsr	negate_rD_if_marked
 		st	d, var_ign_blend_out
 		jsr	decay_ign_ect_term
 
