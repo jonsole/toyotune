@@ -73,7 +73,7 @@ or Gen 2.
 | `D151804-0471` | JDM | ST205 Celica GT-Four | | **CPU2** | ASM, bin, idb, XDF, `Claude/` |
 | `D151804-0481` | UK | ST205 Celica GT-Four | | **CPU1** | ASM, bin, idb, `Claude/` |
 | `D151804-0491` | UK | ST205 Celica GT-Four | | **CPU2** | idb only — no ROM image |
-| `D151804-7720` | JDM | ST205 Celica GT-Four, 95+ | | unpaired here | bin, idb — no disassembly |
+| `D151804-7720` | JDM | ST205 Celica GT-Four, 95+ | | **CPU1** — revision of `-0461`, runs against `-0471` | bin, idb — no disassembly |
 
 Notes on the gaps:
 
@@ -87,9 +87,35 @@ Notes on the gaps:
   measure airflow directly (see below), so the speed-density arithmetic that
   occupies CPU2 in the Gen 3 ECU is not work they have to do — the second CPU
   may simply not be warranted. Not established either way.
-- **`D151804-7720`** has no partner listed in `roms.txt`, so which CPU it is
-  has not been confirmed. It has no disassembly either — only the ROM image
-  and an IDA database.
+- **`D151804-7720`** has no partner listed in `roms.txt`, and it does not need
+  one: it is a later **CPU1** that runs against the existing `-0471`, and no
+  revised CPU2 was ever made. It is `-0461` with 21 bytes of code inserted plus
+  a calibration refresh, established by diffing the two images:
+  - The 16400-byte `.BIN` is 16384 bytes of ROM based at `C000` followed by a
+    repeat of its own last 16 bytes — a dump artifact, not a header. Compare
+    from offset 0 or every address comes out 16 bytes wrong.
+  - It tracks `-0461` at shift 0 from `C000` to `D8FD` (identical for the first
+    1627 bytes, then ~25 scattered single-byte calibration differences).
+  - At `D8FD` a 65-byte block becomes an 86-byte one: **+0x15 bytes**, in two
+    pieces — 11 bytes after the first test, ~10 more shortly after — with the
+    preceding branch displacements grown by `0x0B` to match.
+  - From `D93E` (`-0461`) / `D953` (`-7720`) upward it is `-0461` shifted by
+    `+0x15`, with 102 small clusters (199 bytes) of further calibration change.
+  - The vector table is patched to suit: `F66C`→`F681`, `F714`→`F729`,
+    `EF26`→`EF3B`. `C003` and `C5E2` are unchanged, their targets being below
+    the insert.
+
+  `D8FD` lands in the **open-loop vs closed-loop selection for base injector
+  pulse width** — the gating chain from `loc_D8F6` to `loc_D922` that picks
+  between `init_pw_closed_loop` and `init_pw_open_loop` — so the insert reads
+  as extra conditions on closed-loop entry. Every input that chain tests
+  (`dmarx_enrichment_unk_22B`, `dmarx_warmup_enrichment_22A`,
+  `dmarx_enrichment_unk_230`, `dmarx_status1_23C`, `var_io_input1`,
+  `var_flags_40`/`_46`) already arrives in the existing 34-byte frame, which is
+  consistent with the DMA layout never having had to change. The inserted
+  opcodes have not been disassembled — that is the open question here, not what
+  the ROM is. Since `-0461` has an annotated `Claude/` copy and the two are
+  near-identical, `roms/rom_port/` should name `-7720` cheaply.
 - Only `-9651`, `-9661`, `-0461`, `-0471` and `-0481` have `Claude/` working copies, which are
   ahead of the parent `.ASM` in renames and comments. Edit those, not the
   parent, when doing RE work.

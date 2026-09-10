@@ -203,7 +203,25 @@ sites). Sizes in bytes.
 | 20 | `0x220` | `dmatx_flags_46` | 1 | `copy_dma_tx` ← `var_flags_46` | `0x42` | `dmarx_var_flags_46` | 16 sites — the most-read byte in the frame |
 | 21 | `0x221` | `dmatx_flags_1` | 1 | `copy_dma_tx`, built bitwise (below) | `0x4E` | `dmarx_flags_1` | `calc_params`, `factory_selfcheck`, OBD, clamp tables |
 | 22 | `0x222` | `dmatx_limiter_flags` | 1 | `copy_dma_tx` ← `var_limiter_flags` | `0x43` | `dmarx_limiter_flags` | `drive_DOUT0` |
-| 23–25 | `0x223`–`0x225` | `unk_223`, `word_224` | 3 | — | — | not copied out | — |
+| 23 | `0x223` | `dmatx_selftest_code1` | 1 | `factory_self_test` (2 sites) | — | not copied out | — |
+| 24 | `0x224` | `dmatx_selftest_code2` | 1 | `factory_self_test` + the routine it calls at `+A1` (4 sites) | — | not copied out | — |
+| 25 | `0x225` | `dmatx_selftest_unused_225` | 1 | **no writer anywhere** | — | not copied out | — |
+
+**The unconsumed tail (`0x223`-`0x225`) is the factory self-test's.** The
+table above used to record no writer for these three bytes. There is one:
+`dmatx_selftest_code1`/`_code2` are written on the factory self-test path
+only - `factory_self_test` itself plus the routine it calls at `+A1` - and
+are never read by either CPU. They encode observed input state against a
+nominal bit pattern, so a pin reading as expected leaves the base pattern
+intact and a mismatch shows as a flipped bit (`loc_E172`: base `15h`, flip
+bit0 on `PORTD_ASRIN.5`, bit2 on `PORTB.7`). `_code2` additionally carries a
+step tag in its high nibble (`0C0h`/`0A0h`/`80h`/`0E0h`). They ride the frame
+every 4 ms and are dropped at the far end; the consumer, if any, is a factory
+tester on the line rather than code in either ROM.
+
+`0x225` genuinely has no writer at all. It was previously the unwritten
+second half of a `word_224` declared `.block 2`, which implied a 16-bit value
+that never existed - every store to `0x224` is a byte store.
 
 **`dmatx_flags_1`**, built in `copy_dma_tx`:
 

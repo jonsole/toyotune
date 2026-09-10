@@ -15,6 +15,91 @@ Working file: D151803-9651.ASM (IDA Pro disassembly, CP437 encoding - see
 
 ---
 
+### Renaming the abs() helpers, and correcting what the header said about them
+Starting on 9651 itself, and the first thing worth knowing is that the "39%
+named" figure badly understates where it is. **All 158 functions are named**,
+and **409 of 425 RAM variables**. Of the 1178 symbols still carrying an IDA
+name, 1146 are `loc_`/`locret_` branch labels — internal jump targets, not
+things that want names. What actually remains is 16 unnamed RAM variables and
+about 30 ROM-side data tables. That is a finishable list, not a wall.
+
+**`set_knock_sensor_err_flag` and `check_knock_sensor_err_flag` have nothing to
+do with knock.** A previous session had already worked this out and written it
+up properly on `var_diag_errors_5`'s declaration and on the functions' own
+header: bit 0 is a generic "did I negate D for an abs()" remember-bit, and the
+pair is a disguised abs()/restore-sign idiom sharing a `negate_rD` tail. What
+never happened is the rename, so the misleading names stayed and kept doing
+their damage — they are what made me look twice at a knock reference in
+pulse-width code.
+
+Renamed to match the entry point they share:
+
+    set_knock_sensor_err_flag   -> negate_rD_mark
+    check_knock_sensor_err_flag -> negate_rD_if_marked
+
+Applied across 9651, 0461 and 0481 (9661 and 0471 have neither). All assemble
+byte-identical.
+
+**And a factual correction to that header.** It hedged that the flag is "only
+genuinely about the knock sensor at knock-subsystem call sites (e.g.
+`knock_mcu_update`)". There are no such call sites. All **17** calls come from
+`calc_dmatx_pim`, `no_enrichment`, `ramp_limit_inj_pw`,
+`ramp_limit_inj_pw_simple`, `update_ign_timing_blend` and `calc_iscv` —
+manifold pressure, fuel, ignition and idle. `knock_mcu_update` calls neither.
+The knock association existed only in the names.
+
+**Noted for whoever picks up the PW ramp limiter next:** `0CCCDh` is the zero
+point of a biased signed representation used throughout it —
+`reset_pw_ramp_limiter` initialises both `unk_1C2` and `unk_1C4` to exactly
+that, and every site does `sub d, #0CCCDh` to unbias, works on the magnitude,
+then `add d, #0CCCDh` to re-bias, with saturation to `0FFFFh` on overflow.
+`0CCCDh` is 0.8 x 65536, which is presumably where the choice comes from. The
+five variables in that cluster (`unk_1C0`-`unk_1C8`) are the most tractable of
+the 16 remaining, being one coherent subsystem, but they are not named here —
+I could describe the arithmetic without being able to say what each term *is*,
+and a guessed name is worse than none.
+
+*Update:* one of the five has since been named. `unk_1C4` is
+`var_fuel_trim_slow`, the long-term fuel trim — it turned out to carry a
+complete control law, which is what a guessed name would never have
+captured and what made it nameable on evidence (see the revision note
+further down, and `fuel_calculation_system.md`). The other four keep their
+`unk_` names on exactly the reasoning above: `unk_1C0`/`unk_1C6` are
+genuinely multi-role scratch, `unk_1C2` has a stable role but no name
+shorter than its description, and `unk_1C8` is a partially-traced
+pressure-linked bound.
+
+---
+
+### The three unreachable blocks: as far as static analysis goes
+Exhausted the comparative angles on 0471's PORTB.4 / PORTB.1 / DOUT.3 blocks.
+They remain unexplained, but the characterisation is now complete enough that
+the next step is a bench test rather than more reading.
+
+- **PORTB.1 and PORTB.4 are touched nowhere else** — not in 0471, not in 9661.
+  They exist solely for these blocks. PORTB.2, .3 and .5 all have other roles,
+  and PORTB.3 is the thermostatic output with hysteresis found earlier.
+- **The three pins move as a group, with PORTB.1 inverted** relative to the
+  other two. Condition met: PORTB.4 high, PORTB.1 low, DOUT.3 high for up to
+  ~1.95 s (`unk_B9`, `3Dh` ticks at ~32 ms) then low. Condition not met:
+  PORTB.4 low, PORTB.1 high, DOUT.3 low — exactly the state 9661 writes
+  unconditionally.
+- **`Jon_ST205_ECU`'s own 0471 build has identical thresholds**, so nobody has
+  ever tuned them. Stock and unreachable in every ST205 CPU2 image here.
+- No UK CPU2 image exists (`D151804-0491`), so there is no fourth variant to
+  compare against.
+
+**The experiment.** Force RPM to 8000 with the stimulator and fake an
+over-temperature coolant reading, then watch the three pins. Worth noting the
+stimulator's DAC drives MAP and throttle only — `spi_dac.h` says so — so ECT
+has to be faked with a resistor in place of the sensor rather than in
+firmware. Everything else needed is already on the bench.
+
+That is where I would leave it: the static evidence is exhausted, and one
+bench run would answer it outright.
+
+---
+
 ### Two DMA loose ends closed, and a paragraph I silently deleted
 **`word_16D` had a writer all along.** Recorded as "no writer found on CPU2",
 which was not a finding: my writer scan matched only stores to names beginning
@@ -1880,14 +1965,24 @@ fuel_calculation_system.md's "Branch-by-branch trace" section; header
 comments added at `ramp_limit_inj_pw`, `ramp_limit_inj_pw_simple`, and
 `calc_inj_pw_base` in the ASM.
 
-**Key finding:** `unk_1C0`/`unk_1C4`/`unk_1C6` do not have single fixed
-identities (candidate / carried-forward value / ceiling) - each gets
-overwritten with a different one of {fresh VE-map candidate,
-`var_adc_lambda`, the `unk_1C8` ceiling, a ratio-deviation result,
-`var_inj_pw_base`} depending on which branch runs. This explains why no
-clean rename was found in earlier passes - there isn't one to find.
+**Key finding (later revised - see below):** `unk_1C0`/`unk_1C4`/`unk_1C6` do
+not have single fixed identities (candidate / carried-forward value /
+ceiling) - each gets overwritten with a different one of {fresh VE-map
+candidate, `var_adc_lambda`, the `unk_1C8` ceiling, a ratio-deviation
+result, `var_inj_pw_base`} depending on which branch runs. This explains why
+no clean rename was found in earlier passes - there isn't one to find.
 `unk_1C2` is the one variable in this cluster with a stable role (a ratio,
 nominally `0xCCCD`).
+
+> **Revision:** `unk_1C4` has since been taken out of that list and named
+> `var_fuel_trim_slow`. It carries a complete long-term-trim control law
+> (coarse `+/-0x07AE` on the `var_lambda_avg` deadband, fine `+/-0x0010`
+> gated on the STFT rails, saturating, applied as a divisor on
+> `var_inj_pw_base`). The two `ramp_limit_inj_pw` writes that motivated the
+> original reading are the limiter *clamping* it to `unk_1C8` and writing
+> back its rate-limited result - operations on the trim, not rival meanings
+> for the slot. `unk_1C0`/`unk_1C6` keep their `unk_` names; that half of
+> the finding stands. See `fuel_calculation_system.md`.
 
 **Correction to a prior-session claim:** `ramp_limit_inj_pw_simple` is
 called from `loc_DA58` when `var_adc_lambda` (signed lambda sensor

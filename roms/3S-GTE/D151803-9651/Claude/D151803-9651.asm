@@ -724,7 +724,7 @@ var_flags_47:			.block 1			; DATA XREF: update_tps_closed_ref+3↓r
 								;   both likely feed acceleration/
 								;   deceleration enrichment logic
 								;   downstream, not yet traced that far.
-var_diag_errors_5:		.block 1			; DATA XREF: check_knock_sensor_err_flag↓r
+var_diag_errors_5:		.block 1			; DATA XREF: negate_rD_if_marked↓r
 								; calc_rpm_delta+12↓r	...
 								; 48.0 - NOT knock/RPM-specific despite
 								;   its name or the old "RPM rising or
@@ -732,7 +732,7 @@ var_diag_errors_5:		.block 1			; DATA XREF: check_knock_sensor_err_flag↓r
 								;   generic "did we negate D for an abs()"
 								;   remember-bit shared across unrelated
 								;   computations via set_knock_sensor_err_
-								;   flag/check_knock_sensor_err_flag's
+								;   flag/negate_rD_if_marked's
 								;   fall-through trick - see the full
 								;   writeup on those functions' own header
 								;   above (confirmed reused at
@@ -2206,7 +2206,12 @@ var_cnt_idle_dwell:				.block 1			; DATA XREF: calc_iscv:loc_D784↓w
 								; counter, and the read at loc_D791 is an
 								; elapsed-time test, not a plain value load.
 								; Purpose still not established.
-unk_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
+var_cnt_E3:				.block 1			; DATA XREF: ROM:loc_F577↓w
+								; Named var_cnt_E3 rather than left unk_: that it IS a counter is
+								; established (64 ms, saturating, member of the 0E1h-0E7h block
+								; advanced by COUNTER_ARG(var_cnt_E1, 7)); only its purpose is not.
+								; That is the same standing as var_cnt_E0/E1/E9/EA/EB around it,
+								; and it was the only unk_ left in an otherwise named run.
 								; Saturating counter, advanced every 64ms by
 								; increment_counters via COUNTER_ARG(var_cnt_E1, 7)
 								; called from bg_64ms_dispatch.
@@ -2427,9 +2432,22 @@ var_gearing:			.block 1			; DATA XREF: calc_4ms_corrections+9C↓r
 								; calc_4ms_corrections+EC↓r	...
 unk_FC:				.block 1			; DATA XREF: divide_d_by_x+20D7↓w
 								; WRITE-ONLY in this file: written by loc_E66C,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+								; Holds ((61h - var_nv_trim_unk_98) * 12h) / 64, saturating, low
+								; byte only. The subtraction clamps to 0 on borrow. Note the
+								; UNDIVIDED product is what loc_E66C then adds to dmatx_pim (it is
+								; pushed before the divide and pulled after), so this variable is a
+								; separately-scaled copy of that PIM correction term rather than
+								; anything the pressure path itself consumes.
+								; but no read site exists anywhere here.
+								; NOT consumed by CPU2: this address is outside
+								; both DMA windows. CPU1 transmits 0200h-0225h
+								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
+								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
+								; 22h bytes) before copy_dma_rx moves it to 0226h+.
+								; So it is vestigial, or read through indexed/indirect
+								; addressing - a pointer walk over a RAM region would
+								; not show up as a symbol reference at all, which is
+								; the one way a "no read site" search can still be wrong.
 var_adc_cmd:		.block 1			; DATA XREF: divide_d_by_x+175↓w
 								; int_4ms_watchdog+12↓w	...
 var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
@@ -2696,9 +2714,30 @@ var_pim_trim_scale:			.block 1			; DATA XREF: divide_d_by_x+E83↓r
 								; throttle-derived estimate into real PIM units.
 unk_145:			.block 1			; DATA XREF: calc_dmatx_pim+7↓w
 								; WRITE-ONLY in this file: written by calc_dmatx_pim,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+								; CAREFUL - this does NOT hold the TPS load, though the two
+								; adjacent stores in calc_dmatx_pim make it look as if it does:
+								;     jsr get_tps_load_div8   ; D = TPS load/8; X untouched
+								;     st  a, var_unk_tps_inj_137
+								;     mov x, d                ; D <- X  (NOT X <- D; opcode 3Ch)
+								;     st  a, unk_145          ; so this is X's HIGH BYTE
+								; The mov clobbers D between the two stores, so the second one
+								; captures the high byte of X, not the load. X arrives from the
+								; caller - both call sites run apply_enrich_and_trims immediately
+								; before - and is what mult_rBrX2 then multiplies by
+								; var_pim_trim_scale into var_pim_tps_est. X's provenance through
+								; the multiply library is NOT traced, so what its high byte means
+								; is still open; only the fact that it is X and not the load is
+								; settled here (mov direction confirmed against the opcode table).
+								; but no read site exists anywhere here.
+								; NOT consumed by CPU2: this address is outside
+								; both DMA windows. CPU1 transmits 0200h-0225h
+								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
+								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
+								; 22h bytes) before copy_dma_rx moves it to 0226h+.
+								; So it is vestigial, or read through indexed/indirect
+								; addressing - a pointer walk over a RAM region would
+								; not show up as a symbol reference at all, which is
+								; the one way a "no read site" search can still be wrong.
 var_pim_trans_est:			.block 1			; DATA XREF: divide_d_by_x:loc_E63C↓w
 								; ROM:loc_FDDB↓r
 								; Transient indicator: the sign of (var_pim_tps_est -
@@ -3082,9 +3121,16 @@ var_iscv_unk_1AD:		.block 1			; DATA XREF: calc_iscv+B0↓r
 				.block 1
 unk_1AF:			.block 1			; DATA XREF: divide_d_by_x+162↓w
 								; WRITE-ONLY in this file: written by loc_C67A,
-								; but no read site exists anywhere here. Either
-								; consumed by CPU2 over the DMA buffer, or
-								; vestigial.
+								; but no read site exists anywhere here.
+								; NOT consumed by CPU2: this address is outside
+								; both DMA windows. CPU1 transmits 0200h-0225h
+								; (ASR3 <- 9000h+dmatx_pim2) and stages receive
+								; into 01DEh-01FFh (ASR2 <- 8000h+var_dma_rx_buffer,
+								; 22h bytes) before copy_dma_rx moves it to 0226h+.
+								; So it is vestigial, or read through indexed/indirect
+								; addressing - a pointer walk over a RAM region would
+								; not show up as a symbol reference at all, which is
+								; the one way a "no read site" search can still be wrong.
 				.block 1
 				.block 1
 				.block 1
@@ -3153,14 +3199,41 @@ unk_1C2:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; "ramp-limiter ratio" better than the
 								; existing docs already do.
 				.block 1
-unk_1C4:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
+var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+1472↓w
+								; A SLOW fuel trim, distinct from the STFT.
+								;   var_lambda_integrator is the short-term trim - fast, neutral
+								;   8000h, swinging with every O2 crossing. This one is slower and
+								;   has its own neutral of 0CCCDh, the bias the whole PW ramp
+								;   limiter works in (reset_pw_ramp_limiter puts it back there).
+								;   Two update paths, both in update_lambda_stft:
+								;     coarse  +/- 07AEh on var_lambda_avg leaving the 4Dh..0B3h
+								;             deadband - rich adds, lean subtracts;
+								;     fine    +/- 0010h, gated on var_adc_lambda's sign AND on the
+								;             STFT itself sitting past 85h / below 76h, i.e. it only
+								;             creeps when the short-term trim is persistently
+								;             off-centre. That is the classic long-term-trim
+								;             relationship.
+								;   Saturates at 0 and 0FFFFh rather than wrapping.
+								;   Applied as a DIVISOR on var_inj_pw_base (ramp_limit_inj_pw_simple:
+								;   unbias it into X, then divide_d_by_x), so a larger value means
+								;   less fuel - which is the right direction, since it rises when the
+								;   mixture reads rich.
+								;   Lives in ordinary RAM; nothing writes it to NV. Was unk_1C4.
 								; ROM:DAC1↓r ...
-								; Carried-forward PW-scale value at
-								; ramp_limit_inj_pw's entry, but
-								; overwritten with the unk_1C8 ceiling or
-								; the ratio-deviation result depending on
-								; path - no single fixed identity. Same
-								; cluster/doc reference as unk_1C0 above.
+								;   Earlier notes called this a carried-forward PW-scale value with "no
+								;   single fixed identity", because ramp_limit_inj_pw writes it from two
+								;   further places. Both are the limiter acting ON the trim rather than a
+								;   rival meaning for the slot:
+								;     loc_DC17  stores the popped unk_1C8 back into it - a CLAMP. unk_1C8
+								;               is in the same 0CCCDh-biased space (loc_DBF1 computes
+								;               0CCCDh-unk_1C8 as its divisor), and loc_DBDE reads this
+								;               variable only to ask whether it already exceeds that
+								;               ceiling.
+								;     ROM:DA0D  calc_inj_pw_base stores ramp_limit_inj_pw's returned D -
+								;               the rate-limited value written back.
+								;   So the limiter clamps and rate-limits the trim; it does not repurpose
+								;   the slot. unk_1C0/unk_1C6 ARE still genuine multi-role scratch - that
+								;   half of the old finding stands, and they keep their unk_ names.
 				.block 1
 unk_1C6:			.block 1			; DATA XREF: divide_d_by_x+11E↓w
 								; init_pw_closed_loop+D↓w ...
@@ -3416,14 +3489,35 @@ dmatx_error_flags2:		.block 1
 dmatx_flags_46:			.block 1			; DATA XREF: copy_dma_tx+42↓w
 dmatx_flags_1:			.block 1			; DATA XREF: copy_dma_tx:loc_F992↓w
 dmatx_limiter_flags:		.block 1			; DATA XREF: copy_dma_tx+75↓w
-unk_223:			.block 1			; DATA XREF: factory_self_test+3F↓w
+dmatx_selftest_code1:		.block 1			; DATA XREF: factory_self_test+3F↓w
 								; factory_self_test:loc_E172↓w
-								; Scratch register local to factory_self_test's
-								; factory self-test/RAM-test sequence -
-								; not traced further (that whole routine
-								; is out of scope for this pass).
-word_224:			.block 2			; DATA XREF: factory_self_test+46↓w
+								; Factory self-test I/O readback code 1 of 2. Byte 23h of the 38-byte
+								; CPU1 -> CPU2 DMA block, so it IS transmitted every 4 ms - but CPU2's
+								; copy_serbus_rx unpacks only bytes 0-1Dh plus four named tail bytes, so
+								; 23h-25h are transmitted and dropped. Nothing in EITHER ROM reads them.
+								; Written only on the factory self-test path (factory_self_test and the
+								; routine it calls at +A1h), never elsewhere, and write-only throughout.
+								; Encodes observed input state against a nominal bit pattern: loc_E152
+								; stores a fixed 0Ah, while loc_E172 starts from 15h and flips bit0 if
+								; PORTD_ASRIN.5 is set and bit2 if PORTB.7 is clear - so a reading that
+								; matches expectations leaves the base pattern intact and a mismatched
+								; pin shows up as a flipped bit. Presumably read off the DMA line by a
+								; factory tester; that consumer is outside this ROM either way.
+dmatx_selftest_code2:		.block 1			; DATA XREF: factory_self_test+46↓w
 								; factory_self_test:loc_E183↓w ...
+								; Factory self-test I/O readback code 2 of 2, byte 24h of the same block
+								; and the same story as dmatx_selftest_code1 above - write-only, four
+								; store sites, all on the self-test path, never read by either CPU.
+								; Its values carry a step tag in the high nibble over a small payload:
+								; 15h|0C0h, 0Ah|0A0h, 80h, 09h|0E0h. The 0A0h case then flips bit2/bit3
+								; from var_io_input2.1/.0, the same observed-vs-nominal encoding.
+								; Was dmatx_selftest_code2, declared .block 2 - but every store is a BYTE store, so
+								; 0x225 was never written by anything. Split out below rather than left
+								; inside a 2-byte declaration implying a 16-bit value that does not exist.
+dmatx_selftest_unused_225:	.block 1
+								; Byte 25h, the last byte of the CPU1 -> CPU2 block. Transmitted every
+								; frame; no writer anywhere in this ROM and no reader in either. Was the
+								; unwritten second half of dmatx_selftest_code2.
 								; ===========================================================================
 								; The CPU2 -> CPU1 DMA block. Inter-CPU offset for this pair is +0D9h.
 								;
@@ -5423,20 +5517,20 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 
 
 ; ---------------------------------------------------------------------------
-; set_knock_sensor_err_flag / check_knock_sensor_err_flag / negate_rD: three
+; negate_rD_mark / negate_rD_if_marked / negate_rD: three
 ; functions sharing one tail, via deliberate fall-through (no `ret` between
 ; them) - not a bug, a ROM-space-saving trick in the same family as the
 ; documented "variable-aliasing code-reuse trick" (see architecture notes),
 ; just fall-through-based instead of aliasing-based:
 ;
-; - `set_knock_sensor_err_flag`: sets var_diag_errors_5.0, then falls
+; - `negate_rD_mark`: sets var_diag_errors_5.0, then falls
 ;   through into check's body below - since the flag it just set is now
 ;   guaranteed set, that unconditionally negates D too (falls all the way
 ;   through into negate_rD). So calling this doesn't just set a flag - it
 ;   ALSO unconditionally negates whatever's currently in D.
-; - `check_knock_sensor_err_flag`: if var_diag_errors_5.0 is clear, returns
+; - `negate_rD_if_marked`: if var_diag_errors_5.0 is clear, returns
 ;   immediately (unchanged D); if set, falls through into negate_rD and
-;   negates D. I.e. "negate D if the flag from a set_knock_sensor_err_flag
+;   negates D. I.e. "negate D if the flag from a negate_rD_mark
 ;   call earlier in this same computation is set."
 ; - `negate_rD`: plain two's-complement negate of D (A:B), standalone
 ;   entry point for callers that just want a negate with no flag involved.
@@ -5448,13 +5542,24 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 ; previously flagged that calc_iscv site's purpose as "not fully
 ; confirmed"; this is the resolution). The pattern at each call site:
 ; compute a delta that may have underflowed (carry set), conditionally
-; call set_knock_sensor_err_flag to negate it into a magnitude and record
+; call negate_rD_mark to negate it into a magnitude and record
 ; that a flip happened, do further math on the now-positive value, then
-; call check_knock_sensor_err_flag to flip the sign back before use/store -
+; call negate_rD_if_marked to flip the sign back before use/store -
 ; a disguised, flag-remembered abs()/restore-sign idiom. Only genuinely
 ; about the knock sensor at knock-subsystem call sites (e.g.
 ; knock_mcu_update) - elsewhere it's purely borrowed for this negate
 ; trick, unrelated to actual knock sensor state.
+;
+; CORRECTION: an earlier version of this header said the flag is "only
+; genuinely about the knock sensor at knock-subsystem call sites (e.g.
+; knock_mcu_update)". There are no such call sites. All 17 calls to the
+; two functions come from calc_dmatx_pim, no_enrichment, ramp_limit_inj_pw,
+; ramp_limit_inj_pw_simple, update_ign_timing_blend and calc_iscv -
+; manifold pressure, fuel, ignition and idle. knock_mcu_update calls
+; neither. The knock association was entirely in the names, which is why
+; they have now been changed: set_knock_sensor_err_flag -> negate_rD_mark
+; and check_knock_sensor_err_flag -> negate_rD_if_marked, matching the
+; existing negate_rD entry point they share.
 ; ---------------------------------------------------------------------------
 
 ;Inputs
@@ -5467,10 +5572,10 @@ locret_C4E6:							; CODE XREF: clamp_rD_FF+1↑j
 ; Reads: (none)
 ; Writes: var_diag_errors_5
 ; ---------------------------------------------------------------------------
-set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
+negate_rD_mark:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 								; ramp_limit_inj_pw_simple+A↓p ...
 				setb	bit0, var_diag_errors_5
-; End of function set_knock_sensor_err_flag
+; End of function negate_rD_mark
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -5478,7 +5583,7 @@ set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 
 ;Inputs
 ;    D - Value to conditionally negate.
-;    var_diag_errors_5.0 - Set by an earlier set_knock_sensor_err_flag
+;    var_diag_errors_5.0 - Set by an earlier negate_rD_mark
 ;        call in this same computation.
 ;Outputs
 ;    D - Negated if var_diag_errors_5.0 was set, else unchanged.
@@ -5487,11 +5592,11 @@ set_knock_sensor_err_flag:					; CODE XREF: ramp_limit_inj_pw+1A↓p
 ; Reads: var_diag_errors_5
 ; Writes: (none)
 ; ---------------------------------------------------------------------------
-check_knock_sensor_err_flag:					; CODE XREF: calc_iscv+F6↓p
+negate_rD_if_marked:					; CODE XREF: calc_iscv+F6↓p
 								; divide_d_by_x+1F85↓p ...
 				tbbc	bit0, var_diag_errors_5, locret_C4F0
 
-; End of function check_knock_sensor_err_flag
+; End of function negate_rD_if_marked
 
 
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
@@ -5508,7 +5613,7 @@ negate_rD:							; CODE XREF: divide_d_by_x+BAF↓p
 				neg	b
 				subc	a, #00h
 
-locret_C4F0:							; CODE XREF: check_knock_sensor_err_flag↑j
+locret_C4F0:							; CODE XREF: negate_rD_if_marked↑j
 				ret
 
 ; End of function negate_rD
@@ -5521,7 +5626,7 @@ locret_C4F0:							; CODE XREF: check_knock_sensor_err_flag↑j
 ; add_d_base_offset: zero-extend B to 16 bits and add a fixed 0x180 bias,
 ; then FALL THROUGH into the multiply family below (no `ret` here) - the
 ; same fall-through code-reuse trick documented for
-; set_knock_sensor_err_flag/negate_rD.
+; negate_rD_mark/negate_rD.
 ;
 ; Inputs
 ;    B - 8-bit value to bias (A is discarded, not read).
@@ -6179,7 +6284,11 @@ loc_C67A:							; CODE XREF: watchdog_kick+43↓j
 				ld	d, #08A4h
 				st	d, var_iscv_idle_base		; 0x08A4 = 2212 (fuel base default)
 				ld	d, #0400h
-				st	d, unk_1AF		; 0x0400 = 1024 (injection timing default)
+				st	d, unk_1AF		; = 0400h. One of a run of power-on defaults.
+								; "injection timing default" used to be asserted here; nothing
+								; supports it. 1AFh is write-only (this is the sole store) and
+								; outside both DMA windows, so no consumer is visible to name it
+								; from. Note the store is 16-bit, covering 1AFh-1B0h.
 				ld	a, var_nv_idle_trim
 				st	a, var_idle_trim	; Restore NV idle trim to working variable
 				clr	a
@@ -9915,7 +10024,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     these consolidate raw A/C (var_diag_errors_5.5) and PS/IDUP
 ;     (var_io_input2.3) switch state for idle-up compensation - not confirmed)
 ;   - byte_C36C/C36E/C370 threshold check sets var_diag_errors_5.0 and feeds
-;     check_knock_sensor_err_flag + var_iscv_diag_term (exact meaning of this
+;     negate_rD_if_marked + var_iscv_diag_term (exact meaning of this
 ;     diagnostic-linked term not confirmed)
 ;   - var_iscv_target_rpm = unk_1AD + unk_1A9 + unk_1AB + table_iscv_C391
 ;     entry (selected by var_io_input2 bits 6/7 - load switches, meaning
@@ -9986,7 +10095,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ; Calls: table_ect_pair_interpolate, table_rA_pair_interpolate,
 ;   table_rB_fixed_16_interpolate, map_rD_rX_interpolate, divide_rD_16,
 ;   divide_rD_16_saturate, divide_rD_64, inc_rX_if,
-;   check_knock_sensor_err_flag (for its negate side effect, NOT knock
+;   negate_rD_if_marked (for its negate side effect, NOT knock
 ;   handling - see that function's header), write_rB_nv_ram
 ; ---------------------------------------------------------------------------
 
@@ -10209,7 +10318,7 @@ loc_D5B3:							; CODE XREF: calc_iscv+E4↑j
 loc_D5BC:							; CODE XREF: calc_iscv+EE↑j
 				neg	a
 				mul	a, #10h
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				add	d, var_iscv_unk_1AD
 				bpz	loc_D5C9
@@ -11222,7 +11331,7 @@ loc_D9FA:							; CODE XREF: divide_d_by_x+1440↑j
 				setb	bit4, var_trim_state_alias
 				jsr	ramp_limit_inj_pw
 
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 
 loc_DA10:							; CODE XREF: divide_d_by_x+13FA↑j
 								; divide_d_by_x+1465↑j ...
@@ -11313,7 +11422,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; ---------------------------------------------------------------------------
 ; Reads: dmarx_status1_242, var_adc_lambda, var_cnt_6A, var_flags_46,
 ; var_inj_pw_base, var_pim2, var_rpm_x_5p12
-; Writes: unk_1C4, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
+; Writes: var_fuel_trim_slow, var_stft_dwell_cnt, var_lambda_avg, var_lambda_integrator,
 ;    var_trim_state_alias
 ; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, clear_trim_state_bit2,
 ;    clear_trim_state_bit0
@@ -11331,14 +11440,14 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; law, and both halves are visible here:
 ;
 ;   JUMP (proportional, large, on a rich/lean transition) - loc_DABF:
-;     var_lambda_avg >= 0xB3  -> rich  -> unk_1C4 += 0x07AE (saturating)
-;     var_lambda_avg <= 0x4D  -> lean  -> unk_1C4 -= 0x07AE (to 0)
+;     var_lambda_avg >= 0xB3  -> rich  -> var_fuel_trim_slow += 0x07AE (saturating)
+;     var_lambda_avg <= 0x4D  -> lean  -> var_fuel_trim_slow -= 0x07AE (to 0)
 ;     0x4E..0xB2 is a deadband: no jump, the routine simply exits. That
 ;     deadband is what stops the loop chattering around stoich.
 ;
 ;   RAMP (integral, small, every tick while held on one side) - loc_DB41:
-;     var_adc_lambda positive -> unk_1C4 += 0x0010
-;     var_adc_lambda negative -> unk_1C4 -= 0x0010
+;     var_adc_lambda positive -> var_fuel_trim_slow += 0x0010
+;     var_adc_lambda negative -> var_fuel_trim_slow -= 0x0010
 ;     each further gated on var_lambda_integrator not already being past
 ;     its 0x85 / 0x76 limit, so the ramp stops at the rails.
 ;
@@ -11365,7 +11474,7 @@ loc_DA60:							; CODE XREF: divide_d_by_x+147A↑j
 ; Reads: var_rpm_x_5p12, var_pim2, var_flags_46, var_adc_lambda,
 ;   var_lambda_avg, var_inj_pw_base, var_cnt_6A, dmarx_status1_242,
 ;   var_stft_dwell_cnt
-; Writes: var_lambda_integrator, var_lambda_avg, unk_1C4,
+; Writes: var_lambda_integrator, var_lambda_avg, var_fuel_trim_slow,
 ;   var_trim_state_alias, var_stft_dwell_cnt
 ; Calls: ramp_limit_inj_pw_simple, reset_pw_ramp_limiter, clear_trim_state_bit2, clear_trim_state_bit0
 ; ---------------------------------------------------------------------------
@@ -11455,7 +11564,7 @@ loc_DABA:							; CODE XREF: ROM:DA9F↑j
 
 loc_DABF:							; CODE XREF: ROM:loc_DA7C↑j
 				clrb	bit6, var_trim_state_alias
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				clrb	bit7, var_trim_state_alias
 				cmp	#0B3h, var_lambda_avg
 				bcc	loc_DADB
@@ -11481,7 +11590,7 @@ loc_DADB:							; CODE XREF: ROM:DAC9↑j
 
 loc_DAE3:							; CODE XREF: ROM:DAD5↑j
 								; ROM:DAD9↑j ...
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 				ld	d, var_lambda_integrator
 				tbbs	bit7, var_trim_state_alias, loc_DB07
 
@@ -11568,7 +11677,7 @@ loc_DB34:							; CODE XREF: ROM:DA91↑j
 				setb	bit5, var_trim_state_alias
 
 loc_DB41:							; CODE XREF: ROM:loc_DB34↑j
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				ld	x, var_adc_lambda
 				bmi	loc_DB57
 
@@ -11597,7 +11706,7 @@ loc_DB57:							; CODE XREF: ROM:DB46↑j
 
 loc_DB66:							; CODE XREF: ROM:DB4B↑j
 								; ROM:DB50↑j ...
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 				ld	d, var_inj_pw_base
 				cmp	d, #004Dh
 				bcs	locret_DB74
@@ -11641,7 +11750,7 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DAB7↑p
 ; ---------------------------------------------------------------------------
 ; reset_pw_ramp_limiter: reset the fuel pulse-width ramp-limiter state
 ;
-; Resets unk_1C2/var_inj_pw_base/unk_1C4 to 0xCCCD (the ~0.8x ramp-limiter
+; Resets unk_1C2/var_inj_pw_base/var_fuel_trim_slow to 0xCCCD (the ~0.8x ramp-limiter
 ; ratio constant used throughout this cluster - see ramp_limit_inj_pw/ramp_limit_inj_pw_simple) and
 ; clears var_flags_4E.5 (really var_trim_state.5 - see the aliasing note
 ; above calc_inj_pw_base). Called from loc_DA94's area (not deep-dived this
@@ -11651,7 +11760,7 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DAB7↑p
 
 ; ---------------------------------------------------------------------------
 ; Reads: (none)
-; Writes: unk_1C2, unk_1C4, var_inj_pw_base, var_trim_state_alias
+; Writes: unk_1C2, var_fuel_trim_slow, var_inj_pw_base, var_trim_state_alias
 ; ---------------------------------------------------------------------------
 reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 				ld	d, #0CCCDh
@@ -11661,7 +11770,7 @@ reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DAA8↑p
 				clr	b
 				st	d, var_inj_pw_base
 				ld	d, #0CCCDh
-				st	d, unk_1C4
+				st	d, var_fuel_trim_slow
 ; End of function reset_pw_ramp_limiter
 
 
@@ -11737,13 +11846,13 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;   nothing in between modifies it): "diagnostic-only" mode. Only computes a
 ;   ratio-deviation value (unk_1C2 vs 0xCCCD, scaled by the unk_1C0
 ;   candidate via mult_rDrX) and flags var_diag_errors_5.0 via
-;   set_knock_sensor_err_flag if unk_1C2 was below nominal - the result is
+;   negate_rD_mark if unk_1C2 was below nominal - the result is
 ;   left in D for the CALLER to consume (calc_inj_pw_base's loc_D9FA does
-;   exactly this, storing the return value into unk_1C4) and none of
+;   exactly this, storing the return value into var_fuel_trim_slow) and none of
 ;   var_inj_pw_base/unk_1C0/unk_1C6 are touched. Exits via loc_DC3A, which
 ;   clears trim_state.4 (the flag is "consumed" by being handled).
 ; - trim_state.4 clear + unk_1C0 == var_inj_pw_base (candidate unchanged):
-;   fast path, D = unk_1C4 (last carried-forward value), straight to the
+;   fast path, D = var_fuel_trim_slow (last carried-forward value), straight to the
 ;   ceiling check (loc_DBDE) - no error-flag pass runs.
 ; - trim_state.4 clear + candidate changed: runs the same ratio-deviation
 ;   computation as the diagnostic-only path, then continues into the
@@ -11754,13 +11863,13 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;   involving var_pim_tps_est/var_pim_est_fast/135/var_nv_trim_unk_98 is not itself
 ;   traced - see docs/fuel_calculation_system.md Open Questions).
 ;   - D <= unk_1C8: falls into loc_DBF1 (blend-toward-ceiling path).
-;   - D > unk_1C8 and trim_state bits 0 AND 1 both set and unk_1C4 (the
+;   - D > unk_1C8 and trim_state bits 0 AND 1 both set and var_fuel_trim_slow (the
 ;     prior carried-forward value) is NOT itself already above unk_1C8:
 ;     also falls into loc_DBF1.
 ;   - D > unk_1C8 and (trim_state.0 clear OR trim_state.1 clear): simplest
 ;     exit - clears trim_state.3, stores D into unk_1C6, done (var_inj_pw_base/
-;     unk_1C0/unk_1C4 untouched).
-;   - D > unk_1C8 and unk_1C4 also already > unk_1C8 (i.e. sustained
+;     unk_1C0/var_fuel_trim_slow untouched).
+;   - D > unk_1C8 and var_fuel_trim_slow also already > unk_1C8 (i.e. sustained
 ;     over-ceiling): loc_DC24 - in closed-loop mode (var_pw_loop_mode == 0xC8) only,
 ;     resets unk_1C0 back to var_inj_pw_base (discards the stale candidate);
 ;     either way clears trim_state.3 and stores the original loc_DBDE-entry
@@ -11774,12 +11883,12 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;     stored into unk_1C0 - i.e. the candidate itself gets refined here,
 ;     not just var_inj_pw_base.
 ;   Either way: if trim_state.0 is clear, commits D to var_inj_pw_base and
-;   stashes the ceiling (unk_1C8, popped back off the stack) into unk_1C4;
-;   if trim_state.0 is set, var_inj_pw_base/unk_1C4 are left alone. unk_1C6
+;   stashes the ceiling (unk_1C8, popped back off the stack) into var_fuel_trim_slow;
+;   if trim_state.0 is set, var_inj_pw_base/var_fuel_trim_slow are left alone. unk_1C6
 ;   always ends up holding the ceiling value (unk_1C8) on this path,
 ;   regardless of trim_state.0.
 ;
-; Net effect: unk_1C0/unk_1C4/unk_1C6 do NOT have single fixed identities
+; Net effect: unk_1C0/var_fuel_trim_slow/unk_1C6 do NOT have single fixed identities
 ; ("the candidate" / "the carried-forward value" / "the ceiling") - each
 ; gets overwritten with a different one of {fresh candidate, ceiling,
 ; ratio-deviation result, var_inj_pw_base} depending on which branch runs.
@@ -11791,9 +11900,9 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 
 ; ---------------------------------------------------------------------------
 ; Reads: unk_1C2, unk_1C8, var_pw_loop_mode
-; Writes: unk_1C0, unk_1C4, unk_1C6, var_diag_errors_5, var_inj_pw_base,
+; Writes: unk_1C0, var_fuel_trim_slow, unk_1C6, var_diag_errors_5, var_inj_pw_base,
 ;    var_trim_state_alias
-; Calls: mult_rDrX, set_knock_sensor_err_flag
+; Calls: mult_rDrX, negate_rD_mark
 ; ---------------------------------------------------------------------------
 ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+146F↑p
 								; apply_enrich_and_trims+46↓p
@@ -11804,7 +11913,7 @@ ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+146F↑p
 				cmp	x, var_inj_pw_base
 				bne	loc_DBB5
 
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				bra	loc_DBDE
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -11815,7 +11924,7 @@ loc_DBB5:							; CODE XREF: ramp_limit_inj_pw+5↑j
 				sub	d, #0CCCDh
 				bcc	loc_DBC0
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_DBC0:							; CODE XREF: ramp_limit_inj_pw+18↑j
@@ -11856,7 +11965,7 @@ loc_DBDE:							; CODE XREF: ramp_limit_inj_pw+10↑j
 
 				tbbc	bit1, var_trim_state_alias, loc_DC35
 
-				ld	x, unk_1C4
+				ld	x, var_fuel_trim_slow
 				cmp	x, unk_1C8
 				bgt	loc_DC24
 
@@ -11892,7 +12001,7 @@ loc_DC17:							; CODE XREF: ramp_limit_inj_pw+67↑j
 				tbbs	bit0, var_trim_state_alias, loc_DC21
 
 				st	d, var_inj_pw_base
-				st	x, unk_1C4
+				st	x, var_fuel_trim_slow
 
 loc_DC21:							; CODE XREF: ramp_limit_inj_pw+75↑j
 				mov	x, d
@@ -11936,12 +12045,12 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ; ramp_limit_inj_pw_simple: fuel pulse-width limiter, alternate/simpler entry point
 ;
 ; Same 0xCCCD ramp-ratio pattern as ramp_limit_inj_pw (error-flags via
-; set_knock_sensor_err_flag on overflow, same variable cluster), but a
-; shorter, single-path version: D = var_inj_pw_base / (unk_1C4 - 0xCCCD)
+; negate_rD_mark on overflow, same variable cluster), but a
+; shorter, single-path version: D = var_inj_pw_base / (var_fuel_trim_slow - 0xCCCD)
 ; via divide_d_by_x, then the result is +/-0xCCCD-adjusted (sign per
 ; whether the divide's error flag fired) and stored to unk_1C2 - i.e. this
 ; function's "output" register (unk_1C2) is a different one of the pool
-; than the ones it reads (unk_1C4/var_inj_pw_base). Also sets/clears
+; than the ones it reads (var_fuel_trim_slow/var_inj_pw_base). Also sets/clears
 ; var_flags_4E.2 (== var_trim_state.2, per the aliasing note above
 ; calc_inj_pw_base) based on whether the result exceeds 0xC7AE.
 ;
@@ -11956,18 +12065,18 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
-; Reads: unk_1C4, var_inj_pw_base
+; Reads: var_fuel_trim_slow, var_inj_pw_base
 ; Writes: unk_1C2, var_diag_errors_5, var_trim_state_alias
-; Calls: set_knock_sensor_err_flag
+; Calls: negate_rD_mark
 ; ---------------------------------------------------------------------------
 ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+14C2↑p
 								; ROM:DAAF↑p ...
 				clrb	bit0, var_diag_errors_5
-				ld	d, unk_1C4
+				ld	d, var_fuel_trim_slow
 				sub	d, #0CCCDh
 				bcc	loc_DC4A
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_DC4A:							; CODE XREF: ramp_limit_inj_pw_simple+8↑j
@@ -13286,7 +13395,7 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ;
 ; NOT traced: the exact test sequence and its pass/fail reporting protocol -
 ; the PORTB bit patterns at loc_E1DF, selftest_io_cycle's body, and what the
-; unk_223/word_224 scratch pair accumulates. Only the entry interlock, the
+; dmatx_selftest_code1/dmatx_selftest_code2 scratch pair accumulates. Only the entry interlock, the
 ; RAM-test loop and the var_flags_40.0 interaction are established here; that
 ; was enough to resolve why var_flags_40.0 is read so widely, which is what
 ; this pass needed.
@@ -13294,8 +13403,8 @@ loc_E112:							; CODE XREF: divide_d_by_x:loc_DD66↑j
 ; Reads: var_io_input1, var_io_input2, var_trac_tps_raw, var_tps_raw,
 ;   var_nv_tps, var_rpm_x_5p12, var_speed_kph, unk_100, unk_C000,
 ;   dmarx_ign_advance_hi_245, dmarx_status2_244
-; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, unk_223,
-;   word_224
+; Writes: var_flags_40, PORTB, PORTD_ASRIN, DOUT, DOM, IMASK, dmatx_selftest_code1,
+;   dmatx_selftest_code2
 ; Calls: selftest_io_cycle, watchdog_kick
 ; ---------------------------------------------------------------------------
 
@@ -13357,10 +13466,10 @@ loc_E149:							; CODE XREF: factory_self_test+86↓j
 
 loc_E152:							; CODE XREF: factory_self_test+37↑j
 				ld	a, #0Ah
-				st	a, unk_223
+				st	a, dmatx_selftest_code1
 				ld	b, #15h
 				or	b, #0C0h
-				st	b, word_224
+				st	b, dmatx_selftest_code2
 				ld	#01h, PORTD_ASRIN	; Port D Data Register / ASR Input Data
 				ld	#0Dh, DOUT		; DOUT Data Register
 				bra	loc_E18C
@@ -13379,7 +13488,7 @@ loc_E16D:							; CODE XREF: factory_self_test+53↑j
 				xor	a, #04h
 
 loc_E172:							; CODE XREF: factory_self_test:loc_E16D↑j
-				st	a, unk_223
+				st	a, dmatx_selftest_code1
 				ld	a, #0Ah
 				or	a, #0A0h
 				tbbc	bit1, var_io_input2, loc_E17E
@@ -13392,7 +13501,7 @@ loc_E17E:							; CODE XREF: factory_self_test+64↑j
 				xor	a, #08h
 
 loc_E183:							; CODE XREF: factory_self_test:loc_E17E↑j
-				st	a, word_224
+				st	a, dmatx_selftest_code2
 				ld	#02h, PORTD_ASRIN	; Port D Data Register / ASR Input Data
 				ld	#0Eh, DOUT		; DOUT Data Register
 
@@ -13421,7 +13530,7 @@ loc_E19D:							; CODE XREF: factory_self_test+3A↑j
 				clr	b
 				st	d, IMASK		; Interrupt Request Mask MSB
 				ld	a, #80h
-				st	a, word_224
+				st	a, dmatx_selftest_code2
 				ld	x, #0F9C8h		; Delay	loop
 
 loc_E1AA:							; CODE XREF: factory_self_test+96↓j
@@ -13701,7 +13810,7 @@ loc_E2B5:							; CODE XREF: factory_self_test:loc_E13F↑j
 loc_E2BB:							; CODE XREF: factory_self_test:loc_E2B5↑j
 				ld	a, #09h
 				or	a, #0E0h
-				st	a, word_224
+				st	a, dmatx_selftest_code2
 				clr	a
 				tbbs	bit1, var_io_input1, loc_E2DC ;	Jump if	throttle closed	(IDL high)
 
@@ -14264,7 +14373,7 @@ loc_E50C:							; CODE XREF: divide_d_by_x+1F6C↑j
 				sub	d, var_temp_b
 				bcc	loc_E51A
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E51A:							; CODE XREF: divide_d_by_x+1F7A↑j
@@ -14272,7 +14381,7 @@ loc_E51A:							; CODE XREF: divide_d_by_x+1F7A↑j
 				ld	a, #19h
 				jsr	mult_rArX
 
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				tbbc	bit1, var_diag_errors_5, loc_E52B
 
@@ -14357,7 +14466,7 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ; (hence the old var_unk_knk_* names on its state, now corrected). It is not
 ; knock-related at all: the give-away is loc_E627, its single exit point,
 ; which stores D to dmatx_pim. Everything above that exists to decide what
-; goes in there. The set_knock_sensor_err_flag / check_knock_sensor_err_flag
+; goes in there. The negate_rD_mark / negate_rD_if_marked
 ; pair it calls is only the generic abs()/restore-sign primitive - see those
 ; functions' own header.
 ;
@@ -14428,7 +14537,7 @@ loc_E54E:							; CODE XREF: divide_d_by_x+1F9C↑j
 ;   var_temp_7A, var_temp_7B
 ; Calls: get_tps_load_div8, get_tps_unk, calc_transient_terms, mult_rBrX2, mult_rArX, mult_rDrX,
 ;   divide_rD_32_saturate, divide_rD_64, signed_proportional_update,
-;   set_knock_sensor_err_flag, check_knock_sensor_err_flag
+;   negate_rD_mark, negate_rD_if_marked
 ; ---------------------------------------------------------------------------
 
 calc_dmatx_pim:							; CODE XREF: divide_d_by_x+48E↑p
@@ -14561,7 +14670,7 @@ loc_E5E4:							; CODE XREF: divide_d_by_x+2055↓j
 				sub	d, var_pim_est_slow
 				bcc	loc_E5FC
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E5FC:							; CODE XREF: divide_d_by_x+205C↑j
@@ -14583,7 +14692,7 @@ loc_E5FC:							; CODE XREF: divide_d_by_x+205C↑j
 
 loc_E611:							; CODE XREF: divide_d_by_x+2066↑j
 				pull	d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				tbbc	bit0, var_diag_errors_5, loc_E620
 
@@ -15276,7 +15385,7 @@ locret_E864:							; CODE XREF: scale_by_dmarx_241+10↑j
 ;
 ; not the /256 that mult_rDrX's normal D output would give.
 ;
-; check_knock_sensor_err_flag then restores the sign (its usual abs()/restore
+; negate_rD_if_marked then restores the sign (its usual abs()/restore
 ; role, nothing to do with knock), and the term accumulates into var_ign_blend_accum with
 ; SIGNED saturation: on overflow D is set to 0x7FFF, and if the sign flag is
 ; set the following `inc a`/`inc b` carries that 0x7FFF to 0x8000 - i.e. it
@@ -15352,7 +15461,7 @@ loc_E890:							; CODE XREF: update_ign_timing_blend+11↑j
 ; (whichever's larger/smaller each becomes the clamp bound), using
 ; var_diag_errors_5.0 purely as this function's OWN local "did the
 ; clamped value drop since last tick" flag - NOT knock-sensor fault
-; handling despite the flag's name (see set_knock_sensor_err_flag's own
+; handling despite the flag's name (see negate_rD_mark's own
 ; header comment above: it's a repo-wide reused negate/abs() remember-
 ; bit, unrelated to real knock sensor state outside the actual knock
 ; subsystem). That flag then selects dmarx_ign_timing_fallback2/2 vs the
@@ -15381,7 +15490,7 @@ loc_E89D:							; CODE XREF: update_ign_timing_blend+32↑j
 				sub	d, var_ign_blend_hist0
 				bcc	loc_E8B5
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E8B5:							; CODE XREF: update_ign_timing_blend+4B↑j
@@ -15407,7 +15516,7 @@ loc_E8CA:							; CODE XREF: update_ign_timing_blend+62↑j
 
 				mov	x, d			; D = X (src,dest): take the MSW, DISCARDING mult_rDrX's D.
 								; Net effect is *128 then >>16, i.e. term = A*|excursion|/512
-				jsr	check_knock_sensor_err_flag	; Restore sign (generic abs() helper, not knock)
+				jsr	negate_rD_if_marked	; Restore sign (generic abs() helper, not knock)
 
 				add	d, var_ign_blend_accum		; Accumulate the blend term
 				bvc	loc_E8E0		; No signed overflow: store as-is
@@ -15462,7 +15571,7 @@ loc_E907:							; CODE XREF: update_ign_timing_blend+98↑j
 				clrb	bit0, var_diag_errors_5
 				bcc	loc_E921
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E921:							; CODE XREF: update_ign_timing_blend+B7↑j
@@ -15511,7 +15620,7 @@ loc_E94F:							; CODE XREF: update_ign_timing_blend+E7↑j
 				ld	d, #7FFFh
 
 loc_E95B:							; CODE XREF: update_ign_timing_blend+F1↑j
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				st	d, var_temp_7A
 				ld	x, var_temp_w
@@ -15520,14 +15629,14 @@ loc_E95B:							; CODE XREF: update_ign_timing_blend+F1↑j
 				jsr	mult_rDrX
 
 				mov	x, d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				st	d, var_temp_w
 				clrb	bit0, var_diag_errors_5
 				ld	d, var_ign_blend_accum
 				bpz	loc_E978
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 loc_E978:							; CODE XREF: update_ign_timing_blend+10E↑j
@@ -15551,7 +15660,7 @@ loc_E98D:							; CODE XREF: update_ign_timing_blend+124↑j
 				jsr	mult_rDrX
 
 				mov	x, d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				add	d, var_temp_w
 				bvc	loc_E9A0
@@ -15573,7 +15682,7 @@ loc_E9A0:							; CODE XREF: update_ign_timing_blend+131↑j
 
 				shr	d
 				shr	d
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 				add	d, var_temp_7A
 				bvc	loc_E9BC
@@ -15593,7 +15702,7 @@ loc_E9BC:							; CODE XREF: update_ign_timing_blend+14D↑j
 				cmpz	a
 				bpz	loc_E9C8
 
-				jsr	set_knock_sensor_err_flag
+				jsr	negate_rD_mark
 
 
 ; ---------------------------------------------------------------------------
@@ -15645,7 +15754,7 @@ loc_E9F9:							; CODE XREF: update_ign_timing_blend+189↑j
 
 				jsr	scale_d_by_a_frac
 
-				jsr	check_knock_sensor_err_flag
+				jsr	negate_rD_if_marked
 
 
 loc_EA05:
@@ -18921,7 +19030,7 @@ locret_F529:							; CODE XREF: knock_mcu_update+1E↑j
 ; Writes: PORTB, var_knock_retard, var_knock_retard_max,
 ;   var_knock_retard_prev, var_knock_retard_prev2, var_knock_cyl_idx,
 ;   var_knock_event_cnt, var_cnt_knock_decay, var_cnt_CC, var_diag_errors_5,
-;   dmatx_ign_corr_cpu2, unk_E3, var_knock_retard_latch
+;   dmatx_ign_corr_cpu2, var_cnt_E3, var_knock_retard_latch
 ; ---------------------------------------------------------------------------
 
 knock_processing:							; CODE XREF: iv6_ne_process:bg_ne_process_F3AF↑p
@@ -18993,7 +19102,7 @@ loc_F573:							; CODE XREF: ROM:F54F↑j
 				ld	a, #1Ah
 
 loc_F577:							; CODE XREF: ROM:F568↑j
-				clr	unk_E3
+				clr	var_cnt_E3
 				jmp	loc_F600
 
 ; ───────────────────────────────────────────────────────────────────────────
