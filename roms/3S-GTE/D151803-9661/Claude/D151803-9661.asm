@@ -70,8 +70,14 @@ ASR2L:				.block 1			; ASR2 edge counter value LSB
 ASR3:				.block 1			; C841↓w ...
 								; ASR3 edge counter value MSB
 ASR3L:				.block 1			; ASR3 edge counter value LSB
-UNK1C:				.block 1			; D570↓r
-UNK1D:				.block 1			; C82D↓r ...
+REG_1C:				.block 1			; D570↓r
+				; A hardware REGISTER at 001Ch. Was UNK1C here while the other four ROMs
+				; in the family said unk_1C - same register, three spellings. Now REG_1C
+				; everywhere. Read by `ld b, REG_1C`; the technical reference calls
+				; $1C-$1E "Unused/reserved", but every ROM here uses it.
+REG_1D:				.block 1			; C82D↓r ...
+				; Register at 001Dh. Both writes are `ld #00h, REG_1D` inside the ASR
+				; initialisation run, matching all four siblings. Never read.
 				.block 1
 OMODE:				.block 1			; reset_vector↓r
 								; Mode control Register
@@ -577,10 +583,14 @@ var_map_temp2_5A:				.block 1			; C6D4↓w
 								; temp of the same family. No reader
 								; found anywhere in this file.
 				.block 24h
-unk_7F:				.block 1			; C880↓o
+clear_vars_end:				.block 1			; C880↓o
+				; The last byte clear_variables zeroes: the loop walks Y from var_flags_40
+				; doing st a, [y] while y <= this address, so the cleared region is
+				; var_flags_40..007Fh inclusive. An ADDRESS used as a bound - the byte
+				; itself is cleared by that same loop and never read.
 								; Not a real variable - just the end-
 								; address marker for clear_variables'
-								; zero-fill sweep (var_flags_40-unk_7F).
+								; zero-fill sweep (var_flags_40-clear_vars_end).
 								; No other reference; not renamed.
 				.block 20h
 var_ne_count:			.block 1			; C885↓o ...
@@ -1241,7 +1251,13 @@ dmatx_ign_retard_pair:			.block 2			; loc_CD61↓w ...
 								;   Was word_16D, and previously recorded here as having no writer
 								;   at all - that was a search bug: the scan looked only for names
 								;   with a dmatx_ prefix, which this did not have.
-word_16F:			.block 2
+				.block 2
+								; 016Fh-0170h. IDA had a word_16F label here; nothing references it, and it
+								; is not part of the DMA block: ASR3 is armed with 8000h+dmatx_ve_corr_map
+								; = 014Dh and the block is 34 bytes, so the transmitted range is
+								; 014Dh..016Eh and this is the first byte PAST the end. Label removed - a
+								; word_ name on an unreferenced byte pair implies a 16-bit variable that
+								; nothing reads or writes.
 				.block 1
 				.block 1
 				.block 1
@@ -1950,9 +1966,10 @@ map_c006_ve:			.dw 0200h			; CC53↓o
 				.dw 0113h			; map_y	base
 				.db 0Bh				; map_y_limit (0B00h)
 				;   400	 600  800 1000 1200 1400 1600 1800 2000	2200 2400 2600 2800 3200 3600 4000 4400	4800 5200 5600 6000 6400 6800 7200
-byte_C00C:			.db 064, 065, 096, 091,	101, 108, 097, 137, 104, 106, 105, 119,	127, 094, 102, 099, 114, 137, 137, 124,	116, 110, 096, 084 ; -12.32
-								; No #reference - the data body of map_c006_ve
-								; above it, not a separate table.
+				.db 064, 065, 096, 091,	101, 108, 097, 137, 104, 106, 105, 119,	127, 094, 102, 099, 114, 137, 137, 124,	116, 110, 096, 084 ; -12.32
+								; First row of map_c006_ve's data body, not a table of its own. IDA had a
+								; byte_C00C label here and nothing referenced it; a label part-way into a
+								; map's payload reads as separately addressable when it is not. Removed.
 				.db 090, 093, 116, 128,	127, 143, 127, 151, 137, 136, 136, 145,	144, 132, 132, 136, 148, 163, 158, 161,	158, 151, 144, 135 ; -9.94
 				.db 102, 108, 134, 137,	142, 153, 145, 159, 153, 151, 152, 156,	156, 151, 151, 151, 157, 172, 177, 178,	177, 177, 170, 158 ; -7.57
 				.db 112, 112, 144, 147,	149, 159, 153, 164, 160, 158, 156, 163,	163, 160, 160, 154, 162, 182, 182, 187,	185, 188, 176, 164 ; -5.20
@@ -3330,7 +3347,7 @@ reset_vector:							; FFFE↓o
 				ld	#07h, OMODE		; Mode control Register
 				di
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
-				ld	#00h, UNK1D
+				ld	#00h, REG_1D
 				ld	#0B0h, ASR0NL		; ASR0 neg edge	counter	value LSB
 				ld	#0F4h, ASR0N		; ASR0 neg edge	counter	value MSB
 				ld	#0F9h, TIMER3		; Timer	LSB (bit0~bit2)
@@ -3372,7 +3389,7 @@ reset_vector:							; FFFE↓o
 ; Attributes: noreturn
 
 clear_variables:
-; Zero-fills the working-variable region: var_flags_40-unk_7F byte-wise,
+; Zero-fills the working-variable region: var_flags_40-clear_vars_end byte-wise,
 ; then var_ne_count-dmatx_ign_retard_pair word-wise. Falls into loc_C88E below.
 ; (A wider, separate clear runs later at runtime - see loc_D2E9.)
 				clr	a
@@ -3381,7 +3398,7 @@ clear_variables:
 
 clear_variables_low:						; C883↓j
 				st	a, [y]			; clear	8 bits at a time
-				cmp	y, #unk_7F		; reached end of block?
+				cmp	y, #clear_vars_end		; reached end of block?
 				ble	clear_variables_low	; loop back if not
 				ld	y, #var_ne_count	; load address of second block
 
@@ -3482,7 +3499,7 @@ main_loop:							; D391↓j
 				ld	#18h, ASR0P		; ASR0 pos edge	counter	value MSB
 				ld	#0FCh, ASR1P		; ASR1 pos edge	counter	value MSB
 				ld	#0B0h, ASR0NL		; ASR0 neg edge	counter	value LSB
-				ld	#00h, UNK1D
+				ld	#00h, REG_1D
 				ld	d, #9000h + var_serbus_rx
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	d, #8000h + 14Dh
@@ -6453,7 +6470,7 @@ locret_D543:							; D51B↑j
 ; periodic (~353Hz) IV0 tick that drives the same RX re-arm/timeout state
 ; (var_dma_sync_timeout_55, var_flags_47.5, ASR2, TIMER3).
 ;
-; Reads: var_dma_sync_timeout_55, TIMER3, RAMST, UNK1C
+; Reads: var_dma_sync_timeout_55, TIMER3, RAMST, REG_1C
 ; Writes: var_dma_sync_timeout_55, var_cnt4ms_AD, var_dma_rearm_cnt_56, var_flags_47, ASR2, TIMER3
 
 				; public int_vector_0
@@ -6497,7 +6514,7 @@ loc_D564:							; D55C↑j ...
 				st	d, ASR2			; ASR2 edge counter value MSB
 				ld	#4Fh, TIMER3		; Timer	LSB (bit0~bit2)
 				ld	b, RAMST		; Built-in RAM status
-				ld	b, UNK1C
+				ld	b, REG_1C
 				pull	y
 				pull	x
 				reti

@@ -140,6 +140,23 @@ class TestNameAdaptation(unittest.TestCase):
         self.assertEqual(name, 'table_C3CE_rpm')
         self.assertEqual(unresolved, [])
 
+    def test_lowercase_trailing_address_is_adapted_not_copied(self):
+        # FRAGMENT used to be uppercase-only while _embedded_rom_address was
+        # case-insensitive, so a lowercase address was never seen as a fragment
+        # at all: not adapted AND not refused, which copied the SOURCE ROM's
+        # address into the target's name. Real instance, 9651 -> 0461:
+        # `table_rpm_c31d` proposed verbatim for a table living at C2FC.
+        name, unresolved = adapt_name('table_rpm_c31d', 'table_rpm_c2fc', {}, {}, {})
+        self.assertEqual(name, 'table_rpm_C2FC')
+        self.assertEqual(unresolved, [])
+
+    def test_lowercase_two_digit_run_is_still_left_alone(self):
+        # The lowercase arm is deliberately 4-digit only. Two-digit lowercase
+        # runs sit in the RAM range and would false-positive on ordinary words.
+        name, unresolved = adapt_name('divide_rD_32', 'sub_C100', {}, {}, {})
+        self.assertEqual(name, 'divide_rD_32')
+        self.assertEqual(unresolved, [])
+
     def test_two_rom_addresses_in_a_name_are_ambiguous(self):
         # With two candidates there is no way to tell which is the symbol's
         # own, so refuse rather than pick one.

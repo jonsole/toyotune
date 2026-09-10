@@ -4672,12 +4672,21 @@ nv_98_limits:			.db 64h, 37h			; DATA XREF: adc_handler_pim+98↓o
 								; with calc_4ms_corrections storing the clamped B straight into
 								; var_ign_advance_trim at loc_EDC1.
 								; It was the only unnamed entry in an otherwise named run of limit pairs
-								; (nv_96_limits, inj_pw_limits, nv_98_limits, HERE, ram_1BE_limits,
+								; (nv_96_limits, inj_pw_limits, nv_98_limits, HERE, inj_pw_base_limits,
 								; idle_trim_limits, pim_adc_limits), which is what identifies it - the
 								; convention, the neighbours and the call idiom all agree.
 ign_advance_trim_limits:			.db 88h, 2Ah			; DATA XREF: calc_4ms_corrections:loc_EDC1↓o
 								; calc_4ms_corrections+3A2↓t
-ram_1BE_limits:			.dw 0500h, 0000h		; DATA XREF: divide_d_by_x:loc_DA45↓o
+inj_pw_base_limits:			.dw 0500h, 0000h		; DATA XREF: divide_d_by_x:loc_DA45↓o
+								; The [0, 0500h] clamp applied to var_inj_pw_base. Named for WHAT IT CLAMPS
+								; rather than for an address: 9651 called this ram_1BE_limits after
+								; var_inj_pw_base's address there (01BEh), but the same variable sits at
+								; 01B6h in 0461, so the address-stamped form needs adapting on every port
+								; and rom_port refused to - it cannot justify a RAM address embedded in a
+								; name. This form ports verbatim.
+								; Reached by the usual ld y, #<label> / jsr y + <clamp offset> idiom; the
+								; second use site clamps the ratio-deviation result the same way.
+								; D151804-0481 has no equivalent - it has no PW ramp limiter at all.
 								; divide_d_by_x+14AD↓t ...
 idle_trim_limits:		.db 78h, 45h			; DATA XREF: divide_d_by_x+D7E↓o
 								; divide_d_by_x+D81↓t ...
@@ -11228,7 +11237,7 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ;     clamp indicator var_pw_loop_mode.
 ;  4) (DA10-DA60) Every ~488ms (var_4ms_cnt_B5 >= 0x7A), nudges
 ;     var_inj_pw_base by +0x0C/-0x02 based on var_lambda_integrator vs
-;     var_adc_lambda's sign, clamped via ram_1BE_limits. In closed-loop
+;     var_adc_lambda's sign, clamped via inj_pw_base_limits. In closed-loop
 ;     mode (var_pw_loop_mode==0xC8) also overwrites unk_1C0 with var_adc_lambda
 ;     itself. Then calls ramp_limit_inj_pw_simple when var_adc_lambda
 ;     (not var_inj_pw_base - see ramp_limit_inj_pw_simple's header) is
@@ -11238,7 +11247,7 @@ loc_D92D:							; CODE XREF: calc_iscv+45E↑j
 ;     RPM-based flag unrelated to fuel calculation).
 ;
 ; Renames: unk_1BE -> var_inj_pw_base (high confidence: the clamp table
-; ram_1BE_limits' range [0, 0x500] matches known injector PW units
+; inj_pw_base_limits' range [0, 0x500] matches known injector PW units
 ; elsewhere in the ROM, e.g. injector_cold_start's 0x04E2/0x09C4 constants,
 ; and it's the value everything else in this cluster reads/writes as "the"
 ; working pulse-width). unk_1C0/1C2/1C4/1C6/1C8/1BD were NOT renamed:
@@ -11489,8 +11498,8 @@ loc_DA39:							; CODE XREF: divide_d_by_x+1489↑j
 
 loc_DA45:							; CODE XREF: divide_d_by_x+149C↑j
 								; divide_d_by_x+14A6↑j
-				ld	y, #ram_1BE_limits
-				jsr	y + (clamp_rD -	ram_1BE_limits)
+				ld	y, #inj_pw_base_limits
+				jsr	y + (clamp_rD -	inj_pw_base_limits)
 
 				st	d, var_inj_pw_base
 
@@ -11979,7 +11988,7 @@ loc_DB97:							; CODE XREF: init_pw_open_loop+4↑j
 ;   - var_pw_ramp_ratio >= 0xCCCD (at/above nominal ratio): D = var_inj_pw_base
 ;     unchanged, skip the divide.
 ;   - var_pw_ramp_ratio < 0xCCCD (below nominal): D = (0xCCCD-var_pw_ramp_ratio)/(0xCCCD-var_pw_ramp_ceiling)
-;     via divide_d_by_x, clamped to [0,0x0500] via ram_1BE_limits, and
+;     via divide_d_by_x, clamped to [0,0x0500] via inj_pw_base_limits, and
 ;     stored into unk_1C0 - i.e. the candidate itself gets refined here,
 ;     not just var_inj_pw_base.
 ;   Either way: if trim_state.0 is clear, commits D to var_inj_pw_base and
@@ -12091,7 +12100,7 @@ loc_DBF1:							; CODE XREF: ramp_limit_inj_pw+3E↑j
 loc_DC0C:							; CODE XREF: ramp_limit_inj_pw+62↑j
 				jsr	divide_d_by_x
 
-				ld	y, #ram_1BE_limits
+				ld	y, #inj_pw_base_limits
 				jsr	y + 1Fh
 
 				st	d, unk_1C0
@@ -12160,7 +12169,7 @@ loc_DC3A:							; CODE XREF: ramp_limit_inj_pw:loc_DBDB↑j
 ; (unsigned compare on whatever X holds at that point), not when
 ; var_inj_pw_base is below 0x4D. var_inj_pw_base is loaded into D
 ; earlier in that same block for an unrelated small lambda-driven nudge
-; (+0x0C/-0x02, clamped via ram_1BE_limits) that has already happened by
+; (+0x0C/-0x02, clamped via inj_pw_base_limits) that has already happened by
 ; the time this gate is checked.
 ; ---------------------------------------------------------------------------
 
