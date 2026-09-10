@@ -4436,10 +4436,11 @@ table_idle_C2FE:		.dw 0600h			; DATA XREF: calc_iscv:loc_D87F↓o
 
 table_rpm_c31d:			.db 50h, 30h			; DATA XREF: calc_iscv+454↓o
 								; Indexed by var_rpm_div_25 via table_rB_fixed_16_interpolate.
-byte_C31F:			.db 00h, 66h, 9Ah, 0CDh
-								; No #reference - data continuing from the block
-								; above it rather than an independently addressed
-								; table.
+				.db 00h, 66h, 9Ah, 0CDh	; table_rpm_c31d's payload: 0, 66h, 9Ah, 0CDh
+								; ~ 0, 0.4, 0.6, 0.8 of full scale. IDA had put a
+								; byte_C31F label here; nothing referenced it, and a
+								; label in the middle of a table's data reads as a
+								; separately addressable symbol when it is not. Removed.
 
 
 table_ect_idle_C323:		.db 12h				; DATA XREF: calc_ect_iscv↓o
@@ -4484,11 +4485,22 @@ table_idle_pim:			.db 21h, 30h			; DATA XREF: calc_iscv+4B↓o
 				.db 00h, 26h, 26h, 26h
 
 
-byte_C352:			.db 1Ah, 20h			; DATA XREF: calc_iscv+1C1↓o
+								; Two-entry table indexed by var_iscv_diag_term >> 2: if the high byte is
+								; zero, interp_y_pair interpolates between the two entries using the low
+								; byte as the fraction; if not, loc_D69B takes entry 1 outright. Either way
+								; the result has var_temp_w (the table_ect_unk_C354 lookup) subtracted from
+								; it, floored at 0, and becomes var_iscv_ect_term.
+								; The `clr a / add y, a` before it adds zero and is a genuine no-op here.
+table_iscv_diag_pair_C352:			.db 1Ah, 20h			; DATA XREF: calc_iscv+1C1↓o
 								; Base of a small byte array indexed by a computed
 								; offset (clr a / add y, a) alongside
 								; var_iscv_diag_term in calc_iscv.
-byte_C354:			.db 92h, 40h, 00h		; DATA XREF: calc_iscv+1B9↓o
+								; ECT-indexed table header consumed by table_ect_fixed4_interpolate, result
+								; stashed in var_temp_w and then subtracted to form var_iscv_ect_term.
+								; Named for its confirmed axis only, matching table_ect_unk_C147 elsewhere
+								; in this file - the purpose is not established, and neither 0461 (unk_C335)
+								; nor 0481 (unk_C350) names its equivalent, so there was nothing to port.
+table_ect_unk_C354:			.db 92h, 40h, 00h		; DATA XREF: calc_iscv+1B9↓o
 								; ECT-indexed - the table_ect_* interpolators load
 								; var_ect themselves, so no index appears at the
 								; call site. Read via table_ect_fixed4_interpolate
@@ -4534,14 +4546,23 @@ idle_trim_els:			.db 0A0h, 0B0h			; DATA XREF: calc_iscv+E1↓o
 								; idle_trim_eco by var_flags_4F.1 - see idle_trim.
 idle_trim_eco:			.db 70h, 90h			; DATA XREF: calc_iscv+E7↓o
 								; Alternate ISC set-point - see idle_trim.
-byte_C372:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
-								; ISC set-point pair with byte_C374, selected by
+								; ISCV trim pair used while var_flags_46.6 is SET, i.e. while the ISCV is in
+								; fixed/override opening mode (46.6's meaning is established in
+								; docs/idle_control_system.md). Selected by var_flags_4F.1 = ECO high:
+								; ECO clear keeps this one, ECO set takes iscv_override_trim_eco - exactly
+								; the selector idle_trim/idle_trim_eco use at the later stage, which is what
+								; the names are modelled on.
+								; Both stages run only in override mode: calc_iscv+98 branches past this
+								; pair when 46.6 is clear, and the els/eco block at loc_D59B is likewise
+								; skipped to loc_D5CE when it is clear.
+iscv_override_trim:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
+								; ISC set-point pair with iscv_override_trim_eco, selected by
 								; var_flags_4F.1 and reached only when
 								; var_flags_46.6 is set. idle_control_system.md
 								; describes these as var_iscv_unk_1AD's
 								; load-dependent set-point.
-byte_C374:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
-								; The var_flags_4F.1 counterpart of byte_C372.
+iscv_override_trim_eco:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
+								; The var_flags_4F.1 counterpart of iscv_override_trim.
 
 
 table_ect_corr_194:			.db 0Ch				; DATA XREF: calc_ect_unk_194↓o
@@ -10087,7 +10108,7 @@ loc_D4C6:							; CODE XREF: divide_d_by_x+E0D↑j
 ;     var_iscv_target_base only ratchets, never drops, except when clamped
 ;
 ; SECTION 3 (D67F..D6C9): ECT/PIM-based var_iscv_ect_term and var_iscv_idle_base duty terms
-;   - var_iscv_ect_term: ECT-indexed (byte_C352/C354, table_ect_fixed4_interpolate)
+;   - var_iscv_ect_term: ECT-indexed (table_iscv_diag_pair_C352/C354, table_ect_fixed4_interpolate)
 ;     correction, combined with var_iscv_diag_term via interp_y_pair
 ;   - var_iscv_idle_base: second RPM-band lookup (table_iscv_rpm_C361, same search
 ;     pattern as table_iscv_rpm_C357) when idle detected, else falls back
@@ -10290,10 +10311,10 @@ loc_D568:							; CODE XREF: calc_iscv+98↑j
 				clr	b
 				tbbc	bit6, var_flags_46, loc_D59B
 
-				ld	x, #byte_C372
+				ld	x, #iscv_override_trim
 				tbbc	bit1, var_flags_4F, loc_D576
 
-				ld	x, #byte_C374
+				ld	x, #iscv_override_trim_eco
 
 loc_D576:							; CODE XREF: calc_iscv+A7↑j
 				jsr	inc_rX_if
@@ -10548,11 +10569,11 @@ loc_D67C:							; CODE XREF: calc_iscv+1A8↑j
 loc_D67F:							; CODE XREF: calc_iscv:loc_D64F↑j
 				tbbc	bit6, var_flags_46, loc_D6A5	; var_flags_46.6 clear: skip ECT term update (see note above calc_iscv)
 
-				ld	y, #byte_C354
+				ld	y, #table_ect_unk_C354
 				jsr	table_ect_fixed4_interpolate	; ECT-indexed 4-entry lookup
 
 				st	a, var_temp_w
-				ld	y, #byte_C352
+				ld	y, #table_iscv_diag_pair_C352
 				clr	a
 				add	y, a
 				ld	d, var_iscv_diag_term		; Diagnostic-linked term from Section 1
@@ -13379,10 +13400,11 @@ table_diag:			.db nv_diag_errors_1		; DATA XREF: check_diag_flags↑t
 				.db 74h				; 47 Secondary throttle	position
 				.db var_diag_errors_5
 				.db 20h
-byte_E107:			.db 15h				; 51 Air-con switch signal
-								; No #reference - a continuation of the table_diag
-								; records above it. check_diag_flags walks that
-								; block in 3-byte steps and runs past this label.
+				.db 15h				; 51 Air-con switch signal
+								; IDA had put a byte_E107 label here. Nothing
+								; references it: check_diag_flags walks these records
+								; in 3-byte steps and runs straight past. Removed, so
+								; the table reads as the one block it is.
 				.db nv_diag_errors_2
 				.db 01h
 				.db 25h				; 52 Knock signal
@@ -20597,7 +20619,7 @@ loc_FAA5:							; CODE XREF: ROM:loc_FA9E↑j
 				bne	loc_FAB4			; No: normal diagnostic path
 
 ; Calibration trigger: D == 0x001F - initiate calibration data read from ROM
-				ld	d, #word_FFDC			; D = pointer to calibration data in ROM
+				ld	d, #diag_cal_ptr_FFDC			; D = pointer to calibration data in ROM
 ; Opcode trick: 0x41h = 'cmp x, #xx' (IMM) - skips next ld d, [y] when D != 001Fh
 				.db  41h
 
@@ -22157,11 +22179,15 @@ adc_handler_complete:						; DATA XREF: ROM:table_adc_handler↑o
 ; ───────────────────────────────────────────────────────────────────────────
 				.db  5Fh ; _
 				.dw 5FC4h
-word_FFDC:			.dw 8288h			; DATA XREF: ROM:FAB0↑o
-								; A constant loaded as an immediate address (ld d,
-								; #word_FFDC) and then shifted - used as a value,
-								; not read as a table. Sits at the very top of ROM
-								; near the vectors.
+diag_cal_ptr_FFDC:			.dw 8288h			; DATA XREF: ROM:FAB0↑o
+								; Named for the one thing that is confirmed: its ADDRESS is the pointer
+								; constant the serial diagnostic handler uses for the calibration read.
+								; loc_FAA5 compares the requested index against 001Fh and, on a match, does
+								; ld d, #diag_cal_ptr_FFDC before the shl d / mov d, y / ld d, [y] that every
+								; index goes through. So the label is used as a VALUE, and the .dw 8288h
+								; stored at it is not what that path reads - the shl means the pointer lands
+								; elsewhere. Which word it finally reads is not traced.
+								; Sits at the top of ROM immediately before the interrupt vectors.
 				.dw IV0				; External interrupt 0
 				.dw int_vector_1_serial_rx	; External interrupt 1
 				.dw IVf				; External interrupt 2
