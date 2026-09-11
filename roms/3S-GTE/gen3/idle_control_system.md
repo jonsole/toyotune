@@ -88,7 +88,7 @@ RPM** (`var_iscv_target_rpm`, in `var_rpm_x_5p12` units):
 | `var_iscv_startup_flare` | Decays -1/tick once the startup window (`var_cnt_startup` ≥ 0x3D ≈ 244ms) has passed; before that, held at whatever `max(ECT, THA)/16` was on entry |
 | `var_iscv_pim_flare` | Set from a PIM-indexed table on throttle lift-off/deceleration (`var_flags_4E.4`, gated on RPM > 2000, speed < 5kph, small RPM delta); decays -8/tick otherwise |
 | `var_iscv_unk_1A9` | Fixed at `0x300` during the startup window, then decays -4/tick |
-| `var_iscv_unk_1AB` | `0x200` for the first 15 ticks if CPU2 cold-enrichment (`dmarx_idle_enrich` — **stale name, not re-derived; see the note in `fuel_calculation_system.md`**) is active, else cleared once `var_cnt_EA` elapses |
+| `var_iscv_unk_1AB` | `0x200` for the first 15 ticks if CPU2 cold-enrichment (`dmarx_enrichment_unk_236` at or above `0x0D`; was called `dmarx_idle_enrich`) is active, else cleared once `var_cnt_EA` elapses |
 | `var_iscv_unk_1AD` | Ramps ±2/tick toward a load-dependent set-point (see below) |
 
 `var_iscv_unk_1AD`'s set-point is selected from `iscv_override_trim`/`iscv_override_trim_eco` based on

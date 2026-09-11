@@ -265,11 +265,12 @@ Gated on:
 - `var_cnt_EA` (warm-up elapsed)
 - `var_io_input1.5` (diagnostic check mode - skip if active)
 - ECT, against a trim_state-dependent threshold (0xE1 or 0xE3)
-- CPU2 enrichment request flags (`dmarx_enrichment_unk_231`,
-  `dmarx_warmup_enrichment_230`, `dmarx_idle_enrich` (**stale name — no symbol of
-  that name exists in any ROM now; the CPU1 enrichment block is `0x230`-`0x237`
-  and which slot this meant is not re-derived**) - any nonzero forces the
-  fallback/open-loop path)
+- CPU2 enrichment request flags - **five** bytes, OR'd together, any nonzero
+  forcing the fallback/open-loop path. The code is a straight run:
+  `dmarx_enrichment_unk_231`, `_232`, `_233`, `dmarx_warmup_enrichment_230`,
+  `dmarx_enrichment_unk_236`, then `bne open_loop_mode_D0A9`. This list
+  previously named only three of the five, one of them as `dmarx_idle_enrich`,
+  which is not a symbol in any ROM
 - `var_flags_40.7`
 - `var_flags_46.1` (the *real* closed-loop flag, not aliased)
 - `dmarx_status1_242 == 0x40` (this was described as "nominal idle duty"; it is

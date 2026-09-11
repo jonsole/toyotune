@@ -118,17 +118,29 @@ if timing > var_ign_advance_max: timing = var_ign_advance_max
 if timing > var_ign_advance_raw: timing = var_ign_advance_raw
 ```
 
-#### Step 6: Add RPM-based advance trim from CPU2
+#### Step 6: Add the CPU2 retard byte, selected by crank position
 
-Selects between two DMA-received advance values based on `va_ne_count_2`:
+The control flow here was right; the names and the description were not. These
+are **retard** values, not advance, and the selector is **crank position**, not
+an RPM band. `bg_ne_process_F108`:
 ```
 if va_ne_count_2 >= 0x30:
-    timing += dmarx_ign_advance_hi
+    timing += dmarx_ign_retard_hi    ; CPU1 0x246
 else:
-    timing += dmarx_ign_advance_lo   <-- name/meaning superseded, see the table note
+    timing += dmarx_ign_retard_lo    ; CPU1 0x247
 ```
 
-These are the RPM and load-based advance angles computed by CPU2 from the fuel/ignition maps.
+Both bytes arrive as one 16-bit slot: CPU2 stores them with a single
+`st d, dmatx_ign_retard_pair` (`0x16D`-`0x16E`), picking a two-byte entry from
+`table_rpm_ignition_retard` by `var_flags_45` bit 1, or zero when the gating
+flags are clear. So the pair is chosen on CPU2 by RPM, and *which of the two*
+is applied is chosen on CPU1 by where the crank is — the two bytes are
+alternative retard amounts for different parts of the cycle.
+
+This used to read "RPM and load-based advance angles computed by CPU2 from the
+fuel/ignition maps", under the names `dmarx_ign_advance_hi`/`_lo`. That
+predates both the `+0xD9` offset correction and the discovery that the slot is
+a retard pair.
 
 #### Step 7: Apply maximum clamp
 
@@ -304,8 +316,8 @@ Called from the 4ms main loop. Monitors how long the ignition trigger has been a
 
 ```
 CPU2 (ignition map calculations)
-  │  dmarx_ign_advance_hi / dmarx_ign_advance_lo
-  │  (RPM + load based advance, received via 4ms DMA)
+  │  dmatx_ign_retard_pair  ->  dmarx_ign_retard_hi / dmarx_ign_retard_lo
+  │  (a RETARD pair chosen by RPM on CPU2, received via 4ms DMA)
   ▼
 iv6_ne_process  [runs every NE pulse = 24× per revolution]
   │
@@ -314,7 +326,7 @@ iv6_ne_process  [runs every NE pulse = 24× per revolution]
   ├─ Clamp to var_ign_timing_min
   ├─ Subtract knock retard: var_ign_knock_retard_base - dmatx_knock_retard
   ├─ Clamp to var_ign_advance_max, var_ign_advance_raw
-  ├─ Add CPU2 RPM advance: dmarx_ign_advance_hi or dmarx_ign_advance_lo
+  ├─ Add CPU2 retard: dmarx_ign_retard_hi or _lo, by crank position (va_ne_count_2)
   ├─ Clamp to 90° BTDC max
   ├─ Encode OBD format → dmatx_ign_obd
   ├─ Convert to timer units: ignition_timing_to_cpr
@@ -499,7 +511,8 @@ real-world units.
 | `var_igf_miss_count` | Count of consecutive missing IGF signals (max 0xFF) |
 | `var_igt_timer` | IGT active timer (detects stuck-on ignition) |
 | `var_ignition_flags` | Ignition state flags (see below) |
-| `dmarx_ign_retard_hi` / `dmarx_ign_retard_lo` | **NEEDS RE-READING.** These two rows described `dmarx_ign_advance_hi`/`_lo` as "RPM advance from CPU2 (high/low RPM band)". Both the names and that description predate two corrections: the CPU2→CPU1 offset moving to `+0xD9`, and the finding that CPU2's `dmatx_ign_retard_pair` holds a PAIR of single-byte **retard** values selected by crank position, not an advance split by RPM band. `dmarx_ign_advance_hi_245` (`0x245`) is a separate variable from the pair at `0x246`/`0x247`. The flow text above (§ the timing chain) still carries the old reading — treat `dma_link_system.md` as authoritative until this is re-derived from the code |
+| `dmarx_ign_retard_hi` (`0x246`) / `dmarx_ign_retard_lo` (`0x247`) | The two halves of CPU2's `dmatx_ign_retard_pair`. Alternative **retard** amounts; `bg_ne_process_F108` applies the high byte when `va_ne_count_2 >= 0x30` and the low byte below that, adding it to the timing. Previously listed as `dmarx_ign_advance_hi`/`_lo`, "RPM advance, high/low RPM band" — wrong on the direction and on the selector |
+| `dmarx_ign_advance_hi_245` (`0x245`) | **Not ignition advance, despite the name.** It receives CPU2's `dmatx_ign_advance_hi_16C`, which has exactly one writer — `factory_selfcheck` stores the constant `0xC0` into it and nothing updates it afterwards. CPU1's only read is inside the ECT-threshold ladder in its own factory-test region, one of several unrelated candidates loaded into `A`. Both ends are self-test code; the name is a leftover from the pre-`+0xD9` era and should not be trusted |
 | `dmatx_knock_retard` | Knock retard command (from CPU1 knock system, sent to CPU2) |
 | `dmatx_ign_obd` | Ignition timing in OBD1 format (sent to CPU2 for diagnostics) |
 
