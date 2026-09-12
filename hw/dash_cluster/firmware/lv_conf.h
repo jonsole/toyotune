@@ -64,10 +64,15 @@
 #define LV_TICK_CUSTOM_INCLUDE		"pico/time.h"
 #define LV_TICK_CUSTOM_SYS_TIME_EXPR	(to_ms_since_boot(get_absolute_time()))
 
-/* How often LVGL looks for something to redraw. The fastest telemetry tier is
- * 20 ms (PLAN.md section 3), so redrawing faster than that only costs panel
- * DMA bandwidth - which is the resource can2040 is competing for. */
-#define LV_DISP_DEF_REFR_PERIOD		20
+/* How often LVGL looks for something to redraw.
+ *
+ * This is a ceiling, not a target: LVGL only redraws what has been
+ * invalidated, so a steady gauge costs nothing however low this goes. At 20 ms
+ * it capped refreshes at 50 a second, which is invisible on a gauge whose
+ * value changes every 20 ms anyway - but a page transition invalidates the
+ * whole screen every frame, and there the cap was real and the result looked
+ * jerky. 10 ms lets a slide run as fast as the renderer can manage. */
+#define LV_DISP_DEF_REFR_PERIOD		10
 
 /* Touch sampling. A swipe has to be sampled several times across its travel
  * for LVGL to call it a gesture rather than a tap, so the default 30 ms is

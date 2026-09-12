@@ -67,13 +67,20 @@
 
 /* Draw buffer height, in whole display lines.
  *
- * 40 lines of 466 is 37 KB a buffer, 75 KB for the pair, out of 520 KB of
+ * 60 lines of 466 is 55 KB a buffer, 110 KB for the pair, out of 520 KB of
  * SRAM. Two buffers rather than one because the flush is asynchronous: LVGL
  * renders into the second while the first is still going out over DMA, which
- * is the only way the draw and the transfer overlap. Bigger buffers mean
- * fewer, longer DMA bursts - which is the tradeoff M4 measures, since those
- * bursts are what compete with can2040 for bus bandwidth (PLAN.md 4.2a). */
-#define PANEL_BUF_LINES		(40)
+ * is the only way the draw and the transfer overlap.
+ *
+ * The reason to make them bigger is not fewer DMA bursts - the per-flush
+ * overhead is a few microseconds of window-register writes. It is fewer chunks
+ * per frame: LVGL renders a chunk at a time and re-walks every object
+ * overlapping it, so a full-screen redraw at 40 lines paid that traversal
+ * twelve times and now pays it eight. Against that, longer bursts are what
+ * compete with can2040 for bus bandwidth, which is the tradeoff M4 measures
+ * (PLAN.md 4.2a) - so this is a number to revisit with CAN traffic present,
+ * not a free win. */
+#define PANEL_BUF_LINES		(60)
 #define PANEL_BUF_PIXELS	((uint32_t)PANEL_WIDTH * (uint32_t)PANEL_BUF_LINES)
 
 /* Bound on the PIO drain below. The FIFO holds four words plus one in the
@@ -101,6 +108,14 @@ static lv_coord_t		TouchY;
 
 static uint32_t			Flushes;
 static uint32_t			FlushTimeouts;
+
+/* Filled in by LVGL after every refresh. RefreshMaxMs is the one that matters:
+   a page transition invalidates the whole screen, so the worst refresh is a
+   full-screen one and its reciprocal is the frame rate a slide actually gets. */
+static uint32_t			RefreshLastMs;
+static uint32_t			RefreshMaxMs;
+static uint32_t			RefreshLastPx;
+static uint32_t			Refreshes;
 static uint32_t			TouchReports;
 static uint32_t			TouchPresses;
 
@@ -199,6 +214,24 @@ static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
 
 	/* No wait. lv_disp_flush_ready() comes from the interrupt, so LVGL draws
 	   into the other buffer while this one is still on the wire. */
+}
+
+
+/***************************************************************************************/
+/* LVGL's own refresh timing, reported after each redraw: how long it took and
+   how many pixels it covered. Free, exact, and no on-screen overlay - which is
+   why this rather than LV_USE_PERF_MONITOR. */
+static void Panel_RefreshMonitor(lv_disp_drv_t *Drv, uint32_t TimeMs,
+                                 uint32_t Pixels)
+{
+	(void)Drv;
+
+	RefreshLastMs = TimeMs;
+	RefreshLastPx = Pixels;
+	Refreshes++;
+
+	if (TimeMs > RefreshMaxMs)
+		RefreshMaxMs = TimeMs;
 }
 
 
@@ -515,6 +548,7 @@ bool Panel_Init(void)
 	lv_disp_drv_init(&DispDrv);
 	DispDrv.draw_buf = &DrawBufDesc;
 	DispDrv.flush_cb = Panel_Flush;
+	DispDrv.monitor_cb = Panel_RefreshMonitor;
 	DispDrv.hor_res = PANEL_WIDTH;
 	DispDrv.ver_res = PANEL_HEIGHT;
 	lv_disp_drv_register(&DispDrv);
@@ -580,6 +614,10 @@ void Panel_SetBrightness(uint8_t Percent)
 
 /***************************************************************************************/
 uint32_t Panel_Flushes(void)		{ return Flushes; }
+uint32_t Panel_RefreshLastMs(void)	{ return RefreshLastMs; }
+uint32_t Panel_RefreshMaxMs(void)	{ return RefreshMaxMs; }
+uint32_t Panel_RefreshLastPx(void)	{ return RefreshLastPx; }
+uint32_t Panel_Refreshes(void)		{ return Refreshes; }
 uint32_t Panel_FlushTimeouts(void)	{ return FlushTimeouts; }
 bool Panel_TouchPresent(void)		{ return TouchPresent; }
 uint16_t Panel_TouchChipType(void)	{ return TouchChipType; }

@@ -19,6 +19,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "lvgl.h"
 
@@ -32,11 +33,32 @@
    continuously on a node with no heap to spare. */
 #define UI_MAX_ELEMENTS		(8)
 
+/* Enough for the longest formatted value plus its unit - Signal_Format() is
+   bounded well under this. */
+#define UI_TEXT_MAX		(24)
+
+/* How often a graph advances. A chart is a time series and has to move whether
+   or not the reading changed, so it is the one widget that cannot be skipped
+   when nothing happens - which makes its cadence a real cost. At 100 points
+   this gives ten seconds of history; driving it every 20 ms gave two, and
+   redrew five times as often for the privilege. */
+#define UI_CHART_PERIOD_MS	(100u)
+
 typedef struct
 {
 	lv_obj_t *Object;	/* the arc, bar or label itself */
 	lv_obj_t *Value;	/* the value text, where the widget has one */
 	lv_obj_t *Label;	/* the signal name */
+
+	/* What was last pushed into LVGL, so an unchanged gauge costs nothing.
+	   See the note at the top of UiLvgl_Update(). */
+	bool Primed;		/* false until every property has been pushed once */
+	uint16_t LastPosition;
+	UiState_t LastState;
+	const char *LastLabel;
+	char LastText[UI_TEXT_MAX];
+
+	uint32_t NextChartMs;
 } UiObject_t;
 
 static lv_obj_t *Screen;
@@ -52,8 +74,13 @@ static lv_scr_load_anim_t PendingAnim = LV_SCR_LOAD_ANIM_NONE;
 
 /* Long enough to read as movement, short enough not to feel like waiting.
    Both screens are drawn for this long, so it is also the only moment the
-   renderer has two object trees and twice the draw area. */
-#define UI_TRANSITION_MS	(200u)
+   renderer has two object trees and twice the draw area.
+
+   200 ms read as too fast on the glass, and it was also too few frames: a
+   full-screen redraw is the most expensive thing this renderer does, so a
+   short slide is a short slide made of very few steps. Lengthening it helps
+   twice over. */
+#define UI_TRANSITION_MS	(350u)
 
 /* Gestures are ignored until this time. Two reasons, and the second is the
    real one: a second swipe mid-transition would ask LVGL to load a third
@@ -199,6 +226,17 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 	Out->Label = lv_label_create(Out->Object);
 	lv_obj_align(Out->Label, LV_ALIGN_BOTTOM_MID, 0, 0);
 
+	/* Nothing has been pushed into this object yet, so the first update writes
+	   every property regardless of what it is compared against. Cheaper and
+	   far clearer than seeding each cache with a value the model can never
+	   produce. */
+	Out->Primed = false;
+	Out->LastPosition = 0;
+	Out->LastState = UI_STATE_NORMAL;
+	Out->LastLabel = NULL;
+	Out->LastText[0] = '\0';
+	Out->NextChartMs = 0;
+
 	/* NOTHING ON A FACE MAY SCROLL.
 	 *
 	 * LVGL creates every object scrollable, and its gesture detection gives
@@ -284,6 +322,25 @@ void UiLvgl_Init(void)
 
 
 /***************************************************************************************/
+/* PUSH ONLY WHAT CHANGED.
+ *
+ * This ran unconditionally once, and it cost more than everything else in the
+ * firmware put together. Measured on the board: a static face with nothing on
+ * the bus redrew 187,489 pixels every 60 ms - 433 squared, which is one 90%
+ * dial plus its extended draw area, repainted sixteen times a second for no
+ * reason at all.
+ *
+ * LVGL cannot prevent this on its own. lv_arc_set_value() does early-out on an
+ * unchanged value, but lv_label_set_text() never compares the string it is
+ * handed, and every lv_obj_set_style_*() call invalidates the whole widget -
+ * and UiLvgl_Style() makes three of them per element. So the comparison has to
+ * happen here.
+ *
+ * It is worth more than a smoother transition: a dashboard gauge is static
+ * most of the time, and a core busy repainting an unchanged dial is a core not
+ * available to the renderer during a page change - or, once there is a bus, one
+ * competing with can2040 for memory bandwidth.
+ */
 void UiLvgl_Update(uint32_t NowMs)
 {
 	uint8_t Page = Pages_Effective(NowMs);
@@ -292,6 +349,13 @@ void UiLvgl_Update(uint32_t NowMs)
 
 	if (Page != BuiltPage)
 		UiLvgl_BuildPage(Page);
+	else if ((int32_t)(lv_tick_get() - TransitionUntilMs) < 0)
+		/* Mid-slide. New label text invalidates areas on top of the
+		   animation's own invalidation, for values nobody can read while the
+		   face is moving. Note this is the `else` branch on purpose: the call
+		   that builds a page still falls through and populates it, so a face is
+		   never shown holding the placeholder text. */
+		return;
 
 	Face = &Pages[Page];
 
@@ -300,7 +364,8 @@ void UiLvgl_Update(uint32_t NowMs)
 		const FaceElement_t *Element = &Face->Elements[i];
 		UiObject_t *O = &Objects[i];
 		UiWidget_t Widget = UiModel_Widget(Element, NowMs);
-		char Text[24];
+		bool Force = !O->Primed;
+		char Text[UI_TEXT_MAX];
 
 		/* LVGL takes a signed coordinate; the model produces an unsigned
 		   0..UI_POSITION_MAX, which is 1000 - so the cast cannot lose
@@ -311,24 +376,54 @@ void UiLvgl_Update(uint32_t NowMs)
 		{
 		case WIDGET_DIAL:
 		case WIDGET_ARC:
-			lv_arc_set_value(O->Object, Position);
+			if (Force || Widget.Position != O->LastPosition)
+				lv_arc_set_value(O->Object, Position);
 			break;
 		case WIDGET_BARGRAPH:
-			lv_bar_set_value(O->Object, Position, LV_ANIM_OFF);
+			if (Force || Widget.Position != O->LastPosition)
+				lv_bar_set_value(O->Object, Position, LV_ANIM_OFF);
 			break;
 		case WIDGET_GRAPH:
-			lv_chart_set_next_value(O->Object,
-			                        lv_chart_get_series_next(O->Object, NULL),
-			                        Position);
+			/* Time driven, not change driven - a series has to advance even
+			   when the reading is identical, or the graph stops telling the
+			   truth about time. */
+			if (Force || (int32_t)(NowMs - O->NextChartMs) >= 0)
+			{
+				lv_chart_set_next_value(O->Object,
+				                        lv_chart_get_series_next(O->Object, NULL),
+				                        Position);
+				O->NextChartMs = NowMs + UI_CHART_PERIOD_MS;
+			}
 			break;
 		default:
 			break;
 		}
 
+		O->LastPosition = Widget.Position;
+
 		snprintf(Text, sizeof(Text), "%s %s", Widget.Text, Widget.Unit);
-		lv_label_set_text(O->Value, Text);
-		lv_label_set_text(O->Label, Widget.Label);
-		UiLvgl_Style(O->Object, Widget.State);
+		if (Force || strcmp(Text, O->LastText) != 0)
+		{
+			lv_label_set_text(O->Value, Text);
+			(void)snprintf(O->LastText, sizeof(O->LastText), "%s", Text);
+		}
+
+		/* The model returns a pointer to a fixed string, so identity is
+		   enough - and the name of a signal does not change within a face
+		   anyway. */
+		if (Force || Widget.Label != O->LastLabel)
+		{
+			lv_label_set_text(O->Label, Widget.Label);
+			O->LastLabel = Widget.Label;
+		}
+
+		if (Force || Widget.State != O->LastState)
+		{
+			UiLvgl_Style(O->Object, Widget.State);
+			O->LastState = Widget.State;
+		}
+
+		O->Primed = true;
 	}
 }
 

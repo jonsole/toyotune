@@ -71,6 +71,15 @@ extern void Panel_SetBrightness(uint8_t Percent);
    reporting mode at all - stuck at zero means it is not. Panel_TouchPresses()
    counts the subset with a finger in them. */
 extern uint32_t Panel_Flushes(void);
+
+/* Refresh timing, straight from LVGL. A page transition invalidates the whole
+   screen, so Panel_RefreshMaxMs() is the cost of a full-screen frame and its
+   reciprocal is the frame rate a slide gets - which is the number to look at
+   before trying to make a transition smoother. */
+extern uint32_t Panel_RefreshLastMs(void);
+extern uint32_t Panel_RefreshMaxMs(void);
+extern uint32_t Panel_RefreshLastPx(void);
+extern uint32_t Panel_Refreshes(void);
 extern uint32_t Panel_FlushTimeouts(void);
 extern bool Panel_TouchPresent(void);
 extern uint16_t Panel_TouchChipType(void);

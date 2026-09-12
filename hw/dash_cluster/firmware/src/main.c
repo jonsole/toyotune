@@ -190,6 +190,11 @@ static void Core1Main(void)
 			printf("  int %lu up / %lu down",
 			       (unsigned long)Panel_TouchRiseEdges(),
 			       (unsigned long)Panel_TouchFallEdges());
+			printf("\n  refresh %lu  last %lums/%lupx  worst %lums",
+			       (unsigned long)Panel_Refreshes(),
+			       (unsigned long)Panel_RefreshLastMs(),
+			       (unsigned long)Panel_RefreshLastPx(),
+			       (unsigned long)Panel_RefreshMaxMs());
 			if (Panel_FlushTimeouts() != 0u)
 				printf("  flush-timeout %lu",
 				       (unsigned long)Panel_FlushTimeouts());
