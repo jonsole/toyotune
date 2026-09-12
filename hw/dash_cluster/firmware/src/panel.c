@@ -101,7 +101,26 @@ static lv_coord_t		TouchY;
 
 static uint32_t			Flushes;
 static uint32_t			FlushTimeouts;
+static uint32_t			TouchReports;
 static uint32_t			TouchPresses;
+
+/* Set by the interrupt, cleared by the read callback. volatile because those
+   are different contexts; a single flag needs no more than that. */
+static volatile bool		TouchIntPending;
+static volatile uint32_t	TouchRiseEdges;
+static volatile uint32_t	TouchFallEdges;
+
+/* The held press, and when it was last confirmed by a report. */
+static bool			TouchHeld;
+static uint32_t			TouchLastReportMs;
+
+/* How long a press survives with no further report before it is treated as a
+   lift. The controller reports continuously while a finger is down, at well
+   under this interval, so a gap this long means the finger has gone and the
+   final report was missed. Short enough not to leave a phantom press behind -
+   which LVGL reads as a finger still on the glass, and is exactly what made
+   the first working display have a dead touch panel. */
+#define TOUCH_HOLD_TIMEOUT_MS	(80u)
 static bool			TouchPresent;
 static uint16_t			TouchChipType;
 
@@ -224,70 +243,6 @@ static void Panel_FlushDoneIrq(void)
 
 
 /***************************************************************************************/
-/* Read the touch controller.
- *
- * POLLED, NOT INTERRUPT DRIVEN, AND THAT IS DELIBERATE.
- *
- * The vendor example hangs this off the touch interrupt: the handler reads one
- * point and latches PRESSED, and the read callback clears it to RELEASED on
- * its next call. That gives LVGL a press and a release around a single
- * coordinate - a tap - no matter what the finger actually did. A swipe needs
- * the press to stay asserted while the finger travels, or LVGL never
- * accumulates the distance it needs to report a gesture, and swiping between
- * faces is the reason there is a touch panel here at all (PLAN.md 4.3).
- *
- * So this asks the controller instead, and lets its own point count decide
- * when the finger has gone. One ten-byte register read at 400 kHz is a few
- * hundred microseconds every 20 ms, on the core that draws - not the core that
- * decodes CAN.
- */
-static void Panel_TouchRead(lv_indev_drv_t *Drv, lv_indev_data_t *Data)
-{
-	(void)Drv;
-
-	/* False here is NOT an error, and it was briefly counted as one: their
-	   read returns false when byte 6 of the report is not 0xAB, and that
-	   marker means "there is a report to read", not "the transfer worked".
-	   With no finger on the glass there is nothing to report, so an idle
-	   panel returns false on every poll. Whether the controller is there at
-	   all is settled once, at init, by Panel_TouchProbe(). */
-	if (!CST9217_Read_Data())
-	{
-		Data->state = LV_INDEV_STATE_RELEASED;
-	}
-	else if (CST9217.points > 0)
-	{
-		/* Their driver already maps the raw reading to display coordinates,
-		   including the 180 degree flip, but 466 - 0 is 466 and the last valid
-		   pixel is 465 - so clamp rather than hand LVGL a point one off the
-		   edge. */
-		uint16_t X = CST9217.data[0].x;
-		uint16_t Y = CST9217.data[0].y;
-
-		if (X >= PANEL_WIDTH)
-			X = PANEL_WIDTH - 1u;
-		if (Y >= PANEL_HEIGHT)
-			Y = PANEL_HEIGHT - 1u;
-
-		TouchX = (lv_coord_t)X;
-		TouchY = (lv_coord_t)Y;
-		TouchPresses++;
-		Data->state = LV_INDEV_STATE_PRESSED;
-	}
-	else
-	{
-		Data->state = LV_INDEV_STATE_RELEASED;
-	}
-
-	/* The last known position travels with a release too. LVGL reads the point
-	   on the releasing call to work out where the gesture ended; reporting
-	   (0,0) there would look like a sudden drag to the corner. */
-	Data->point.x = TouchX;
-	Data->point.y = TouchY;
-}
-
-
-/***************************************************************************************/
 /* Is the touch controller on the bus, and is it the part expected?
  *
  * Their CST9217_Read_Config() cannot answer this, for two reasons. It throws
@@ -299,15 +254,18 @@ static void Panel_TouchRead(lv_indev_drv_t *Drv, lv_indev_data_t *Data)
  * It goes unnoticed there because the register it happens to write (0xD101)
  * has the same two bytes as the payload it meant to send.
  *
+ * This is also the only moment the part can be asked anything: it answers
+ * immediately after a reset and then goes unresponsive until a touch wakes it.
+ *
  * EVERY TRANSFER HERE IS BOUNDED, AND THAT IS NOT DECORATION.
  *
  * i2c_write_blocking() with nostop set returns an error on a NAK but leaves
  * the bus without a STOP, and the next transfer on it can then block forever.
- * That is not a hypothetical: an earlier version of this probe did exactly
- * that, and the LVGL input callback's read - which runs before the first
- * status line is printed - hung core 1 with no output at all. A touch
- * controller that does not answer must cost this function a few milliseconds,
- * not the display.
+ * That is not hypothetical: an earlier version of this probe did exactly that,
+ * and the hang landed in the LVGL input callback - before the first status
+ * line could be printed, so the board enumerated over USB and said nothing at
+ * all. A touch controller that does not answer must cost this function a few
+ * milliseconds, not the display.
  */
 #define TOUCH_I2C_TIMEOUT_US	(5000u)
 
@@ -347,6 +305,110 @@ static bool Panel_TouchProbe(uint16_t *ChipType)
 
 	*ChipType = (uint16_t)(((uint16_t)Data[3] << 8) | (uint16_t)Data[2]);
 	return true;
+}
+
+
+/***************************************************************************************/
+/* Runs on core 1, where it is enabled. Deliberately does nothing but flag and
+   count: the report is fetched over I2C by the read callback, because a
+   blocking transfer inside an interrupt is how a sulking touch controller
+   would take the renderer down with it. */
+static void Panel_TouchIrq(uint Gpio, uint32_t Events)
+{
+	if (Gpio != TOUCH_INT_PIN)
+		return;
+
+	if ((Events & GPIO_IRQ_EDGE_RISE) != 0u)
+		TouchRiseEdges++;
+	if ((Events & GPIO_IRQ_EDGE_FALL) != 0u)
+		TouchFallEdges++;
+
+	TouchIntPending = true;
+}
+
+
+/***************************************************************************************/
+/* Read the touch controller.
+ *
+ * INTERRUPT TRIGGERED, WITH THE PRESS HELD BETWEEN REPORTS.
+ *
+ * Neither the vendor's arrangement nor straight polling works here.
+ *
+ * Polling does not work because the part does not answer when it is idle.
+ * Measured on the board with nothing touching the glass: most reads of the
+ * report register return all-FF, the rest return an unchanging stale frame,
+ * and the byte the decode wants to be 0xAB is 0x07. It answers right after a
+ * reset and then stops. So the interrupt is not a convenience, it is the only
+ * time there is anything to read.
+ *
+ * The vendor's arrangement does not work either: their handler latches a press
+ * and their read callback clears it on the next call, so LVGL gets a press and
+ * a release around one coordinate - a tap - whatever the finger actually did.
+ * A swipe needs the press asserted while the finger travels, or LVGL never
+ * accumulates the distance it needs to call it a gesture, and swiping between
+ * faces is the reason there is a touch panel here at all (PLAN.md 4.3).
+ *
+ * So the interrupt says when a report exists, and the press is held until
+ * either a report says the finger has gone or nothing arrives for
+ * TOUCH_HOLD_TIMEOUT_MS. Holding it forever would be worse than not holding it
+ * at all - a stuck press is a finger LVGL believes is still down.
+ */
+static void Panel_TouchRead(lv_indev_drv_t *Drv, lv_indev_data_t *Data)
+{
+	uint32_t NowMs = to_ms_since_boot(get_absolute_time());
+
+	(void)Drv;
+
+	if (TouchIntPending)
+	{
+		TouchIntPending = false;
+
+		/* False is not an I2C error: their read returns false when byte 6 of
+		   the reply is not 0xAB, which marks a touch report. Whether the
+		   controller is on the bus at all was settled at init by
+		   Panel_TouchProbe(). */
+		if (CST9217_Read_Data())
+		{
+			TouchReports++;
+
+			if (CST9217.points > 0)
+			{
+				/* Their driver already maps the reading to display
+				   coordinates, including the 180 degree flip - but 466 - 0 is
+				   466 and the last valid pixel is 465, so clamp rather than
+				   hand LVGL a point one off the edge. */
+				uint16_t X = CST9217.data[0].x;
+				uint16_t Y = CST9217.data[0].y;
+
+				if (X >= PANEL_WIDTH)
+					X = PANEL_WIDTH - 1u;
+				if (Y >= PANEL_HEIGHT)
+					Y = PANEL_HEIGHT - 1u;
+
+				TouchX = (lv_coord_t)X;
+				TouchY = (lv_coord_t)Y;
+				TouchPresses++;
+				TouchHeld = true;
+				TouchLastReportMs = NowMs;
+			}
+			else
+			{
+				TouchHeld = false;
+			}
+		}
+	}
+	else if (TouchHeld && (NowMs - TouchLastReportMs) > TOUCH_HOLD_TIMEOUT_MS)
+	{
+		TouchHeld = false;
+	}
+
+	Data->state = TouchHeld ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+
+	/* The last known position travels with a release too: LVGL reads the point
+	   on the releasing call to work out where the gesture ended, and (0,0)
+	   there would look like a sudden drag to the corner. */
+	Data->point.x = TouchX;
+	Data->point.y = TouchY;
 }
 
 
@@ -405,12 +467,44 @@ bool Panel_Init(void)
 	gpio_init(TOUCH_RST_PIN);
 	gpio_set_dir(TOUCH_RST_PIN, GPIO_OUT);
 
+	/* The interrupt line. No internal pull is enabled: a pull-down on a
+	   digital input can latch at about 2.2 V on RP2350 (erratum E9), and the
+	   board drives this line itself.
+
+	   Measured idle low with nothing touching the glass, so a report is
+	   signalled by the rising edge - which is what the vendor example's
+	   GPIO_IRQ_EDGE_RISE implies too. Both edges are taken anyway: the falling
+	   one is a free chance to notice the finger has gone, and the two counters
+	   make the polarity self-evident rather than something to trust. */
+	gpio_init(TOUCH_INT_PIN);
+	gpio_set_dir(TOUCH_INT_PIN, GPIO_IN);
+
 	/* CST9217_Init() would read the configuration and throw the result away.
 	   The interrupt pin is left untouched - see Panel_TouchRead(). */
 	CST9217_Reset();
 	sleep_ms(30);
 	Acked = Panel_TouchProbe(&TouchChipType);
 	TouchPresent = Acked && (TouchChipType == CST9217_CHIP_ID);
+
+	/* THE PROBE LEAVES THE CONTROLLER IN COMMAND MODE, AND IT HAS TO COME OUT.
+	 *
+	 * Reading the chip type needs command mode, and in command mode the
+	 * controller answers with configuration rather than touch reports - so
+	 * leaving it there means touch never works at all. That is not
+	 * theoretical: it is what made the first working display have a dead
+	 * touch panel.
+	 *
+	 * The vendor driver has no exit for this because it never entered the
+	 * mode in the first place - CST9217_I2C_Write_nByte() drops its payload
+	 * (finding 5 in vendor/README.md), so their command-mode write was inert.
+	 * Fixing that length made the mode change real and this exit necessary.
+	 *
+	 * A second reset rather than a guessed exit-command register: the
+	 * power-on state is reporting mode, and a reset is a mechanism already
+	 * proven on this board rather than one inferred from a family datasheet.
+	 * It costs about 110 ms, once. */
+	CST9217_Reset();
+	sleep_ms(30);
 
 	/* ---- LVGL --------------------------------------------------------- */
 
@@ -443,6 +537,15 @@ bool Panel_Init(void)
 	dma_channel_set_irq0_enabled(dma_tx, true);
 	irq_set_exclusive_handler(DMA_IRQ_0, Panel_FlushDoneIrq);
 	irq_set_enabled(DMA_IRQ_0, true);
+
+	/* Likewise core 1, and for the same reason: the flag it sets is read by
+	   the LVGL callback. Only enabled once the controller is out of reset and
+	   has been identified, so a reset pulse cannot be counted as a report. */
+	if (TouchPresent)
+		gpio_set_irq_enabled_with_callback(TOUCH_INT_PIN,
+		                                   GPIO_IRQ_EDGE_RISE |
+		                                   GPIO_IRQ_EDGE_FALL,
+		                                   true, Panel_TouchIrq);
 
 	printf("panel: %dx%d, %u-line draw buffers (%lu bytes each)\n",
 	       PANEL_WIDTH, PANEL_HEIGHT, (unsigned)PANEL_BUF_LINES,
@@ -480,6 +583,9 @@ uint32_t Panel_Flushes(void)		{ return Flushes; }
 uint32_t Panel_FlushTimeouts(void)	{ return FlushTimeouts; }
 bool Panel_TouchPresent(void)		{ return TouchPresent; }
 uint16_t Panel_TouchChipType(void)	{ return TouchChipType; }
+uint32_t Panel_TouchReports(void)	{ return TouchReports; }
+uint32_t Panel_TouchRiseEdges(void)	{ return TouchRiseEdges; }
+uint32_t Panel_TouchFallEdges(void)	{ return TouchFallEdges; }
 uint32_t Panel_TouchPresses(void)	{ return TouchPresses; }
 
 void Panel_TouchLast(uint16_t *X, uint16_t *Y)

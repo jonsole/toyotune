@@ -63,12 +63,26 @@ extern void Panel_SetBrightness(uint8_t Percent);
    be reachable from a periodic line rather than a boot banner.
 
    Panel_FlushTimeouts() is the one that should stay at zero: see the comment
-   on the drain in panel.c. Panel_TouchPresses() is how touch is proven - if it
-   moves when a finger lands, the whole I2C path works. */
+   on the drain in panel.c.
+
+   The two touch counters answer different questions, which is why there are
+   two. Panel_TouchReports() counts replies that carry the controller's touch
+   report marker, so it climbs steadily whenever the controller is in
+   reporting mode at all - stuck at zero means it is not. Panel_TouchPresses()
+   counts the subset with a finger in them. */
 extern uint32_t Panel_Flushes(void);
 extern uint32_t Panel_FlushTimeouts(void);
 extern bool Panel_TouchPresent(void);
 extern uint16_t Panel_TouchChipType(void);
+extern uint32_t Panel_TouchReports(void);
+
+/* Interrupt edges seen on the touch line, counted per direction. The line
+   idles low and pulses high for a report, so the rising count is the one that
+   should move under a finger - and if neither moves, the pin in DEV_Config.h
+   is not the one the controller is wired to. Worth keeping: the board's
+   published pinout is already known to be wrong twice (vendor/README.md). */
+extern uint32_t Panel_TouchRiseEdges(void);
+extern uint32_t Panel_TouchFallEdges(void);
 extern uint32_t Panel_TouchPresses(void);
 extern void Panel_TouchLast(uint16_t *X, uint16_t *Y);
 

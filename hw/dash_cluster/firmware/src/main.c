@@ -179,12 +179,17 @@ static void Core1Main(void)
 			NextStatusMs = NowMs + STATUS_PERIOD_MS;
 			Panel_TouchLast(&TouchX, &TouchY);
 
-			printf("node %u  page %u  %s  flush %lu  touch %s %lu @%u,%u",
+			printf("node %u  page %u  %s  flush %lu  "
+			       "touch %s rep %lu press %lu @%u,%u",
 			       DashNodeId, Pages_Effective(NowMs),
 			       SignalStore_LinkAlive(NowMs) ? "link up" : "LINK DOWN",
 			       (unsigned long)Panel_Flushes(),
 			       Panel_TouchPresent() ? "ok" : "ABSENT",
+			       (unsigned long)Panel_TouchReports(),
 			       (unsigned long)Panel_TouchPresses(), TouchX, TouchY);
+			printf("  int %lu up / %lu down",
+			       (unsigned long)Panel_TouchRiseEdges(),
+			       (unsigned long)Panel_TouchFallEdges());
 			if (Panel_FlushTimeouts() != 0u)
 				printf("  flush-timeout %lu",
 				       (unsigned long)Panel_FlushTimeouts());

@@ -33,7 +33,7 @@ provenance recorded instead.
 | `LVGL_example.c.reference` | **Reference only — do not build.** See the bug below |
 | `lv_conf.h.reference` | Their LVGL config, for comparison |
 
-## Five things found in this code, and what each one costs
+## Seven things found in this code, and what each one costs
 
 ### 1. The vendor LVGL example overflows its draw buffer
 
@@ -142,6 +142,41 @@ hang landed in LVGL's input callback — before the first status line could be
 printed. The symptom was identical to finding 4: a silent board. A touch
 controller that does not answer has to cost a few milliseconds, not the
 display.
+
+### 6. The report register is unreadable while the part is idle, so it cannot be polled
+
+Measured on the board with nothing touching the glass: most reads of `0xD000`
+return all-`FF`, the rest return an unchanging stale frame, and the byte their
+decode requires to be `0xAB` reads `0x07`. It answers immediately after a reset
+and then stops. The part sleeps between reports and wakes on a touch.
+
+So their use of the interrupt is not a stylistic choice — it is the only moment
+there is anything to read, and a polled driver gets nothing at all. Their INT
+line idles **low** and pulses high for a report, which is why their
+`GPIO_IRQ_EDGE_RISE` is correct.
+
+What is still not reusable is what their handler *does* with it: it latches a
+press and the read callback clears it on the next call, so LVGL sees a press
+and a release around one coordinate — a tap — whatever the finger did.
+`src/panel.c` takes the interrupt as "a report exists", reads it from the LVGL
+callback rather than the handler (the I2C read is blocking, and a blocking
+transfer in an interrupt would let a sulking touch controller stall the
+renderer), and **holds** the press between reports so a swipe accumulates
+travel. The hold lifts after 80 ms without a report — an unheld press gives no
+gestures, and a press held forever is a finger LVGL believes is still down.
+
+### 7. Command mode has no exit, because they never entered it
+
+`CST9217_Read_Config()` opens by writing `{0xD1, 0x01}` to `0xD101` to enter
+command mode, and never leaves. That is harmless in their tree only because
+finding 5 means the write is inert. Fix the length and the mode change becomes
+real — and in command mode the controller answers with configuration instead of
+touch reports, so touch stops working entirely.
+
+There is no documented exit in anything they ship. `src/panel.c` resets the
+controller a second time after probing: the power-on state is reporting mode,
+and a reset is a mechanism already proven on this board rather than one
+inferred from a family datasheet.
 
 ## Answered on the board
 
