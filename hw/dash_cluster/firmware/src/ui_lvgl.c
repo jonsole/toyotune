@@ -81,29 +81,42 @@ static lv_scr_load_anim_t PendingAnim = LV_SCR_LOAD_ANIM_NONE;
    also a slide made of very few steps - lengthening it helps twice over. At
    600 ms and roughly 30 frames a second this is about eighteen steps across
    the travel. */
-#define UI_TRANSITION_MS	(600u)
+#define UI_TRANSITION_MS	(400u)
 
-/* HOW THE SLIDE IS DRAWN, AND WHY THIS IS A REAL CHOICE.
+/* A CROSSFADE, BECAUSE MOTION CANNOT BE MADE SMOOTH HERE.
  *
- * MOVE animates both faces: the outgoing one leaves while the incoming one
- * arrives, which is the phone-like swipe and the truer answer to "make the
- * display slide". It also composites two full screens every frame.
+ * Three sliding transitions were tried on the glass and all three looked bad,
+ * for one reason that no amount of tuning fixes. A full-screen frame costs
+ * about 30 ms out of LVGL's software renderer - no 2D acceleration on this
+ * part - so 466 pixels of travel is roughly twenty steps of twenty-three
+ * pixels. The eye tracks moving content and reads those steps as judder.
+ * Shortening the transition gives fewer, bigger steps; lengthening it just
+ * prolongs the experience.
  *
- * OVER animates only the incoming face, sliding it over an outgoing one that
- * stays put - the iOS push. It still reads as directional, and it draws one
- * face per frame instead of two.
+ * A fade has nothing to track. The same ten or twenty frames that look
+ * stuttery as motion read as a smooth dissolve as brightness, because there
+ * are no edges moving across the retina. It costs the same per frame as the
+ * slide did - both screens are composited while the new one is part
+ * transparent - and looks better for it.
  *
- * That difference is the whole ballgame here. Measured on the board, a
- * full-screen frame is about 60 ms - roughly 3.6 Mpx/s out of LVGL's software
- * renderer, with no 2D acceleration on this part and nothing left to reclaim
- * now that unchanged widgets are no longer repainted. So MOVE gets about six
- * frames across a 350 ms slide and OVER roughly twice that.
+ * What was tried, so nobody repeats it: MOVE (both faces animate) at 350 and
+ * 600 ms, OVER (only the incoming face animates, half the per-frame cost) at
+ * 600 ms, and a strip-by-strip wipe. The wipe was the cheapest by far - it
+ * renders each face exactly once, where a slide renders the moving one every
+ * frame - and was rejected on looks, which is the right criterion for an
+ * animation.
  *
- * Set as a pair of constants rather than decided in the handler, because the
- * right answer is a matter of how it looks on the glass and is meant to be
- * easy to flip. */
-#define UI_ANIM_FORWARD		LV_SCR_LOAD_ANIM_OVER_LEFT
-#define UI_ANIM_BACKWARD	LV_SCR_LOAD_ANIM_OVER_RIGHT
+ * The honest cost of a fade: it has no direction, so a leftward and a
+ * rightward swipe look identical and the driver gets no cue which way the
+ * carousel moved. The face's own name is the cue instead.
+ *
+ * If motion is ever wanted for real, the only thing that would work is
+ * snapshotting each face once into an 8bpp framebuffer and compositing rows
+ * from two of them straight to the panel - around 6 ms a frame, so genuinely
+ * 60 fps. It costs 424 KB of the 520 KB SRAM and RGB332 colour, and it lives
+ * outside LVGL. Measured numbers behind all of this are in the git history
+ * around this commit. */
+#define UI_ANIM_PAGE_CHANGE	LV_SCR_LOAD_ANIM_FADE_IN
 
 /* Gestures are ignored until this time. Two reasons, and the second is the
    real one: a second swipe mid-transition would ask LVGL to load a third
@@ -466,14 +479,12 @@ void UiLvgl_HandleGesture(void)
 
 	if (Dir == LV_DIR_LEFT)
 	{
-		/* Finger travels left, so the next face arrives from the right and the
-		   current one leaves to the left - which is what MOVE_LEFT names. */
 		Pages_Next();
-		PendingAnim = UI_ANIM_FORWARD;
+		PendingAnim = UI_ANIM_PAGE_CHANGE;
 	}
 	else if (Dir == LV_DIR_RIGHT)
 	{
 		Pages_Previous();
-		PendingAnim = UI_ANIM_BACKWARD;
+		PendingAnim = UI_ANIM_PAGE_CHANGE;
 	}
 }

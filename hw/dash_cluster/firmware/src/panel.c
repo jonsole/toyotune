@@ -682,6 +682,15 @@ bool Panel_Init(void)
 	/* Installed from core 1, which is where it must run: the vector table is
 	   per core, and lv_disp_flush_ready() has to be called on the core that
 	   owns LVGL. Core 0 leaves DMA_IRQ_0 alone. */
+	/* Clear any latched completion first. AMOLED_1IN75_Clear() above runs 466
+	   polled DMA transfers, which leave the channel's interrupt status set;
+	   enabling the interrupt on top of that fires the handler immediately, for
+	   a flush that never happened. Harmless in itself - LVGL is not waiting on
+	   anything yet - but it calls lv_disp_flush_ready() unbidden and it
+	   reported a 759 ms first flush, because the handler timed against a start
+	   stamp that had never been taken. */
+	dma_channel_acknowledge_irq0(dma_tx);
+
 	dma_channel_set_irq0_enabled(dma_tx, true);
 	irq_set_exclusive_handler(DMA_IRQ_0, Panel_FlushDoneIrq);
 	irq_set_enabled(DMA_IRQ_0, true);
