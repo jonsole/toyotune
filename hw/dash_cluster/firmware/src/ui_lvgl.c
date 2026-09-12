@@ -76,11 +76,12 @@ static lv_scr_load_anim_t PendingAnim = LV_SCR_LOAD_ANIM_NONE;
    Both screens are drawn for this long, so it is also the only moment the
    renderer has two object trees and twice the draw area.
 
-   200 ms read as too fast on the glass, and it was also too few frames: a
-   full-screen redraw is the most expensive thing this renderer does, so a
-   short slide is a short slide made of very few steps. Lengthening it helps
-   twice over. */
-#define UI_TRANSITION_MS	(350u)
+   200 ms read as too fast on the glass, then 350 ms still did. A full-screen
+   redraw is the most expensive thing this renderer does, so a short slide is
+   also a slide made of very few steps - lengthening it helps twice over. At
+   600 ms and roughly 30 frames a second this is about eighteen steps across
+   the travel. */
+#define UI_TRANSITION_MS	(600u)
 
 /* HOW THE SLIDE IS DRAWN, AND WHY THIS IS A REAL CHOICE.
  *

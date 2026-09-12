@@ -195,6 +195,10 @@ static void Core1Main(void)
 			       (unsigned long)Panel_RefreshLastMs(),
 			       (unsigned long)Panel_RefreshLastPx(),
 			       (unsigned long)Panel_RefreshMaxMs());
+			printf("\n  rounded %lu  overlap dma %lu cs %lu",
+			       (unsigned long)Panel_RoundedAreas(),
+			       (unsigned long)Panel_FlushOverlaps(),
+			       (unsigned long)Panel_FlushCsOverlaps());
 			printf("\n  bus %lu.%lu MB/s  %luus/frame  drain<=%lu",
 			       (unsigned long)(Panel_FlushMbPerSx10() / 10u),
 			       (unsigned long)(Panel_FlushMbPerSx10() % 10u),

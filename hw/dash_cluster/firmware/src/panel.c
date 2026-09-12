@@ -124,6 +124,19 @@ static uint64_t			FlushBytes;
 static uint64_t			FlushBusyUs;
 static uint32_t			FlushStartUs;
 static uint32_t			DrainSpinsMax;
+
+/* Invalidated areas that needed aligning to even columns. If this is moving,
+   the panel was being handed odd column windows - see Panel_Rounder(). */
+static uint32_t			RoundedAreas;
+
+/* Flushes that arrived while the previous transfer was still in flight. Should
+   be impossible - LVGL's draw_buf_flush() waits on its `flushing` flag before
+   calling flush_cb, and that flag is cleared by our completion interrupt - but
+   "should" is not evidence, and starting a window write over a running
+   transfer would corrupt the tail of one section and the placement of the
+   next. Measured rather than assumed. */
+static uint32_t			FlushOverlaps;
+static uint32_t			FlushCsOverlaps;
 static uint32_t			TouchReports;
 static uint32_t			TouchPresses;
 
@@ -149,16 +162,6 @@ static uint16_t			TouchChipType;
 
 
 /***************************************************************************************/
-/* Which PIO state machine the panel transmits through, as a stall-flag mask.
-   The vendor driver switches qspi.sm between its one-wire and four-wire state
-   machines, so this is read from the struct rather than fixed. */
-static inline uint32_t Panel_TxStallMask(void)
-{
-	return 1u << (PIO_FDEBUG_TXSTALL_LSB + qspi.sm);
-}
-
-
-/***************************************************************************************/
 void Panel_ClockInit(void)
 {
 	/* 200 MHz, which is what the vendor's PIO clock divider of 1.0 is chosen
@@ -181,6 +184,76 @@ void Panel_ClockInit(void)
 
 
 /***************************************************************************************/
+/* Expand an invalidated area to what the panel can actually address.
+ *
+ * The CO5300 takes its column window in 2-pixel units, so an odd column start
+ * is rounded by the panel and the strip is drawn one pixel out. That went
+ * unnoticed until page transitions existed, and then only in one direction:
+ * sliding a face in from the right puts the invalidated rectangle at the
+ * animated x position, which is odd half the time, while sliding one in from
+ * the left anchors it at x1 = 0 every frame.
+ *
+ * ROWS NEED THE SAME TREATMENT, AND FOR A LESS OBVIOUS REASON.
+ *
+ * A horizontal slide invalidates the full height, so the animation's own
+ * rectangle always has y1 = 0. But LVGL splits an area too big for the draw
+ * buffer into horizontal bands, and the band height it picks is
+ * buffer_pixels / area_width - so it depends on the width, which changes every
+ * frame of a slide. A narrow rectangle gives tall bands: at 100 px wide the
+ * bands are 279 rows, and the second one starts at y1 = 279. Odd. The panel
+ * rounds it, that band is drawn one row out, and the result is graphics that
+ * appear to jitter up and down by a pixel at random - random because it
+ * depends on a width that is different every frame.
+ *
+ * Rounding rows here fixes it properly rather than by luck: LVGL's
+ * get_max_row() probes this callback and shrinks the band height until the
+ * ROUNDED height still fits the buffer, then uses that as its step. Round the
+ * rows and it picks an even band height, so every band starts on an even row.
+ *
+ * Rounding here rather than in the flush is the whole point of the hook: LVGL
+ * renders the expanded rectangle, so the window and the buffer contents still
+ * describe the same pixels. Widening it in the flush instead would send the
+ * wrong pixels for the added column or row.
+ *
+ * Start down to even and end up to odd also makes every width and height even.
+ * Both clamps land on values that already have the right parity - 0 is even,
+ * 465 is odd - so clamping cannot put the alignment back. */
+static void Panel_Rounder(lv_disp_drv_t *Drv, lv_area_t *Area)
+{
+	bool Needed;
+
+	(void)Drv;
+
+	Needed = ((Area->x1 & 1) != 0) || ((Area->x2 & 1) == 0)
+	         || ((Area->y1 & 1) != 0) || ((Area->y2 & 1) == 0);
+
+	if ((Area->x1 & 1) != 0)
+		Area->x1 = (lv_coord_t)(Area->x1 - 1);
+	if ((Area->x2 & 1) == 0)
+		Area->x2 = (lv_coord_t)(Area->x2 + 1);
+
+	if ((Area->y1 & 1) != 0)
+		Area->y1 = (lv_coord_t)(Area->y1 - 1);
+	if ((Area->y2 & 1) == 0)
+		Area->y2 = (lv_coord_t)(Area->y2 + 1);
+
+	if (Area->x1 < 0)
+		Area->x1 = 0;
+	if (Area->x2 > (lv_coord_t)(PANEL_WIDTH - 1))
+		Area->x2 = (lv_coord_t)(PANEL_WIDTH - 1);
+	if (Area->y1 < 0)
+		Area->y1 = 0;
+	if (Area->y2 > (lv_coord_t)(PANEL_HEIGHT - 1))
+		Area->y2 = (lv_coord_t)(PANEL_HEIGHT - 1);
+
+	/* Counts LVGL's own probe calls from get_max_row() as well as real areas,
+	   so treat it as "is this firing at all" rather than as a frame count. */
+	if (Needed)
+		RoundedAreas++;
+}
+
+
+/***************************************************************************************/
 /* Called by LVGL when a rectangle is ready to go to the glass. Starts the DMA
    and returns immediately; completion is reported from the interrupt below. */
 static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
@@ -189,6 +262,15 @@ static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
 	uint32_t Bytes;
 
 	(void)Drv;
+
+	/* Both tests, because they fail differently. A busy channel means LVGL
+	   handed us a second area while the first was still moving. Chip select
+	   still low means the channel finished but our completion handler has not
+	   run, so the PIO may not have drained and CS was never raised. */
+	if (dma_channel_is_busy(dma_tx))
+		FlushOverlaps++;
+	if (gpio_get(qspi.pin_cs) == 0)
+		FlushCsOverlaps++;
 
 	/* sizeof(lv_color_t) rather than a literal 2, deliberately: this is the
 	   multiplication the vendor example got wrong, and tying it to the type
@@ -255,26 +337,26 @@ static void Panel_FlushDoneIrq(void)
 	/* A finished DMA means the last byte reached the PIO FIFO, not that it has
 	   been clocked out of it. Four words of FIFO and one in the output shift
 	   register can still be pending, so raising chip select here - which is
-	   what the vendor's handler does - cuts the final pixels off every flush.
-	   Small enough to miss in a demo that redraws the whole screen; not small
-	   enough in a gauge, where the flushed rectangle IS the gauge.
+	   what the vendor's handler does - cuts the final pixels off every flushed
+	   rectangle. Small enough to miss in a demo that repaints the whole screen
+	   continuously; not small enough here, where nothing repaints a face that
+	   has not changed, so truncated pixels persist and accumulate.
 
-	   TXSTALL is the condition wanted: the state machine sets it when an
-	   autopull finds the FIFO empty, which after the last byte can only happen
-	   once that byte has been shifted and clocked. Its side-set leaves the
-	   clock low as it stalls, so nothing is left half-sent.
+	   WAIT ON FSTAT, NOT ON TXSTALL.
+	   TXSTALL reads like the exact condition - the state machine sets it when
+	   an autopull finds the FIFO empty - and using it cost two bugs. Clearing
+	   it before the transfer was the first: the 8-bit DMA cannot keep this
+	   state machine fed, measured at 33 MB/s against a 50 MB/s PIO, so it
+	   stalls repeatedly mid-transfer and sets the flag long before the last
+	   byte. Clearing it here and reading it straight back was the second: that
+	   is a posted peripheral write followed by a read of the same register, and
+	   a clear that has not landed yet reads back as still set. Either way the
+	   wait passes immediately on a stale flag and the truncation it exists to
+	   prevent still happens.
 
-	   THE FLAG IS CLEARED HERE, NOT BEFORE THE TRANSFER, AND THAT MATTERS.
-	   Clearing it at flush time looks equivalent and is not: the 8-bit DMA
-	   cannot keep this state machine fed - measured at 33 MB/s against a
-	   50 MB/s PIO - so it stalls repeatedly mid-transfer and sets the flag long
-	   before the last byte. Waiting on it then passes immediately on a stale
-	   flag, which is how this read "drain never needed" when it was really
-	   "drain never actually checked". Cleared after the DMA completes, the next
-	   assertion can only come from the FIFO running dry for good. */
-	qspi.pio->fdebug = Panel_TxStallMask();
-
-	while ((qspi.pio->fdebug & Panel_TxStallMask()) == 0u)
+	   FSTAT is live status, not a sticky flag, so there is nothing to clear and
+	   nothing to race. */
+	while (!pio_sm_is_tx_fifo_empty(qspi.pio, qspi.sm))
 	{
 		if (++Spins > PANEL_DRAIN_SPINS)
 		{
@@ -285,6 +367,13 @@ static void Panel_FlushDoneIrq(void)
 			break;
 		}
 	}
+
+	/* The FIFO is empty; at most one byte remains in the output shift
+	   register, which is two nibble clocks - four system cycles at this
+	   divider. A microsecond is a hundred times that, and at eight chunks a
+	   frame it costs eight microseconds of a twenty-six millisecond frame. Not
+	   worth being clever about. */
+	busy_wait_us_32(1);
 
 	QSPI_Deselect(qspi);
 	Flushes++;
@@ -573,6 +662,7 @@ bool Panel_Init(void)
 	DispDrv.draw_buf = &DrawBufDesc;
 	DispDrv.flush_cb = Panel_Flush;
 	DispDrv.monitor_cb = Panel_RefreshMonitor;
+	DispDrv.rounder_cb = Panel_Rounder;
 	DispDrv.hor_res = PANEL_WIDTH;
 	DispDrv.ver_res = PANEL_HEIGHT;
 	lv_disp_drv_register(&DispDrv);
@@ -643,6 +733,9 @@ uint32_t Panel_RefreshMaxMs(void)	{ return RefreshMaxMs; }
 uint32_t Panel_RefreshLastPx(void)	{ return RefreshLastPx; }
 uint32_t Panel_Refreshes(void)		{ return Refreshes; }
 uint32_t Panel_DrainSpinsMax(void)	{ return DrainSpinsMax; }
+uint32_t Panel_RoundedAreas(void)	{ return RoundedAreas; }
+uint32_t Panel_FlushOverlaps(void)	{ return FlushOverlaps; }
+uint32_t Panel_FlushCsOverlaps(void)	{ return FlushCsOverlaps; }
 
 
 /* Tenths of a megabyte per second, over every flush since boot. Integer

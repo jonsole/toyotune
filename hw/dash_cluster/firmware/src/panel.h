@@ -89,6 +89,18 @@ extern uint32_t Panel_Refreshes(void);
 extern uint32_t Panel_FlushMbPerSx10(void);
 extern uint32_t Panel_FlushBusyUsPerFrame(void);
 extern uint32_t Panel_DrainSpinsMax(void);
+
+/* Invalidated areas that had to be aligned to even columns. Non-zero means the
+   panel was being handed odd column windows, which it rounds itself - see
+   Panel_Rounder(). */
+extern uint32_t Panel_RoundedAreas(void);
+
+/* Both should stay at zero. Panel_FlushOverlaps() counts flushes that arrived
+   with the previous transfer still running; Panel_FlushCsOverlaps() counts
+   those that arrived with chip select still low, meaning the completion
+   handler had not run. Either would corrupt where a section lands. */
+extern uint32_t Panel_FlushOverlaps(void);
+extern uint32_t Panel_FlushCsOverlaps(void);
 extern uint32_t Panel_FlushTimeouts(void);
 extern bool Panel_TouchPresent(void);
 extern uint16_t Panel_TouchChipType(void);
