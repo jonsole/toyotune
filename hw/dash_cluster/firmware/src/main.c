@@ -42,6 +42,14 @@
 #include "can_link.h"
 #endif
 
+/* Latched in main() and read by core 1.
+ *
+ * USB CDC discards everything printed before a host attaches, so the boot
+ * banner is invisible to anyone who connects afterwards - which, on a board
+ * that powers up with the ignition, is everyone. Repeating the identity in the
+ * periodic status line is what makes it observable at all. */
+static uint8_t DashNodeId;
+
 
 /***************************************************************************************/
 /* Core 1: the display. A placeholder until the panel driver exists - it
@@ -69,8 +77,18 @@ static void Core1Main(void)
 
 		if (!SignalStore_LinkAlive(NowMs))
 		{
-			printf("  no telemetry for %lums\n",
-			       (unsigned long)SignalStore_LinkAgeMs(NowMs));
+			uint32_t AgeMs = SignalStore_LinkAgeMs(NowMs);
+
+			/* UINT32_MAX is the store's "nothing has ever arrived", not an
+			   age. Printing it as one gives "no telemetry for 4294967295ms",
+			   a number that looks like data and is not - which is the exact
+			   failure this firmware is careful about everywhere else. */
+			if (AgeMs == UINT32_MAX)
+				printf("  node %u: no telemetry, none ever received\n",
+				       DashNodeId);
+			else
+				printf("  node %u: no telemetry for %lums\n",
+				       DashNodeId, (unsigned long)AgeMs);
 		}
 		else if (Telemetry_ProtocolMismatch())
 		{
@@ -121,6 +139,7 @@ int main(void)
 		printf("node identity unreadable - check the divider; assuming 0\n");
 		Id = 0;
 	}
+	DashNodeId = Id;
 	printf("dash node %u starting\n", Id);
 
 	/* 0xFF: no stored selection yet. Flash-backed persistence is still to be

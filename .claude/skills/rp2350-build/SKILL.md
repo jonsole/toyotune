@@ -89,18 +89,66 @@ The board mounts as a mass-storage device: hold BOOTSEL while plugging it in
 and copy `build/dash_node.uf2` onto the drive that appears. That needs no
 probe and is the normal path.
 
-`picotool` is also installed and can reboot a running board into the
-bootloader, so BOOTSEL only has to be held once:
+`picotool` can also reboot a **running** board into the bootloader, so BOOTSEL
+never has to be held at all after the first time - confirmed on the board:
 
 ```
+~/.pico-sdk/picotool/2.2.0-a4/picotool/picotool.exe reboot -f -u   # into BOOTSEL
 ~/.pico-sdk/picotool/2.2.0-a4/picotool/picotool.exe load -x build/dash_node.uf2
 ```
+
+`picotool info -a` on a board in BOOTSEL reports the chip revision, package
+and the resident binary's SDK version and build date - worth reading before
+overwriting anything. **Save what is already there first:**
+
+```
+picotool.exe save vendor_demo_backup.uf2
+```
+
+The board ships with a Waveshare demo that is the only known-good proof the
+panel works. Overwrite it without a copy and a blank screen becomes ambiguous
+between "my code is wrong" and "the panel needs something I have not done".
 
 **Do not reach for pyOCD here.** The two probes on this bench - the Atmel-ICE
 `J41800034284` and the EDBG `ATML2419050200001722` - are the Toyotune board and
 the stimulator, both ATSAMC21J18A. Pointing either at an RP2350, or flashing an
 RP2350 image with a SAMC21 target type, is the same class of mistake the
 stimulator skill warns about.
+
+## 4a. Reading the USB serial output - assert DTR
+
+**A board that looks dead on serial usually is not.** `pico_stdio_usb`
+discards everything it prints unless `tud_cdc_connected()` is true, and that
+is only true once the host raises **DTR**. Several clients leave it low by
+default - including PowerShell's `System.IO.Ports.SerialPort`, where
+`DtrEnable` is `false` - so the port opens, reads cleanly, and returns
+nothing.
+
+```powershell
+$p = New-Object System.IO.Ports.SerialPort 'COM5',115200,'None',8,'one'
+$p.DtrEnable = $true      # without this the firmware's output is thrown away
+$p.RtsEnable = $true
+$p.Open()
+```
+
+Two related things about CDC that are not bugs:
+
+- **Anything printed before a host attaches is gone.** The boot banner is
+  therefore invisible to anyone who connects afterwards, which on a board that
+  powers up with the ignition is everyone. That is why the node identity is
+  repeated in the periodic status line rather than only announced at boot.
+- **`picotool` needs the port free.** If a terminal holds it, `picotool info`
+  still works but reading the port yourself fails with access denied - the
+  same single-owner problem the CANable has.
+
+The board's COM number also moves between the vendor demo and our firmware;
+find it rather than assuming:
+
+```powershell
+Get-CimInstance Win32_PnPEntity |
+  Where-Object { $_.PNPDeviceID -match "VID_2E8A" -and $_.Name -match "COM" } |
+  Select-Object Name
+```
 
 ## 5. When it fails
 
@@ -124,8 +172,13 @@ stimulator skill warns about.
 
 ## 7. State of play
 
-The board had not arrived when this was written, so what is missing is
-missing on purpose:
+The board arrived 2026-09-12 and the firmware has been flashed and run on it:
+it boots, the core split is alive, the node identity falls back safely with no
+divider fitted, and core 1 reports what each page would draw. Confirmed as
+**RP2350 rev A2, QFN60** - i.e. RP2350A, GPIO0..29, so every pin is inside
+PIO's window.
+
+What is still missing is missing on purpose:
 
 - The **CO5300 flush** and **CST9217 touch read** callbacks - the only
   genuinely hardware-specific code. Everything above them exists.
