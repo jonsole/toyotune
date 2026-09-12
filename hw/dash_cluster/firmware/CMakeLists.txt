@@ -163,3 +163,31 @@ pico_enable_stdio_usb(dash_node 1)
 pico_enable_stdio_uart(dash_node 0)
 
 pico_add_extra_outputs(dash_node)
+
+# ---------------------------------------------------------------------------
+# psram_probe - a standalone answer to "is PSRAM actually fitted?"
+# ---------------------------------------------------------------------------
+#
+# Not part of the node firmware. PLAN.md records the PSRAM pad as reserved and
+# unpopulated, which is why rendering goes through partial buffers; Waveshare
+# ship a full PSRAM driver anyway. This settles which is true, on the board.
+#
+# vendor/psram_tool.c is Waveshare's detection code - see vendor/README.md for
+# provenance and the bugs found while reading their examples.
+add_executable(psram_probe
+    test/psram_probe.c
+    vendor/psram_tool.c
+)
+target_include_directories(psram_probe PRIVATE vendor)
+target_link_libraries(psram_probe
+    pico_stdlib
+    hardware_clocks
+    hardware_gpio
+    hardware_spi
+    hardware_sync
+    hardware_xip_cache
+    pico_flash
+)
+pico_enable_stdio_usb(psram_probe 1)
+pico_enable_stdio_uart(psram_probe 0)
+pico_add_extra_outputs(psram_probe)

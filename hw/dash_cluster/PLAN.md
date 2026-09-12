@@ -1,9 +1,14 @@
 # Dash cluster — three RP2350 CAN gauge nodes
 
-**Status: specified; hardware on order.** Written 2026-09-04 as a hand-off
-document. Nothing in this directory is built yet; this file is the
-specification. One dev board ordered 2026-09-04 (§5, M0). The ECU-side work
-(§3, milestones M1/M1a) needs no dash hardware and can start immediately.
+**Status: ECU side done and on the bench; node firmware running on real
+hardware; no panel yet.** Written 2026-09-04 as a hand-off document, and kept
+current since.
+
+The ECU-side work (§3) is complete, flashed and verified at 998 and 3500 rpm.
+The dev board arrived 2026-09-12; `firmware/` builds for RP2350, boots, reads
+its identity and reports through the page tables over USB serial. What remains
+before a gauge draws anything is the CO5300 panel driver, vendored in
+`firmware/vendor/` and not yet ported.
 
 The goal is an in-dash display of the ECU data the Toyotune boards already put
 on CAN: **three circular displays of roughly 2 inches diameter**, each showing
@@ -476,8 +481,24 @@ multifunctional GPIO pins" comes from: **GPIO25..29 are what is left.**
 | 29 | `IMU_INT2` + **`AXP_IRQ`**, ADC3 | **Avoid** — the PMIC genuinely asserts this one |
 
 **Confirmed 2026-09-04: no GNSS module is fitted**, so `GPS_RST`/`RXD1`/`TXD1`
-carry no traffic and GPIO25/26 are genuinely free. That settles the allocation
-above — it is now fixed, not provisional.
+carry no traffic and GPIO25/26 are genuinely free.
+
+**But the pinout image this table was built from has at least two errors,
+found 2026-09-12 by reading Waveshare's own code**, which *uses* the pins it
+names and is therefore the stronger evidence:
+
+| Pin | Pinout image | Their code |
+|---|---|---|
+| GPIO8 | `QSPI_SS2` | `DOF_INT1`, the IMU interrupt, configured and read in `QMI8658.c` |
+| GPIO24 | `GPS_RST` | `card_detect_gpio`, the microSD card detect, in `hw_config.c` |
+
+The image put `IMU_INT1` on GPIO28, which is why GPIO28 was chosen for the ID
+divider with a note that the IMU interrupt would be left disabled. If that
+interrupt is really on GPIO8 then **GPIO28 is cleaner than assumed**, but the
+table now has two known errors, so **confirm the allocation against the
+schematic rather than the image before laying out a carrier.** Nothing in the
+C examples references GPIO25 to GPIO29 at all, which is at least consistent
+with those five being the free ones.
 
 GPIO25/26 are the cleanest pair: brought out to the UART connector and shared
 with no on-board chip. Both are far below 31, so the PIO window constraint is
@@ -538,9 +559,11 @@ inside the 0..31 window, so any two exposed GPIOs are valid can2040 pins. Worth
 recording anyway, because it stops being free the moment anyone substitutes an
 RP2350B board with pins above 31 broken out.
 
-**PIO block budget — answered, and tighter than assumed.** Waveshare's own
-C/C++ documentation states the panel is driven by **PIO-emulated QSPI**, not
-by a hardware SPI or the QMI peripheral. So of the three PIO blocks:
+**PIO block budget, answered and tighter than assumed.** Waveshare's own
+C/C++ documentation states the panel is driven by **PIO emulated QSPI**, not
+by a hardware SPI or the QMI peripheral. Their source names the block:
+`qspi_pio.c` sets `.pio = pio0`, so can2040 must take PIO1 or PIO2, and
+`can_link.h` already selects PIO1. So of the three PIO blocks:
 
 | Block | Claimed by |
 |---|---|
@@ -578,24 +601,48 @@ Bandwidth is not a concern on QSPI: a full frame is 3.47 Mbit, so at ~80 MHz
 across four lanes a *complete* refresh is ~11 ms. Partial updates are far
 smaller.
 
-**Note what the vendor example actually does.** Waveshare's `05_LVGL`
-example ships **LVGL 8.1** and allocates a *full-screen* draw buffer rather
-than partial buffers. Two things follow:
+**The vendor example overflows its draw buffer, confirmed in source
+2026-09-12.** Waveshare's `05_LVGL` ships **LVGL 8.1.0** and allocates a
+full-screen buffer:
 
-- Their documented allocation is `malloc(DISP_HOR_RES * DISP_VER_RES)`. At
-  16 bpp a full-screen `lv_color_t` buffer needs **twice** that — so either
-  the example is 8-bit colour, or it is under-allocating. **Check this in the
-  actual source before copying it**; it is exactly the kind of thing that
-  works in a demo and corrupts memory once a second subsystem is added.
-- Even done correctly, a full-screen 16 bpp buffer is 424 KB and leaves ~96 KB
-  for everything else. That is survivable for a demo but not once can2040 —
-  which wants its code resident in SRAM (§4.2) — and the application are
-  added on top. **Drop to partial buffers to buy the SRAM back.**
+```c
+#define LV_COLOR_DEPTH 16                                 /* lv_color_t = 2 bytes */
+buf0 = (lv_color_t *)malloc(DISP_HOR_RES * DISP_VER_RES); /* 217,156 BYTES  */
+lv_disp_draw_buf_init(&disp_buf, buf0, NULL,
+                      DISP_HOR_RES * DISP_VER_RES);        /* 217,156 PIXELS */
+```
 
-**If partial rendering ever proves insufficient**, the board has a reserved
-PSRAM pad and the RP2350 supports QSPI PSRAM natively on its second chip
-select — so the fix is populating a footprint, not redesigning. The memory
-question is de-risked in both directions.
+The allocation is in bytes and the size handed to LVGL is in pixels. At 16 bit
+colour those differ by two, so LVGL believes it has 434,312 bytes in a
+217,156 byte allocation: **a 212 KB heap overflow** the moment it redraws
+enough of the screen at once. It survives their demo because partial refreshes
+never reach the far half. Do not copy it; the vendored copy is kept as
+`firmware/vendor/LVGL_example.c.reference` for reading only.
+
+Doubling the malloc would not help either. 424 KB of a 520 KB SRAM leaves
+nothing for LVGL's own 32 KB heap, can2040 and the application, which is why
+partial buffers are the arrangement here.
+
+**The PSRAM escape hatch does not exist on this board, measured 2026-09-12.**
+`firmware/test/psram_probe.c` drives Waveshare's own detection code against
+QSPI chip select 1 (pad 47) and nothing answers the JEDEC Read ID with AP
+Memory's KGD byte:
+
+```
+no PSRAM detected on QSPI CS1 (pad 47)
+```
+
+The pad really is empty, as this section originally assumed. So **partial
+rendering is a requirement rather than a preference, and there is no fallback
+if it proves too slow**, which raises the stakes on measuring it at M2.
+
+Populating the footprint stays possible: it is an 8 pin SOIC AP Memory
+APS6404L class part on the same JEDEC serial memory footprint as the flash
+chip beside it, and the vendor driver detects and sizes it at runtime. That is
+now a hardware modification rather than something the board already offers. If
+it is ever fitted, note its two constraints: 109 MHz maximum clock, and an
+**8 us ceiling on chip select assertion** for refresh, so long DMA bursts to
+PSRAM have to be broken up.
 
 **Toolchain baseline.** The vendor examples are pico-sdk + CMake under the
 official VSCode extension — the same shape as the existing SAMC21 tree — with
@@ -967,11 +1014,10 @@ in either order.**
    node a cable pull. Minor, but it changes the connector design. *(The larger
    pin question is closed: no GNSS module is fitted, so GPIO25/26 are free and
    the §4.1 allocation is final.)*
-3. **Does the vendor's LVGL example under-allocate its draw buffer?** Its
-   documented `malloc(DISP_HOR_RES * DISP_VER_RES)` is half what a full-screen
-   16 bpp `lv_color_t` buffer needs (§4.1a). Read the source before reusing
-   it. Not a blocker either way, since the plan drops to partial buffers — but
-   it decides whether the vendor example can be trusted as a starting point.
+3. ~~Does the vendor's LVGL example under-allocate its draw buffer?~~
+   **Answered 2026-09-12: yes, by a factor of two, a 212 KB heap overflow.**
+   See section 4.1a. Its panel and touch drivers are still the ones to port;
+   its LVGL setup is not.
 4. **Which identifiers does the 14Point7 use, under which protocol
    profile?** Bit rate is settled (configurable, set it to 500 kbit/s), so
    only the identifiers remain. Log the bench bus under each candidate profile
