@@ -33,7 +33,7 @@ provenance recorded instead.
 | `LVGL_example.c.reference` | **Reference only — do not build.** See the bug below |
 | `lv_conf.h.reference` | Their LVGL config, for comparison |
 
-## Three things found while reading this, before reusing any of it
+## Five things found in this code, and what each one costs
 
 ### 1. The vendor LVGL example overflows its draw buffer
 
@@ -83,6 +83,65 @@ rather than the image** before any carrier is laid out.
 
 Nothing in the C examples references GPIO25–29 at all, which is at least
 consistent with those five being the free ones.
+
+### 4. `QSPI_PIO_Init()` leaves the state machine disabled, and nothing re-enables it
+
+`qspi_4wire_data_program_init()` ends with `pio_sm_set_enabled(pio, sm, true)`
+— and then `QSPI_PIO_Init()` immediately disables it again:
+
+```c
+qspi_4wire_data_program_init(qspi.pio, qspi.sm_4wire, offset, PIN_SCLK, PIN_DIO0, 4);
+pio_sm_set_enabled(qspi.pio, qspi.sm_4wire, false);   /* undoes its own setup */
+pio_sm_set_enabled(qspi.pio, qspi.sm_1wire, false);
+```
+
+Every `QSPI_4Wrie_Mode()` call inside `AMOLED_1in75.c` is commented out, so
+nothing in the files they ship ever turns it back on — their own example must
+do it from a `main()` that was not part of the driver directory.
+
+**What it costs if you miss it:** the very first register write hangs.
+`QSPI_PIO_Write()` is `pio_sm_put_blocking()`, so it fills the four-word FIFO
+and then waits forever for a state machine that is not running. The board
+enumerates over USB, prints nothing at all, and never reaches its first line of
+output — which reads much more like a dead board than like a missing function
+call. `src/panel.c` calls `QSPI_4Wrie_Mode(&qspi)` straight after
+`QSPI_PIO_Init()`.
+
+Note also that `sm_1wire` is vestigial: its program is never added and its
+state machine never initialised. One-wire command writes are emulated on the
+four-wire program by spreading each bit across nibbles so only DIO0 moves — see
+`QSPI_DATA_Write()`. So the panel uses exactly one state machine of pio0.
+
+### 5. `CST9217_I2C_Write_nByte()` sends the wrong length
+
+```c
+static void CST9217_I2C_Write_nByte(uint16_t reg, uint8_t *pData, uint32_t Len) {
+    uint8_t data[2 + Len];
+    data[0] = reg >> 8;
+    data[1] = reg & 0xFF;
+    for(uint8_t i = 0; i < Len; i++) data[2 + i] = pData[i];
+    i2c_write_blocking(I2C_PORT, CST9217_I2C_ADDR, data, Len, false);
+}                                                           /* ^ should be Len + 2 */
+```
+
+The buffer is built with the register address in front of the payload and then
+only `Len` bytes are sent, so the payload never goes out.
+
+Its one caller is `CST9217_Read_Config()`, writing `{0xD1, 0x01}` to register
+`0xD101` to enter command mode — and because the address and the payload are
+the same two bytes there, the transfer looks plausible and the bug is invisible
+at that call site. Anything else written through this helper would silently
+lose its data. `src/panel.c` does not use it; `Panel_TouchProbe()` issues the
+four-byte command-mode write itself, checks the return codes, and bounds every
+transfer with a timeout.
+
+**Why the timeout matters.** `i2c_write_blocking()` with `nostop` set returns an
+error on a NAK but leaves the bus without a STOP, and the next transfer on that
+bus can then block forever. An earlier version of the probe did this, and the
+hang landed in LVGL's input callback — before the first status line could be
+printed. The symptom was identical to finding 4: a silent board. A touch
+controller that does not answer has to cost a few milliseconds, not the
+display.
 
 ## Answered on the board
 

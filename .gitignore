@@ -108,3 +108,10 @@ roms/rom_port/*.json
 
 # verify_all_roms.py scratch, if ever pointed back inside the repo
 .verify_tmp/
+
+# Third-party checkouts for the dash node firmware: can2040 and LVGL.
+# Deliberately cloned rather than vendored - both are maintained projects with
+# public history, so a copy here would only hide which revision is in use. The
+# revisions the firmware is built and tested against are recorded in
+# hw/dash_cluster/firmware/README.md; clone them with the commands there.
+/external/

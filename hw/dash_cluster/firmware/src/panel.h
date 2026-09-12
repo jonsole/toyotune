@@ -1,0 +1,75 @@
+/*
+ * panel.h
+ *
+ * The CO5300 AMOLED panel and the CST9217 touch controller, wrapped as an
+ * LVGL display and input device.
+ *
+ * This is the only file that talks to the vendor drivers in firmware/vendor/,
+ * and the only genuinely board-specific part of the display path. Everything
+ * above it - the page tables, what a gauge decides to show, how a value is
+ * formatted - is in pages.c, ui_model.c and ui_lvgl.c and does not know a
+ * panel exists.
+ *
+ * CALL ORDER MATTERS, AND IT SPANS BOTH CORES
+ *
+ *   core 0, first thing in main():   Panel_ClockInit()
+ *   core 1, once:                    Panel_Init()
+ *   core 1, in the render loop:      Panel_Service()
+ *
+ * Panel_ClockInit() is separate, and runs on core 0 before anything else,
+ * because it changes the system clock. Doing that from core 1 while core 0 is
+ * running is unsafe, and doing it after can2040 has started would leave the
+ * CAN bit timing computed against the old frequency - can_link.c reads
+ * clock_get_hz(clk_sys) once, at init.
+ */
+
+#ifndef PANEL_H_
+#define PANEL_H_
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/* Both panel options in PLAN.md section 4.1 are 466x466, which is why the page
+   tables are in percent rather than pixels. */
+#define PANEL_WIDTH	(466)
+#define PANEL_HEIGHT	(466)
+
+/* Set the system and peripheral clocks. Core 0, before stdio and before
+   CanLink_Init(). */
+extern void Panel_ClockInit(void);
+
+/* Bring up the panel, the touch controller and LVGL, and register both as LVGL
+   drivers. Core 1 only, once.
+
+   Returns false if the touch controller did not identify itself. The display
+   still works in that case and the node still shows gauges - it just cannot
+   be swiped - so this is a report, not a reason to stop. */
+extern bool Panel_Init(void);
+
+/* Run LVGL's timers, which is what actually draws. Returns the number of
+   milliseconds until it next wants to be called. Core 1 only.
+
+   Wrapped rather than calling lv_timer_handler() from main.c so that LVGL
+   stays confined to the files that bind to it. */
+extern uint32_t Panel_Service(void);
+
+/* Panel brightness, 0 to 100 percent. A dashboard gauge at full brightness at
+   night is a hazard, so this exists to be driven from something - a light
+   sensor, the car's illumination line, or a page - later. */
+extern void Panel_SetBrightness(uint8_t Percent);
+
+/* Diagnostics for the console status line. The board's USB console discards
+   everything printed before a host attaches, so anything worth knowing has to
+   be reachable from a periodic line rather than a boot banner.
+
+   Panel_FlushTimeouts() is the one that should stay at zero: see the comment
+   on the drain in panel.c. Panel_TouchPresses() is how touch is proven - if it
+   moves when a finger lands, the whole I2C path works. */
+extern uint32_t Panel_Flushes(void);
+extern uint32_t Panel_FlushTimeouts(void);
+extern bool Panel_TouchPresent(void);
+extern uint16_t Panel_TouchChipType(void);
+extern uint32_t Panel_TouchPresses(void);
+extern void Panel_TouchLast(uint16_t *X, uint16_t *Y);
+
+#endif /* PANEL_H_ */

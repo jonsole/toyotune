@@ -5,9 +5,13 @@ decisions behind it — and the reasoning that is expensive to rediscover — ar
 in [`../PLAN.md`](../PLAN.md); this file is only how to build and what is
 here.
 
-**Status: skeleton, no panel.** Everything below the display driver is written
-and tested; the display driver itself is not, because the board has not
-arrived and writing it against a datasheet would be guesswork.
+**Status: running on the board, no telemetry yet.** The panel is up: LVGL
+renders the page tables through partial draw buffers to the CO5300, the
+CST9217 identifies itself on I2C, and the node reports itself over USB serial
+every two seconds. What has not been exercised is the other end — no Toyotune
+board has been put on the bus with this yet, so every gauge currently reads
+`--` and the console says `LINK DOWN`. Milestone M4, whether can2040 survives
+the panel's DMA bursts, is still open and still gates the PCB.
 
 ## Build
 
@@ -47,20 +51,36 @@ exactly the failure that survives a bench test.
 
 ## External dependencies
 
-Neither is vendored — pinning a copy here would hide which revision is in use.
-Clone them beside the repo, or pass `-DCAN2040_PATH=` / `-DLVGL_PATH=`:
+Neither is vendored — both are maintained projects with public git history, so
+a copy here would only hide which revision is in use. `external/` is
+gitignored; clone them from the repo root, or pass `-DCAN2040_PATH=` /
+`-DLVGL_PATH=`:
 
 ```
 git clone https://github.com/KevinOConnor/can2040        external/can2040
 git clone -b release/v8.3 https://github.com/lvgl/lvgl   external/lvgl
 ```
 
+Built and tested against:
+
+| | revision | |
+|---|---|---|
+| LVGL | `fbb73d4b3ffe086a7218bd1a8e51f9e7a260c4b9` | 8.3.11, branch `release/v8.3` |
+| can2040 | `2988d4f11d8bff93f5a3d317fcd5e384a6aa3481` | master, 2026-09-12 |
+
 The firmware builds without either and says so on the console rather than
 silently doing nothing. That is what lets the parts that need no bus and no
-panel be worked on meanwhile.
+panel be worked on meanwhile — and without LVGL, core 1 prints what it would
+have drawn instead of drawing it.
 
 **LVGL 8.x, not 9.** Waveshare's CO5300 panel driver and CST9217 touch glue
 are written against 8.1; porting both is deliberate work, not a free upgrade.
+
+`lv_conf.h` lives here rather than next to the LVGL checkout, and is
+deliberately minimal: LVGL supplies a default for every option it knows about,
+so each line in that file is a decision rather than an inherited template. The
+two that will silently ruin the display if changed are `LV_COLOR_DEPTH 16` and
+`LV_COLOR_16_SWAP 1` — `panel.c` has an `#error` on both.
 
 ## What is here
 
@@ -73,8 +93,18 @@ are written against 8.1; porting both is deliberate work, not a free upgrade.
 | `pages.[ch]` | The page list, startup assignment, and the fault takeover |
 | `ui_model.[ch]` | What a widget should show — tested, LVGL-free |
 | `ui_lvgl.[ch]` | The LVGL binding — mechanical, needs LVGL |
+| `panel.[ch]` | The CO5300 and CST9217, as an LVGL display and input device |
 | `can_link.[ch]` | can2040 setup, receive callback, node heartbeat |
 | `main.c` | Boot and the core split |
+| `lv_conf.h` | LVGL configuration — only the settings that differ from default |
+| `vendor/` | Waveshare's drivers, as delivered — see `vendor/README.md` |
+| `test/psram_probe.c` | Standalone: is PSRAM fitted? (Answer: no) |
+
+`panel.c` is where the vendor drivers are corrected rather than in
+`vendor/`, so a future vendor release still diffs cleanly. Five of their
+mistakes are written up in `vendor/README.md`; two of them present as a board
+that enumerates over USB and prints absolutely nothing, so read that file
+before changing anything in the display bring-up path.
 
 ### The split that matters
 
@@ -106,5 +136,26 @@ Both are in `PLAN.md` and both need the board:
 
 1. Which of the five free GPIOs are usable — `can_link.h` assumes GPIO25/26,
    the SH1.0 UART pins, as the only pair shared with no on-board peripheral.
+   Note the published pinout image is now known to be wrong in two places
+   (`vendor/README.md`, finding 3), so this wants the schematic.
 2. Whether can2040 survives the panel's DMA bursts. That is milestone M4, and
-   it gates the PCB.
+   it gates the PCB. The panel currently issues around 180 flush DMAs a second
+   with an idle bus; what that does to CAN bit timing is untested, because
+   nothing has been on the bus with it yet.
+
+## Reading the console
+
+USB CDC discards everything printed before a host attaches, and this board
+powers up with the ignition — so the boot banner is invisible to everyone in
+practice. Anything worth knowing is repeated in a status line every two
+seconds:
+
+```
+node 0  page 0  LINK DOWN  flush 2172  touch ok 0 @233,233
+  node 0: no telemetry, none ever received
+```
+
+`flush` should climb, `flush-timeout` should never appear, `touch` should say
+`ok`, and the count after it is presses — if it moves when a finger lands, the
+whole I2C path works. The host must raise DTR or the firmware's output is
+thrown away; see the `rp2350-build` skill.

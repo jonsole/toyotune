@@ -13,11 +13,9 @@
  * written against 8.1, so that is the version to match until someone
  * deliberately ports both - see PLAN.md section 4.1a.
  *
- * WHAT IS STILL MISSING
- *
- * The flush callback and touch read callback, which are the only genuinely
- * hardware-specific parts. They come from Waveshare's driver and need the
- * board to test. Everything above them is here.
+ * The hardware-specific parts - the flush callback and the touch read - are
+ * in panel.c, which is the only file that knows a CO5300 or a CST9217 exists.
+ * Nothing here refers to either.
  */
 
 #include <stdio.h>
@@ -144,6 +142,20 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 
 	Out->Label = lv_label_create(Out->Object);
 	lv_obj_align(Out->Label, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+	/* NOTHING ON A FACE MAY SCROLL.
+	 *
+	 * LVGL creates every object scrollable, and its gesture detection gives
+	 * up the moment a scrollable object under the finger starts scrolling -
+	 * indev_gesture() returns early if a scroll is in progress. A widget
+	 * whose content sits a pixel outside its bounds is enough to make that
+	 * happen, and the symptom is a swipe that sometimes changes page and
+	 * sometimes does not. So the flag comes off every widget, and off the
+	 * screen itself in UiLvgl_Init().
+	 *
+	 * Gesture bubbling is left alone: LVGL sets it on every child by default
+	 * and walks up to the first ancestor without it, which is the screen. */
+	lv_obj_clear_flag(Out->Object, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 
@@ -168,10 +180,32 @@ static void UiLvgl_BuildPage(uint8_t Page)
 
 
 /***************************************************************************************/
+static void UiLvgl_GestureEvent(lv_event_t *Event)
+{
+	(void)Event;
+	UiLvgl_HandleGesture();
+}
+
+
+/***************************************************************************************/
 void UiLvgl_Init(void)
 {
 	Screen = lv_scr_act();
 	lv_obj_set_style_bg_color(Screen, lv_color_black(), LV_PART_MAIN);
+
+	/* See the note in UiLvgl_BuildElement(): a scroll in progress suppresses
+	   gesture detection entirely, and the screen is created scrollable like
+	   everything else. */
+	lv_obj_clear_flag(Screen, LV_OBJ_FLAG_SCROLLABLE);
+
+	/* The screen is where the gesture lands. LVGL walks up from the object
+	   under the finger while each one has LV_OBJ_FLAG_GESTURE_BUBBLE, which is
+	   default on for children and off for a screen - so the walk stops here.
+	   Registered on the screen rather than per widget for that reason, and
+	   because lv_obj_clean() on a page change does not touch the screen's own
+	   event handlers. */
+	lv_obj_add_event_cb(Screen, UiLvgl_GestureEvent, LV_EVENT_GESTURE, NULL);
+
 	BuiltPage = 0xFF;
 	ObjectCount = 0;
 }
@@ -196,19 +230,24 @@ void UiLvgl_Update(uint32_t NowMs)
 		UiWidget_t Widget = UiModel_Widget(Element, NowMs);
 		char Text[24];
 
+		/* LVGL takes a signed coordinate; the model produces an unsigned
+		   0..UI_POSITION_MAX, which is 1000 - so the cast cannot lose
+		   anything, and the ranges set in UiLvgl_BuildElement() match. */
+		lv_coord_t Position = (lv_coord_t)Widget.Position;
+
 		switch (Element->Type)
 		{
 		case WIDGET_DIAL:
 		case WIDGET_ARC:
-			lv_arc_set_value(O->Object, Widget.Position);
+			lv_arc_set_value(O->Object, Position);
 			break;
 		case WIDGET_BARGRAPH:
-			lv_bar_set_value(O->Object, Widget.Position, LV_ANIM_OFF);
+			lv_bar_set_value(O->Object, Position, LV_ANIM_OFF);
 			break;
 		case WIDGET_GRAPH:
 			lv_chart_set_next_value(O->Object,
 			                        lv_chart_get_series_next(O->Object, NULL),
-			                        Widget.Position);
+			                        Position);
 			break;
 		default:
 			break;

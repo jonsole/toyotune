@@ -186,5 +186,27 @@ What is still missing is missing on purpose:
   index; nothing stores one.
 - The heartbeat's **page byte**, reserved and sent as zero.
 
-Core 1 currently prints what it *would* draw over USB serial, which is enough
-to exercise the store and the page tables before any glass is attached.
+Without an LVGL checkout, core 1 prints what it *would* draw over USB serial
+instead of drawing it, which is enough to exercise the store and the page
+tables with no glass attached.
+
+## 7. Before touching the display bring-up
+
+Read `firmware/vendor/README.md` first. It lists five mistakes in Waveshare's
+drivers, and **two of them present as a board that enumerates over USB and
+prints absolutely nothing at all**:
+
+- `QSPI_PIO_Init()` ends by disabling the PIO state machine, and nothing in
+  the files they ship re-enables it. The first register write is a
+  `pio_sm_put_blocking()` that then never returns. `src/panel.c` calls
+  `QSPI_4Wrie_Mode(&qspi)` immediately after it for this reason - do not
+  remove that line.
+- An I2C write with `nostop` set that NAKs leaves the bus without a STOP, and
+  the next transfer blocks forever. The hang lands in LVGL's input callback,
+  before the first status line can be printed. Every touch transfer in
+  `panel.c` is bounded by a timeout.
+
+So on this board **silence is the normal symptom of a hang on core 1**, not of
+a dead board or a serial problem - core 0 keeps servicing USB either way, so
+the port still enumerates. Check DTR (section 4a) once; if the port is there
+and still silent, suspect core 1.

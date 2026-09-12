@@ -30,6 +30,7 @@
 #include <string.h>
 
 #include "pico/stdlib.h"
+#include "hardware/clocks.h"
 #include "hardware/irq.h"
 #include "hardware/regs/intctrl.h"
 #include "hardware/structs/pio.h"
@@ -68,11 +69,15 @@ static void CanLink_Callback(struct can2040 *Bus, uint32_t NotifyType,
 	if (NotifyType != CAN2040_NOTIFY_RX || Msg == NULL)
 		return;
 
-	/* Extended frames are not ours: all telemetry uses 11-bit identifiers. */
-	if (Msg->id & CAN2040_ID_EFF)
+	/* Extended frames are not ours: all telemetry uses 11-bit identifiers.
+	   can2040 spells its flag as a signed 1 << 31, so it needs a cast to be
+	   masked against an unsigned identifier without a warning. */
+	if (Msg->id & (uint32_t)CAN2040_ID_EFF)
 		return;
 
-	if (Telemetry_Handle((uint16_t)(Msg->id & 0x7FFu), Msg->data, Msg->dlc,
+	/* dlc is a uint32_t in can2040's message struct but can only hold 0..8. */
+	if (Telemetry_Handle((uint16_t)(Msg->id & 0x7FFu), Msg->data,
+	                     (uint8_t)Msg->dlc,
 	                     to_ms_since_boot(get_absolute_time())))
 		FramesDecoded++;
 }

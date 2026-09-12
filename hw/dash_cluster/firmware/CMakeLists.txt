@@ -99,10 +99,41 @@ set(DASH_SOURCES
 set(LVGL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../external/lvgl"
     CACHE PATH "Path to an LVGL checkout")
 
+# Waveshare's CO5300 panel driver, its PIO-QSPI transport and the CST9217 touch
+# driver, vendored from their demo zip - see vendor/README.md for provenance,
+# the licence, and the three bugs found while reading it. Kept as delivered, so
+# the corrections live in src/panel.c rather than in these files.
+#
+# Deliberately NOT compiled with the warning set below: they are someone else's
+# code, and a warning nobody is going to fix is noise that hides the ones that
+# matter.
+set(PANEL_VENDOR_SOURCES
+    vendor/AMOLED_1in75.c
+    vendor/CST9217.c
+    vendor/DEV_Config.c
+    vendor/qspi_pio.c
+)
+
 if(EXISTS "${LVGL_PATH}/lvgl.h")
     message(STATUS "LVGL: ${LVGL_PATH}")
+
+    # LVGL finds our config through this: its own CMake takes the parent
+    # directory of LV_CONF_PATH onto the include path and defines
+    # LV_CONF_INCLUDE_SIMPLE, so every LVGL source picks up firmware/lv_conf.h
+    # by name. Set before add_subdirectory or it has no effect.
+    set(LV_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h"
+        CACHE FILEPATH "The dash node's LVGL configuration")
+
     add_subdirectory("${LVGL_PATH}" lvgl_build)
-    list(APPEND DASH_SOURCES src/ui_lvgl.c)
+
+    # lv_conf.h takes LVGL's tick from the SDK clock rather than from a
+    # repeating timer, so every LVGL source needs the SDK headers on its
+    # include path. Headers only - the implementation is linked into the
+    # executable, not into this library.
+    target_link_libraries(lvgl PUBLIC pico_stdlib_headers)
+
+    list(APPEND DASH_SOURCES src/panel.c src/ui_lvgl.c)
+    list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})
     set(DASH_HAVE_LVGL 1)
 else()
     message(WARNING
@@ -114,7 +145,8 @@ endif()
 
 if(EXISTS "${CAN2040_PATH}/src/can2040.c")
     message(STATUS "can2040: ${CAN2040_PATH}")
-    list(APPEND DASH_SOURCES src/can_link.c "${CAN2040_PATH}/src/can2040.c")
+    list(APPEND DASH_SOURCES src/can_link.c)
+    list(APPEND VENDOR_SOURCES "${CAN2040_PATH}/src/can2040.c")
     set(DASH_HAVE_CAN2040 1)
 else()
     message(WARNING
@@ -124,7 +156,7 @@ else()
     set(DASH_HAVE_CAN2040 0)
 endif()
 
-add_executable(dash_node ${DASH_SOURCES})
+add_executable(dash_node ${DASH_SOURCES} ${VENDOR_SOURCES})
 
 target_compile_definitions(dash_node PRIVATE
     DASH_HAVE_CAN2040=${DASH_HAVE_CAN2040}
@@ -136,7 +168,15 @@ if(DASH_HAVE_CAN2040)
     target_include_directories(dash_node PRIVATE "${CAN2040_PATH}/src")
 endif()
 if(DASH_HAVE_LVGL)
-    target_link_libraries(dash_node lvgl)
+    target_include_directories(dash_node PRIVATE vendor)
+    target_link_libraries(dash_node lvgl hardware_i2c hardware_pwm hardware_spi
+                          hardware_watchdog hardware_clocks)
+
+    # Core 1 gets its own stack, declared in main.c, rather than the SDK's.
+    # See the comment there: the reserved one lives in SCRATCH_X, which is 4 KB
+    # in total on RP2350 and too small for LVGL's draw paths. Zero here so the
+    # unused reservation is not made at all.
+    target_compile_definitions(dash_node PRIVATE PICO_CORE1_STACK_SIZE=0)
 endif()
 
 # -Wconversion is deliberate: this code moves between widths constantly -
@@ -146,6 +186,10 @@ endif()
 # Applied per source rather than to the target, because the SDK's own files are
 # compiled into this target too and do not build cleanly under -Wconversion.
 # Warnings worth reading are warnings about code we can actually fix.
+# Note this is DASH_SOURCES, not VENDOR_SOURCES: can2040 and the Waveshare
+# drivers are third-party and would produce a steady stream of narrowing
+# warnings nobody here is going to fix, which is exactly how a real warning
+# gets lost.
 set_source_files_properties(${DASH_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-Wall;-Wextra;-Wconversion")
 
