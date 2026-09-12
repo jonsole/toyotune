@@ -80,6 +80,15 @@ extern uint32_t Panel_RefreshLastMs(void);
 extern uint32_t Panel_RefreshMaxMs(void);
 extern uint32_t Panel_RefreshLastPx(void);
 extern uint32_t Panel_Refreshes(void);
+
+/* What the panel costs on the bus, measured rather than derived.
+   Panel_FlushBusyUsPerFrame() is the one M4 wants: what competes with can2040
+   is the share of wall-clock time the panel is mid-burst, not the frame rate.
+   Panel_DrainSpinsMax() is the evidence that the bound on the PIO drain in
+   Panel_FlushDoneIrq() is generous rather than lucky. */
+extern uint32_t Panel_FlushMbPerSx10(void);
+extern uint32_t Panel_FlushBusyUsPerFrame(void);
+extern uint32_t Panel_DrainSpinsMax(void);
 extern uint32_t Panel_FlushTimeouts(void);
 extern bool Panel_TouchPresent(void);
 extern uint16_t Panel_TouchChipType(void);

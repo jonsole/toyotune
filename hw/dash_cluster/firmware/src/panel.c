@@ -116,6 +116,14 @@ static uint32_t			RefreshLastMs;
 static uint32_t			RefreshMaxMs;
 static uint32_t			RefreshLastPx;
 static uint32_t			Refreshes;
+
+/* How long the panel holds the bus, and how much it moves while holding it.
+   64-bit because a full screen is 434 KB and this would wrap a 32-bit byte
+   count in about ten minutes of steady rendering. */
+static uint64_t			FlushBytes;
+static uint64_t			FlushBusyUs;
+static uint32_t			FlushStartUs;
+static uint32_t			DrainSpinsMax;
 static uint32_t			TouchReports;
 static uint32_t			TouchPresses;
 
@@ -196,14 +204,13 @@ static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
 	QSPI_Select(qspi);
 	QSPI_Pixel_Write(qspi, 0x2C);
 
-	/* Clear the stall flag now so the completion handler can use it to tell
-	   that the PIO has actually finished shifting. Write-one-to-clear. */
-	qspi.pio->fdebug = Panel_TxStallMask();
-
 	/* The vendor's own init sets this dreq to the receive direction, which is
 	   wrong; every one of their transmit paths quietly overrides it on the way
 	   past. Set it correctly here too rather than depending on that. */
 	channel_config_set_dreq(&c, pio_get_dreq(qspi.pio, qspi.sm, true));
+
+	FlushBytes += Bytes;
+	FlushStartUs = time_us_32();
 
 	/* DMA_SIZE_8, so the count is in bytes. Byte writes to a PIO TX FIFO are
 	   replicated across the word, which is what lets an 8-bit DMA feed a
@@ -252,10 +259,21 @@ static void Panel_FlushDoneIrq(void)
 	   Small enough to miss in a demo that redraws the whole screen; not small
 	   enough in a gauge, where the flushed rectangle IS the gauge.
 
-	   TXSTALL is the exact condition wanted: the state machine sets it when an
-	   autopull finds the FIFO empty, which can only happen once the last
-	   nibble has been shifted and clocked. Its side-set leaves the clock low
-	   as it stalls, so nothing is left half-sent. */
+	   TXSTALL is the condition wanted: the state machine sets it when an
+	   autopull finds the FIFO empty, which after the last byte can only happen
+	   once that byte has been shifted and clocked. Its side-set leaves the
+	   clock low as it stalls, so nothing is left half-sent.
+
+	   THE FLAG IS CLEARED HERE, NOT BEFORE THE TRANSFER, AND THAT MATTERS.
+	   Clearing it at flush time looks equivalent and is not: the 8-bit DMA
+	   cannot keep this state machine fed - measured at 33 MB/s against a
+	   50 MB/s PIO - so it stalls repeatedly mid-transfer and sets the flag long
+	   before the last byte. Waiting on it then passes immediately on a stale
+	   flag, which is how this read "drain never needed" when it was really
+	   "drain never actually checked". Cleared after the DMA completes, the next
+	   assertion can only come from the FIFO running dry for good. */
+	qspi.pio->fdebug = Panel_TxStallMask();
+
 	while ((qspi.pio->fdebug & Panel_TxStallMask()) == 0u)
 	{
 		if (++Spins > PANEL_DRAIN_SPINS)
@@ -270,6 +288,12 @@ static void Panel_FlushDoneIrq(void)
 
 	QSPI_Deselect(qspi);
 	Flushes++;
+
+	/* Measured to here, not to the end of the DMA: the bus is held until chip
+	   select rises, and the drain above is part of holding it. */
+	FlushBusyUs += time_us_32() - FlushStartUs;
+	if (Spins > DrainSpinsMax)
+		DrainSpinsMax = Spins;
 
 	lv_disp_flush_ready(&DispDrv);
 }
@@ -618,6 +642,31 @@ uint32_t Panel_RefreshLastMs(void)	{ return RefreshLastMs; }
 uint32_t Panel_RefreshMaxMs(void)	{ return RefreshMaxMs; }
 uint32_t Panel_RefreshLastPx(void)	{ return RefreshLastPx; }
 uint32_t Panel_Refreshes(void)		{ return Refreshes; }
+uint32_t Panel_DrainSpinsMax(void)	{ return DrainSpinsMax; }
+
+
+/* Tenths of a megabyte per second, over every flush since boot. Integer
+   throughout: a byte per microsecond is a megabyte per second, so this is just
+   the ratio scaled by ten. */
+uint32_t Panel_FlushMbPerSx10(void)
+{
+	if (FlushBusyUs == 0u)
+		return 0;
+
+	return (uint32_t)((FlushBytes * 10u) / FlushBusyUs);
+}
+
+
+/* Microseconds of bus time per rendered frame - the figure that matters for
+   M4, since what competes with can2040 is the share of wall-clock time the
+   panel spends mid-burst rather than the frame rate. */
+uint32_t Panel_FlushBusyUsPerFrame(void)
+{
+	if (Refreshes == 0u)
+		return 0;
+
+	return (uint32_t)(FlushBusyUs / Refreshes);
+}
 uint32_t Panel_FlushTimeouts(void)	{ return FlushTimeouts; }
 bool Panel_TouchPresent(void)		{ return TouchPresent; }
 uint16_t Panel_TouchChipType(void)	{ return TouchChipType; }

@@ -195,6 +195,11 @@ static void Core1Main(void)
 			       (unsigned long)Panel_RefreshLastMs(),
 			       (unsigned long)Panel_RefreshLastPx(),
 			       (unsigned long)Panel_RefreshMaxMs());
+			printf("\n  bus %lu.%lu MB/s  %luus/frame  drain<=%lu",
+			       (unsigned long)(Panel_FlushMbPerSx10() / 10u),
+			       (unsigned long)(Panel_FlushMbPerSx10() % 10u),
+			       (unsigned long)Panel_FlushBusyUsPerFrame(),
+			       (unsigned long)Panel_DrainSpinsMax());
 			if (Panel_FlushTimeouts() != 0u)
 				printf("  flush-timeout %lu",
 				       (unsigned long)Panel_FlushTimeouts());

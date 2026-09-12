@@ -82,6 +82,28 @@ static lv_scr_load_anim_t PendingAnim = LV_SCR_LOAD_ANIM_NONE;
    twice over. */
 #define UI_TRANSITION_MS	(350u)
 
+/* HOW THE SLIDE IS DRAWN, AND WHY THIS IS A REAL CHOICE.
+ *
+ * MOVE animates both faces: the outgoing one leaves while the incoming one
+ * arrives, which is the phone-like swipe and the truer answer to "make the
+ * display slide". It also composites two full screens every frame.
+ *
+ * OVER animates only the incoming face, sliding it over an outgoing one that
+ * stays put - the iOS push. It still reads as directional, and it draws one
+ * face per frame instead of two.
+ *
+ * That difference is the whole ballgame here. Measured on the board, a
+ * full-screen frame is about 60 ms - roughly 3.6 Mpx/s out of LVGL's software
+ * renderer, with no 2D acceleration on this part and nothing left to reclaim
+ * now that unchanged widgets are no longer repainted. So MOVE gets about six
+ * frames across a 350 ms slide and OVER roughly twice that.
+ *
+ * Set as a pair of constants rather than decided in the handler, because the
+ * right answer is a matter of how it looks on the glass and is meant to be
+ * easy to flip. */
+#define UI_ANIM_FORWARD		LV_SCR_LOAD_ANIM_OVER_LEFT
+#define UI_ANIM_BACKWARD	LV_SCR_LOAD_ANIM_OVER_RIGHT
+
 /* Gestures are ignored until this time. Two reasons, and the second is the
    real one: a second swipe mid-transition would ask LVGL to load a third
    screen while the previous one is still being animated out and deleted, and
@@ -446,11 +468,11 @@ void UiLvgl_HandleGesture(void)
 		/* Finger travels left, so the next face arrives from the right and the
 		   current one leaves to the left - which is what MOVE_LEFT names. */
 		Pages_Next();
-		PendingAnim = LV_SCR_LOAD_ANIM_MOVE_LEFT;
+		PendingAnim = UI_ANIM_FORWARD;
 	}
 	else if (Dir == LV_DIR_RIGHT)
 	{
 		Pages_Previous();
-		PendingAnim = LV_SCR_LOAD_ANIM_MOVE_RIGHT;
+		PendingAnim = UI_ANIM_BACKWARD;
 	}
 }
