@@ -135,6 +135,9 @@ extern uint32_t Panel_RefreshMaxMs(void);
 extern uint32_t Panel_RefreshLastPx(void);
 extern uint32_t Panel_Refreshes(void);
 
+/* LVGL heap: in use now, peak since boot, and the pool size. */
+extern void Panel_Heap(uint32_t *UsedBytes, uint32_t *PeakBytes, uint32_t *TotalBytes);
+
 /* Cumulative since boot, for benchmarking a build: diff two snapshots taken a
    few seconds apart for pixels per second and mean frame time. */
 extern uint64_t Panel_RenderTotalUs(void);

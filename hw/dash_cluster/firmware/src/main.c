@@ -206,6 +206,14 @@ static void Core1Main(void)
 			   read a word out - and the low half of a microsecond counter
 			   does not wrap for 71 minutes, so it is enough to diff over a
 			   benchmark window. */
+			{
+				uint32_t HeapUsed, HeapPeak, HeapTotal;
+
+				Panel_Heap(&HeapUsed, &HeapPeak, &HeapTotal);
+				printf("\n  heap %lu used %lu peak of %lu",
+				       (unsigned long)HeapUsed, (unsigned long)HeapPeak,
+				       (unsigned long)HeapTotal);
+			}
 			printf("\n  bench us %lu px %lu",
 			       (unsigned long)(Panel_RenderTotalUs() & 0xFFFFFFFFu),
 			       (unsigned long)(Panel_RenderTotalPx() & 0xFFFFFFFFu));

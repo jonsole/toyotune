@@ -70,22 +70,26 @@
 #error "The CO5300 wants the high byte first - LV_DRAW_SW_SUPPORT_RGB565_SWAPPED must be 1"
 #endif
 
-/* Draw buffer height, in whole display lines.
+/* Draw buffer height, in whole display lines - and why there is one buffer.
  *
- * 60 lines of 466 is 55 KB a buffer, 110 KB for the pair, out of 520 KB of
- * SRAM. Two buffers rather than one because the flush is asynchronous: LVGL
- * renders into the second while the first is still going out over DMA, which
- * is the only way the draw and the transfer overlap.
+ * The needle tore because a frame reached the panel in pieces. The panel scans
+ * out of its own memory at its own rate, and a needle update used to arrive as
+ * 60-line bands spread over ~45 ms, so a scan could land between two bands and
+ * show half an old needle beside half a new one.
  *
- * The reason to make them bigger is not fewer DMA bursts - the per-flush
- * overhead is a few microseconds of window-register writes. It is fewer chunks
- * per frame: LVGL renders a chunk at a time and re-walks every object
- * overlapping it, so a full-screen redraw at 40 lines paid that traversal
- * twelve times and now pays it eight. Against that, longer bursts are what
- * compete with can2040 for bus bandwidth, which is the tradeoff M4 measures
- * (PLAN.md 4.2a) - so this is a number to revisit with CAN traffic present,
- * not a free win. */
-#define PANEL_BUF_LINES		(60)
+ * So the buffer is sized to take a whole ordinary frame at once. LVGL renders
+ * an invalid area into it completely and then flushes it, which makes each
+ * frame one ~1 ms DMA burst rather than a write smeared across many scans. That
+ * only fits because the gauge needle now invalidates just the region it swept
+ * (UiLvgl_SetNeedle() in ui_lvgl.c) instead of a square from the corner of the
+ * dial - 100 lines of 466 is 46,600 pixels, comfortably above a needle frame.
+ * A full-screen redraw, a page change, still goes out in bands; that is a
+ * crossfade and does not show a tear the way a moving edge does.
+ *
+ * One buffer, not two. A second buffer only paid for LVGL rendering the next
+ * band while the previous one was on the wire, and a 1 ms transfer leaves
+ * nothing worth overlapping. 93 KB, against 110 KB for the old pair. */
+#define PANEL_BUF_LINES		(100)
 #define PANEL_BUF_PIXELS	((uint32_t)PANEL_WIDTH * (uint32_t)PANEL_BUF_LINES)
 #define PANEL_BUF_BYTES		(PANEL_BUF_PIXELS * 2u)
 
@@ -107,8 +111,7 @@ static lv_indev_t	       *Touch;
    in bytes too, unlike v8's lv_disp_draw_buf_init() which took pixels, so
    sizeof() is the right thing to pass and there is no unit left to confuse.
    That confusion is exactly what broke the vendor example (vendor/README.md). */
-static uint8_t			DrawBuf0[PANEL_BUF_BYTES];
-static uint8_t			DrawBuf1[PANEL_BUF_BYTES];
+static uint8_t			DrawBuf[PANEL_BUF_BYTES];
 
 /* Last known touch position, held across releases - see Panel_TouchRead(). */
 static int32_t			TouchX;
@@ -748,7 +751,7 @@ bool Panel_Init(void)
 
 	/* Size in BYTES in v9, where v8 wanted pixels - and sizeof() is the whole
 	   array, so the two cannot disagree. */
-	lv_display_set_buffers(Disp, DrawBuf0, DrawBuf1, sizeof(DrawBuf0),
+	lv_display_set_buffers(Disp, DrawBuf, NULL, sizeof(DrawBuf),
 	                       LV_DISPLAY_RENDER_MODE_PARTIAL);
 	InitStage = PANEL_STAGE_BUFFERS;
 
@@ -804,9 +807,9 @@ bool Panel_Init(void)
 
 	InitStage = PANEL_STAGE_TOUCH_IRQ;
 
-	printf("panel: %dx%d, %u-line draw buffers (%lu bytes each)\n",
+	printf("panel: %dx%d, one %u-line draw buffer (%lu bytes)\n",
 	       PANEL_WIDTH, PANEL_HEIGHT, (unsigned)PANEL_BUF_LINES,
-	       (unsigned long)sizeof(DrawBuf0));
+	       (unsigned long)sizeof(DrawBuf));
 	if (TouchPresent)
 		printf("touch: CST9217 on the bus\n");
 	else if (Acked)
@@ -889,6 +892,19 @@ uint32_t Panel_RefreshLastMs(void)	{ return RefreshLastMs; }
 uint32_t Panel_RefreshMaxMs(void)	{ return RefreshMaxMs; }
 uint32_t Panel_RefreshLastPx(void)	{ return RefreshLastPx; }
 uint32_t Panel_Refreshes(void)		{ return Refreshes; }
+
+
+/* LVGL's own heap: current and peak use, in bytes. For sizing LV_MEM_SIZE from
+   a measurement rather than a guess. Core 1 only, like the rest of LVGL. */
+void Panel_Heap(uint32_t *UsedBytes, uint32_t *PeakBytes, uint32_t *TotalBytes)
+{
+	lv_mem_monitor_t Mon;
+
+	lv_mem_monitor(&Mon);
+	*TotalBytes = (uint32_t)Mon.total_size;
+	*UsedBytes = (uint32_t)(Mon.total_size - Mon.free_size);
+	*PeakBytes = (uint32_t)Mon.max_used;
+}
 uint64_t Panel_RenderTotalUs(void)	{ return RenderTotalUs; }
 uint64_t Panel_RenderTotalPx(void)	{ return RenderTotalPx; }
 uint32_t Panel_DrainSpinsMax(void)	{ return DrainSpinsMax; }

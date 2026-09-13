@@ -51,6 +51,8 @@ typedef struct
 	lv_obj_t *Label;	/* the signal name */
 	lv_obj_t *Needle;	/* WIDGET_GAUGE only: the line that swings */
 	int32_t NeedleLen;	/* pixels, fixed at build time */
+	int32_t NeedleCx;	/* pivot, in the scale's own coordinates */
+	int32_t NeedleCy;
 
 	/* What was last pushed into LVGL, so an unchanged gauge costs nothing.
 	   See the note at the top of UiLvgl_Update(). */
@@ -154,6 +156,63 @@ static int32_t Pct(uint8_t Percent, int32_t Extent)
    the tip points at them rather than through them. */
 #define UI_GAUGE_NEEDLE_PCT	(72)
 
+/* Space kept round the needle inside its line object, so the rounded end caps
+   of a 5 px stroke stay within the area that gets invalidated. */
+#define UI_GAUGE_NEEDLE_WIDTH	(5)
+#define UI_GAUGE_NEEDLE_PAD	(4)
+
+
+/***************************************************************************************/
+static void UiLvgl_NeedleDeleted(lv_event_t *Event)
+{
+	lv_free(lv_event_get_user_data(Event));
+}
+
+
+/***************************************************************************************/
+/* Point the needle, keeping its line object wrapped tightly round it.
+ *
+ * This is not lv_scale_set_line_needle_value(), and the reason is tearing.
+ * That function leaves the line object at the scale's top-left corner with
+ * its first point at the centre, and an lv_line sizes itself from its own
+ * origin out to its furthest point - so the object, and therefore everything
+ * invalidated when the needle moves, is a square from the corner of the dial
+ * out to the tip. Measured on the glass, frames were exactly 230 x 230 and
+ * 347 x 347 pixels: up to ~150k px repainted to move a 5 px line, rendered in
+ * 60-line bands over ~45 ms, and the panel scanning out a half-written needle
+ * part way through.
+ *
+ * Positioning the object at the needle's own bounding box, with the points
+ * relative to it, brings a frame down to the region the needle actually swept
+ * - a few tens of thousands of pixels, small enough to render whole and send
+ * as one burst. See PANEL_BUF_LINES in panel.c for the other half.
+ */
+static void UiLvgl_SetNeedle(UiObject_t *O, uint16_t Position)
+{
+	lv_point_precise_t *P = lv_line_get_points_mutable(O->Needle);
+	int32_t Angle = (int32_t)(((uint32_t)UI_GAUGE_ANGLE_RANGE * Position)
+	                          / (uint32_t)UI_POSITION_MAX);
+	int16_t Deg = (int16_t)(UI_GAUGE_ROTATION + Angle);
+	int32_t Tx = O->NeedleCx + ((O->NeedleLen * lv_trigo_cos(Deg)) >> LV_TRIGO_SHIFT);
+	int32_t Ty = O->NeedleCy + ((O->NeedleLen * lv_trigo_sin(Deg)) >> LV_TRIGO_SHIFT);
+	int32_t MinX = LV_MIN(O->NeedleCx, Tx) - UI_GAUGE_NEEDLE_PAD;
+	int32_t MinY = LV_MIN(O->NeedleCy, Ty) - UI_GAUGE_NEEDLE_PAD;
+	int32_t MaxX = LV_MAX(O->NeedleCx, Tx) + UI_GAUGE_NEEDLE_PAD;
+	int32_t MaxY = LV_MAX(O->NeedleCy, Ty) + UI_GAUGE_NEEDLE_PAD;
+
+	P[0].x = O->NeedleCx - MinX;
+	P[0].y = O->NeedleCy - MinY;
+	P[1].x = Tx - MinX;
+	P[1].y = Ty - MinY;
+
+	/* An explicit size rather than LVGL's content sizing, which runs from the
+	   object's origin to the furthest point and would leave the far end cap
+	   outside the invalidated area. */
+	lv_obj_set_pos(O->Needle, MinX, MinY);
+	lv_obj_set_size(O->Needle, MaxX - MinX + 1, MaxY - MinY + 1);
+	lv_line_set_points_mutable(O->Needle, P, 2);
+}
+
 
 /***************************************************************************************/
 /* A bare black screen, ready to have a face built on it.
@@ -254,6 +313,8 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 	Out->Label = NULL;
 	Out->Needle = NULL;
 	Out->NeedleLen = 0;
+	Out->NeedleCx = 0;
+	Out->NeedleCy = 0;
 	Out->Primed = false;
 	Out->LastPosition = 0;
 	Out->LastState = UI_STATE_NORMAL;
@@ -266,8 +327,9 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 	case WIDGET_GAUGE:
 	{
 		/* lv_scale is v9's replacement for v8's lv_meter, which no longer
-		   exists. It draws the ticks and the numbers and works out where the
-		   needle has to point; the needle itself is an ordinary line. */
+		   exists. It draws the ticks and the numbers. The needle is an
+		   ordinary line positioned by UiLvgl_SetNeedle() rather than by
+		   lv_scale_set_line_needle_value() - see there for why. */
 		uint32_t Majors = 0;
 		int32_t Radius;
 
@@ -300,9 +362,28 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 
 		Radius = (int32_t)((EW < EH ? EW : EH) / 2);
 		Out->NeedleLen = (Radius * UI_GAUGE_NEEDLE_PCT) / 100;
+		Out->NeedleCx = EW / 2;
+		Out->NeedleCy = EH / 2;
 
 		Out->Needle = lv_line_create(Out->Object);
-		lv_obj_set_style_line_width(Out->Needle, 5, LV_PART_MAIN);
+
+		/* The line keeps a pointer to its points rather than a copy, so they
+		   need storage that lives exactly as long as the line. Not a slot in
+		   Objects[]: that is reused as soon as the next face is built, while
+		   the outgoing face is still on the glass for the length of the
+		   crossfade and would draw its needle from the new face's numbers. */
+		{
+			lv_point_precise_t *Points =
+				lv_malloc_zeroed(2u * sizeof(lv_point_precise_t));
+
+			LV_ASSERT_MALLOC(Points);
+			lv_line_set_points_mutable(Out->Needle, Points, 2);
+			lv_obj_add_event_cb(Out->Needle, UiLvgl_NeedleDeleted,
+			                    LV_EVENT_DELETE, Points);
+		}
+
+		lv_obj_set_style_line_width(Out->Needle, UI_GAUGE_NEEDLE_WIDTH,
+		                            LV_PART_MAIN);
 		lv_obj_set_style_line_rounded(Out->Needle, true, LV_PART_MAIN);
 		lv_obj_set_style_line_color(Out->Needle,
 		                            lv_palette_main(LV_PALETTE_RED),
@@ -504,8 +585,7 @@ void UiLvgl_Update(uint32_t NowMs)
 			   NULL needle made "never drawn" look like a working build.
 			   LV_USE_ASSERT_OBJ catches a NULL object loudly instead. */
 			if (Force || Widget.Position != O->LastPosition)
-				lv_scale_set_line_needle_value(O->Object, O->Needle,
-				                               O->NeedleLen, Position);
+				UiLvgl_SetNeedle(O, Widget.Position);
 			break;
 		case WIDGET_DIAL:
 		case WIDGET_ARC:
