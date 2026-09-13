@@ -109,11 +109,28 @@
 #define LV_USE_ASSERT_MALLOC	1
 #define LV_USE_ASSERT_STYLE	0
 
-/* Frame time and CPU load, drawn as an overlay. Off because it sits on top of
- * the gauge, but this is the measurement M2 and M4 ask for - turn it on rather
- * than instrumenting the flush by hand. */
-#define LV_USE_PERF_MONITOR	0
+/* Frame time and CPU load, drawn as an overlay on the system layer - so it
+ * survives page changes rather than being deleted with the outgoing screen.
+ *
+ * READ THE NUMBERS CAREFULLY, THEY ARE NOT WHAT THEY LOOK LIKE.
+ *
+ * FPS is not the observed refresh rate. LVGL sums the RENDER TIME of frames
+ * that drew more than 5000 pixels and reports frames-per-second as if those
+ * were rendered back to back - so it measures render throughput, and is capped
+ * at 1000 / LV_DISP_DEF_REFR_PERIOD, which is 100 here.
+ *
+ * And when nothing is drawn at all it reports the cap, not zero: LVGL treats
+ * "no frames this period" as "unlimited". Since unchanged widgets are no
+ * longer repainted at all (see src/ui_lvgl.c), a still gauge will sit at
+ * 100 FPS / 0% CPU. That is the display doing nothing, not the display doing
+ * brilliantly. The number only means something while something is moving.
+ *
+ * Position is top centre because the default, bottom right, is off the edge of
+ * a round panel. */
+#define LV_USE_PERF_MONITOR	1
+#define LV_USE_PERF_MONITOR_POS	LV_ALIGN_TOP_MID
 #define LV_USE_MEM_MONITOR	0
+#define LV_USE_MEM_MONITOR_POS	LV_ALIGN_BOTTOM_MID
 
 /*---------------------------------------------------------------------------*/
 /* Fonts                                                                     */
