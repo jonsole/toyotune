@@ -46,6 +46,55 @@ extern void Panel_ClockInit(void);
    be swiped - so this is a report, not a reason to stop. */
 extern bool Panel_Init(void);
 
+/* HOW FAR Panel_Init() GOT, for core 0 to report.
+ *
+ * Core 1 brings the panel up and core 1 prints the status line, so anything
+ * that wedges during bring-up produces a board that enumerates over USB and
+ * says nothing at all - core 0 keeps servicing USB either way. That has been
+ * the symptom of every panel fault in this project so far, and it carries no
+ * information. This does: core 0 polls the stage and prints it, so a hang
+ * names the step it hung on.
+ *
+ * Written by core 1, read by core 0. A single byte, so it needs no more
+ * protection than volatile. */
+typedef enum
+{
+	PANEL_STAGE_START = 0,
+	PANEL_STAGE_QSPI_GPIO,
+	PANEL_STAGE_QSPI_PIO,
+	PANEL_STAGE_QSPI_MODE,
+	PANEL_STAGE_DMA,
+	PANEL_STAGE_AMOLED_INIT,
+	PANEL_STAGE_AMOLED_CLEAR,
+	PANEL_STAGE_BRIGHTNESS,
+	PANEL_STAGE_I2C,
+	PANEL_STAGE_TOUCH_RESET,
+	PANEL_STAGE_TOUCH_PROBE,
+	PANEL_STAGE_TOUCH_RESTORE,
+	PANEL_STAGE_LV_INIT,
+	PANEL_STAGE_DISPLAY_CREATE,
+	PANEL_STAGE_BUFFERS,
+	PANEL_STAGE_EVENTS,
+	PANEL_STAGE_INDEV,
+	PANEL_STAGE_FLUSH_IRQ,
+	PANEL_STAGE_TOUCH_IRQ,
+	PANEL_STAGE_DONE,
+
+	/* Inside the render loop. Two of them, so a stall says whether core 1 is
+	   stuck in our own model update or somewhere inside LVGL. */
+	PANEL_STAGE_UI_UPDATE,
+	PANEL_STAGE_LV_TIMER
+} PanelStage_t;
+
+extern uint8_t Panel_Stage(void);
+extern const char *Panel_StageName(uint8_t Stage);
+
+/* Called by core 1 on its way round the loop: records where it is and ticks a
+   counter. Core 0 watches the counter, so a stall is visible wherever it
+   happens rather than only during bring-up. */
+extern void Panel_Alive(uint8_t Stage);
+extern uint32_t Panel_AliveCount(void);
+
 /* The LVGL display this panel is registered as. Opaque to callers except that
    ui_lvgl.c needs it for lv_display_enable_invalidation(). */
 struct _lv_display_t;

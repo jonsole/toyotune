@@ -55,6 +55,10 @@
    the data can change only burns core 1. */
 #define UI_UPDATE_PERIOD_MS	(20u)
 
+/* How often core 0 says where core 1 got to, while the panel is still coming
+   up. Frequent, because this only runs when something is wrong. */
+#define STAGE_REPORT_PERIOD_MS	(500u)
+
 /* Latched in main() and read by core 1.
  *
  * USB CDC discards everything printed before a host attaches, so the boot
@@ -161,6 +165,8 @@ static void Core1Main(void)
 		uint32_t NowMs = to_ms_since_boot(get_absolute_time());
 		uint32_t WaitMs;
 
+		Panel_Alive(PANEL_STAGE_UI_UPDATE);
+
 		if ((int32_t)(NowMs - NextUiMs) >= 0)
 		{
 			NextUiMs = NowMs + UI_UPDATE_PERIOD_MS;
@@ -169,6 +175,7 @@ static void Core1Main(void)
 
 		/* Returns how long it is content to be left alone, or
 		   LV_NO_TIMER_READY when nothing at all is pending. */
+		Panel_Alive(PANEL_STAGE_LV_TIMER);
 		WaitMs = Panel_Service();
 
 		if ((int32_t)(NowMs - NextStatusMs) >= 0)
@@ -250,6 +257,10 @@ static void Core1Main(void)
 int main(void)
 {
 	uint8_t Id;
+#if DASH_HAVE_LVGL
+	uint32_t NextStageReportMs = 0;
+	uint32_t LastAliveCount = 0;
+#endif
 
 #if DASH_HAVE_LVGL
 	/* Before stdio and before CanLink_Init(): this raises the system clock to
@@ -299,8 +310,34 @@ int main(void)
 
 	for (;;)
 	{
+		uint32_t NowMs = to_ms_since_boot(get_absolute_time());
+
 #if DASH_HAVE_CAN2040
-		CanLink_Poll(to_ms_since_boot(get_absolute_time()));
+		CanLink_Poll(NowMs);
+#endif
+
+#if DASH_HAVE_LVGL
+		/* Watch core 1 for a stall. Core 0 is the one that cannot hang here -
+		   it owns USB - so this is the only place from which a wedged renderer
+		   can be seen at all.
+
+		   Driven by whether core 1's counter has moved rather than by a flag
+		   saying it started, because those are different questions: the first
+		   version of this went quiet the moment core 1 reported itself running,
+		   and then said nothing when core 1 hung a few instructions later. */
+		if ((int32_t)(NowMs - NextStageReportMs) >= 0)
+		{
+			uint32_t Alive = Panel_AliveCount();
+
+			NextStageReportMs = NowMs + STAGE_REPORT_PERIOD_MS;
+
+			if (Alive == LastAliveCount)
+				printf("CORE 1 STALLED at stage %u (%s), %lu loops, %lums\n",
+				       Panel_Stage(), Panel_StageName(Panel_Stage()),
+				       (unsigned long)Alive, (unsigned long)NowMs);
+
+			LastAliveCount = Alive;
+		}
 #endif
 		tight_loop_contents();
 	}

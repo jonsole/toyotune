@@ -63,7 +63,7 @@
  * deliberately not malloc'd. v9 defaults to 64 KB; 48 is already generous for
  * this tree, and LV_USE_MEM_MONITOR would say by how much. */
 #define LV_USE_STDLIB_MALLOC	LV_STDLIB_BUILTIN
-#define LV_MEM_SIZE		(48U * 1024U)
+#define LV_MEM_SIZE		(128U * 1024U)
 
 /*---------------------------------------------------------------------------*/
 /* Timing                                                                    */
@@ -113,6 +113,14 @@
 #define LV_USE_ASSERT_MALLOC	1
 #define LV_USE_ASSERT_STYLE	0
 
+/* Object checks: every widget call confirms it was handed a live object of the
+ * right class. Off by default in LVGL, and on here because of what its absence
+ * cost - a gauge was passed a NULL needle, and with this off LVGL read garbage
+ * from low memory rather than refusing, so the fault surfaced as TLSF heap
+ * corruption three calls away instead of an assert naming the call. The checks
+ * live in the setter APIs, not the draw loop, so they cost little. */
+#define LV_USE_ASSERT_OBJ	1
+
 /* Frame rate and CPU load, drawn as an overlay. In v9 both monitors sit behind
  * LV_USE_SYSMON, which has to be turned on first - it was a standalone option
  * in v8.
@@ -128,12 +136,13 @@
  * sits at 100 FPS / 0% CPU. That is the display doing nothing, not doing
  * brilliantly. The figure only means something while something is moving.
  *
- * Position is top centre because the default, bottom right, is off the edge of
- * a round panel. */
+ * Position is the middle of the face: the default, bottom right, is off the
+ * edge of a round panel entirely. It sits over the gauge, which is the point -
+ * it is a measuring tool, not part of the instrument. */
 #define LV_USE_SYSMON		1
 #define LV_USE_PERF_MONITOR	1
-#define LV_USE_PERF_MONITOR_POS	LV_ALIGN_TOP_MID
-#define LV_USE_MEM_MONITOR	0
+#define LV_USE_PERF_MONITOR_POS	LV_ALIGN_CENTER
+#define LV_USE_MEM_MONITOR	1
 #define LV_USE_MEM_MONITOR_POS	LV_ALIGN_BOTTOM_MID
 
 /*---------------------------------------------------------------------------*/

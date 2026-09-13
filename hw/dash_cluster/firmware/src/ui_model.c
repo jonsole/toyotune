@@ -81,6 +81,27 @@ static uint16_t UiModel_Position(int32_t Value, int32_t Min, int32_t Max,
 
 
 /***************************************************************************************/
+/* A triangle wave over the full sweep: up for the first half of the period,
+   back down for the second.
+ *
+ * Integer throughout, and the widest intermediate is Phase * UI_POSITION_MAX,
+ * which for a 2.4 second period is 1.2 million - comfortably inside 32 bits.
+ * Wrap-safe as well, because the modulo is taken of an unsigned tick that is
+ * allowed to roll over.
+ */
+static uint16_t UiModel_SweepPosition(uint32_t NowMs)
+{
+	uint32_t Half = UI_SWEEP_PERIOD_MS / 2u;
+	uint32_t Phase = NowMs % UI_SWEEP_PERIOD_MS;
+
+	if (Phase < Half)
+		return (uint16_t)((Phase * UI_POSITION_MAX) / Half);
+
+	return (uint16_t)(((UI_SWEEP_PERIOD_MS - Phase) * UI_POSITION_MAX) / Half);
+}
+
+
+/***************************************************************************************/
 UiWidget_t UiModel_Widget(const FaceElement_t *Element, uint32_t NowMs)
 {
 	UiWidget_t W;
@@ -107,11 +128,18 @@ UiWidget_t UiModel_Widget(const FaceElement_t *Element, uint32_t NowMs)
 
 	if (!R.Valid)
 	{
-		/* Nothing has ever arrived. The needle sits at zero because it has to
-		   sit somewhere, but the text says so - a gauge reading zero and a
-		   gauge with no data must not look the same. */
+		/* Nothing has ever arrived, so the needle sweeps end to end instead of
+		   parking - the self test every instrument cluster does at power-on.
+		   In the car it runs until the first telemetry frame lands; on a bench
+		   with no ECU it simply carries on, which is what makes a dead face
+		   distinguishable from a dead board.
+
+		   The text still reads "--" and the state is still NODATA, so a
+		   sweeping needle can never be mistaken for a reading: a gauge showing
+		   zero and a gauge showing nothing must not look the same, and that is
+		   as true of a moving needle as a parked one. */
 		W.State = UI_STATE_NODATA;
-		W.Position = 0;
+		W.Position = UiModel_SweepPosition(NowMs);
 		strncpy(W.Text, "--", sizeof(W.Text) - 1);
 		return W;
 	}

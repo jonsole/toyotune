@@ -63,17 +63,46 @@ static void TestNoData(void)
 	printf("ui - no data yet\n");
 	SignalStore_Init();
 
-	W = UiModel_Widget(&E, 1000);
+	W = UiModel_Widget(&E, 0);
 	CHECK(W.State == UI_STATE_NODATA, "state should be NODATA");
 	CHECK(strcmp(W.Text, "--") == 0, "text should be --, got %s", W.Text);
-	CHECK(W.Position == 0, "needle parks at zero");
+
+	/* With no reading the needle sweeps end to end rather than parking, so
+	   walk one period: bottom, quarter, top, three-quarter, bottom. */
+	CHECK(W.Position == 0, "sweep starts at the bottom");
+	CHECK(UiModel_Widget(&E, UI_SWEEP_PERIOD_MS / 4u).Position == UI_POSITION_MAX / 2,
+	      "a quarter through, half way up");
+	CHECK(UiModel_Widget(&E, UI_SWEEP_PERIOD_MS / 2u).Position == UI_POSITION_MAX,
+	      "half way through, full scale");
+	CHECK(UiModel_Widget(&E, (UI_SWEEP_PERIOD_MS * 3u) / 4u).Position == UI_POSITION_MAX / 2,
+	      "three quarters through, half way back down");
+	CHECK(UiModel_Widget(&E, UI_SWEEP_PERIOD_MS).Position == 0,
+	      "a full period returns to the bottom");
+
+	/* And it repeats rather than running once. */
+	CHECK(UiModel_Widget(&E, UI_SWEEP_PERIOD_MS + (UI_SWEEP_PERIOD_MS / 2u)).Position
+	      == UI_POSITION_MAX, "the sweep repeats");
+
+	/* Sweeping must never be mistakable for a reading. */
+	CHECK(strcmp(UiModel_Widget(&E, UI_SWEEP_PERIOD_MS / 2u).Text, "--") == 0,
+	      "a sweeping needle still reads --");
 
 	/* This is the point of the test: a gauge with no data must not be
-	   indistinguishable from a gauge reading zero. */
+	   indistinguishable from a gauge reading zero. Once a reading lands the
+	   sweep stops dead, whatever the clock is doing. */
 	SignalStore_Set(SIGNAL_RPM, 0, 1000);
 	W = UiModel_Widget(&E, 1000);
 	CHECK(W.State == UI_STATE_NORMAL, "a real zero is NORMAL, not NODATA");
 	CHECK(strcmp(W.Text, "0") == 0, "a real zero prints as 0, got %s", W.Text);
+	CHECK(W.Position == 0, "a real zero parks the needle, sweep or no sweep");
+
+	/* Stale data holds its last reading rather than resuming the sweep: a
+	   needle that started moving when the bus died would look like live data
+	   from a dead link. */
+	SignalStore_Set(SIGNAL_RPM, 4000, 1000);
+	W = UiModel_Widget(&E, 1000u + (UI_SWEEP_PERIOD_MS * 10u));
+	CHECK(W.State == UI_STATE_STALE, "an old reading is STALE");
+	CHECK(W.Position == UI_POSITION_MAX / 2, "stale holds its value, it does not sweep");
 }
 
 

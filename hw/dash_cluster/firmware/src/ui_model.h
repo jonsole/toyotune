@@ -44,6 +44,11 @@ typedef enum
    rather than wrapping it round, which would read as a plausible low value. */
 #define UI_POSITION_MAX		(1000)
 
+/* One full out-and-back of the self-test sweep, in milliseconds: half of it
+   climbing to full scale, half returning. A gauge with no reading sweeps
+   instead of sitting at zero - see the comment in UiModel_Widget(). */
+#define UI_SWEEP_PERIOD_MS	(2400u)
+
 typedef struct
 {
 	UiState_t State;

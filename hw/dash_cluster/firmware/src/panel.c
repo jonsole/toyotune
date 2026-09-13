@@ -138,6 +138,11 @@ static uint32_t			DrainSpinsMax;
    the panel was being handed odd column windows - see Panel_Rounder(). */
 static uint32_t			RoundedAreas;
 
+/* Written by core 1 as Panel_Init() advances, read by core 0 so a hang can be
+   named rather than guessed at. See the note in panel.h. */
+static volatile uint8_t		InitStage = PANEL_STAGE_START;
+static volatile uint32_t	AliveCount;
+
 /* Flushes that arrived while the previous transfer was still in flight. Should
    be impossible - LVGL's draw_buf_flush() waits on its `flushing` flag before
    calling flush_cb, and that flag is cleared by our completion interrupt - but
@@ -615,7 +620,9 @@ bool Panel_Init(void)
 	   time, and it changes the system clock - which has to happen on core 0
 	   before can2040 starts, not here. So the useful parts are spelled out. */
 	QSPI_GPIO_Init(qspi);
+	InitStage = PANEL_STAGE_QSPI_GPIO;
 	QSPI_PIO_Init(qspi);
+	InitStage = PANEL_STAGE_QSPI_PIO;
 
 	/* THEIR PIO INIT LEAVES THE STATE MACHINE DISABLED, AND NOTHING RE-ENABLES
 	   IT.
@@ -633,6 +640,7 @@ bool Panel_Init(void)
 	   board that enumerates over USB, prints nothing, and never reaches its
 	   first line of output. */
 	QSPI_4Wrie_Mode(&qspi);
+	InitStage = PANEL_STAGE_QSPI_MODE;
 
 	dma_tx = (uint)dma_claim_unused_channel(true);
 	c = dma_channel_get_default_config(dma_tx);
@@ -640,12 +648,16 @@ bool Panel_Init(void)
 	channel_config_set_read_increment(&c, true);
 	channel_config_set_write_increment(&c, false);
 	channel_config_set_dreq(&c, pio_get_dreq(qspi.pio, qspi.sm, true));
+	InitStage = PANEL_STAGE_DMA;
 
 	/* ---- panel -------------------------------------------------------- */
 
 	AMOLED_1IN75_Init();
+	InitStage = PANEL_STAGE_AMOLED_INIT;
 	AMOLED_1IN75_Clear(BLACK);
+	InitStage = PANEL_STAGE_AMOLED_CLEAR;
 	AMOLED_1IN75_SetBrightness(PANEL_DEFAULT_BRIGHTNESS);
+	InitStage = PANEL_STAGE_BRIGHTNESS;
 
 	/* ---- touch -------------------------------------------------------- */
 
@@ -654,6 +666,7 @@ bool Panel_Init(void)
 	gpio_set_function(DEV_SCL_PIN, GPIO_FUNC_I2C);
 	gpio_pull_up(DEV_SDA_PIN);
 	gpio_pull_up(DEV_SCL_PIN);
+	InitStage = PANEL_STAGE_I2C;
 
 	gpio_init(TOUCH_RST_PIN);
 	gpio_set_dir(TOUCH_RST_PIN, GPIO_OUT);
@@ -674,8 +687,10 @@ bool Panel_Init(void)
 	   The interrupt pin is left untouched - see Panel_TouchRead(). */
 	CST9217_Reset();
 	sleep_ms(30);
+	InitStage = PANEL_STAGE_TOUCH_RESET;
 	Acked = Panel_TouchProbe(&TouchChipType);
 	TouchPresent = Acked && (TouchChipType == CST9217_CHIP_ID);
+	InitStage = PANEL_STAGE_TOUCH_PROBE;
 
 	/* THE PROBE LEAVES THE CONTROLLER IN COMMAND MODE, AND IT HAS TO COME OUT.
 	 *
@@ -696,15 +711,24 @@ bool Panel_Init(void)
 	 * It costs about 110 ms, once. */
 	CST9217_Reset();
 	sleep_ms(30);
+	InitStage = PANEL_STAGE_TOUCH_RESTORE;
 
 	/* ---- LVGL --------------------------------------------------------- */
 
-	/* The tick has to be in place before lv_init(), or anything LVGL times
-	   during startup sees a clock stuck at zero. */
-	lv_tick_set_cb(Panel_TickMs);
 	lv_init();
 
+	/* AFTER lv_init(), not before. lv_init() resets LVGL's global state, which
+	   includes the tick callback - registering it first looks tidier and is
+	   silently undone, leaving lv_tick_get() stuck at zero. LVGL does say so,
+	   with "It seems lv_tick_inc() is not called" out of lv_timer_handler, but
+	   that warning goes to a console nobody is attached to yet. Everything
+	   downstream then measures zero: no animation advances, no timer fires on
+	   schedule, and every render time reads 0 ms. */
+	lv_tick_set_cb(Panel_TickMs);
+	InitStage = PANEL_STAGE_LV_INIT;
+
 	Disp = lv_display_create(PANEL_WIDTH, PANEL_HEIGHT);
+	InitStage = PANEL_STAGE_DISPLAY_CREATE;
 
 	/* Pre-swapped RGB565: the panel wants the high byte first and the flush
 	   hands the buffer straight to DMA, so the renderer produces that order
@@ -716,6 +740,7 @@ bool Panel_Init(void)
 	   array, so the two cannot disagree. */
 	lv_display_set_buffers(Disp, DrawBuf0, DrawBuf1, sizeof(DrawBuf0),
 	                       LV_DISPLAY_RENDER_MODE_PARTIAL);
+	InitStage = PANEL_STAGE_BUFFERS;
 
 	lv_display_set_flush_cb(Disp, Panel_Flush);
 
@@ -727,10 +752,12 @@ bool Panel_Init(void)
 	                        LV_EVENT_RENDER_START, NULL);
 	lv_display_add_event_cb(Disp, Panel_RenderReady,
 	                        LV_EVENT_RENDER_READY, NULL);
+	InitStage = PANEL_STAGE_EVENTS;
 
 	Touch = lv_indev_create();
 	lv_indev_set_type(Touch, LV_INDEV_TYPE_POINTER);
 	lv_indev_set_read_cb(Touch, Panel_TouchRead);
+	InitStage = PANEL_STAGE_INDEV;
 
 	/* Start centred, so a release before any press cannot read as a gesture
 	   from the corner. */
@@ -754,6 +781,7 @@ bool Panel_Init(void)
 	dma_channel_set_irq0_enabled(dma_tx, true);
 	irq_set_exclusive_handler(DMA_IRQ_0, Panel_FlushDoneIrq);
 	irq_set_enabled(DMA_IRQ_0, true);
+	InitStage = PANEL_STAGE_FLUSH_IRQ;
 
 	/* Likewise core 1, and for the same reason: the flag it sets is read by
 	   the LVGL callback. Only enabled once the controller is out of reset and
@@ -763,6 +791,8 @@ bool Panel_Init(void)
 		                                   GPIO_IRQ_EDGE_RISE |
 		                                   GPIO_IRQ_EDGE_FALL,
 		                                   true, Panel_TouchIrq);
+
+	InitStage = PANEL_STAGE_TOUCH_IRQ;
 
 	printf("panel: %dx%d, %u-line draw buffers (%lu bytes each)\n",
 	       PANEL_WIDTH, PANEL_HEIGHT, (unsigned)PANEL_BUF_LINES,
@@ -777,7 +807,46 @@ bool Panel_Init(void)
 		printf("touch: no answer at 0x%02X - swiping unavailable\n",
 		       CST9217_I2C_ADDR);
 
+	InitStage = PANEL_STAGE_DONE;
 	return TouchPresent;
+}
+
+
+/***************************************************************************************/
+uint8_t Panel_Stage(void)
+{
+	return InitStage;
+}
+
+
+void Panel_Alive(uint8_t Stage)
+{
+	InitStage = Stage;
+	AliveCount++;
+}
+
+
+uint32_t Panel_AliveCount(void)
+{
+	return AliveCount;
+}
+
+
+const char *Panel_StageName(uint8_t Stage)
+{
+	static const char *const Names[] =
+	{
+		"start", "qspi-gpio", "qspi-pio", "qspi-mode", "dma",
+		"amoled-init", "amoled-clear", "brightness", "i2c",
+		"touch-reset", "touch-probe", "touch-restore", "lv-init",
+		"display-create", "buffers", "events", "indev", "flush-irq",
+		"touch-irq", "done", "ui-update", "lv-timer"
+	};
+
+	if (Stage >= (sizeof(Names) / sizeof(Names[0])))
+		return "?";
+
+	return Names[Stage];
 }
 
 

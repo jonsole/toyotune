@@ -236,6 +236,31 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 	int32_t EW = Pct(Element->W, W);
 	int32_t EH = Pct(Element->H, H);
 
+	/* EVERY FIELD IS SEEDED BEFORE THE WIDGET IS BUILT, NOT AFTER.
+	 *
+	 * This block used to sit after the switch below, and it reset Needle to
+	 * NULL straight after lv_line_create() had filled it in - so every gauge
+	 * then asked LVGL to position a NULL needle. LVGL did not fault on it:
+	 * LV_USE_ASSERT_OBJ was off, and low memory on RP2350 is readable boot
+	 * ROM, so it read garbage there and passed it to lv_realloc(). The first
+	 * sign of anything wrong was TLSF reporting "block already marked as free",
+	 * three calls away from the cause. Order matters here; keep it first.
+	 *
+	 * Nothing has been pushed into this object yet, so the first update writes
+	 * every property regardless of what it compares against - cheaper and far
+	 * clearer than seeding each cache with a value the model cannot produce. */
+	Out->Object = NULL;
+	Out->Value = NULL;
+	Out->Label = NULL;
+	Out->Needle = NULL;
+	Out->NeedleLen = 0;
+	Out->Primed = false;
+	Out->LastPosition = 0;
+	Out->LastState = UI_STATE_NORMAL;
+	Out->LastLabel = NULL;
+	Out->LastText[0] = '\0';
+	Out->NextChartMs = 0;
+
 	switch (Element->Type)
 	{
 	case WIDGET_GAUGE:
@@ -335,19 +360,6 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 
 	Out->Label = lv_label_create(Out->Object);
 	lv_obj_align(Out->Label, LV_ALIGN_BOTTOM_MID, 0, 0);
-
-	/* Nothing has been pushed into this object yet, so the first update writes
-	   every property regardless of what it is compared against. Cheaper and
-	   far clearer than seeding each cache with a value the model can never
-	   produce. */
-	Out->Primed = false;
-	Out->LastPosition = 0;
-	Out->Needle = NULL;
-	Out->NeedleLen = 0;
-	Out->LastState = UI_STATE_NORMAL;
-	Out->LastLabel = NULL;
-	Out->LastText[0] = '\0';
-	Out->NextChartMs = 0;
 
 	/* NOTHING ON A FACE MAY SCROLL.
 	 *
@@ -487,6 +499,10 @@ void UiLvgl_Update(uint32_t NowMs)
 		switch (Element->Type)
 		{
 		case WIDGET_GAUGE:
+			/* No NULL guard here, deliberately. One was added while chasing
+			   the needle fault and it is what hid it: silently skipping a
+			   NULL needle made "never drawn" look like a working build.
+			   LV_USE_ASSERT_OBJ catches a NULL object loudly instead. */
 			if (Force || Widget.Position != O->LastPosition)
 				lv_scale_set_line_needle_value(O->Object, O->Needle,
 				                               O->NeedleLen, Position);
