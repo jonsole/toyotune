@@ -18,13 +18,15 @@
 #define PAGES_H_
 
 #include <stdbool.h>
+#include <stddef.h>	/* NULL, for the tick-label pointers below */
 #include <stdint.h>
 
 #include "signals.h"
 
 typedef enum
 {
-	WIDGET_DIAL,		/* sweeping needle, the main event on a page */
+	WIDGET_GAUGE,		/* ticks, numbers and a swinging needle - a real dial */
+	WIDGET_DIAL,		/* filled arc, no ticks; cheaper than a gauge */
 	WIDGET_ARC,			/* partial ring, good for a secondary quantity */
 	WIDGET_NUMERIC,		/* plain value and unit */
 	WIDGET_BARGRAPH,	/* horizontal bar, for per-cylinder comparisons */
@@ -41,6 +43,16 @@ typedef struct
 	uint8_t X, Y, W, H;	/* percent of the panel, so the layout is resolution
 						   independent - the same table serves the 1.43" and
 						   1.75" panels, which share 466x466 */
+
+	/* WIDGET_GAUGE only: the numbers printed around the dial, NULL terminated.
+	   One string per major tick, and the minor ticks are filled in between.
+
+	   Deliberately text rather than derived from Min and Max. A tachometer is
+	   marked 0 to 8, not 0 to 8000, and a boost gauge in kPa wants round
+	   hundreds however the signal is scaled - so what is written on the face
+	   stays a presentation choice and cannot drift into the needle
+	   arithmetic. NULL on any other widget. */
+	const char *const *Ticks;
 } FaceElement_t;
 
 

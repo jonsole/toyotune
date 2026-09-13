@@ -279,29 +279,32 @@ static void TestPages(void)
 
 	printf("pages - selection and startup\n");
 
-	/* Every node starts somewhere sensible, and no two of the three share a
-	   startup page - a cluster that powers on showing the same gauge three
-	   times would be useless. */
+	/* Every node starts somewhere sensible, and never on the warning page -
+	   that one is a takeover, not a face to open on.
+
+	   With two faces and four possible identities they cannot all differ, so
+	   the property worth holding is the one that was actually meant: a cluster
+	   must not power on showing the same gauge three times over. Neighbours
+	   differing is what delivers that. */
 	for (i = 0; i < 3; i++)
 	{
-		uint8_t j;
-
 		Pages_Init(i, 0xFF);
 		CHECK(Pages_Current() == StartupPage[i], "node %u startup page", i);
-
-		for (j = 0; j < 3; j++)
-			if (j != i)
-				CHECK(StartupPage[i] != StartupPage[j],
-				      "nodes %u and %u must not start on the same page", i, j);
+		CHECK(StartupPage[i] < (uint8_t)(PageCount - 1u),
+		      "node %u must not start on the warning page", i);
 	}
+
+	CHECK(StartupPage[0] != StartupPage[1], "nodes 0 and 1 differ at power-on");
+	CHECK(StartupPage[1] != StartupPage[2], "nodes 1 and 2 differ at power-on");
 
 	/* An unreadable identity still has to start somewhere. */
 	Pages_Init(NODE_ID_UNKNOWN, 0xFF);
 	CHECK(Pages_Current() < PageCount, "unknown identity still starts on a page");
 
-	/* A restored selection beats the startup page, or persistence is pointless. */
-	Pages_Init(0, 2);
-	CHECK(Pages_Current() == 2, "restored page wins");
+	/* A restored selection beats the startup page, or persistence is
+	   pointless. Node 0 opens on page 0, so restoring 1 is what proves it. */
+	Pages_Init(0, 1);
+	CHECK(Pages_Current() == 1, "restored page wins");
 	Pages_Init(0, 99);
 	CHECK(Pages_Current() == StartupPage[0], "a corrupt restore falls back");
 }

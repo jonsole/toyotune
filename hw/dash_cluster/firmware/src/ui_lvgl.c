@@ -46,9 +46,11 @@
 
 typedef struct
 {
-	lv_obj_t *Object;	/* the arc, bar or label itself */
+	lv_obj_t *Object;	/* the scale, arc, bar or label itself */
 	lv_obj_t *Value;	/* the value text, where the widget has one */
 	lv_obj_t *Label;	/* the signal name */
+	lv_obj_t *Needle;	/* WIDGET_GAUGE only: the line that swings */
+	int32_t NeedleLen;	/* pixels, fixed at build time */
 
 	/* What was last pushed into LVGL, so an unchanged gauge costs nothing.
 	   See the note at the top of UiLvgl_Update(). */
@@ -136,6 +138,24 @@ static int32_t Pct(uint8_t Percent, int32_t Extent)
 
 
 /***************************************************************************************/
+/* How far a gauge sweeps, and where it starts.
+ *
+ * 270 degrees beginning at 135 is the car-instrument convention: the needle
+ * rests at the lower left, climbs over the top and finishes at the lower
+ * right, leaving the bottom of the face clear for the numeric readout. */
+#define UI_GAUGE_ANGLE_RANGE	(270u)
+#define UI_GAUGE_ROTATION	(135)
+
+/* Minor ticks between one labelled tick and the next. The label list decides
+   how many major ticks there are, so the total follows from both. */
+#define UI_GAUGE_MINOR_PER_MAJOR	(5u)
+
+/* Needle length as a percent of the gauge's radius - short of the ticks, so
+   the tip points at them rather than through them. */
+#define UI_GAUGE_NEEDLE_PCT	(72)
+
+
+/***************************************************************************************/
 /* A bare black screen, ready to have a face built on it.
  *
  * One per page rather than one reused, because lv_screen_load_anim() animates
@@ -197,6 +217,13 @@ static void UiLvgl_Style(lv_obj_t *Object, UiState_t State)
 	lv_obj_set_style_text_color(Object, Colour, LV_PART_MAIN);
 	lv_obj_set_style_arc_color(Object, Colour, LV_PART_INDICATOR);
 	lv_obj_set_style_bg_color(Object, Colour, LV_PART_INDICATOR);
+
+	/* A scale's ticks and numbers are its MAIN and ITEMS parts, so the state
+	   colour has to reach those too or a stale gauge would keep bright white
+	   graduations around a dimmed needle. */
+	lv_obj_set_style_line_color(Object, Colour, LV_PART_MAIN);
+	lv_obj_set_style_line_color(Object, Colour, LV_PART_ITEMS);
+	lv_obj_set_style_text_color(Object, Colour, LV_PART_INDICATOR);
 }
 
 
@@ -211,6 +238,53 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 
 	switch (Element->Type)
 	{
+	case WIDGET_GAUGE:
+	{
+		/* lv_scale is v9's replacement for v8's lv_meter, which no longer
+		   exists. It draws the ticks and the numbers and works out where the
+		   needle has to point; the needle itself is an ordinary line. */
+		uint32_t Majors = 0;
+		int32_t Radius;
+
+		Out->Object = lv_scale_create(Screen);
+		lv_obj_set_pos(Out->Object, X, Y);
+		lv_obj_set_size(Out->Object, EW, EH);
+		lv_scale_set_mode(Out->Object, LV_SCALE_MODE_ROUND_INNER);
+		lv_scale_set_angle_range(Out->Object, UI_GAUGE_ANGLE_RANGE);
+		lv_scale_set_rotation(Out->Object, UI_GAUGE_ROTATION);
+
+		/* The needle is driven with the model's normalised position, so the
+		   scale counts in those units too and the printed numbers come from
+		   the label list instead. One less place for a range to disagree. */
+		lv_scale_set_range(Out->Object, 0, UI_POSITION_MAX);
+
+		if (Element->Ticks != NULL)
+		{
+			while (Element->Ticks[Majors] != NULL)
+				Majors++;
+			lv_scale_set_text_src(Out->Object, (const char **)Element->Ticks);
+		}
+
+		if (Majors < 2u)
+			Majors = 2u;	/* a scale with one tick is not a scale */
+
+		lv_scale_set_total_tick_count(Out->Object,
+		                              ((Majors - 1u) * UI_GAUGE_MINOR_PER_MAJOR) + 1u);
+		lv_scale_set_major_tick_every(Out->Object, UI_GAUGE_MINOR_PER_MAJOR);
+		lv_scale_set_label_show(Out->Object, true);
+
+		Radius = (int32_t)((EW < EH ? EW : EH) / 2);
+		Out->NeedleLen = (Radius * UI_GAUGE_NEEDLE_PCT) / 100;
+
+		Out->Needle = lv_line_create(Out->Object);
+		lv_obj_set_style_line_width(Out->Needle, 5, LV_PART_MAIN);
+		lv_obj_set_style_line_rounded(Out->Needle, true, LV_PART_MAIN);
+		lv_obj_set_style_line_color(Out->Needle,
+		                            lv_palette_main(LV_PALETTE_RED),
+		                            LV_PART_MAIN);
+		break;
+	}
+
 	case WIDGET_DIAL:
 	case WIDGET_ARC:
 		Out->Object = lv_arc_create(Screen);
@@ -268,6 +342,8 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 	   produce. */
 	Out->Primed = false;
 	Out->LastPosition = 0;
+	Out->Needle = NULL;
+	Out->NeedleLen = 0;
 	Out->LastState = UI_STATE_NORMAL;
 	Out->LastLabel = NULL;
 	Out->LastText[0] = '\0';
@@ -410,6 +486,11 @@ void UiLvgl_Update(uint32_t NowMs)
 
 		switch (Element->Type)
 		{
+		case WIDGET_GAUGE:
+			if (Force || Widget.Position != O->LastPosition)
+				lv_scale_set_line_needle_value(O->Object, O->Needle,
+				                               O->NeedleLen, Position);
+			break;
 		case WIDGET_DIAL:
 		case WIDGET_ARC:
 			if (Force || Widget.Position != O->LastPosition)

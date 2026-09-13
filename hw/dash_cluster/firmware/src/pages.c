@@ -3,6 +3,9 @@
  *
  * The page list, the startup assignment, and page selection.
  *
+ * Two faces, both a needle gauge: engine speed and boost. The warning page
+ * below them is a takeover rather than a third face - see Pages_Effective().
+ *
  * Geometry is in percent of the panel rather than pixels, so the same table
  * serves whichever panel the car ends up with - the 1.43" and 1.75" modules
  * are both 466x466, and PLAN.md section 4.8 leaves that choice open until the
@@ -13,62 +16,45 @@
 #include "pages.h"
 #include "signal_store.h"
 
-/* --- page 0: engine speed ------------------------------------------------ */
+/* --- page 0: the rev counter --------------------------------------------- */
+
+/* Marked in thousands, the way a tachometer is. The needle works in rpm; these
+   are only what is painted on the face. */
+static const char *const RpmTicks[] =
+	{ "0", "1", "2", "3", "4", "5", "6", "7", "8", NULL };
+
 static const FaceElement_t RpmElements[] =
 {
-	{ WIDGET_DIAL,    SIGNAL_RPM,           0, 8000,  5,  5, 90, 90 },
-	{ WIDGET_NUMERIC, SIGNAL_RPM,           0, 8000, 30, 40, 40, 20 },
-	{ WIDGET_ARC,     SIGNAL_LIMITER_FLAGS, 0,  255,  0,  0, 100, 100 }
+	{ WIDGET_GAUGE,   SIGNAL_RPM, 0, 8000,  2,  2, 96, 96, RpmTicks },
+	{ WIDGET_NUMERIC, SIGNAL_RPM, 0, 8000, 30, 56, 40, 18, NULL }
 };
 
 /* --- page 1: boost ------------------------------------------------------- */
+
+/* Manifold pressure absolute, in kPa. The signal is in tenths, so 2500 is
+   250.0 kPa - a bit over 1.5 bar of boost. */
+static const char *const BoostTicks[] =
+	{ "0", "50", "100", "150", "200", "250", NULL };
+
 static const FaceElement_t BoostElements[] =
 {
-	{ WIDGET_DIAL,    SIGNAL_MAP, 0, 2500,  5,  5, 90, 90 },
-	{ WIDGET_NUMERIC, SIGNAL_MAP, 0, 2500, 30, 36, 40, 16 },
-	{ WIDGET_GRAPH,   SIGNAL_MAP, 0, 2500, 22, 58, 56, 22 }
+	{ WIDGET_GAUGE,   SIGNAL_MAP, 0, 2500,  2,  2, 96, 96, BoostTicks },
+	{ WIDGET_NUMERIC, SIGNAL_MAP, 0, 2500, 25, 56, 50, 18, NULL }
 };
 
-/* --- page 2: health ------------------------------------------------------ */
-static const FaceElement_t HealthElements[] =
-{
-	{ WIDGET_ARC,     SIGNAL_ECT,      -4000, 12000,  5,  5, 90, 90 },
-	{ WIDGET_NUMERIC, SIGNAL_ECT,      -4000, 12000, 25, 24, 50, 16 },
-	{ WIDGET_NUMERIC, SIGNAL_BATTERY,      0,  1800, 25, 44, 50, 14 },
-	{ WIDGET_NUMERIC, SIGNAL_INJ_DUTY,     0, 10000, 25, 60, 50, 14 }
-};
-
-/* --- page 3: knock ------------------------------------------------------- */
-static const FaceElement_t KnockElements[] =
-{
-	{ WIDGET_BARGRAPH, SIGNAL_KNOCK_CYL1,      0, 2000, 20, 26, 60, 12 },
-	{ WIDGET_BARGRAPH, SIGNAL_KNOCK_CYL2,      0, 2000, 20, 42, 60, 12 },
-	{ WIDGET_BARGRAPH, SIGNAL_KNOCK_CYL3,      0, 2000, 20, 58, 60, 12 },
-	{ WIDGET_NUMERIC,  SIGNAL_IGN_TIMING_RAW,  0,  255, 30, 74, 40, 12 }
-};
-
-/* --- page 4: fuel -------------------------------------------------------- */
-static const FaceElement_t FuelElements[] =
-{
-	{ WIDGET_DIAL,    SIGNAL_INJ_DUTY,        0, 10000,  5,  5, 90, 90 },
-	{ WIDGET_NUMERIC, SIGNAL_INJ_PW,          0, 25000, 25, 38, 50, 14 },
-	{ WIDGET_NUMERIC, SIGNAL_LAMBDA_RAW,      0,   255, 25, 54, 50, 14 },
-	{ WIDGET_NUMERIC, SIGNAL_LAMBDA_TRIM_RAW, 0,   255, 25, 68, 50, 12 }
-};
-
-/* --- page 5: the warning takeover ----------------------------------------
+/* --- page 2: the warning takeover ----------------------------------------
  *
- * Not reachable by swiping. Pages_Effective() substitutes it while a fault
- * stands, which is why it is here rather than in the swipe list: a driver
- * must not be able to page away from a fault, and making it a normal page
- * would allow exactly that.
+ * Not reachable by swiping, and kept even though the swipe list is down to
+ * two. Pages_Effective() substitutes it while a fault stands, which is why it
+ * is here rather than in the list: a driver must not be able to page away
+ * from a fault, and making it a normal page would allow exactly that.
  */
 static const FaceElement_t WarningElements[] =
 {
-	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS1,  0,  255, 10, 20, 80, 16 },
-	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS2,  0,  255, 10, 38, 80, 16 },
-	{ WIDGET_NUMERIC, SIGNAL_LIMITER_FLAGS, 0,  255, 10, 56, 80, 16 },
-	{ WIDGET_NUMERIC, SIGNAL_KNOCK_RETARD,  0, 2000, 10, 72, 80, 16 }
+	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS1,  0,  255, 10, 20, 80, 16, NULL },
+	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS2,  0,  255, 10, 38, 80, 16, NULL },
+	{ WIDGET_NUMERIC, SIGNAL_LIMITER_FLAGS, 0,  255, 10, 56, 80, 16, NULL },
+	{ WIDGET_NUMERIC, SIGNAL_KNOCK_RETARD,  0, 2000, 10, 72, 80, 16, NULL }
 };
 
 #define PAGE(name, elems) { name, elems, (uint8_t)(sizeof(elems) / sizeof((elems)[0])) }
@@ -77,22 +63,19 @@ const FacePage_t Pages[] =
 {
 	PAGE("Engine Speed", RpmElements),
 	PAGE("Boost",        BoostElements),
-	PAGE("Health",       HealthElements),
-	PAGE("Knock",        KnockElements),
-	PAGE("Fuel",         FuelElements),
 	PAGE("WARNING",      WarningElements)
 };
 
 const uint8_t PageCount = (uint8_t)(sizeof(Pages) / sizeof(Pages[0]));
 
 /* The warning page is the last entry and is excluded from swiping. */
-#define PAGE_WARNING		(5)
+#define PAGE_WARNING		(2)
 #define PAGE_SWIPEABLE_COUNT	(PAGE_WARNING)
 
-/* Node 0 opens on RPM, node 1 on boost, node 2 on health - a sane cluster at
-   power-on. Node 3 exists because the divider gives four identities; it opens
-   on knock rather than duplicating a neighbour. */
-const uint8_t StartupPage[NODE_ID_COUNT] = { 0, 1, 2, 3 };
+/* With two faces and four possible identities, the nodes alternate: a
+   three-gauge cluster opens as rev counter, boost, rev counter. Each is still
+   swipeable to the other, which is the whole point of the shared list. */
+const uint8_t StartupPage[NODE_ID_COUNT] = { 0, 1, 0, 1 };
 
 static uint8_t Current;
 
