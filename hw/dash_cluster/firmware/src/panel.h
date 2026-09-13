@@ -135,6 +135,11 @@ extern uint32_t Panel_RefreshMaxMs(void);
 extern uint32_t Panel_RefreshLastPx(void);
 extern uint32_t Panel_Refreshes(void);
 
+/* Cumulative since boot, for benchmarking a build: diff two snapshots taken a
+   few seconds apart for pixels per second and mean frame time. */
+extern uint64_t Panel_RenderTotalUs(void);
+extern uint64_t Panel_RenderTotalPx(void);
+
 /* What the panel costs on the bus, measured rather than derived.
    Panel_FlushBusyUsPerFrame() is the one M4 wants: what competes with can2040
    is the share of wall-clock time the panel is mid-burst, not the frame rate.

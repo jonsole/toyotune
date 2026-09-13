@@ -96,6 +96,27 @@
 #define LV_USE_FLOAT		0
 
 /*---------------------------------------------------------------------------*/
+/* Code placement                                                            */
+/*---------------------------------------------------------------------------*/
+
+/* LVGL tags its hottest routines - the blenders, the fill loops - with
+ * LV_ATTRIBUTE_FAST_MEM, which expands to nothing by default, so they execute
+ * from flash through the XIP cache. Putting them in the SDK's .time_critical
+ * section instead has the linker copy them into SRAM at boot, the same place
+ * can2040's interrupt path lives.
+ *
+ * Measured on the glass with the gauge needle sweeping, averaged over ~250
+ * refreshes a run: 1.56 -> 1.71 Mpx/s, 47.5 -> 41.8 ms a frame, about 10%.
+ * The gain was the same at -O2, which is what makes it believable against a
+ * run-to-run spread of about 5%.
+ *
+ * The price is roughly 115 KB of SRAM - .data grows to 123 KB - because every
+ * tagged function shares one section name, so --gc-sections can only discard
+ * a whole object file's worth and unused blenders come along. Worth giving
+ * each function its own section if SRAM ever gets tight. */
+#define LV_ATTRIBUTE_FAST_MEM	__attribute__((section(".time_critical.lvgl")))
+
+/*---------------------------------------------------------------------------*/
 /* Diagnostics                                                               */
 /*---------------------------------------------------------------------------*/
 
@@ -142,7 +163,7 @@
 #define LV_USE_SYSMON		1
 #define LV_USE_PERF_MONITOR	1
 #define LV_USE_PERF_MONITOR_POS	LV_ALIGN_CENTER
-#define LV_USE_MEM_MONITOR	1
+#define LV_USE_MEM_MONITOR	0
 #define LV_USE_MEM_MONITOR_POS	LV_ALIGN_BOTTOM_MID
 
 /*---------------------------------------------------------------------------*/

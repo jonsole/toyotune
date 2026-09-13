@@ -123,6 +123,13 @@ static uint32_t			FlushTimeouts;
 static uint32_t			RefreshLastMs;
 static uint32_t			RefreshMaxMs;
 static uint32_t			RenderStartMs;
+
+/* Cumulative render time and pixels over every refresh that drew something,
+   for benchmarking: diff two snapshots to get throughput over a window.
+   Microseconds, because a millisecond tick quantises a 45 ms frame by 2%. */
+static uint32_t			RenderStartUs;
+static uint64_t			RenderTotalUs;
+static uint64_t			RenderTotalPx;
 static uint32_t			RefreshLastPx;
 static uint32_t			Refreshes;
 
@@ -348,6 +355,7 @@ static void Panel_RenderStart(lv_event_t *Event)
 	(void)Event;
 
 	RenderStartMs = lv_tick_get();
+	RenderStartUs = time_us_32();
 	RefreshLastPx = 0;
 }
 
@@ -368,6 +376,8 @@ static void Panel_RenderReady(lv_event_t *Event)
 
 	RefreshLastMs = TimeMs;
 	Refreshes++;
+	RenderTotalUs += (uint32_t)(time_us_32() - RenderStartUs);
+	RenderTotalPx += RefreshLastPx;
 
 	if (TimeMs > RefreshMaxMs)
 		RefreshMaxMs = TimeMs;
@@ -879,6 +889,8 @@ uint32_t Panel_RefreshLastMs(void)	{ return RefreshLastMs; }
 uint32_t Panel_RefreshMaxMs(void)	{ return RefreshMaxMs; }
 uint32_t Panel_RefreshLastPx(void)	{ return RefreshLastPx; }
 uint32_t Panel_Refreshes(void)		{ return Refreshes; }
+uint64_t Panel_RenderTotalUs(void)	{ return RenderTotalUs; }
+uint64_t Panel_RenderTotalPx(void)	{ return RenderTotalPx; }
 uint32_t Panel_DrainSpinsMax(void)	{ return DrainSpinsMax; }
 uint32_t Panel_RoundedAreas(void)	{ return RoundedAreas; }
 uint32_t Panel_FlushOverlaps(void)	{ return FlushOverlaps; }

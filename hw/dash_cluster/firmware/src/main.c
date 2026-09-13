@@ -202,6 +202,13 @@ static void Core1Main(void)
 			       (unsigned long)Panel_RefreshLastMs(),
 			       (unsigned long)Panel_RefreshLastPx(),
 			       (unsigned long)Panel_RefreshMaxMs());
+			/* 32-bit on purpose. %llu printed garbage at -O2 - the value
+			   read a word out - and the low half of a microsecond counter
+			   does not wrap for 71 minutes, so it is enough to diff over a
+			   benchmark window. */
+			printf("\n  bench us %lu px %lu",
+			       (unsigned long)(Panel_RenderTotalUs() & 0xFFFFFFFFu),
+			       (unsigned long)(Panel_RenderTotalPx() & 0xFFFFFFFFu));
 			printf("\n  rounded %lu  overlap dma %lu cs %lu",
 			       (unsigned long)Panel_RoundedAreas(),
 			       (unsigned long)Panel_FlushOverlaps(),
