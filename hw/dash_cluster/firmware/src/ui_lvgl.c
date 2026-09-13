@@ -50,7 +50,8 @@ typedef struct
 	lv_obj_t *Value;	/* the value text, where the widget has one */
 	lv_obj_t *Label;	/* the signal name */
 	lv_obj_t *Needle;	/* WIDGET_GAUGE only: the line that swings */
-	int32_t NeedleLen;	/* pixels, fixed at build time */
+	int32_t NeedleLen;	/* pixels from the pivot to the tip, fixed at build */
+	int32_t NeedleInner;	/* pixels from the pivot to where the needle starts */
 	int32_t NeedleCx;	/* pivot, in the scale's own coordinates */
 	int32_t NeedleCy;
 
@@ -156,6 +157,11 @@ static int32_t Pct(uint8_t Percent, int32_t Extent)
    the tip points at them rather than through them. */
 #define UI_GAUGE_NEEDLE_PCT	(72)
 
+/* Where the needle starts, as a percent of the radius: the middle of the dial
+   is left empty, the way many real instruments leave a hub. 30% of the radius
+   and a disc 30% of the diameter are the same circle. */
+#define UI_GAUGE_NEEDLE_INNER_PCT	(30)
+
 /* Space kept round the needle inside its line object, so the rounded end caps
    of a 5 px stroke stay within the area that gets invalidated. */
 #define UI_GAUGE_NEEDLE_WIDTH	(5)
@@ -193,15 +199,24 @@ static void UiLvgl_SetNeedle(UiObject_t *O, uint16_t Position)
 	int32_t Angle = (int32_t)(((uint32_t)UI_GAUGE_ANGLE_RANGE * Position)
 	                          / (uint32_t)UI_POSITION_MAX);
 	int16_t Deg = (int16_t)(UI_GAUGE_ROTATION + Angle);
-	int32_t Tx = O->NeedleCx + ((O->NeedleLen * lv_trigo_cos(Deg)) >> LV_TRIGO_SHIFT);
-	int32_t Ty = O->NeedleCy + ((O->NeedleLen * lv_trigo_sin(Deg)) >> LV_TRIGO_SHIFT);
-	int32_t MinX = LV_MIN(O->NeedleCx, Tx) - UI_GAUGE_NEEDLE_PAD;
-	int32_t MinY = LV_MIN(O->NeedleCy, Ty) - UI_GAUGE_NEEDLE_PAD;
-	int32_t MaxX = LV_MAX(O->NeedleCx, Tx) + UI_GAUGE_NEEDLE_PAD;
-	int32_t MaxY = LV_MAX(O->NeedleCy, Ty) + UI_GAUGE_NEEDLE_PAD;
+	int32_t Cos = lv_trigo_cos(Deg);
+	int32_t Sin = lv_trigo_sin(Deg);
 
-	P[0].x = O->NeedleCx - MinX;
-	P[0].y = O->NeedleCy - MinY;
+	/* Both ends lie on the same ray from the pivot: the inner end at
+	   NeedleInner, the tip at NeedleLen. The pivot itself is not drawn, so the
+	   middle of the dial stays empty - and the bounding box no longer has to
+	   reach the centre, which makes each frame's dirty area smaller still. */
+	int32_t Ix = O->NeedleCx + ((O->NeedleInner * Cos) >> LV_TRIGO_SHIFT);
+	int32_t Iy = O->NeedleCy + ((O->NeedleInner * Sin) >> LV_TRIGO_SHIFT);
+	int32_t Tx = O->NeedleCx + ((O->NeedleLen * Cos) >> LV_TRIGO_SHIFT);
+	int32_t Ty = O->NeedleCy + ((O->NeedleLen * Sin) >> LV_TRIGO_SHIFT);
+	int32_t MinX = LV_MIN(Ix, Tx) - UI_GAUGE_NEEDLE_PAD;
+	int32_t MinY = LV_MIN(Iy, Ty) - UI_GAUGE_NEEDLE_PAD;
+	int32_t MaxX = LV_MAX(Ix, Tx) + UI_GAUGE_NEEDLE_PAD;
+	int32_t MaxY = LV_MAX(Iy, Ty) + UI_GAUGE_NEEDLE_PAD;
+
+	P[0].x = Ix - MinX;
+	P[0].y = Iy - MinY;
 	P[1].x = Tx - MinX;
 	P[1].y = Ty - MinY;
 
@@ -313,6 +328,7 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 	Out->Label = NULL;
 	Out->Needle = NULL;
 	Out->NeedleLen = 0;
+	Out->NeedleInner = 0;
 	Out->NeedleCx = 0;
 	Out->NeedleCy = 0;
 	Out->Primed = false;
@@ -362,6 +378,7 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 
 		Radius = (int32_t)((EW < EH ? EW : EH) / 2);
 		Out->NeedleLen = (Radius * UI_GAUGE_NEEDLE_PCT) / 100;
+		Out->NeedleInner = (Radius * UI_GAUGE_NEEDLE_INNER_PCT) / 100;
 		Out->NeedleCx = EW / 2;
 		Out->NeedleCy = EH / 2;
 

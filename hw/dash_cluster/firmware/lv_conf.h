@@ -126,6 +126,7 @@
 #define LV_LOG_LEVEL		LV_LOG_LEVEL_WARN
 #define LV_LOG_PRINTF		1
 
+#define LV_USE_ARM2D 1
 /* Keep the allocation and null assertions on. They are a few bytes of flash
  * and they catch exactly the class of mistake found in the vendor's own LVGL
  * example - a draw buffer sized in the wrong unit (see vendor/README.md). The
@@ -160,8 +161,12 @@
  * Position is the middle of the face: the default, bottom right, is off the
  * edge of a round panel entirely. It sits over the gauge, which is the point -
  * it is a measuring tool, not part of the instrument. */
-#define LV_USE_SYSMON		1
-#define LV_USE_PERF_MONITOR	1
+/* Off for now, on request. The render timing it showed is still on the serial
+ * console, from Panel_RenderTotalUs() and friends, which is the better
+ * instrument anyway - it averages over hundreds of frames. Turn both back on
+ * to see it on the glass. */
+#define LV_USE_SYSMON		0
+#define LV_USE_PERF_MONITOR	0
 #define LV_USE_PERF_MONITOR_POS	LV_ALIGN_CENTER
 #define LV_USE_MEM_MONITOR	0
 #define LV_USE_MEM_MONITOR_POS	LV_ALIGN_BOTTOM_MID
