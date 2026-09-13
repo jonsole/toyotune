@@ -214,6 +214,17 @@ static void Core1Main(void)
 				       (unsigned long)HeapUsed, (unsigned long)HeapPeak,
 				       (unsigned long)HeapTotal);
 			}
+			{
+				PanelTe_t Te;
+
+				Panel_Te(&Te);
+				printf("\n  te %s  edges %lu  period %luus  waits %lu"
+				       "  timeouts %lu  avg wait %luus",
+				       Te.Enabled ? "on" : "OFF (no edges)",
+				       (unsigned long)Te.Edges, (unsigned long)Te.PeriodUs,
+				       (unsigned long)Te.Waits, (unsigned long)Te.Timeouts,
+				       (unsigned long)Te.AvgWaitUs);
+			}
 			printf("\n  bench us %lu px %lu",
 			       (unsigned long)(Panel_RenderTotalUs() & 0xFFFFFFFFu),
 			       (unsigned long)(Panel_RenderTotalPx() & 0xFFFFFFFFu));

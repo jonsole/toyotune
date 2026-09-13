@@ -90,12 +90,11 @@
  * band while the previous one was on the wire, and a 1 ms transfer leaves
  * nothing worth overlapping. 93 KB, against 110 KB for the old pair.
  *
- * This narrows the tear window from ~42 ms to ~1 ms; it does not close it,
- * since a scan can still cross a 1 ms burst. Closing it needs the flush timed
- * against the panel's scan, and both ways of knowing where the scan is are out
- * of reach on this board. Reading register 45h was built and proven impossible
- * - the panel's output never reaches the RP2350, see vendor/README.md finding
- * 8 - and the TE output is not referenced anywhere in the vendor sources. */
+ * On its own that narrows the tear window from ~42 ms to ~1 ms without closing
+ * it, since a scan can still cross a 1 ms burst. Panel_WaitForTe() closes it,
+ * by starting each burst at the panel's TE pulse. Reading the scan position
+ * from register 45h was tried first and does not work on this board - see
+ * vendor/README.md finding 8. */
 #define PANEL_BUF_LINES		(100)
 #define PANEL_BUF_PIXELS	((uint32_t)PANEL_WIDTH * (uint32_t)PANEL_BUF_LINES)
 #define PANEL_BUF_BYTES		(PANEL_BUF_PIXELS * 2u)
@@ -108,6 +107,18 @@
 #define PANEL_DRAIN_SPINS	(1000u)
 
 #define PANEL_DEFAULT_BRIGHTNESS	(80u)
+
+/* The panel's tearing-effect output. Not in Waveshare's pin map or sources at
+   all - GPIO17 comes from the board schematic. */
+#define PANEL_TE_PIN		(17u)
+
+/* How long a flush waits for a TE pulse before giving up on it. A 60 Hz frame
+   is 16.7 ms, so this covers one missed pulse with room to spare. */
+#define PANEL_TE_TIMEOUT_US	(40000u)
+
+/* Timeouts with no TE edge ever seen before sync is abandoned. A panel that
+   never pulses TE would otherwise cost every single frame the full timeout. */
+#define PANEL_TE_GIVE_UP	(5u)
 
 static lv_display_t	       *Disp;
 static lv_indev_t	       *Touch;
@@ -154,6 +165,16 @@ static uint32_t			DrainSpinsMax;
 /* Invalidated areas that needed aligning to even columns. If this is moving,
    the panel was being handed odd column windows - see Panel_Rounder(). */
 static uint32_t			RoundedAreas;
+
+/* TE sync. The edge count and the time between the last two edges are written
+   by the GPIO interrupt; the rest by the flush. */
+static volatile uint32_t	TeEdges;
+static volatile uint32_t	TeLastUs;
+static volatile uint32_t	TePeriodUs;
+static bool			TeSyncEnabled = true;
+static uint32_t			TeSyncWaits;
+static uint32_t			TeSyncTimeouts;
+static uint64_t			TeWaitUs;
 
 /* Written by core 1 as Panel_Init() advances, read by core 0 so a hang can be
    named rather than guessed at. See the note in panel.h. */
@@ -299,6 +320,58 @@ static void Panel_InvalidateArea(lv_event_t *Event)
 
 
 /***************************************************************************************/
+/* Hold a flush until the panel's next TE pulse.
+ *
+ * WHY THIS CLOSES THE TEAR WINDOW RATHER THAN NARROWING IT.
+ *
+ * The panel scans out of its own memory, top to bottom, at its own rate, and a
+ * tear is the scan passing through a region while it is being written. TE
+ * rises as the scan reaches line 471 - set by the vendor init with 44h, just
+ * past the 466 visible rows - so it marks vertical blanking. A write that
+ * starts then has the whole visible frame ahead of the scan, and because the
+ * one-burst flush writes rows faster than the scan draws them (roughly 25 us a
+ * row against 35 us a line), the scan can never catch it up. So it holds for
+ * any region, top of the dial or bottom.
+ *
+ * Always the NEXT edge, not merely a recent one: the render before this flush
+ * takes about as long as a frame, so an edge that happened during it is
+ * already history by the time the write would start.
+ *
+ * The cost is latency, up to one frame and about half a frame on average, with
+ * the frame rate capped at the panel's own 60 Hz - which is roughly where this
+ * renderer was anyway.
+ */
+static void Panel_WaitForTe(void)
+{
+	uint32_t Seen, Start;
+
+	if (!TeSyncEnabled)
+		return;
+
+	Seen = TeEdges;
+	Start = time_us_32();
+
+	while (TeEdges == Seen)
+	{
+		if ((uint32_t)(time_us_32() - Start) > PANEL_TE_TIMEOUT_US)
+		{
+			TeSyncTimeouts++;
+
+			/* Never seen a single edge: TE is not arriving at all, so stop
+			   paying for it on every frame and fall back to unsynced. */
+			if (TeEdges == 0u && TeSyncTimeouts >= PANEL_TE_GIVE_UP)
+				TeSyncEnabled = false;
+			return;
+		}
+		tight_loop_contents();
+	}
+
+	TeSyncWaits++;
+	TeWaitUs += (uint32_t)(time_us_32() - Start);
+}
+
+
+/***************************************************************************************/
 /* Called by LVGL when a rectangle is ready to go to the glass. Starts the DMA
    and returns immediately; completion is reported from the interrupt below. */
 static void Panel_Flush(lv_display_t *Display, const lv_area_t *Area,
@@ -323,6 +396,10 @@ static void Panel_Flush(lv_display_t *Display, const lv_area_t *Area,
 	Bytes = (uint32_t)lv_area_get_width(Area)
 	        * (uint32_t)lv_area_get_height(Area)
 	        * (uint32_t)lv_color_format_get_size(lv_display_get_color_format(Disp));
+
+	/* Start the write in vertical blanking, so the scan cannot show these
+	   rows half written. See Panel_WaitForTe(). */
+	Panel_WaitForTe();
 
 	/* LVGL's area bounds are inclusive; the panel's window registers are not. */
 	AMOLED_1IN75_SetWindows((uint32_t)Area->x1, (uint32_t)Area->y1,
@@ -529,8 +606,24 @@ static bool Panel_TouchProbe(uint16_t *ChipType)
    count: the report is fetched over I2C by the read callback, because a
    blocking transfer inside an interrupt is how a sulking touch controller
    would take the renderer down with it. */
-static void Panel_TouchIrq(uint Gpio, uint32_t Events)
+static void Panel_GpioIrq(uint Gpio, uint32_t Events)
 {
+	/* ONE CALLBACK FOR EVERY GPIO ON THIS CORE, BY NECESSITY.
+	   The SDK keeps a single GPIO interrupt callback per core, and
+	   gpio_set_irq_enabled_with_callback() replaces it. Registering TE with a
+	   callback of its own would silently disconnect touch, so both are
+	   dispatched from here. */
+	if (Gpio == PANEL_TE_PIN)
+	{
+		uint32_t Now = time_us_32();
+
+		if (TeEdges != 0u)
+			TePeriodUs = Now - TeLastUs;
+		TeLastUs = Now;
+		TeEdges++;
+		return;
+	}
+
 	if (Gpio != TOUCH_INT_PIN)
 		return;
 
@@ -807,10 +900,20 @@ bool Panel_Init(void)
 	   the LVGL callback. Only enabled once the controller is out of reset and
 	   has been identified, so a reset pulse cannot be counted as a report. */
 	if (TouchPresent)
-		gpio_set_irq_enabled_with_callback(TOUCH_INT_PIN,
-		                                   GPIO_IRQ_EDGE_RISE |
-		                                   GPIO_IRQ_EDGE_FALL,
-		                                   true, Panel_TouchIrq);
+		gpio_set_irq_enabled(TOUCH_INT_PIN,
+		                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
+
+	/* TE. An input the panel drives, so no pull: a pull-down on a digital
+	   input can latch at about 2.2 V on RP2350 (erratum E9), and nothing is
+	   gained by one here. Registering it is also what installs the shared
+	   callback, which is why touch above only enables its events - see
+	   Panel_GpioIrq(). Order does not matter: both are enabled before LVGL
+	   draws a thing. */
+	gpio_init(PANEL_TE_PIN);
+	gpio_set_dir(PANEL_TE_PIN, GPIO_IN);
+	gpio_disable_pulls(PANEL_TE_PIN);
+	gpio_set_irq_enabled_with_callback(PANEL_TE_PIN, GPIO_IRQ_EDGE_RISE,
+	                                   true, Panel_GpioIrq);
 
 	InitStage = PANEL_STAGE_TOUCH_IRQ;
 
@@ -899,6 +1002,17 @@ uint32_t Panel_RefreshLastMs(void)	{ return RefreshLastMs; }
 uint32_t Panel_RefreshMaxMs(void)	{ return RefreshMaxMs; }
 uint32_t Panel_RefreshLastPx(void)	{ return RefreshLastPx; }
 uint32_t Panel_Refreshes(void)		{ return Refreshes; }
+
+
+void Panel_Te(PanelTe_t *Out)
+{
+	Out->Edges = TeEdges;
+	Out->PeriodUs = TePeriodUs;
+	Out->Enabled = TeSyncEnabled;
+	Out->Waits = TeSyncWaits;
+	Out->Timeouts = TeSyncTimeouts;
+	Out->AvgWaitUs = (TeSyncWaits == 0u) ? 0u : (uint32_t)(TeWaitUs / TeSyncWaits);
+}
 
 
 /* LVGL's own heap: current and peak use, in bytes. For sizing LV_MEM_SIZE from

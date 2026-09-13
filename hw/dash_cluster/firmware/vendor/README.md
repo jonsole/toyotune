@@ -178,43 +178,47 @@ controller a second time after probing: the power-on state is reporting mode,
 and a reset is a mechanism already proven on this board rather than one
 inferred from a family datasheet.
 
-### 8. The panel cannot be read on this board: nothing it sends comes back
+### 8. The panel does not answer register reads - but its TE pin is wired, to GPIO17
 
 Tried in order to sync each flush to the panel's scan position, which the
-CO5300 reports in register `45h` ("Get scanline"). Syncing to it would close
-the tear window that sending each needle frame as one burst only narrowed.
+CO5300 reports in register `45h` ("Get scanline").
 
 The CO5300 datasheet gives the read cycle as the write cycle turned round:
 opcode `03h` and a 24-bit address `00 <reg> 00` clocked out on SIO0, after
-which the host releases SIO0 and the panel returns the data on it, most
-significant bit first. Waveshare's driver never reads, and its PIO program only
-drives pins, so the read was bit-banged: SCLK and SIO0 taken from PIO while
-chip select was high between flushes, then handed back.
+which the host releases SIO0 and the panel returns the data on it. Waveshare's
+driver never reads, and its PIO program only drives pins, so the read was
+bit-banged: SCLK and SIO0 borrowed from PIO while chip select was high.
 
-It never returned anything, and the way that was established rules out a
-mistake in the read rather than just failing to find one:
+It never returned anything, and the diagnosis rules out a broken read rather
+than merely failing to find one:
 
 - Register `44h`, which the vendor init sets to `0x01D7`, and `DAh`, the fixed
   ID register (`0x33`), were both read.
 - **All four** data lines, GPIO12 to GPIO15, were sampled in **both** clock
-  phases with one spare bit either side. With internal pull-ups on, every line
-  read all ones on both registers - the signature of a line nobody is driving.
-  With no pulls, SIO0 read all zeros. Nothing on any line ever looked like data.
+  phases with a spare bit. With internal pull-ups on, every line read all ones
+  on both registers - lines nobody is driving. With no pulls, SIO0 read zeros.
 - A **write** bit-banged with identical framing, pins and timing - `21h`
-  display inversion, held for two seconds, then `20h` - visibly took effect.
-  So the command cycle reaches the panel correctly; only the answer is missing.
+  display inversion held for two seconds, then `20h` - visibly took effect. So
+  the command cycle reaches the panel; only its answer is missing.
 
-The datasheet's pin table explains how that can be: the CO5300 has a separate
-`SDO` digital output beside `SDI_RDX`, and whether either one's output is
-routed back to the RP2350 is decided by the module's flex, not by the chip.
-On this module, no panel output reaches any of the four data pins, and the
-lines may also pass through a one-way level shifter.
+GPIO12 is wired **directly** to LCD_SIO0 - there is no level shifter, confirmed
+from the schematic - so the path exists and the panel simply is not driving it
+for this cycle. The datasheet's pin table has a separate `SDO` digital output
+beside `SDI_RDX`, and a mode in which the reply leaves on that pin would fit
+exactly; whether that is it, or the read cycle wants something the figure does
+not show, was not pursued, because the reason for wanting a read went away.
 
-**What it costs:** no register reads of any kind - not the scan position, not
-the ID, not power-mode status. Sync to the scan would need that output routed.
-The only other way to sync is the panel's `TE` pin, also a separate output,
-also a schematic question. Until one of those exists, the one-burst flush in
-`src/panel.c` is as close as this board gets to tear-free.
+**The reason it went away: TE is wired, on GPIO17.** Nothing in Waveshare's
+pin map or sources mentions it - the mapping is from the schematic. The vendor
+init already enables it (`35h` with `0x00`) and sets the tear scanline to 471
+with `44h`, just past the visible rows, so its rising edge marks vertical
+blanking. `src/panel.c` waits for the next edge before each flush, which closes
+the tear window instead of narrowing it: see `Panel_WaitForTe()`.
+
+Measured: edges at 16.81 ms (59.5 Hz), every flush synced, no timeouts.
+
+**What is still unavailable:** any register read - scan position, ID,
+power-mode status.
 
 ## Answered on the board
 

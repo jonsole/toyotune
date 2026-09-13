@@ -135,6 +135,21 @@ extern uint32_t Panel_RefreshMaxMs(void);
 extern uint32_t Panel_RefreshLastPx(void);
 extern uint32_t Panel_Refreshes(void);
 
+/* TE sync. Edges should climb at the panel frame rate and PeriodUs sit near
+   16,667; Enabled goes false only if no edge ever arrived. AvgWaitUs is the
+   latency the sync adds to a frame. */
+typedef struct
+{
+	uint32_t Edges;
+	uint32_t PeriodUs;
+	bool Enabled;
+	uint32_t Waits;
+	uint32_t Timeouts;
+	uint32_t AvgWaitUs;
+} PanelTe_t;
+
+extern void Panel_Te(PanelTe_t *Out);
+
 /* LVGL heap: in use now, peak since boot, and the pool size. */
 extern void Panel_Heap(uint32_t *UsedBytes, uint32_t *PeakBytes, uint32_t *TotalBytes);
 
