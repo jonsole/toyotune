@@ -10,8 +10,10 @@ directory.** `README.md` there covers the code layout; this skill is the build
 itself and the things that actually go wrong.
 
 The design decisions - why the cores split the way they do, why identity is a
-resistor divider, why LVGL 8 - are in `hw/dash_cluster/PLAN.md`. Do not
-re-litigate them from the code alone.
+resistor divider - are in `hw/dash_cluster/PLAN.md`. Do not re-litigate them
+from the code alone. One exception: PLAN.md still describes staying on LVGL
+8.1, which was the plan at bring-up. The code has since moved to **LVGL 9** -
+`firmware/README.md` §"Moving from LVGL 8 to 9" is current, PLAN.md is not.
 
 ## 0. The gotcha that stops most builds
 
@@ -73,15 +75,27 @@ so; it does not silently produce firmware with no CAN.
 
 ```
 git clone https://github.com/KevinOConnor/can2040        external/can2040
-git clone -b release/v8.3 https://github.com/lvgl/lvgl   external/lvgl
+git clone -b v9.5.0 https://github.com/lvgl/lvgl         external/lvgl
 ```
 
 `external/` is beside the repo root - or pass `-DCAN2040_PATH=` /
 `-DLVGL_PATH=`. Watch the configure output: two `CMake Warning` blocks mean
 you built a node that cannot receive and cannot draw.
 
-**LVGL 8.x, not 9.** Waveshare's CO5300 panel driver and CST9217 touch glue are
-written against 8.1. Porting both is deliberate work, not a free upgrade.
+**LVGL 9.5.0**, the version `CMakeLists.txt` names. Waveshare's CO5300 and
+CST9217 drivers are written against 8.1; `panel.c` is our own binding and
+targets v9 directly, so the vendor's LVGL 8 glue is not used. An 8.x checkout
+will not build - `ui_lvgl.c` uses `lv_scale`, which is v9-only.
+
+**`lv_conf.h` options must be v9 names.** v9 renamed many of them, and a name it
+does not know is silently ignored rather than rejected. `LV_USE_ARM2D` is one:
+nothing in 9.5.0 reads it, so `#define LV_USE_ARM2D 1` does nothing at all. The
+v9 option is `LV_USE_DRAW_ARM2D_SYNC`, and it needs the Arm-2D library, which
+is not in the tree - so enabling it should fail the build until that is added.
+Arm-2D also gets most of its speed from Helium (Cortex-M55/M85); the RP2350's
+M33 has none, so measure before taking the dependency. To check any option,
+grep for it in `external/lvgl/src/lv_conf_internal.h` - if it is not there, v9
+ignores it.
 
 ## 4. Flashing
 
@@ -157,7 +171,8 @@ Get-CimInstance Win32_PnPEntity |
 | `cmake: command not found` | §0 - nothing is on PATH |
 | `No CMAKE_C_COMPILER could be found` while building **picotool** | The SDK is building picotool from source, which needs a **host** compiler. `CMakeLists.txt` should find the prebuilt one under `~/.pico-sdk/picotool/*/picotool`; if the extension moved it, pass `-Dpicotool_DIR=<dir containing picotoolConfig.cmake>` |
 | `can2040 not found` / `LVGL not found` | §3, and expected on a fresh clone |
-| Undefined `lv_*` symbols | LVGL was found at configure time but is a v9 checkout - the binding is written against 8.x |
+| Undefined `lv_*` symbols, or `lv_scale` unknown | LVGL was found at configure time but is an 8.x checkout - the binding targets v9.5.0 |
+| An `lv_conf.h` option has no effect | It is a v8 name, or not an LVGL option at all; v9 ignores unknown names silently - §3 |
 | Host tests fail to compile with `__asm__` errors | Something added GCC inline asm to a file the host tests build. Guard it on `_MSC_VER`, as `signal_store.c` does for its memory barrier |
 
 ## 6. Two things about the code that are easy to undo by accident
@@ -172,18 +187,21 @@ Get-CimInstance Win32_PnPEntity |
 
 ## 7. State of play
 
-The board arrived 2026-09-12 and the firmware has been flashed and run on it:
-it boots, the core split is alive, the node identity falls back safely with no
-divider fitted, and core 1 reports what each page would draw. Confirmed as
+The board arrived 2026-09-12 and the firmware runs on it, drawing on the
+glass: the CO5300 flush and the CST9217 touch read are both implemented in
+`src/panel.c`, and the needle gauges animate without tearing now that each
+flush is synced to the panel's TE pulse and sent as one burst. The node
+identity falls back safely with no divider fitted. Confirmed as
 **RP2350 rev A2, QFN60** - i.e. RP2350A, GPIO0..29, so every pin is inside
 PIO's window.
 
-What is still missing is missing on purpose:
+What is still missing:
 
-- The **CO5300 flush** and **CST9217 touch read** callbacks - the only
-  genuinely hardware-specific code. Everything above them exists.
+- **Real telemetry.** No Toyotune board has been on the bus with this yet, so
+  gauges read `--` and the console says `LINK DOWN`. Milestone M4 - whether
+  can2040 survives the panel's DMA bursts - is still open.
 - **Flash-backed page persistence.** `Pages_Init()` already takes a restored
-  index; nothing stores one.
+  index; `main.c` still passes `0xFF`.
 - The heartbeat's **page byte**, reserved and sent as zero.
 
 Without an LVGL checkout, core 1 prints what it *would* draw over USB serial
