@@ -85,13 +85,14 @@ set(DASH_SOURCES
 # LVGL - the widget toolkit
 # ---------------------------------------------------------------------------
 #
-# LVGL 8.x, not 9. Waveshare's CO5300 panel driver and CST9217 touch glue are
-# written against 8.1, and porting both is a deliberate piece of work rather
-# than a free upgrade - see PLAN.md section 4.1a.
+# LVGL 9.x. The vendor's CO5300 and CST9217 drivers are written against 8.1,
+# but nothing in this build uses their LVGL glue - src/panel.c is the only
+# binding and it targets v9 directly. See firmware/README.md for what the move
+# changed.
 #
 # Like can2040, not vendored:
 #
-#   git clone -b release/v8.3 https://github.com/lvgl/lvgl
+#   git clone -b v9.5.0 https://github.com/lvgl/lvgl
 #
 # ui_model.c does not depend on LVGL and is always built, which is the point of
 # splitting it out: the decisions a gauge makes are testable on a host whether
@@ -117,20 +118,26 @@ set(PANEL_VENDOR_SOURCES
 if(EXISTS "${LVGL_PATH}/lvgl.h")
     message(STATUS "LVGL: ${LVGL_PATH}")
 
-    # LVGL finds our config through this: its own CMake takes the parent
-    # directory of LV_CONF_PATH onto the include path and defines
-    # LV_CONF_INCLUDE_SIMPLE, so every LVGL source picks up firmware/lv_conf.h
-    # by name. Set before add_subdirectory or it has no effect.
-    set(LV_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h"
+    # LVGL finds our config through this. The variable was LV_CONF_PATH in v8
+    # and is LV_BUILD_CONF_PATH in v9; LVGL's own CMake turns it into a
+    # -DLV_CONF_PATH="..." for its sources. Set before add_subdirectory or it
+    # has no effect.
+    set(LV_BUILD_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h"
         CACHE FILEPATH "The dash node's LVGL configuration")
+
+    # v9 builds its examples and demos by default AND links them into the lvgl
+    # target itself - target_link_libraries(lvgl PUBLIC lvgl_examples) in its
+    # os_desktop.cmake. So they are not optional extras that can be ignored:
+    # with widgets disabled in lv_conf.h they simply fail to compile, and take
+    # the whole build with them.
+    set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 
     add_subdirectory("${LVGL_PATH}" lvgl_build)
 
-    # lv_conf.h takes LVGL's tick from the SDK clock rather than from a
-    # repeating timer, so every LVGL source needs the SDK headers on its
-    # include path. Headers only - the implementation is linked into the
-    # executable, not into this library.
-    target_link_libraries(lvgl PUBLIC pico_stdlib_headers)
+    # No pico_stdlib_headers on the lvgl target any more: v9 takes its tick
+    # from a callback registered at runtime rather than from an expression in
+    # lv_conf.h, so LVGL no longer needs the SDK headers to build.
 
     list(APPEND DASH_SOURCES src/panel.c src/ui_lvgl.c)
     list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})

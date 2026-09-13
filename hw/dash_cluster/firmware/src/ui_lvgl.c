@@ -68,9 +68,9 @@ static uint8_t BuiltPage = 0xFF;
 
 /* How the next page change should be presented, set by the gesture that caused
    it and consumed by the rebuild. A change nobody swiped for - the fault
-   takeover - stays LV_SCR_LOAD_ANIM_NONE deliberately: a warning that slides
+   takeover - stays LV_SCREEN_LOAD_ANIM_NONE deliberately: a warning that slides
    in gently is a warning the driver reads late. */
-static lv_scr_load_anim_t PendingAnim = LV_SCR_LOAD_ANIM_NONE;
+static lv_screen_load_anim_t PendingAnim = LV_SCREEN_LOAD_ANIM_NONE;
 
 /* Long enough to read as movement, short enough not to feel like waiting.
    Both screens are drawn for this long, so it is also the only moment the
@@ -116,7 +116,7 @@ static lv_scr_load_anim_t PendingAnim = LV_SCR_LOAD_ANIM_NONE;
  * 60 fps. It costs 424 KB of the 520 KB SRAM and RGB332 colour, and it lives
  * outside LVGL. Measured numbers behind all of this are in the git history
  * around this commit. */
-#define UI_ANIM_PAGE_CHANGE	LV_SCR_LOAD_ANIM_FADE_IN
+#define UI_ANIM_PAGE_CHANGE	LV_SCREEN_LOAD_ANIM_FADE_IN
 
 /* Gestures are ignored until this time. Two reasons, and the second is the
    real one: a second swipe mid-transition would ask LVGL to load a third
@@ -129,16 +129,16 @@ static uint32_t TransitionUntilMs;
    serves the 1.43" and 1.75" panels, which share 466x466. */
 static void UiLvgl_GestureEvent(lv_event_t *Event);
 
-static lv_coord_t Pct(uint8_t Percent, lv_coord_t Extent)
+static int32_t Pct(uint8_t Percent, int32_t Extent)
 {
-	return (lv_coord_t)(((int32_t)Percent * Extent) / 100);
+	return (int32_t)(((int32_t)Percent * Extent) / 100);
 }
 
 
 /***************************************************************************************/
 /* A bare black screen, ready to have a face built on it.
  *
- * One per page rather than one reused, because lv_scr_load_anim() animates
+ * One per page rather than one reused, because lv_screen_load_anim() animates
  * between two screens - there is nothing to slide if both faces live on the
  * same one. The old screen is deleted by the load, so only two exist at once
  * and only for UI_TRANSITION_MS. */
@@ -158,7 +158,7 @@ static lv_obj_t *UiLvgl_MakeScreen(void)
 
 	/* See the note in UiLvgl_BuildElement(): a scroll in progress suppresses
 	   gesture detection outright, and LVGL creates everything scrollable. */
-	lv_obj_clear_flag(New, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_remove_flag(New, LV_OBJ_FLAG_SCROLLABLE);
 
 	/* EVERY screen needs this, not just the first. The gesture lands on the
 	   screen because LVGL walks up from the object under the finger while each
@@ -202,12 +202,12 @@ static void UiLvgl_Style(lv_obj_t *Object, UiState_t State)
 
 /***************************************************************************************/
 static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
-                                lv_coord_t W, lv_coord_t H)
+                                int32_t W, int32_t H)
 {
-	lv_coord_t X = Pct(Element->X, W);
-	lv_coord_t Y = Pct(Element->Y, H);
-	lv_coord_t EW = Pct(Element->W, W);
-	lv_coord_t EH = Pct(Element->H, H);
+	int32_t X = Pct(Element->X, W);
+	int32_t Y = Pct(Element->Y, H);
+	int32_t EW = Pct(Element->W, W);
+	int32_t EH = Pct(Element->H, H);
 
 	switch (Element->Type)
 	{
@@ -224,7 +224,7 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 		else
 			lv_arc_set_bg_angles(Out->Object, 160, 20);
 		lv_obj_remove_style(Out->Object, NULL, LV_PART_KNOB);
-		lv_obj_clear_flag(Out->Object, LV_OBJ_FLAG_CLICKABLE);
+		lv_obj_remove_flag(Out->Object, LV_OBJ_FLAG_CLICKABLE);
 		break;
 
 	case WIDGET_BARGRAPH:
@@ -285,7 +285,7 @@ static void UiLvgl_BuildElement(const FaceElement_t *Element, UiObject_t *Out,
 	 *
 	 * Gesture bubbling is left alone: LVGL sets it on every child by default
 	 * and walks up to the first ancestor without it, which is the screen. */
-	lv_obj_clear_flag(Out->Object, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_remove_flag(Out->Object, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 
@@ -299,8 +299,8 @@ static void UiLvgl_BuildPage(uint8_t Page)
 	   element is positioned as a percentage of it - so reading it from the
 	   object would collapse the whole face to nothing on exactly the page
 	   changes this function exists to handle. */
-	lv_coord_t W = lv_disp_get_hor_res(NULL);
-	lv_coord_t H = lv_disp_get_ver_res(NULL);
+	int32_t W = lv_display_get_horizontal_resolution(NULL);
+	int32_t H = lv_display_get_vertical_resolution(NULL);
 	lv_obj_t *New = UiLvgl_MakeScreen();
 	uint8_t i;
 
@@ -317,17 +317,17 @@ static void UiLvgl_BuildPage(uint8_t Page)
 	   finishes, which is what keeps this from leaking a face per swipe. Its
 	   widgets are still being drawn as they slide away, holding whatever
 	   values they last had - correct, since they are leaving. */
-	lv_scr_load_anim(New, PendingAnim,
-	                 (PendingAnim == LV_SCR_LOAD_ANIM_NONE)
+	lv_screen_load_anim(New, PendingAnim,
+	                 (PendingAnim == LV_SCREEN_LOAD_ANIM_NONE)
 	                         ? 0 : (uint32_t)UI_TRANSITION_MS,
 	                 0, true);
 
-	if (PendingAnim != LV_SCR_LOAD_ANIM_NONE)
+	if (PendingAnim != LV_SCREEN_LOAD_ANIM_NONE)
 		TransitionUntilMs = lv_tick_get() + UI_TRANSITION_MS;
 
 	/* Back to no animation, so a page change from anywhere other than a
 	   gesture is instant rather than inheriting the last swipe's direction. */
-	PendingAnim = LV_SCR_LOAD_ANIM_NONE;
+	PendingAnim = LV_SCREEN_LOAD_ANIM_NONE;
 
 	BuiltPage = Page;
 }
@@ -347,12 +347,12 @@ void UiLvgl_Init(void)
 	/* Black the screen LVGL made for the display. Nothing is built on it - the
 	   first UiLvgl_Update() replaces it with a real face - but it is on the
 	   glass until then, and the theme's default is a pale card. */
-	lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), LV_PART_MAIN);
+	lv_obj_set_style_bg_color(lv_screen_active(), lv_color_black(), LV_PART_MAIN);
 
 	Screen = NULL;
 	BuiltPage = 0xFF;
 	ObjectCount = 0;
-	PendingAnim = LV_SCR_LOAD_ANIM_NONE;
+	PendingAnim = LV_SCREEN_LOAD_ANIM_NONE;
 	TransitionUntilMs = 0;
 }
 
@@ -406,7 +406,7 @@ void UiLvgl_Update(uint32_t NowMs)
 		/* LVGL takes a signed coordinate; the model produces an unsigned
 		   0..UI_POSITION_MAX, which is 1000 - so the cast cannot lose
 		   anything, and the ranges set in UiLvgl_BuildElement() match. */
-		lv_coord_t Position = (lv_coord_t)Widget.Position;
+		int32_t Position = (int32_t)Widget.Position;
 
 		switch (Element->Type)
 		{
@@ -470,7 +470,7 @@ void UiLvgl_Update(uint32_t NowMs)
    bump from changing page. A tap is deliberately ignored. */
 void UiLvgl_HandleGesture(void)
 {
-	lv_dir_t Dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+	lv_dir_t Dir = lv_indev_get_gesture_dir(lv_indev_active());
 
 	/* Signed difference, the same wrap-safe deadline test used in can_link.c:
 	   negative means the deadline is still ahead. */

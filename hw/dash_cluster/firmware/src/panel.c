@@ -55,14 +55,19 @@
 #include "panel.h"
 
 /* The panel takes RGB565 high byte first and the flush hands LVGL's buffer
-   straight to DMA, so LVGL has to store it pre-swapped. Wrong here and the
-   gauges simply render in wrong colours - no error, no clue. Worth an #error
-   rather than a comment. */
+   straight to DMA, so LVGL has to render it pre-swapped. Wrong and the gauges
+   simply come out in wrong colours - no error, no clue - which is worth an
+   #error rather than a comment.
+
+   v8 arranged this with LV_COLOR_16_SWAP. v9 has no such option: the byte
+   order is a property of the display's colour format, set below with
+   lv_display_set_color_format(), and it only works if the software blender
+   was built with the swapped format compiled in. */
 #if LV_COLOR_DEPTH != 16
 #error "The CO5300 flush path assumes RGB565 - set LV_COLOR_DEPTH 16 in lv_conf.h"
 #endif
-#if LV_COLOR_16_SWAP != 1
-#error "The CO5300 wants the high byte first - set LV_COLOR_16_SWAP 1 in lv_conf.h"
+#if LV_DRAW_SW_SUPPORT_RGB565_SWAPPED != 1
+#error "The CO5300 wants the high byte first - LV_DRAW_SW_SUPPORT_RGB565_SWAPPED must be 1"
 #endif
 
 /* Draw buffer height, in whole display lines.
@@ -82,6 +87,7 @@
  * not a free win. */
 #define PANEL_BUF_LINES		(60)
 #define PANEL_BUF_PIXELS	((uint32_t)PANEL_WIDTH * (uint32_t)PANEL_BUF_LINES)
+#define PANEL_BUF_BYTES		(PANEL_BUF_PIXELS * 2u)
 
 /* Bound on the PIO drain below. The FIFO holds four words plus one in the
    output shift register - at most 40 nibbles, around 400 ns - so this is
@@ -92,19 +98,21 @@
 
 #define PANEL_DEFAULT_BRIGHTNESS	(80u)
 
-static lv_disp_draw_buf_t	DrawBufDesc;
-static lv_disp_drv_t		DispDrv;
-static lv_indev_drv_t		TouchDrv;
+static lv_display_t	       *Disp;
+static lv_indev_t	       *Touch;
 
-/* Sized in pixels by their type, which is the point: the count passed to
-   lv_disp_draw_buf_init() below is the array length, so it cannot disagree
-   with the allocation the way the vendor example's does. */
-static lv_color_t		DrawBuf0[PANEL_BUF_PIXELS];
-static lv_color_t		DrawBuf1[PANEL_BUF_PIXELS];
+/* Byte arrays, not lv_color_t. In v9 lv_color_t is a 24-bit RGB888 struct and
+   is no longer the framebuffer pixel type - the pixel format belongs to the
+   display, so a buffer is just bytes. lv_display_set_buffers() takes its size
+   in bytes too, unlike v8's lv_disp_draw_buf_init() which took pixels, so
+   sizeof() is the right thing to pass and there is no unit left to confuse.
+   That confusion is exactly what broke the vendor example (vendor/README.md). */
+static uint8_t			DrawBuf0[PANEL_BUF_BYTES];
+static uint8_t			DrawBuf1[PANEL_BUF_BYTES];
 
 /* Last known touch position, held across releases - see Panel_TouchRead(). */
-static lv_coord_t		TouchX;
-static lv_coord_t		TouchY;
+static int32_t			TouchX;
+static int32_t			TouchY;
 
 static uint32_t			Flushes;
 static uint32_t			FlushTimeouts;
@@ -114,6 +122,7 @@ static uint32_t			FlushTimeouts;
    full-screen one and its reciprocal is the frame rate a slide actually gets. */
 static uint32_t			RefreshLastMs;
 static uint32_t			RefreshMaxMs;
+static uint32_t			RenderStartMs;
 static uint32_t			RefreshLastPx;
 static uint32_t			Refreshes;
 
@@ -159,6 +168,16 @@ static uint32_t			TouchLastReportMs;
 #define TOUCH_HOLD_TIMEOUT_MS	(80u)
 static bool			TouchPresent;
 static uint16_t			TouchChipType;
+
+
+/***************************************************************************************/
+/* LVGL's millisecond tick. v8 took this as an expression in lv_conf.h; v9 asks
+   for a callback, which is tidier - LVGL no longer needs the SDK headers on
+   its include path just to know the time. */
+static uint32_t Panel_TickMs(void)
+{
+	return to_ms_since_boot(get_absolute_time());
+}
 
 
 /***************************************************************************************/
@@ -210,41 +229,45 @@ void Panel_ClockInit(void)
  * ROUNDED height still fits the buffer, then uses that as its step. Round the
  * rows and it picks an even band height, so every band starts on an even row.
  *
- * Rounding here rather than in the flush is the whole point of the hook: LVGL
- * renders the expanded rectangle, so the window and the buffer contents still
- * describe the same pixels. Widening it in the flush instead would send the
- * wrong pixels for the added column or row.
+ * Rounding here rather than in the flush is the whole point: LVGL renders the
+ * expanded rectangle, so the window and the buffer contents still describe the
+ * same pixels. Widening it in the flush instead would send the wrong pixels
+ * for the added column or row.
+ *
+ * This was disp_drv.rounder_cb in v8. v9 deleted that callback and hands the
+ * area out through LV_EVENT_INVALIDATE_AREA instead; the arithmetic is
+ * untouched, and LVGL still probes it to pick a band height whose ROUNDED
+ * height fits the draw buffer.
  *
  * Start down to even and end up to odd also makes every width and height even.
  * Both clamps land on values that already have the right parity - 0 is even,
  * 465 is odd - so clamping cannot put the alignment back. */
-static void Panel_Rounder(lv_disp_drv_t *Drv, lv_area_t *Area)
+static void Panel_InvalidateArea(lv_event_t *Event)
 {
+	lv_area_t *Area = lv_event_get_invalidated_area(Event);
 	bool Needed;
-
-	(void)Drv;
 
 	Needed = ((Area->x1 & 1) != 0) || ((Area->x2 & 1) == 0)
 	         || ((Area->y1 & 1) != 0) || ((Area->y2 & 1) == 0);
 
 	if ((Area->x1 & 1) != 0)
-		Area->x1 = (lv_coord_t)(Area->x1 - 1);
+		Area->x1 = (int32_t)(Area->x1 - 1);
 	if ((Area->x2 & 1) == 0)
-		Area->x2 = (lv_coord_t)(Area->x2 + 1);
+		Area->x2 = (int32_t)(Area->x2 + 1);
 
 	if ((Area->y1 & 1) != 0)
-		Area->y1 = (lv_coord_t)(Area->y1 - 1);
+		Area->y1 = (int32_t)(Area->y1 - 1);
 	if ((Area->y2 & 1) == 0)
-		Area->y2 = (lv_coord_t)(Area->y2 + 1);
+		Area->y2 = (int32_t)(Area->y2 + 1);
 
 	if (Area->x1 < 0)
 		Area->x1 = 0;
-	if (Area->x2 > (lv_coord_t)(PANEL_WIDTH - 1))
-		Area->x2 = (lv_coord_t)(PANEL_WIDTH - 1);
+	if (Area->x2 > (int32_t)(PANEL_WIDTH - 1))
+		Area->x2 = (int32_t)(PANEL_WIDTH - 1);
 	if (Area->y1 < 0)
 		Area->y1 = 0;
-	if (Area->y2 > (lv_coord_t)(PANEL_HEIGHT - 1))
-		Area->y2 = (lv_coord_t)(PANEL_HEIGHT - 1);
+	if (Area->y2 > (int32_t)(PANEL_HEIGHT - 1))
+		Area->y2 = (int32_t)(PANEL_HEIGHT - 1);
 
 	/* Counts LVGL's own probe calls from get_max_row() as well as real areas,
 	   so treat it as "is this firing at all" rather than as a frame count. */
@@ -256,12 +279,12 @@ static void Panel_Rounder(lv_disp_drv_t *Drv, lv_area_t *Area)
 /***************************************************************************************/
 /* Called by LVGL when a rectangle is ready to go to the glass. Starts the DMA
    and returns immediately; completion is reported from the interrupt below. */
-static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
-                        lv_color_t *Pixels)
+static void Panel_Flush(lv_display_t *Display, const lv_area_t *Area,
+                        uint8_t *Pixels)
 {
 	uint32_t Bytes;
 
-	(void)Drv;
+	(void)Display;
 
 	/* Both tests, because they fail differently. A busy channel means LVGL
 	   handed us a second area while the first was still moving. Chip select
@@ -272,12 +295,12 @@ static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
 	if (gpio_get(qspi.pin_cs) == 0)
 		FlushCsOverlaps++;
 
-	/* sizeof(lv_color_t) rather than a literal 2, deliberately: this is the
-	   multiplication the vendor example got wrong, and tying it to the type
-	   means a colour-depth change cannot silently halve it. */
+	/* Two bytes a pixel, from the display's own colour format rather than a
+	   literal - this is the multiplication the vendor example got wrong, and
+	   deriving it means a format change cannot silently halve it. */
 	Bytes = (uint32_t)lv_area_get_width(Area)
 	        * (uint32_t)lv_area_get_height(Area)
-	        * (uint32_t)sizeof(lv_color_t);
+	        * (uint32_t)lv_color_format_get_size(lv_display_get_color_format(Disp));
 
 	/* LVGL's area bounds are inclusive; the panel's window registers are not. */
 	AMOLED_1IN75_SetWindows((uint32_t)Area->x1, (uint32_t)Area->y1,
@@ -292,6 +315,8 @@ static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
 	channel_config_set_dreq(&c, pio_get_dreq(qspi.pio, qspi.sm, true));
 
 	FlushBytes += Bytes;
+	RefreshLastPx += (uint32_t)lv_area_get_width(Area)
+	                 * (uint32_t)lv_area_get_height(Area);
 	FlushStartUs = time_us_32();
 
 	/* DMA_SIZE_8, so the count is in bytes. Byte writes to a PIO TX FIFO are
@@ -307,16 +332,36 @@ static void Panel_Flush(lv_disp_drv_t *Drv, const lv_area_t *Area,
 
 
 /***************************************************************************************/
-/* LVGL's own refresh timing, reported after each redraw: how long it took and
-   how many pixels it covered. Free, exact, and no on-screen overlay - which is
-   why this rather than LV_USE_PERF_MONITOR. */
-static void Panel_RefreshMonitor(lv_disp_drv_t *Drv, uint32_t TimeMs,
-                                 uint32_t Pixels)
+/* Refresh timing: how long a redraw took and how many pixels it covered.
+   v8 handed both to a monitor_cb; v9 has no such callback, so the time is
+   taken between LV_EVENT_RENDER_START and LV_EVENT_RENDER_READY and the pixel
+   count is accumulated by the flush. Reported over the serial console, which
+   is why this exists alongside the on-screen LV_USE_PERF_MONITOR - the console
+   figures can be read without a camera pointed at the gauge. */
+static void Panel_RenderStart(lv_event_t *Event)
 {
-	(void)Drv;
+	(void)Event;
+
+	RenderStartMs = lv_tick_get();
+	RefreshLastPx = 0;
+}
+
+
+/***************************************************************************************/
+static void Panel_RenderReady(lv_event_t *Event)
+{
+	uint32_t TimeMs = lv_tick_elaps(RenderStartMs);
+
+	(void)Event;
+
+	/* Ignore refresh cycles that drew nothing. v9 sends these events even when
+	   there was no invalid area, and counting them would bury the real figures
+	   under zeroes - which matters here because unchanged widgets are never
+	   repainted, so most cycles draw nothing at all. */
+	if (RefreshLastPx == 0u)
+		return;
 
 	RefreshLastMs = TimeMs;
-	RefreshLastPx = Pixels;
 	Refreshes++;
 
 	if (TimeMs > RefreshMaxMs)
@@ -384,7 +429,7 @@ static void Panel_FlushDoneIrq(void)
 	if (Spins > DrainSpinsMax)
 		DrainSpinsMax = Spins;
 
-	lv_disp_flush_ready(&DispDrv);
+	lv_display_flush_ready(Disp);
 }
 
 
@@ -499,11 +544,11 @@ static void Panel_TouchIrq(uint Gpio, uint32_t Events)
  * TOUCH_HOLD_TIMEOUT_MS. Holding it forever would be worse than not holding it
  * at all - a stuck press is a finger LVGL believes is still down.
  */
-static void Panel_TouchRead(lv_indev_drv_t *Drv, lv_indev_data_t *Data)
+static void Panel_TouchRead(lv_indev_t *Indev, lv_indev_data_t *Data)
 {
 	uint32_t NowMs = to_ms_since_boot(get_absolute_time());
 
-	(void)Drv;
+	(void)Indev;
 
 	if (TouchIntPending)
 	{
@@ -531,8 +576,8 @@ static void Panel_TouchRead(lv_indev_drv_t *Drv, lv_indev_data_t *Data)
 				if (Y >= PANEL_HEIGHT)
 					Y = PANEL_HEIGHT - 1u;
 
-				TouchX = (lv_coord_t)X;
-				TouchY = (lv_coord_t)Y;
+				TouchX = (int32_t)X;
+				TouchY = (int32_t)Y;
 				TouchPresses++;
 				TouchHeld = true;
 				TouchLastReportMs = NowMs;
@@ -654,23 +699,38 @@ bool Panel_Init(void)
 
 	/* ---- LVGL --------------------------------------------------------- */
 
+	/* The tick has to be in place before lv_init(), or anything LVGL times
+	   during startup sees a clock stuck at zero. */
+	lv_tick_set_cb(Panel_TickMs);
 	lv_init();
 
-	lv_disp_draw_buf_init(&DrawBufDesc, DrawBuf0, DrawBuf1, PANEL_BUF_PIXELS);
+	Disp = lv_display_create(PANEL_WIDTH, PANEL_HEIGHT);
 
-	lv_disp_drv_init(&DispDrv);
-	DispDrv.draw_buf = &DrawBufDesc;
-	DispDrv.flush_cb = Panel_Flush;
-	DispDrv.monitor_cb = Panel_RefreshMonitor;
-	DispDrv.rounder_cb = Panel_Rounder;
-	DispDrv.hor_res = PANEL_WIDTH;
-	DispDrv.ver_res = PANEL_HEIGHT;
-	lv_disp_drv_register(&DispDrv);
+	/* Pre-swapped RGB565: the panel wants the high byte first and the flush
+	   hands the buffer straight to DMA, so the renderer produces that order
+	   itself rather than a pass being made over every buffer. See the note at
+	   the top of this file. */
+	lv_display_set_color_format(Disp, LV_COLOR_FORMAT_RGB565_SWAPPED);
 
-	lv_indev_drv_init(&TouchDrv);
-	TouchDrv.type = LV_INDEV_TYPE_POINTER;
-	TouchDrv.read_cb = Panel_TouchRead;
-	lv_indev_drv_register(&TouchDrv);
+	/* Size in BYTES in v9, where v8 wanted pixels - and sizeof() is the whole
+	   array, so the two cannot disagree. */
+	lv_display_set_buffers(Disp, DrawBuf0, DrawBuf1, sizeof(DrawBuf0),
+	                       LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+	lv_display_set_flush_cb(Disp, Panel_Flush);
+
+	/* The window alignment the CO5300 requires, and the refresh timing, are
+	   events in v9 rather than driver callbacks. */
+	lv_display_add_event_cb(Disp, Panel_InvalidateArea,
+	                        LV_EVENT_INVALIDATE_AREA, NULL);
+	lv_display_add_event_cb(Disp, Panel_RenderStart,
+	                        LV_EVENT_RENDER_START, NULL);
+	lv_display_add_event_cb(Disp, Panel_RenderReady,
+	                        LV_EVENT_RENDER_READY, NULL);
+
+	Touch = lv_indev_create();
+	lv_indev_set_type(Touch, LV_INDEV_TYPE_POINTER);
+	lv_indev_set_read_cb(Touch, Panel_TouchRead);
 
 	/* Start centred, so a release before any press cannot read as a gesture
 	   from the corner. */
@@ -725,6 +785,15 @@ bool Panel_Init(void)
 uint32_t Panel_Service(void)
 {
 	return lv_timer_handler();
+}
+
+
+/***************************************************************************************/
+/* The screen LVGL created for this display. ui_lvgl.c needs it to blank the
+   very first frame; everything after that is its own screens. */
+lv_display_t *Panel_Display(void)
+{
+	return Disp;
 }
 
 

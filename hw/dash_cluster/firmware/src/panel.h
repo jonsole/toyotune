@@ -46,6 +46,11 @@ extern void Panel_ClockInit(void);
    be swiped - so this is a report, not a reason to stop. */
 extern bool Panel_Init(void);
 
+/* The LVGL display this panel is registered as. Opaque to callers except that
+   ui_lvgl.c needs it for lv_display_enable_invalidation(). */
+struct _lv_display_t;
+extern struct _lv_display_t *Panel_Display(void);
+
 /* Run LVGL's timers, which is what actually draws. Returns the number of
    milliseconds until it next wants to be called. Core 1 only.
 
