@@ -88,7 +88,14 @@
  *
  * One buffer, not two. A second buffer only paid for LVGL rendering the next
  * band while the previous one was on the wire, and a 1 ms transfer leaves
- * nothing worth overlapping. 93 KB, against 110 KB for the old pair. */
+ * nothing worth overlapping. 93 KB, against 110 KB for the old pair.
+ *
+ * This narrows the tear window from ~42 ms to ~1 ms; it does not close it,
+ * since a scan can still cross a 1 ms burst. Closing it needs the flush timed
+ * against the panel's scan, and both ways of knowing where the scan is are out
+ * of reach on this board. Reading register 45h was built and proven impossible
+ * - the panel's output never reaches the RP2350, see vendor/README.md finding
+ * 8 - and the TE output is not referenced anywhere in the vendor sources. */
 #define PANEL_BUF_LINES		(100)
 #define PANEL_BUF_PIXELS	((uint32_t)PANEL_WIDTH * (uint32_t)PANEL_BUF_LINES)
 #define PANEL_BUF_BYTES		(PANEL_BUF_PIXELS * 2u)

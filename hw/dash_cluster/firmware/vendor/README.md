@@ -33,7 +33,7 @@ provenance recorded instead.
 | `LVGL_example.c.reference` | **Reference only — do not build.** See the bug below |
 | `lv_conf.h.reference` | Their LVGL config, for comparison |
 
-## Seven things found in this code, and what each one costs
+## Eight things found in this code, and what each one costs
 
 ### 1. The vendor LVGL example overflows its draw buffer
 
@@ -177,6 +177,44 @@ There is no documented exit in anything they ship. `src/panel.c` resets the
 controller a second time after probing: the power-on state is reporting mode,
 and a reset is a mechanism already proven on this board rather than one
 inferred from a family datasheet.
+
+### 8. The panel cannot be read on this board: nothing it sends comes back
+
+Tried in order to sync each flush to the panel's scan position, which the
+CO5300 reports in register `45h` ("Get scanline"). Syncing to it would close
+the tear window that sending each needle frame as one burst only narrowed.
+
+The CO5300 datasheet gives the read cycle as the write cycle turned round:
+opcode `03h` and a 24-bit address `00 <reg> 00` clocked out on SIO0, after
+which the host releases SIO0 and the panel returns the data on it, most
+significant bit first. Waveshare's driver never reads, and its PIO program only
+drives pins, so the read was bit-banged: SCLK and SIO0 taken from PIO while
+chip select was high between flushes, then handed back.
+
+It never returned anything, and the way that was established rules out a
+mistake in the read rather than just failing to find one:
+
+- Register `44h`, which the vendor init sets to `0x01D7`, and `DAh`, the fixed
+  ID register (`0x33`), were both read.
+- **All four** data lines, GPIO12 to GPIO15, were sampled in **both** clock
+  phases with one spare bit either side. With internal pull-ups on, every line
+  read all ones on both registers - the signature of a line nobody is driving.
+  With no pulls, SIO0 read all zeros. Nothing on any line ever looked like data.
+- A **write** bit-banged with identical framing, pins and timing - `21h`
+  display inversion, held for two seconds, then `20h` - visibly took effect.
+  So the command cycle reaches the panel correctly; only the answer is missing.
+
+The datasheet's pin table explains how that can be: the CO5300 has a separate
+`SDO` digital output beside `SDI_RDX`, and whether either one's output is
+routed back to the RP2350 is decided by the module's flex, not by the chip.
+On this module, no panel output reaches any of the four data pins, and the
+lines may also pass through a one-way level shifter.
+
+**What it costs:** no register reads of any kind - not the scan position, not
+the ID, not power-mode status. Sync to the scan would need that output routed.
+The only other way to sync is the panel's `TE` pin, also a separate output,
+also a schematic question. Until one of those exists, the one-burst flush in
+`src/panel.c` is as close as this board gets to tear-free.
 
 ## Answered on the board
 
