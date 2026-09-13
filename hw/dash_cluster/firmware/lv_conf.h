@@ -126,7 +126,6 @@
 #define LV_LOG_LEVEL		LV_LOG_LEVEL_WARN
 #define LV_LOG_PRINTF		1
 
-#define LV_USE_ARM2D 1
 /* Keep the allocation and null assertions on. They are a few bytes of flash
  * and they catch exactly the class of mistake found in the vendor's own LVGL
  * example - a draw buffer sized in the wrong unit (see vendor/README.md). The

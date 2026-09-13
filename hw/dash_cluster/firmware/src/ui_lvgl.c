@@ -153,14 +153,14 @@ static int32_t Pct(uint8_t Percent, int32_t Extent)
    how many major ticks there are, so the total follows from both. */
 #define UI_GAUGE_MINOR_PER_MAJOR	(5u)
 
-/* Needle length as a percent of the gauge's radius - short of the ticks, so
-   the tip points at them rather than through them. */
-#define UI_GAUGE_NEEDLE_PCT	(72)
+/* Needle length as a percent of the gauge's radius. Long enough to reach in
+   among the tick labels. */
+#define UI_GAUGE_NEEDLE_PCT	(85)
 
 /* Where the needle starts, as a percent of the radius: the middle of the dial
-   is left empty, the way many real instruments leave a hub. 30% of the radius
-   and a disc 30% of the diameter are the same circle. */
-#define UI_GAUGE_NEEDLE_INNER_PCT	(30)
+   is left empty, the way many real instruments leave a hub. 50% of the radius
+   and a disc 50% of the diameter are the same circle. */
+#define UI_GAUGE_NEEDLE_INNER_PCT	(50)
 
 /* Space kept round the needle inside its line object, so the rounded end caps
    of a 5 px stroke stay within the area that gets invalidated. */
