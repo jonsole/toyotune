@@ -50,10 +50,13 @@
    feed. */
 #define STATUS_PERIOD_MS	(2000u)
 
-/* How often the gauges are re-read from the signal store. Matched to the
-   fastest telemetry tier (20 ms, PLAN.md section 3): asking more often than
-   the data can change only burns core 1. */
-#define UI_UPDATE_PERIOD_MS	(20u)
+/* How often the gauges are re-read from the signal store and the needles moved.
+   10 ms, faster than the quickest telemetry tier (20 ms, PLAN.md section 3),
+   because it is not only data that moves a needle: the no-data sweep is
+   animated, and at 20 ms it capped a needle below the panel's own 60 Hz. A
+   re-read of an unchanged value costs nothing to draw, since only differences
+   are pushed into LVGL (see UiLvgl_Update()). */
+#define UI_UPDATE_PERIOD_MS	(10u)
 
 /* How often core 0 says where core 1 got to, while the panel is still coming
    up. Frequent, because this only runs when something is wrong. */
