@@ -176,6 +176,43 @@ static uint32_t			TeSyncWaits;
 static uint32_t			TeSyncTimeouts;
 static uint64_t			TeWaitUs;
 
+/* Which flushes wait for TE - see Panel_Flush().
+
+   SyncArea is where the needle is moving through: its old position joined with
+   its new one, in screen coordinates, accumulated by Panel_SyncArea() since the
+   last render began. RenderStart latches it into FrameSync for the render about
+   to run, so an update arriving mid-frame belongs to the next one. Both are
+   touched only on core 1, where LVGL and the UI run, so there is no race. */
+static bool			SyncValid;
+static int32_t			SyncX1, SyncY1, SyncX2, SyncY2;
+static bool			FrameSyncValid;
+static int32_t			FrameSyncX1, FrameSyncY1, FrameSyncX2, FrameSyncY2;
+
+/* When the needle has not moved, the frame's first area waits instead. Set at
+   the start of each render, cleared by the first flush of it. */
+static bool			TeWaitPending;
+
+/* Flushes that waited because they touched the needle. */
+static uint32_t			TeNeedleWaits;
+
+/* Late frames: a needle flush that went out two or more scans after the
+   previous one although the loop had been busy drawing the whole time - a scan
+   genuinely missed, rather than one with nothing new to show. LastNeedleEdge is
+   the TE edge the last needle flush went out on; FrameLoopIdled is set when
+   the loop waits for a pulse because a frame drew nothing, which excuses the
+   gap. */
+static uint32_t			TeLateFrames;
+static uint32_t			TeLastNeedleEdge;
+static bool			FrameLoopIdled = true;
+
+/* The areas sent without a TE wait of their own, and how long after the TE
+   edge each started. That lateness is their tear risk: an unsynced area only
+   stays clean while the scan has not yet reached its rows. None of them is
+   ever the needle. */
+static uint32_t			TeFollowOns;
+static uint32_t			TeFollowOnLastUs;
+static uint32_t			TeFollowOnMaxUs;
+
 /* Written by core 1 as Panel_Init() advances, read by core 0 so a hang can be
    named rather than guessed at. See the note in panel.h. */
 static volatile uint8_t		InitStage = PANEL_STAGE_START;
@@ -397,9 +434,64 @@ static void Panel_Flush(lv_display_t *Display, const lv_area_t *Area,
 	        * (uint32_t)lv_area_get_height(Area)
 	        * (uint32_t)lv_color_format_get_size(lv_display_get_color_format(Disp));
 
-	/* Start the write in vertical blanking, so the scan cannot show these
-	   rows half written. See Panel_WaitForTe(). */
-	Panel_WaitForTe();
+	/* THE NEEDLE ALWAYS STARTS IN VERTICAL BLANKING.
+	 *
+	 * Any area that touches where the needle was or where it is going waits
+	 * for TE - see Panel_WaitForTe() - so the scan can never show it half
+	 * erased or half drawn. That is decided by the needle's own region, not by
+	 * the order LVGL happens to render in: the rule before this one synced
+	 * whichever area came first in a frame, which is the needle only if LVGL
+	 * put it first.
+	 *
+	 * Other areas - the value label - go straight out without waiting. Waiting
+	 * for every area cost half the frame rate: each wait lands on the NEXT
+	 * edge, so a frame with a needle and a value in it spanned two scans, 30
+	 * fps against the panel's 60 Hz, measured. Their lateness is recorded in
+	 * TeFollowOn*.
+	 *
+	 * When the needle has not moved at all, the frame's first area waits
+	 * instead, so a value or a page change on a still gauge stays clean. */
+	if (FrameSyncValid)
+	{
+		if (Area->x1 <= FrameSyncX2 && Area->x2 >= FrameSyncX1 &&
+		    Area->y1 <= FrameSyncY2 && Area->y2 >= FrameSyncY1)
+		{
+			Panel_WaitForTe();
+			TeNeedleWaits++;
+
+			if (!FrameLoopIdled && TeLastNeedleEdge != 0u
+			    && (uint32_t)(TeEdges - TeLastNeedleEdge) >= 2u)
+				TeLateFrames++;
+			TeLastNeedleEdge = TeEdges;
+			FrameLoopIdled = false;
+		}
+		else
+		{
+			TeFollowOnLastUs = (uint32_t)(time_us_32() - TeLastUs);
+			if (TeFollowOnLastUs > TeFollowOnMaxUs)
+				TeFollowOnMaxUs = TeFollowOnLastUs;
+			TeFollowOns++;
+		}
+	}
+	else if (TeWaitPending)
+	{
+		Panel_WaitForTe();
+		TeWaitPending = false;
+
+		/* A synced frame too, so it counts in the late-frame spacing. */
+		if (!FrameLoopIdled && TeLastNeedleEdge != 0u
+		    && (uint32_t)(TeEdges - TeLastNeedleEdge) >= 2u)
+			TeLateFrames++;
+		TeLastNeedleEdge = TeEdges;
+		FrameLoopIdled = false;
+	}
+	else
+	{
+		TeFollowOnLastUs = (uint32_t)(time_us_32() - TeLastUs);
+		if (TeFollowOnLastUs > TeFollowOnMaxUs)
+			TeFollowOnMaxUs = TeFollowOnLastUs;
+		TeFollowOns++;
+	}
 
 	/* LVGL's area bounds are inclusive; the panel's window registers are not. */
 	AMOLED_1IN75_SetWindows((uint32_t)Area->x1, (uint32_t)Area->y1,
@@ -444,6 +536,36 @@ static void Panel_RenderStart(lv_event_t *Event)
 	RenderStartMs = lv_tick_get();
 	RenderStartUs = time_us_32();
 	RefreshLastPx = 0;
+	TeWaitPending = true;
+
+	FrameSyncValid = SyncValid;
+	FrameSyncX1 = SyncX1;
+	FrameSyncY1 = SyncY1;
+	FrameSyncX2 = SyncX2;
+	FrameSyncY2 = SyncY2;
+	SyncValid = false;
+}
+
+
+/***************************************************************************************/
+void Panel_SyncArea(int32_t X1, int32_t Y1, int32_t X2, int32_t Y2)
+{
+	if (!SyncValid)
+	{
+		SyncX1 = X1;
+		SyncY1 = Y1;
+		SyncX2 = X2;
+		SyncY2 = Y2;
+		SyncValid = true;
+		return;
+	}
+
+	/* More than one update before the next render: the frame has to cover
+	   everywhere the needle went. */
+	if (X1 < SyncX1) SyncX1 = X1;
+	if (Y1 < SyncY1) SyncY1 = Y1;
+	if (X2 > SyncX2) SyncX2 = X2;
+	if (Y2 > SyncY2) SyncY2 = Y2;
 }
 
 
@@ -981,6 +1103,60 @@ uint32_t Panel_Service(void)
 
 
 /***************************************************************************************/
+/* Why the loop is locked to TE rather than run on timers.
+ *
+ * Core 1 used to update the widgets on a free-running 10 ms tick, and LVGL
+ * redrew on its own 10 ms timer. Neither knows the panel scans every 16.8 ms,
+ * so each frame landed on whichever scan the two clocks happened to reach:
+ * one scan here, two there. Measured at ~50 fps with every frame synced, which
+ * can only be a mix of 16.7 and 33.3 ms frames - and an irregular rhythm reads
+ * as judder however well each frame is synced.
+ *
+ * Locked, a frame is updated and rendered as soon as the previous one has
+ * gone out, and its needle flush waits for the next pulse. Render work is
+ * ~10 ms against a 16.8 ms scan, so every frame should land on the very next
+ * scan. */
+void Panel_FrameLoopBegin(void)
+{
+	lv_timer_pause(lv_display_get_refr_timer(Disp));
+}
+
+
+/***************************************************************************************/
+void Panel_RenderNow(void)
+{
+	lv_refr_now(Disp);
+}
+
+
+/***************************************************************************************/
+/* Wait for the next TE edge without drawing, to keep the loop on the scan's
+   cadence when a frame had nothing to draw. Not counted in the flush's TE
+   statistics. If TE never arrived, fall back to a frame's worth of sleep so
+   the loop cannot spin. */
+void Panel_WaitFrame(void)
+{
+	uint32_t Seen = TeEdges;
+	uint32_t Start = time_us_32();
+
+	FrameLoopIdled = true;
+
+	if (!TeSyncEnabled)
+	{
+		sleep_ms(17);
+		return;
+	}
+
+	while (TeEdges == Seen)
+	{
+		if ((uint32_t)(time_us_32() - Start) > PANEL_TE_TIMEOUT_US)
+			return;
+		tight_loop_contents();
+	}
+}
+
+
+/***************************************************************************************/
 /* The screen LVGL created for this display. ui_lvgl.c needs it to blank the
    very first frame; everything after that is its own screens. */
 lv_display_t *Panel_Display(void)
@@ -1012,6 +1188,11 @@ void Panel_Te(PanelTe_t *Out)
 	Out->Waits = TeSyncWaits;
 	Out->Timeouts = TeSyncTimeouts;
 	Out->AvgWaitUs = (TeSyncWaits == 0u) ? 0u : (uint32_t)(TeWaitUs / TeSyncWaits);
+	Out->NeedleWaits = TeNeedleWaits;
+	Out->LateFrames = TeLateFrames;
+	Out->FollowOns = TeFollowOns;
+	Out->FollowOnLastUs = TeFollowOnLastUs;
+	Out->FollowOnMaxUs = TeFollowOnMaxUs;
 }
 
 

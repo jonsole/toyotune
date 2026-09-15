@@ -77,4 +77,32 @@ extern UiWidget_t UiModel_Widget(const FaceElement_t *Element, uint32_t NowMs);
    because a page may want to colour a whole face, not just one widget. */
 extern bool UiModel_SignalWarning(SignalId_t Signal, int32_t Value);
 
+/* NEEDLE SMOOTHING.
+ *
+ * A reading changes 50 times a second - the FAST telemetry tier is 20 ms - and
+ * the panel shows 60 frames, so a needle drawn straight from the reading holds
+ * still on some frames and jumps on others. Easing it towards the reading
+ * instead moves it a little on every frame, and gives it the damped motion of
+ * a mechanical gauge.
+ *
+ * First order, with time constant UI_NEEDLE_TAU_US, stepped by the real frame
+ * interval - so a late frame moves the needle further rather than slowing the
+ * whole animation down. The step is backward Euler, dt / (tau + dt), which can
+ * never overshoot or oscillate however long a frame takes.
+ *
+ * Positions are 0..UI_POSITION_MAX with UI_NEEDLE_Q fractional bits: in whole
+ * permille the needle would stall a unit short of a slowly moving target, and
+ * a unit is a third of a pixel at the tip. */
+#define UI_NEEDLE_Q			(8)
+#define UI_NEEDLE_TAU_US		(40000u)
+
+/* A gap longer than this - a page just built, core 1 held up - is not an
+   animation to catch up on. The needle goes straight to the reading. */
+#define UI_NEEDLE_JUMP_US		(250000u)
+
+/* One frame's step from CurrentQ towards Target (0..UI_POSITION_MAX), given
+   how long the frame took. Returns the new position, UI_NEEDLE_Q fractional
+   bits. */
+extern uint32_t UiModel_NeedleStep(uint32_t CurrentQ, uint16_t Target, uint32_t DtUs);
+
 #endif /* UI_MODEL_H_ */

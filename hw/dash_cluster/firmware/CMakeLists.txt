@@ -139,7 +139,10 @@ if(EXISTS "${LVGL_PATH}/lvgl.h")
     # from a callback registered at runtime rather than from an expression in
     # lv_conf.h, so LVGL no longer needs the SDK headers to build.
 
-    list(APPEND DASH_SOURCES src/panel.c src/ui_lvgl.c)
+    list(APPEND DASH_SOURCES src/panel.c src/ui_lvgl.c
+                             src/dash_font_value_56.c src/dash_font_numeral_40.c
+                             src/dash_font_legend_26.c
+                             src/ui_gauge.c src/dash_faces.c)
     list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})
     set(DASH_HAVE_LVGL 1)
 else()
@@ -163,11 +166,20 @@ else()
     set(DASH_HAVE_CAN2040 0)
 endif()
 
+# Synthetic RPM and boost for the bench - see Simulate() in src/main.c. Off by
+# default and never for the car: the values go through the real signal store,
+# so they would overwrite genuine telemetry arriving on the bus.
+option(DASH_SIMULATE "Feed synthetic RPM and boost into the gauges" OFF)
+if(DASH_SIMULATE)
+    message(WARNING "DASH_SIMULATE is ON - this build shows SYNTHETIC telemetry, not ECU data.")
+endif()
+
 add_executable(dash_node ${DASH_SOURCES} ${VENDOR_SOURCES})
 
 target_compile_definitions(dash_node PRIVATE
     DASH_HAVE_CAN2040=${DASH_HAVE_CAN2040}
     DASH_HAVE_LVGL=${DASH_HAVE_LVGL}
+    DASH_SIMULATE=$<BOOL:${DASH_SIMULATE}>
 )
 
 target_include_directories(dash_node PRIVATE src)

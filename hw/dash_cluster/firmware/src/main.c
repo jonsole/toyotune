@@ -50,13 +50,51 @@
    feed. */
 #define STATUS_PERIOD_MS	(2000u)
 
-/* How often the gauges are re-read from the signal store and the needles moved.
-   10 ms, faster than the quickest telemetry tier (20 ms, PLAN.md section 3),
-   because it is not only data that moves a needle: the no-data sweep is
-   animated, and at 20 ms it capped a needle below the panel's own 60 Hz. A
-   re-read of an unchanged value costs nothing to draw, since only differences
-   are pushed into LVGL (see UiLvgl_Update()). */
-#define UI_UPDATE_PERIOD_MS	(10u)
+#if DASH_SIMULATE
+/* SIMULATED TELEMETRY - a bench aid, never a car build.
+ *
+ * With no Toyotune board on the bus every gauge reads "--", which leaves the
+ * value readout, the needle's response to real numbers and the warning bands
+ * unexercised. This writes a plausible rev-and-boost cycle into the signal
+ * store at the FAST tier's own 20 ms period, through SignalStore_Set() - the
+ * same door telemetry.c uses - so everything downstream of the store runs
+ * exactly as it would on real data, staleness included.
+ *
+ * Two things follow from going through the real door, and both are why this
+ * is a build option that defaults off. The store cannot tell these values from
+ * real ones, so it reports the link alive; the status line and the boot banner
+ * say SIMULATED instead, so a simulated node cannot pass for a connected one.
+ * And real telemetry arriving on the bus would be overwritten every 20 ms, so
+ * a simulate build must not be put on a bus with a Toyotune board on it. */
+#define SIM_PERIOD_MS		(20u)	/* the FAST tier, which RPM and MAP ride */
+#define SIM_CYCLE_MS		(12000u)	/* idle to near the limiter and back */
+#define SIM_RPM_IDLE		(800)
+#define SIM_RPM_TOP		(7000)
+
+static void Simulate(uint32_t NowMs)
+{
+	/* A triangle: up for half the cycle, down for the other half. */
+	int32_t Half = (int32_t)(SIM_CYCLE_MS / 2u);
+	int32_t Phase = (int32_t)(NowMs % SIM_CYCLE_MS);
+	int32_t T = (Phase < Half) ? Phase : ((int32_t)SIM_CYCLE_MS - Phase);
+	int32_t Rpm = SIM_RPM_IDLE + (T * (SIM_RPM_TOP - SIM_RPM_IDLE)) / Half;
+	int32_t Map;
+
+	/* Manifold pressure in tenths of a kPa, following the revs the way a
+	   turbo engine does: vacuum at idle, atmospheric by 3000, then boost
+	   building to 230 kPa at the top - inside the gauge's 250 kPa face. */
+	if (Rpm <= 3000)
+		Map = 350 + ((Rpm - SIM_RPM_IDLE) * (1000 - 350)) / (3000 - SIM_RPM_IDLE);
+	else
+		Map = 1000 + ((Rpm - 3000) * (2300 - 1000)) / (SIM_RPM_TOP - 3000);
+
+	SignalStore_Set(SIGNAL_RPM, Rpm, NowMs);
+	SignalStore_Set(SIGNAL_MAP, Map, NowMs);
+}
+#endif
+
+/* There is no UI update period any more: the gauges are updated once per
+   panel frame, locked to its TE pulse. See Core1Main(). */
 
 /* How often core 0 says where core 1 got to, while the panel is still coming
    up. Frequent, because this only runs when something is wrong. */
@@ -148,38 +186,47 @@ static void Core1ReportFace(uint32_t NowMs, uint8_t Page, bool Verbose)
 
 #if DASH_HAVE_LVGL
 /***************************************************************************************/
-/* Core 1: the display.
+/* Core 1: the display, one panel frame per loop.
  *
- * Two cadences, deliberately separate. UiLvgl_Update() re-reads the signal
- * store and pushes values into the widget tree; LVGL's own timer handler
- * decides when any of that actually reaches the glass. Driving them from one
- * loop period would tie the redraw rate to the data rate, and the redraw is
- * the expensive half. */
+ * The loop is clocked by the panel, not by timers - see Panel_FrameLoopBegin()
+ * for why. Each pass runs LVGL's input and animation timers, eases every
+ * gauge towards its reading by however long the last frame took, and renders.
+ * The needle's flush waits for the TE pulse, so rendering is what paces the
+ * loop; a frame with nothing to draw waits for the pulse instead. Either way
+ * every pass is one scan, and the needle moves a little on every one.
+ *
+ * Status goes out every STATUS_PERIOD_MS from here too. Printing it can cost
+ * a frame, once every two seconds. */
 static void Core1Main(void)
 {
-	uint32_t NextUiMs = 0;
 	uint32_t NextStatusMs = 0;
+	uint32_t LastFrameUs;
 
 	Panel_Init();
 	UiLvgl_Init();
+	Panel_FrameLoopBegin();
+	LastFrameUs = time_us_32();
 
 	for (;;)
 	{
+		uint32_t NowUs = time_us_32();
 		uint32_t NowMs = to_ms_since_boot(get_absolute_time());
-		uint32_t WaitMs;
+		uint32_t RefreshesBefore;
+
+		/* Touch, gestures and the page crossfade. LVGL's own redraw timer is
+		   paused, so this never draws. */
+		Panel_Alive(PANEL_STAGE_LV_TIMER);
+		(void)Panel_Service();
 
 		Panel_Alive(PANEL_STAGE_UI_UPDATE);
+		UiLvgl_Update(NowMs, NowUs - LastFrameUs);
+		LastFrameUs = NowUs;
 
-		if ((int32_t)(NowMs - NextUiMs) >= 0)
-		{
-			NextUiMs = NowMs + UI_UPDATE_PERIOD_MS;
-			UiLvgl_Update(NowMs);
-		}
-
-		/* Returns how long it is content to be left alone, or
-		   LV_NO_TIMER_READY when nothing at all is pending. */
 		Panel_Alive(PANEL_STAGE_LV_TIMER);
-		WaitMs = Panel_Service();
+		RefreshesBefore = Panel_Refreshes();
+		Panel_RenderNow();
+		if (Panel_Refreshes() == RefreshesBefore)
+			Panel_WaitFrame();
 
 		if ((int32_t)(NowMs - NextStatusMs) >= 0)
 		{
@@ -189,10 +236,19 @@ static void Core1Main(void)
 			NextStatusMs = NowMs + STATUS_PERIOD_MS;
 			Panel_TouchLast(&TouchX, &TouchY);
 
+#if DASH_SIMULATE
+			/* The store reports the link alive on simulated values - say so
+			   rather than print "link up" for a bus nobody is talking on. */
+			const char *LinkText = "SIMULATED";
+#else
+			const char *LinkText = SignalStore_LinkAlive(NowMs) ? "link up"
+			                                                    : "LINK DOWN";
+#endif
+
 			printf("node %u  page %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",
 			       DashNodeId, Pages_Effective(NowMs),
-			       SignalStore_LinkAlive(NowMs) ? "link up" : "LINK DOWN",
+			       LinkText,
 			       (unsigned long)Panel_Flushes(),
 			       Panel_TouchPresent() ? "ok" : "ABSENT",
 			       (unsigned long)Panel_TouchReports(),
@@ -227,6 +283,12 @@ static void Core1Main(void)
 				       (unsigned long)Te.Edges, (unsigned long)Te.PeriodUs,
 				       (unsigned long)Te.Waits, (unsigned long)Te.Timeouts,
 				       (unsigned long)Te.AvgWaitUs);
+				printf("\n  needle waits %lu  late %lu  unsynced %lu  after te last %luus  max %luus",
+				       (unsigned long)Te.NeedleWaits,
+				       (unsigned long)Te.LateFrames,
+				       (unsigned long)Te.FollowOns,
+				       (unsigned long)Te.FollowOnLastUs,
+				       (unsigned long)Te.FollowOnMaxUs);
 			}
 			printf("\n  bench us %lu px %lu",
 			       (unsigned long)(Panel_RenderTotalUs() & 0xFFFFFFFFu),
@@ -247,12 +309,6 @@ static void Core1Main(void)
 
 			Core1ReportFace(NowMs, Pages_Effective(NowMs), false);
 		}
-
-		/* Capped so the update and status cadences above are still met when
-		   LVGL has nothing to do. */
-		if (WaitMs > UI_UPDATE_PERIOD_MS)
-			WaitMs = UI_UPDATE_PERIOD_MS;
-		sleep_ms(WaitMs);
 	}
 }
 #else
@@ -286,6 +342,9 @@ static void Core1Main(void)
 int main(void)
 {
 	uint8_t Id;
+#if DASH_SIMULATE
+	uint32_t NextSimMs = 0;
+#endif
 #if DASH_HAVE_LVGL
 	uint32_t NextStageReportMs = 0;
 	uint32_t LastAliveCount = 0;
@@ -324,6 +383,11 @@ int main(void)
 
 	Telemetry_Init(TELEMETRY_BASE_CPU1);
 
+#if DASH_SIMULATE
+	printf("SIMULATED TELEMETRY BUILD - RPM and boost are synthetic, not from "
+	       "the ECU. Rebuild with -DDASH_SIMULATE=OFF for real data.\n");
+#endif
+
 #if DASH_HAVE_CAN2040
 	CanLink_Init(Id);
 #else
@@ -343,6 +407,14 @@ int main(void)
 
 #if DASH_HAVE_CAN2040
 		CanLink_Poll(NowMs);
+#endif
+
+#if DASH_SIMULATE
+		if ((int32_t)(NowMs - NextSimMs) >= 0)
+		{
+			NextSimMs = NowMs + SIM_PERIOD_MS;
+			Simulate(NowMs);
+		}
 #endif
 
 #if DASH_HAVE_LVGL

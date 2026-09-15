@@ -53,6 +53,16 @@ typedef struct
 	   stays a presentation choice and cannot drift into the needle
 	   arithmetic. NULL on any other widget. */
 	const char *const *Ticks;
+
+	/* WIDGET_GAUGE only: the legend painted under the dial's centre, as the
+	   MR2 prints "x1000r/min". NULL for none. */
+	const char *Legend;
+
+	/* WIDGET_GAUGE only: where the red warning band starts, in the element's
+	   own units; it runs to Max. 0 for no band. Painted on the face and nothing
+	   more - whether the gauge itself turns to its warning state is
+	   UiModel_SignalWarning()'s decision, which this does not feed. */
+	int32_t BandFrom;
 } FaceElement_t;
 
 

@@ -11,6 +11,30 @@
 
 
 /***************************************************************************************/
+uint32_t UiModel_NeedleStep(uint32_t CurrentQ, uint16_t Target, uint32_t DtUs)
+{
+	int64_t TargetQ = (int64_t)(Target > UI_POSITION_MAX ? UI_POSITION_MAX : Target)
+	                  << UI_NEEDLE_Q;
+	int64_t Diff = TargetQ - (int64_t)CurrentQ;
+	int64_t Near = (int64_t)1 << (UI_NEEDLE_Q - 2);	/* a quarter of a unit */
+	int64_t AlphaQ16;
+	int64_t Step;
+
+	if (DtUs >= UI_NEEDLE_JUMP_US || (Diff <= Near && Diff >= -Near))
+		return (uint32_t)TargetQ;
+
+	AlphaQ16 = ((int64_t)DtUs << 16) / ((int64_t)UI_NEEDLE_TAU_US + (int64_t)DtUs);
+	Step = (Diff * AlphaQ16) / 65536;
+
+	/* Always some progress, so the last fraction cannot stall on rounding. */
+	if (Step == 0)
+		Step = (Diff > 0) ? 1 : -1;
+
+	return (uint32_t)((int64_t)CurrentQ + Step);
+}
+
+
+/***************************************************************************************/
 bool UiModel_SignalWarning(SignalId_t Signal, int32_t Value)
 {
 	switch (Signal)

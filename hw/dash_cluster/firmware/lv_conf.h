@@ -135,12 +135,24 @@
 #define LV_USE_ASSERT_STYLE	0
 
 /* Object checks: every widget call confirms it was handed a live object of the
- * right class. Off by default in LVGL, and on here because of what its absence
- * cost - a gauge was passed a NULL needle, and with this off LVGL read garbage
- * from low memory rather than refusing, so the fault surfaced as TLSF heap
- * corruption three calls away instead of an assert naming the call. The checks
- * live in the setter APIs, not the draw loop, so they cost little. */
+ * right class. Off by default in LVGL. On in a debug build because of what its
+ * absence once cost - a gauge was passed a NULL needle, and with the checks off
+ * LVGL read garbage from low memory rather than refusing, so the fault surfaced
+ * as TLSF heap corruption three calls away instead of an assert naming the
+ * call.
+ *
+ * Off in a release build (which defines NDEBUG), because they are not cheap.
+ * This comment used to say they lived only in the setter APIs and cost little;
+ * measured on the board, turning them off made rendering 15-20% faster, about a
+ * millisecond a frame against a 16.8 ms scan. LVGL's own lv_init() warns that
+ * they make it "much slower". A plain macro test, not an #include, so it is
+ * safe here - and the LVGL library is built with the same flags, so both sides
+ * of the API agree. */
+#ifdef NDEBUG
+#define LV_USE_ASSERT_OBJ	0
+#else
 #define LV_USE_ASSERT_OBJ	1
+#endif
 
 /* Frame rate and CPU load, drawn as an overlay. In v9 both monitors sit behind
  * LV_USE_SYSMON, which has to be turned on first - it was a standalone option

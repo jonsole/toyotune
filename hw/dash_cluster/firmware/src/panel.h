@@ -107,6 +107,21 @@ extern struct _lv_display_t *Panel_Display(void);
    stays confined to the files that bind to it. */
 extern uint32_t Panel_Service(void);
 
+/* THE FRAME LOOP. Core 1 draws on the panel's rhythm rather than on a timer:
+ *
+ *   Panel_FrameLoopBegin()   once, after Panel_Init(): stops LVGL redrawing on
+ *                            its own 10 ms timer
+ *   Panel_Service()          LVGL's other timers - touch, gestures, animation
+ *   ...update the widgets...
+ *   Panel_RenderNow()        draw whatever changed; the needle's flush starts
+ *                            at the next TE pulse
+ *   Panel_WaitFrame()        when nothing was drawn, wait for that pulse
+ *                            anyway, so the loop keeps the scan's cadence
+ */
+extern void Panel_FrameLoopBegin(void);
+extern void Panel_RenderNow(void);
+extern void Panel_WaitFrame(void);
+
 /* Panel brightness, 0 to 100 percent. A dashboard gauge at full brightness at
    night is a hazard, so this exists to be driven from something - a light
    sensor, the car's illumination line, or a page - later. */
@@ -146,9 +161,20 @@ typedef struct
 	uint32_t Waits;
 	uint32_t Timeouts;
 	uint32_t AvgWaitUs;
+	uint32_t NeedleWaits;		/* flushes that waited because they touched the needle */
+	uint32_t LateFrames;		/* needle frames that missed a scan while busy */
+	uint32_t FollowOns;		/* areas sent without waiting - never the needle */
+	uint32_t FollowOnLastUs;	/* how long after the TE edge the last one started */
+	uint32_t FollowOnMaxUs;		/* ...and the latest since boot */
 } PanelTe_t;
 
 extern void Panel_Te(PanelTe_t *Out);
+
+/* Where the needle is moving through this frame - its old position joined with
+   its new one, in screen coordinates, inclusive. Any area the renderer sends
+   that touches it starts at the panel's TE pulse, so the needle is always
+   synced however LVGL orders the frame. Core 1 only, like LVGL. */
+extern void Panel_SyncArea(int32_t X1, int32_t Y1, int32_t X2, int32_t Y2);
 
 /* LVGL heap: in use now, peak since boot, and the pool size. */
 extern void Panel_Heap(uint32_t *UsedBytes, uint32_t *PeakBytes, uint32_t *TotalBytes);

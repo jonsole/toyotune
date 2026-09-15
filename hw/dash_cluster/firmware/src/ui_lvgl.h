@@ -14,9 +14,10 @@
 /* Call once, after lv_init() and the display driver are up. */
 extern void UiLvgl_Init(void);
 
-/* Call from the render loop on core 1. Rebuilds the object tree on a page
-   change, and only updates values in between. */
-extern void UiLvgl_Update(uint32_t NowMs);
+/* Call once per frame from the render loop on core 1. Rebuilds the object
+   tree on a page change, and only updates values in between. FrameUs is how
+   long the previous frame took, which is what the needles are eased by. */
+extern void UiLvgl_Update(uint32_t NowMs, uint32_t FrameUs);
 
 /* Call from an LV_EVENT_GESTURE handler. */
 extern void UiLvgl_HandleGesture(void);

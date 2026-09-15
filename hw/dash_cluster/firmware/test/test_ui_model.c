@@ -230,6 +230,65 @@ static void TestEveryElementRenders(void)
 
 
 /***************************************************************************************/
+static void TestNeedleSmoothing(void)
+{
+	const uint32_t Frame = 16700u;	/* one 60 Hz panel scan */
+	const uint32_t Full = (uint32_t)UI_POSITION_MAX << UI_NEEDLE_Q;
+	uint32_t Q, Prev, A, B;
+	int k, Frames;
+
+	printf("ui - needle smoothing\n");
+
+	CHECK(UiModel_NeedleStep(Full / 2u, UI_POSITION_MAX / 2, Frame) == Full / 2u,
+	      "a needle already on its reading stays put");
+
+	/* Climbs without overshoot, every frame moving it, and arrives. */
+	Q = 0;
+	Frames = 0;
+	for (k = 0; k < 200 && Q != Full; k++)
+	{
+		Prev = Q;
+		Q = UiModel_NeedleStep(Q, UI_POSITION_MAX, Frame);
+		CHECK(Q > Prev, "frame %d did not move a needle that is short of its reading", k);
+		CHECK(Q <= Full, "frame %d overshot full scale: %u", k, Q);
+		Frames++;
+	}
+	CHECK(Q == Full, "never reached full scale");
+	CHECK(Frames < 30, "took %d frames to cross the dial - too sluggish", Frames);
+	CHECK(Frames > 4, "took %d frames to cross the dial - no smoothing at all", Frames);
+
+	/* And the same falling. */
+	for (k = 0; k < 200 && Q != 0; k++)
+	{
+		Prev = Q;
+		Q = UiModel_NeedleStep(Q, 0, Frame);
+		CHECK(Q < Prev, "frame %d did not move a falling needle", k);
+	}
+	CHECK(Q == 0, "never returned to zero");
+
+	/* Steps by the real frame time: ten 60 Hz frames and five frames twice as
+	   long cover about the same ground, rather than a slow frame rate slowing
+	   the needle down with it. */
+	A = 0;
+	for (k = 0; k < 10; k++)
+		A = UiModel_NeedleStep(A, UI_POSITION_MAX, Frame);
+	B = 0;
+	for (k = 0; k < 5; k++)
+		B = UiModel_NeedleStep(B, UI_POSITION_MAX, Frame * 2u);
+	CHECK((A > B ? A - B : B - A) < Full / 20u,
+	      "frame time not honoured: 10x16.7ms reached %u, 5x33.4ms reached %u", A, B);
+
+	/* A long stall - or a page just built - is not caught up gradually. */
+	CHECK(UiModel_NeedleStep(0, UI_POSITION_MAX, UI_NEEDLE_JUMP_US) == Full,
+	      "a long gap should put the needle straight on its reading");
+
+	/* An out-of-range target is clamped, as positions are everywhere else. */
+	CHECK(UiModel_NeedleStep(Full, UI_POSITION_MAX + 50, Frame) == Full,
+	      "target beyond full scale should clamp");
+}
+
+
+/***************************************************************************************/
 int UiTests_Run(int *OutChecks, int *OutFailures)
 {
 	Checks = 0;
@@ -241,6 +300,7 @@ int UiTests_Run(int *OutChecks, int *OutFailures)
 	TestStalenessOutranksWarning();
 	TestWarningBands();
 	TestEveryElementRenders();
+	TestNeedleSmoothing();
 
 	*OutChecks += Checks;
 	*OutFailures += Failures;

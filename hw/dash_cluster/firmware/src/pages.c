@@ -16,7 +16,13 @@
 #include "pages.h"
 #include "signal_store.h"
 
-/* --- page 0: the rev counter --------------------------------------------- */
+/* --- page 0: the rev counter ---------------------------------------------
+ *
+ * One element per face. A gauge carries its own value, centred in the empty
+ * middle of the dial, and its own label at the foot of it - UiLvgl_BuildElement()
+ * gives every widget both. A separate WIDGET_NUMERIC for the same signal used
+ * to sit below it and put the value and the label on the glass twice.
+ */
 
 /* Marked in thousands, the way a tachometer is. The needle works in rpm; these
    are only what is painted on the face. */
@@ -25,8 +31,7 @@ static const char *const RpmTicks[] =
 
 static const FaceElement_t RpmElements[] =
 {
-	{ WIDGET_GAUGE,   SIGNAL_RPM, 0, 8000,  2,  2, 96, 96, RpmTicks },
-	{ WIDGET_NUMERIC, SIGNAL_RPM, 0, 8000, 30, 56, 40, 18, NULL }
+	{ WIDGET_GAUGE,   SIGNAL_RPM, 0, 8000,  2,  2, 96, 96, RpmTicks, "x1000r/min", 7000 }
 };
 
 /* --- page 1: boost ------------------------------------------------------- */
@@ -38,8 +43,7 @@ static const char *const BoostTicks[] =
 
 static const FaceElement_t BoostElements[] =
 {
-	{ WIDGET_GAUGE,   SIGNAL_MAP, 0, 2500,  2,  2, 96, 96, BoostTicks },
-	{ WIDGET_NUMERIC, SIGNAL_MAP, 0, 2500, 25, 56, 50, 18, NULL }
+	{ WIDGET_GAUGE,   SIGNAL_MAP, 0, 2500,  2,  2, 96, 96, BoostTicks, "kPa", 2000 }
 };
 
 /* --- page 2: the warning takeover ----------------------------------------
@@ -51,10 +55,10 @@ static const FaceElement_t BoostElements[] =
  */
 static const FaceElement_t WarningElements[] =
 {
-	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS1,  0,  255, 10, 20, 80, 16, NULL },
-	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS2,  0,  255, 10, 38, 80, 16, NULL },
-	{ WIDGET_NUMERIC, SIGNAL_LIMITER_FLAGS, 0,  255, 10, 56, 80, 16, NULL },
-	{ WIDGET_NUMERIC, SIGNAL_KNOCK_RETARD,  0, 2000, 10, 72, 80, 16, NULL }
+	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS1,  0,  255, 10, 20, 80, 16, NULL, NULL, 0 },
+	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS2,  0,  255, 10, 38, 80, 16, NULL, NULL, 0 },
+	{ WIDGET_NUMERIC, SIGNAL_LIMITER_FLAGS, 0,  255, 10, 56, 80, 16, NULL, NULL, 0 },
+	{ WIDGET_NUMERIC, SIGNAL_KNOCK_RETARD,  0, 2000, 10, 72, 80, 16, NULL, NULL, 0 }
 };
 
 #define PAGE(name, elems) { name, elems, (uint8_t)(sizeof(elems) / sizeof((elems)[0])) }
