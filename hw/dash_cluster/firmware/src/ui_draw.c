@@ -11,10 +11,10 @@
 
 #include "ui_gauge.h"
 
-/* 212 KB, and the largest single object in the firmware by a wide margin. It
-   only fits because LVGL is not linked into this build: its 128 KB heap and
-   the 91 KB partial-render buffer together cost more than this does. */
-static uint8_t		BackBuf[UI_DRAW_PIXELS];
+/* 212 KB each, and the largest objects in the firmware by a wide margin. They
+   only fit because LVGL is not linked into this build: its 128 KB heap and
+   91 KB partial-render buffer together cost more than one of these. */
+static uint8_t		BackBuf[UI_DRAW_SURFACES][UI_DRAW_PIXELS];
 
 /* A copy of DashFacePalette in SRAM. The conversion loop reads it for every
    pixel of every frame, and 512 bytes is a small price for keeping that read
@@ -27,12 +27,25 @@ static uint8_t		NeedleIndex;
 /* Coverage to palette index for text: the markings' colour mixed that far over
    the face - see ui_text.h. */
 static uint8_t		TextRamp[UI_TEXT_LEVELS];
+
+/* The face mixed towards the needle's red, for things that fade - the g-force
+   trail. Level 15 is the red itself. */
+static uint8_t		RedRamp[UI_TEXT_LEVELS];
+
+/* The design colours as plain indices - see UiDraw_Ink(). */
+static uint8_t		Inks[UI_INK_COUNT];
 static uint32_t		LoadUs;
 
-/* The face in the buffer, and where, so what a needle covered can be put back. */
-static const DashFace_t	*Face;
-static int32_t		FaceX;
-static int32_t		FaceY;
+/* The face in each surface, and where, so what a needle covered can be put
+   back. */
+typedef struct
+{
+	const DashFace_t *Face;
+	int32_t X;
+	int32_t Y;
+} UiDrawFace_t;
+
+static UiDrawFace_t	Faces[UI_DRAW_SURFACES];
 
 
 /***************************************************************************************/
@@ -102,19 +115,35 @@ static void UiDraw_AddRamp(uint32_t Back, uint32_t Fore, uint8_t *Ramp)
 /***************************************************************************************/
 void UiDraw_Init(void)
 {
-	/* Index 0 is black - the generator guarantees it - so a cleared buffer is
-	   a black screen. */
-	memset(BackBuf, 0, sizeof(BackBuf));
+	uint8_t S;
+
 	memcpy(Palette, DashFacePalette, sizeof(Palette));
 	PaletteUsed = DashFacePaletteUsed;
 	NeedleIndex = UiDraw_AddColour(UI_GAUGE_NEEDLE_COLOUR);
 	UiDraw_AddRamp(UI_GAUGE_FACE_COLOUR, UI_GAUGE_MARK_COLOUR, TextRamp);
-	Face = NULL;
+	UiDraw_AddRamp(UI_GAUGE_FACE_COLOUR, UI_GAUGE_NEEDLE_COLOUR, RedRamp);
+	Inks[UI_INK_FACE] = UiDraw_AddColour(UI_GAUGE_FACE_COLOUR);
+	Inks[UI_INK_GRID] = UiDraw_AddColour(UI_GAUGE_RING_COLOUR);
+	Inks[UI_INK_RED] = UiDraw_AddColour(UI_GAUGE_NEEDLE_COLOUR);
+	Inks[UI_INK_WHITE] = UiDraw_AddColour(UI_GAUGE_MARK_COLOUR);
+
+	for (S = 0; S < UI_DRAW_SURFACES; S++)
+		UiDraw_Clear(S);
 }
 
 
 /***************************************************************************************/
-bool UiDraw_LoadFace(const DashFace_t *NewFace, int32_t X, int32_t Y)
+void UiDraw_Clear(uint8_t Surface)
+{
+	/* Index 0 is black - the generator guarantees it - so a cleared buffer is
+	   a black screen. */
+	memset(BackBuf[Surface], 0, sizeof(BackBuf[Surface]));
+	Faces[Surface].Face = NULL;
+}
+
+
+/***************************************************************************************/
+bool UiDraw_LoadFace(uint8_t Surface, const DashFace_t *NewFace, int32_t X, int32_t Y)
 {
 	const uint8_t *Src;
 	uint32_t Start;
@@ -137,23 +166,26 @@ bool UiDraw_LoadFace(const DashFace_t *NewFace, int32_t X, int32_t Y)
 	/* Already in the buffer's own format, so a face is a copy per row. */
 	for (Row = 0; Row < NewFace->Height; Row++)
 	{
-		memcpy(&BackBuf[((uint32_t)(Y + Row) * (uint32_t)UI_DRAW_WIDTH)
-		                + (uint32_t)X],
+		memcpy(&BackBuf[Surface][((uint32_t)(Y + Row) * (uint32_t)UI_DRAW_WIDTH)
+		                         + (uint32_t)X],
 		       Src + ((uint32_t)Row * NewFace->Image->Stride),
 		       (size_t)NewFace->Width);
 	}
 
-	Face = NewFace;
-	FaceX = X;
-	FaceY = Y;
+	Faces[Surface].Face = NewFace;
+	Faces[Surface].X = X;
+	Faces[Surface].Y = Y;
 	LoadUs = (uint32_t)(time_us_32() - Start);
 	return true;
 }
 
 
 /***************************************************************************************/
-void UiDraw_Restore(const UiRect_t *Area)
+void UiDraw_Restore(uint8_t Surface, const UiRect_t *Area)
 {
+	const DashFace_t *Face = Faces[Surface].Face;
+	int32_t FaceX = Faces[Surface].X;
+	int32_t FaceY = Faces[Surface].Y;
 	int32_t X1 = (Area->X1 < 0) ? 0 : Area->X1;
 	int32_t Y1 = (Area->Y1 < 0) ? 0 : Area->Y1;
 	int32_t X2 = (Area->X2 >= UI_DRAW_WIDTH) ? (UI_DRAW_WIDTH - 1) : Area->X2;
@@ -165,7 +197,7 @@ void UiDraw_Restore(const UiRect_t *Area)
 
 	for (Y = Y1; Y <= Y2; Y++)
 	{
-		uint8_t *Row = &BackBuf[(uint32_t)Y * (uint32_t)UI_DRAW_WIDTH];
+		uint8_t *Row = &BackBuf[Surface][(uint32_t)Y * (uint32_t)UI_DRAW_WIDTH];
 		int32_t X = X1;
 
 		/* Everything outside the face is black: before it, after it, and every
@@ -203,23 +235,52 @@ void UiDraw_Restore(const UiRect_t *Area)
 
 
 /***************************************************************************************/
-uint32_t UiDraw_Needle(const UiNeedle_t *Needle)
+uint32_t UiDraw_Needle(uint8_t Surface, const UiNeedle_t *Needle)
 {
-	return UiNeedle_Draw(Needle, BackBuf, (uint32_t)UI_DRAW_WIDTH,
+	return UiNeedle_Draw(Needle, BackBuf[Surface], (uint32_t)UI_DRAW_WIDTH,
 	                     UI_DRAW_WIDTH, UI_DRAW_HEIGHT, NeedleIndex);
 }
 
 
 /***************************************************************************************/
-uint32_t UiDraw_Text(const DashFont_t *Font, const char *Text, int32_t X, int32_t Y)
+uint8_t UiDraw_Ink(UiInk_t Ink)
 {
-	return UiText_Draw(Font, Text, X, Y, TextRamp, BackBuf, (uint32_t)UI_DRAW_WIDTH,
+	return (Ink < UI_INK_COUNT) ? Inks[Ink] : 0u;
+}
+
+
+/***************************************************************************************/
+uint32_t UiDraw_Stroke(uint8_t Surface, const UiNeedle_t *Shape, uint8_t Level)
+{
+	if (Level == 0u)
+		return 0;
+	if (Level >= UI_TEXT_LEVELS)
+		Level = (uint8_t)(UI_TEXT_LEVELS - 1u);
+	return UiNeedle_Draw(Shape, BackBuf[Surface], (uint32_t)UI_DRAW_WIDTH,
+	                     UI_DRAW_WIDTH, UI_DRAW_HEIGHT, RedRamp[Level]);
+}
+
+
+/***************************************************************************************/
+uint32_t UiDraw_Text(uint8_t Surface, const DashFont_t *Font, const char *Text,
+                     int32_t X, int32_t Y)
+{
+	return UiDraw_TextIn(Surface, UI_TEXT_WHITE, Font, Text, X, Y);
+}
+
+
+/***************************************************************************************/
+uint32_t UiDraw_TextIn(uint8_t Surface, UiTextInk_t Ink, const DashFont_t *Font,
+                       const char *Text, int32_t X, int32_t Y)
+{
+	return UiText_Draw(Font, Text, X, Y, (Ink == UI_TEXT_RED) ? RedRamp : TextRamp,
+	                   BackBuf[Surface], (uint32_t)UI_DRAW_WIDTH,
 	                   UI_DRAW_WIDTH, UI_DRAW_HEIGHT);
 }
 
 
 /***************************************************************************************/
-uint8_t *UiDraw_Buffer(void)		{ return BackBuf; }
+uint8_t *UiDraw_Buffer(uint8_t Surface)	{ return BackBuf[Surface]; }
 const uint16_t *UiDraw_Palette(void)	{ return Palette; }
 uint16_t UiDraw_PaletteUsed(void)	{ return PaletteUsed; }
 uint32_t UiDraw_LoadUs(void)		{ return LoadUs; }

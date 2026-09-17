@@ -109,6 +109,55 @@ extern void Panel_WaitTe(void);
    comment in panel.c. Inclusive coordinates, adjusted in place. */
 extern void Panel_RoundArea(int32_t *X1, int32_t *Y1, int32_t *X2, int32_t *Y2);
 
+/* An inclusive rectangle on the panel. */
+typedef struct
+{
+	int32_t X1;
+	int32_t Y1;
+	int32_t X2;
+	int32_t Y2;
+} PanelRect_t;
+
+/* ROWS FROM ANYWHERE. A pushed rectangle's rows come from a row function,
+   which describes each row as up to PANEL_MAX_SPANS runs of palette indices,
+   left to right, adding up to the rectangle's width. A plain buffer is one run
+   per row; a page sliding in beside another is two, from two buffers - so a
+   slide is composed while it is being sent, and never copied. The runs must
+   stay valid until the row has been converted, which happens inside the
+   push. */
+#define PANEL_MAX_SPANS		(3u)
+
+typedef struct
+{
+	const uint8_t *Src;
+	uint32_t Count;
+} PanelSpan_t;
+
+typedef uint32_t (*PanelRowFn_t)(void *Context, int32_t Y, int32_t X1, uint32_t Width,
+                                 PanelSpan_t *Spans);
+
+typedef struct
+{
+	PanelRowFn_t Row;
+	void *Context;
+	const uint16_t *Palette;
+} PanelSource_t;
+
+/* Send one rectangle whose rows come from a row function, starting on the
+   next TE pulse. Blocks until it is out. Core 1 only. */
+extern void Panel_PushRows(const PanelSource_t *Source,
+                           int32_t X1, int32_t Y1, int32_t X2, int32_t Y2);
+
+/* Send up to PANEL_MAX_REGIONS rectangles of a buffer as one frame: the first
+   on the next TE pulse, the rest straight after it, top to bottom. For a frame
+   whose changes are in separate places - two needles in opposite halves of a
+   split face - this sends what changed rather than the box round all of it. */
+#define PANEL_MAX_REGIONS	(8u)
+
+extern void Panel_PushRegions(const uint8_t *Src, uint32_t SrcStride,
+                              const uint16_t *Palette,
+                              const PanelRect_t *Regions, uint32_t Count);
+
 /* SEND A PALETTED RECTANGLE, STARTING ON THE NEXT TE PULSE.
  *
  * Src is 8-bit palette indices, SrcStride bytes between rows; Palette is 256
@@ -141,6 +190,8 @@ typedef struct
 	uint32_t LastConvertUs;
 	uint32_t LastBlockedUs;
 	uint32_t LastTotalUs;
+	uint32_t LastRegions;		/* rectangles in the last frame */
+	uint32_t RowShortfalls;		/* rows composed short of their width - a bug */
 } PanelPush_t;
 
 extern void Panel_Push(PanelPush_t *Out);
@@ -225,5 +276,11 @@ extern void Panel_TouchService(void);
 /* Is a finger down, and where was it last seen? The position is held across a
    release so a gesture can be measured between press and release. */
 extern bool Panel_TouchDown(int32_t *X, int32_t *Y);
+
+/* How lifts have been noticed - by a report, or by reports stopping - the
+   longest gap between reports while a finger was down, in ms, the status
+   nibbles seen (bit n set for status n), and failed report reads. */
+extern void Panel_TouchLifts(uint32_t *ByReport, uint32_t *ByTimeout, uint32_t *GapMaxMs,
+                             uint16_t *StatusSeen, uint32_t *ReadErrors);
 
 #endif /* PANEL_H_ */

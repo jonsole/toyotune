@@ -59,7 +59,11 @@ const SignalDescriptor_t SignalDescriptors[SIGNAL_COUNT] =
 	[SIGNAL_BUS_OFF_RECOVERIES]= { "BusOff", "", 0, 0, 65535, INFO_MS },
 
 	/* The wideband. Its period is a guess until the device is logged. */
-	[SIGNAL_AFR]           = { "AFR",     "",     2,   700,  2200, FAST_MS }
+	[SIGNAL_AFR]           = { "AFR",     "",     2,   700,  2200, FAST_MS },
+
+	/* Local, never in the store - see signals.h. */
+	[SIGNAL_G_LAT]         = { "Lat g",   "g",    3, -1500,  1500, FAST_MS },
+	[SIGNAL_G_LON]         = { "Lon g",   "g",    3, -1500,  1500, FAST_MS }
 };
 
 

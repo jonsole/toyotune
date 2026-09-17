@@ -129,7 +129,7 @@ static const char **UiGauge_Labels(const FaceElement_t *Element, uint32_t Count)
 
 /***************************************************************************************/
 lv_obj_t *UiGauge_CreateFace(lv_obj_t *Parent, int32_t X, int32_t Y,
-                             int32_t W, int32_t H, bool Split)
+                             int32_t W, int32_t H, bool Split, bool Ring)
 {
 	lv_obj_t *Face = lv_obj_create(Parent);
 	int32_t PanelW = W / UI_GAUGE_RENDER_SCALE;
@@ -152,20 +152,21 @@ lv_obj_t *UiGauge_CreateFace(lv_obj_t *Parent, int32_t X, int32_t Y,
 	   on that radius. Computed from the PANEL-size geometry and then scaled:
 	   the firmware places its needles from the panel size, and the two must
 	   meet. */
+	if (Ring)
 	{
 		int32_t RingD = 2 * S(UiGauge_RingRadius(PanelW, PanelH));
-		lv_obj_t *Ring = lv_obj_create(Face);
+		lv_obj_t *RingObj = lv_obj_create(Face);
 
-		lv_obj_remove_style_all(Ring);
-		lv_obj_set_size(Ring, RingD, RingD);
-		lv_obj_align(Ring, LV_ALIGN_CENTER, 0, 0);
-		lv_obj_set_style_radius(Ring, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-		lv_obj_set_style_bg_opa(Ring, LV_OPA_TRANSP, LV_PART_MAIN);
-		lv_obj_set_style_border_width(Ring, S(UI_GAUGE_RING_WIDTH), LV_PART_MAIN);
-		lv_obj_set_style_border_color(Ring, lv_color_hex(UI_GAUGE_RING_COLOUR),
+		lv_obj_remove_style_all(RingObj);
+		lv_obj_set_size(RingObj, RingD, RingD);
+		lv_obj_align(RingObj, LV_ALIGN_CENTER, 0, 0);
+		lv_obj_set_style_radius(RingObj, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+		lv_obj_set_style_bg_opa(RingObj, LV_OPA_TRANSP, LV_PART_MAIN);
+		lv_obj_set_style_border_width(RingObj, S(UI_GAUGE_RING_WIDTH), LV_PART_MAIN);
+		lv_obj_set_style_border_color(RingObj, lv_color_hex(UI_GAUGE_RING_COLOUR),
 		                              LV_PART_MAIN);
-		lv_obj_set_style_border_opa(Ring, LV_OPA_COVER, LV_PART_MAIN);
-		lv_obj_remove_flag(Ring, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+		lv_obj_set_style_border_opa(RingObj, LV_OPA_COVER, LV_PART_MAIN);
+		lv_obj_remove_flag(RingObj, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 	}
 
 	/* A split face divides the ring's interior between its two readings. */
@@ -185,6 +186,183 @@ lv_obj_t *UiGauge_CreateFace(lv_obj_t *Parent, int32_t X, int32_t Y,
 	}
 
 	return Face;
+}
+
+
+/***************************************************************************************/
+/* A circle outline of the given radius and stroke, centred on the parent. */
+static void UiGauge_Circle(lv_obj_t *Parent, int32_t Radius, int32_t Width, lv_color_t Colour)
+{
+	lv_obj_t *C = lv_obj_create(Parent);
+
+	lv_obj_remove_style_all(C);
+	lv_obj_set_size(C, 2 * (Radius + Width / 2), 2 * (Radius + Width / 2));
+	lv_obj_align(C, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_set_style_radius(C, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+	lv_obj_set_style_bg_opa(C, LV_OPA_TRANSP, LV_PART_MAIN);
+	lv_obj_set_style_border_width(C, Width, LV_PART_MAIN);
+	lv_obj_set_style_border_color(C, Colour, LV_PART_MAIN);
+	lv_obj_set_style_border_opa(C, LV_OPA_COVER, LV_PART_MAIN);
+	lv_obj_remove_flag(C, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+}
+
+/* A filled bar, centred on the parent with an offset. */
+static void UiGauge_Bar(lv_obj_t *Parent, int32_t W, int32_t H, lv_color_t Colour)
+{
+	lv_obj_t *B = lv_obj_create(Parent);
+
+	lv_obj_remove_style_all(B);
+	lv_obj_set_size(B, W, H);
+	lv_obj_align(B, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_set_style_bg_color(B, Colour, LV_PART_MAIN);
+	lv_obj_set_style_bg_opa(B, LV_OPA_COVER, LV_PART_MAIN);
+	lv_obj_remove_flag(B, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+}
+
+/* A legend-font label centred at an offset from the parent's centre. */
+static void UiGauge_Label(lv_obj_t *Parent, const char *Text, int32_t Dx, int32_t Dy)
+{
+	lv_obj_t *L = lv_label_create(Parent);
+
+	lv_obj_remove_style_all(L);
+	lv_label_set_text(L, Text);
+	lv_obj_set_style_text_font(L, &dash_font_legend_104, LV_PART_MAIN);
+	lv_obj_set_style_text_color(L, lv_color_hex(UI_GAUGE_MARK_COLOUR), LV_PART_MAIN);
+	lv_obj_set_style_text_opa(L, LV_OPA_COVER, LV_PART_MAIN);
+	lv_obj_align(L, LV_ALIGN_CENTER, Dx, Dy);
+}
+
+
+/***************************************************************************************/
+lv_obj_t *UiGauge_CreateGMeter(lv_obj_t *Parent, int32_t X, int32_t Y, int32_t W, int32_t H)
+{
+	lv_color_t Ring = lv_color_hex(UI_GAUGE_RING_COLOUR);
+	lv_obj_t *Box = lv_obj_create(Parent);
+	int32_t Full = S((UI_GMETER_PX_PER_G * 3) / 2);
+	int32_t k;
+
+	/* A transparent box the size of the dial, so everything below can be
+	   placed from its centre. */
+	lv_obj_remove_style_all(Box);
+	lv_obj_set_pos(Box, X, Y);
+	lv_obj_set_size(Box, W, H);
+	lv_obj_remove_flag(Box, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+	/* Crosshairs, to the outer ring. */
+	UiGauge_Bar(Box, 2 * Full, S(UI_GMETER_CROSS_WIDTH), Ring);
+	UiGauge_Bar(Box, S(UI_GMETER_CROSS_WIDTH), 2 * Full, Ring);
+
+	/* Rings at 0.5, 1.0 and 1.5 g - the outer one in the markings' colour,
+	   as the edge of the scale. */
+	for (k = 1; k <= 3; k++)
+		UiGauge_Circle(Box, S((UI_GMETER_PX_PER_G * k) / 2), S(UI_GMETER_RING_WIDTH),
+		               (k == 3) ? lv_color_hex(UI_GAUGE_MARK_COLOUR) : Ring);
+
+	/* Which way is which, in the band between the outer two rings. */
+	UiGauge_Label(Box, "ACCEL", 0, -S(UI_GMETER_LABEL_R));
+	UiGauge_Label(Box, "BRAKE", 0, S(UI_GMETER_LABEL_R));
+	UiGauge_Label(Box, "L", -S(UI_GMETER_LABEL_R), 0);
+	UiGauge_Label(Box, "R", S(UI_GMETER_LABEL_R), 0);
+
+	return Box;
+}
+
+
+/***************************************************************************************/
+/* A legend-font label in a box of its own, so it can be aligned left, right or
+   centred against a known edge rather than by its own width. */
+static void UiGauge_BoxLabel(lv_obj_t *Parent, const char *Text, int32_t Dx, int32_t Dy,
+                             int32_t Width, lv_text_align_t Align, lv_color_t Colour)
+{
+	lv_obj_t *L = lv_label_create(Parent);
+
+	lv_obj_remove_style_all(L);
+	lv_label_set_text(L, Text);
+	lv_obj_set_width(L, Width);
+	lv_obj_set_style_text_align(L, Align, LV_PART_MAIN);
+	lv_obj_set_style_text_font(L, &dash_font_legend_104, LV_PART_MAIN);
+	lv_obj_set_style_text_color(L, Colour, LV_PART_MAIN);
+	lv_obj_set_style_text_opa(L, LV_OPA_COVER, LV_PART_MAIN);
+	lv_obj_align(L, LV_ALIGN_CENTER, Dx, Dy);
+}
+
+
+/***************************************************************************************/
+lv_obj_t *UiGauge_CreateGraph(lv_obj_t *Parent, const FaceElement_t *const *Elements,
+                              uint32_t Count, int32_t X, int32_t Y, int32_t W, int32_t H)
+{
+	lv_color_t Ring = lv_color_hex(UI_GAUGE_RING_COLOUR);
+	lv_color_t Mark = lv_color_hex(UI_GAUGE_MARK_COLOUR);
+	lv_color_t Band = lv_color_hex(UI_GAUGE_BAND_COLOUR);
+	lv_obj_t *Box = lv_obj_create(Parent);
+	int32_t FrameW = S(UI_GRAPH_FRAME_W);
+	int32_t FrameH = S(UI_GRAPH_FRAME_H);
+	int32_t InnerH = FrameH - (2 * S(UI_GRAPH_FRAME_WIDTH));
+	uint32_t e;
+
+	/* A transparent box the size of the dial, so everything is placed from its
+	   centre - the same origin the firmware uses. */
+	lv_obj_remove_style_all(Box);
+	lv_obj_set_pos(Box, X, Y);
+	lv_obj_set_size(Box, W, H);
+	lv_obj_remove_flag(Box, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+	/* The frame: a border with nothing inside it. */
+	{
+		lv_obj_t *Frame = lv_obj_create(Box);
+
+		lv_obj_remove_style_all(Frame);
+		lv_obj_set_size(Frame, FrameW, FrameH);
+		lv_obj_align(Frame, LV_ALIGN_CENTER, 0, 0);
+		lv_obj_set_style_bg_opa(Frame, LV_OPA_TRANSP, LV_PART_MAIN);
+		lv_obj_set_style_border_width(Frame, S(UI_GRAPH_FRAME_WIDTH), LV_PART_MAIN);
+		lv_obj_set_style_border_color(Frame, Ring, LV_PART_MAIN);
+		lv_obj_set_style_border_opa(Frame, LV_OPA_COVER, LV_PART_MAIN);
+		lv_obj_remove_flag(Frame, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+	}
+
+	/* Each trace's scale, beside the plot on its own side, and its legend over
+	   its reading. The labels run bottom to top, as the scale does. */
+	for (e = 0; e < Count && e < 2u; e++)
+	{
+		const FaceElement_t *El = Elements[e];
+		bool Left = (e == 0u);
+		lv_color_t Colour = Left ? Band : Mark;
+		uint32_t Majors = 0;
+		uint32_t k;
+
+		if (El->Ticks != NULL)
+			while (El->Ticks[Majors] != NULL)
+				Majors++;
+
+		for (k = 0; k + 1u < Majors; k++)
+		{
+			int32_t Dy = (InnerH / 2) - (int32_t)((k * (uint32_t)(InnerH - 1)) / (Majors - 1u));
+			int32_t Dx = (FrameW / 2) + S(UI_GRAPH_AXIS_GAP) + (S(UI_GRAPH_AXIS_W) / 2);
+
+			UiGauge_BoxLabel(Box, El->Ticks[k], Left ? -Dx : Dx, Dy, S(UI_GRAPH_AXIS_W),
+			                 Left ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_LEFT, Colour);
+		}
+
+		/* The topmost label would sit on the frame's corner, so it is the one
+		   label left off: the scale's ends are the frame itself. */
+
+		if (El->Legend != NULL)
+			UiGauge_BoxLabel(Box, El->Legend,
+			                 Left ? -S(UI_GRAPH_READING_DX) : S(UI_GRAPH_READING_DX),
+			                 S(UI_GRAPH_LEGEND_DY), S(UI_GRAPH_AXIS_W),
+			                 LV_TEXT_ALIGN_CENTER, Colour);
+	}
+
+	/* The time axis: how far back the left edge is, and where now is. */
+	UiGauge_BoxLabel(Box, "-10s", -(FrameW / 2) + (S(UI_GRAPH_AXIS_W) / 2),
+	                 S(UI_GRAPH_TIME_DY), S(UI_GRAPH_AXIS_W), LV_TEXT_ALIGN_LEFT, Ring);
+	UiGauge_BoxLabel(Box, "-5s", 0, S(UI_GRAPH_TIME_DY), S(UI_GRAPH_AXIS_W),
+	                 LV_TEXT_ALIGN_CENTER, Ring);
+	UiGauge_BoxLabel(Box, "now", (FrameW / 2) - (S(UI_GRAPH_AXIS_W) / 2),
+	                 S(UI_GRAPH_TIME_DY), S(UI_GRAPH_AXIS_W), LV_TEXT_ALIGN_RIGHT, Ring);
+
+	return Box;
 }
 
 

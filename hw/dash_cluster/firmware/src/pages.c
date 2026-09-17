@@ -3,8 +3,9 @@
  *
  * The page list, the startup assignment, and page selection.
  *
- * Two faces, both a needle gauge: engine speed and boost. The warning page
- * below them is a takeover rather than a third face - see Pages_Effective().
+ * Four faces: the rev counter, boost over mixture, the g-force circle and the
+ * boost trace. The warning page below them is a takeover rather than a fifth
+ * face - see Pages_Effective().
  *
  * Geometry is in percent of the panel rather than pixels, so the same table
  * serves whichever panel the car ends up with - the 1.43" and 1.75" modules
@@ -96,12 +97,41 @@ static const FaceElement_t BoostElements[] =
 	  GAUGE_SWEEP_BOTTOM, Pages_FormatAfr }
 };
 
-/* --- page 2: the warning takeover ----------------------------------------
+/* --- page 2: g-force --------------------------------------------------------
  *
- * Not reachable by swiping, and kept even though the swipe list is down to
- * two. Pages_Effective() substitutes it while a fault stands, which is why it
- * is here rather than in the list: a driver must not be able to page away
- * from a fault, and making it a normal page would allow exactly that.
+ * A friction circle from the node's own accelerometer, +-1.5 g. Min and Max
+ * are the scale in thousandths of a g; the element has no ticks - its rings
+ * are drawn by the face renderer from ui_gauge.h.
+ */
+static const FaceElement_t GForceElements[] =
+{
+	{ WIDGET_GFORCE, SIGNAL_G_LAT, -1500, 1500, 2, 2, 96, 96, NULL, NULL, 0,
+	  GAUGE_SWEEP_FULL, NULL }
+};
+
+/* --- page 3: boost and mixture over time -----------------------------------
+ *
+ * The same two signals as page 1, as a scrolling trace: boost in red against
+ * the left-hand scale, mixture in white against the right. A needle says what
+ * is happening now; this says what just happened, which is where a lean spike
+ * on a gearchange or boost falling away at the top of a gear shows up.
+ */
+static const FaceElement_t TraceElements[] =
+{
+	{ WIDGET_GRAPH, SIGNAL_MAP,
+	  BOOST_ATMOSPHERE - BOOST_KPA10_PER_BAR,
+	  BOOST_ATMOSPHERE + (3 * BOOST_KPA10_PER_BAR) / 2,
+	  2, 2, 96, 96, BoostTicks, "bar", 0, GAUGE_SWEEP_FULL, Pages_FormatBoost },
+	{ WIDGET_GRAPH, SIGNAL_AFR, 1000, 2000,
+	  2, 2, 96, 96, AfrTicks, "AFR", 0, GAUGE_SWEEP_FULL, Pages_FormatAfr }
+};
+
+/* --- page 4: the warning takeover ----------------------------------------
+ *
+ * Not reachable by swiping. Pages_Effective() substitutes it while a fault
+ * stands, which is why it is here rather than in the list: a driver must not
+ * be able to page away from a fault, and making it a normal page would allow
+ * exactly that.
  */
 static const FaceElement_t WarningElements[] =
 {
@@ -117,19 +147,22 @@ const FacePage_t Pages[] =
 {
 	PAGE("Engine Speed", RpmElements),
 	PAGE("Boost / AFR",  BoostElements),
+	PAGE("G-force",      GForceElements),
+	PAGE("Boost trace",  TraceElements),
 	PAGE("WARNING",      WarningElements)
 };
 
 const uint8_t PageCount = (uint8_t)(sizeof(Pages) / sizeof(Pages[0]));
 
 /* The warning page is the last entry and is excluded from swiping. */
-#define PAGE_WARNING		(2)
+#define PAGE_WARNING		(4)
 #define PAGE_SWIPEABLE_COUNT	(PAGE_WARNING)
 
-/* With two faces and four possible identities, the nodes alternate: a
-   three-gauge cluster opens as rev counter, boost, rev counter. Each is still
-   swipeable to the other, which is the whole point of the shared list. */
-const uint8_t StartupPage[NODE_ID_COUNT] = { 0, 1, 0, 1 };
+/* Four faces and a three-gauge cluster: each node opens on a different one -
+   rev counter, boost and mixture, g-force - and a fourth identity opens on the
+   trace. Each is still swipeable to the others, which is the whole
+   point of the shared list. */
+const uint8_t StartupPage[NODE_ID_COUNT] = { 0, 1, 2, 3 };
 
 static uint8_t Current;
 
@@ -165,6 +198,15 @@ uint8_t Pages_Current(void)
 void Pages_Next(void)
 {
 	Current = (uint8_t)((Current + 1u) % PAGE_SWIPEABLE_COUNT);
+}
+
+
+/***************************************************************************************/
+uint8_t Pages_Neighbour(int Direction)
+{
+	if (Direction > 0)
+		return (uint8_t)((Current + 1u) % PAGE_SWIPEABLE_COUNT);
+	return (uint8_t)((Current + PAGE_SWIPEABLE_COUNT - 1u) % PAGE_SWIPEABLE_COUNT);
 }
 
 

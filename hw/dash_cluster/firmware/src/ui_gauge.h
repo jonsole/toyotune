@@ -190,6 +190,37 @@ static inline int32_t UiGauge_LegendDy(GaugeSweep_t Sweep, int32_t Radius)
 	}
 }
 
+/* THE G-FORCE FACE. A friction circle: rings at 0.5, 1.0 and 1.5 g round the
+   dial's centre, crosshairs, and direction labels in the band between the
+   outer two rings. Pixels per g sets the scale - 1.5 g lands on the outer ring.
+   The two readings sit outside the rings, longitudinal above and lateral
+   below, where the face is plain. */
+#define UI_GMETER_FULL_SCALE_MG		(1500)
+#define UI_GMETER_PX_PER_G		(105)	/* 1.5 g at 157 px, up to the readings */
+#define UI_GMETER_RING_WIDTH		(2)
+#define UI_GMETER_CROSS_WIDTH		(1)
+#define UI_GMETER_LABEL_R		(131)	/* between the 1.0 and 1.5 g rings */
+#define UI_GMETER_READING_DY		(190)
+#define UI_GMETER_DOT_R			(7)
+#define UI_GMETER_TRAIL_R		(2)
+#define UI_GMETER_PEAK_HALF		(6)	/* half the length of a peak mark */
+
+/* THE STRIP CHART. A plot rectangle inside the round face, its frame drawn by
+   the face renderer and its interior by the firmware. Offsets are from the
+   dial's centre; the interior is the frame less its border, which comes to
+   UI_GRAPH_COLUMNS wide. Readings sit above the plot with their legends over
+   them, and the time axis below it - all clear of the plot and inside the
+   disc at their widest. */
+#define UI_GRAPH_FRAME_W		(304)
+#define UI_GRAPH_FRAME_H		(194)
+#define UI_GRAPH_FRAME_WIDTH		(2)
+#define UI_GRAPH_READING_DX		(76)
+#define UI_GRAPH_READING_DY		(-142)
+#define UI_GRAPH_LEGEND_DY		(-178)
+#define UI_GRAPH_TIME_DY		(121)
+#define UI_GRAPH_AXIS_GAP		(8)	/* plot edge to its scale's labels */
+#define UI_GRAPH_AXIS_W			(80)	/* the box a scale's labels align in */
+
 /* Element geometry is in percent of the panel. */
 static inline int32_t UiGauge_Pct(uint8_t Percent, int32_t Extent)
 {

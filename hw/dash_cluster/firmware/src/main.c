@@ -25,6 +25,7 @@
  * with no glass attached.
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -43,9 +44,12 @@
 
 #if DASH_HAVE_PANEL
 #include "dash_faces.h"
+#include "imu.h"
 #include "panel.h"
 #include "ui_draw.h"
 #include "ui_gauge.h"
+#include "ui_gpage.h"
+#include "ui_graphpage.h"
 #include "ui_model.h"
 #include "ui_needle.h"
 #include "ui_text.h"
@@ -138,6 +142,14 @@ static void Simulate(uint32_t NowMs)
  * periodic status line is what makes it observable at all. */
 static uint8_t DashNodeId;
 
+/* A screenshot asked for over the console - an 'S' - raised by core 0, which
+   owns stdin, and served by core 1 at the end of a frame. */
+static volatile bool ScreenshotRequested;
+
+/* A page change asked for over the console - 'n' next, 'p' previous - served
+   by core 1, which owns the page selection. +1, -1, or 0 for none. */
+static volatile int8_t PageStepRequested;
+
 #if DASH_HAVE_PANEL
 /* CORE 1'S STACK, AND WHY IT IS NOT THE SDK'S.
  *
@@ -216,7 +228,7 @@ static void Core1ReportFace(uint32_t NowMs, uint8_t Page, bool Verbose)
 /***************************************************************************************/
 /* A page's live state. A page has one face and up to CORE1_MAX_GAUGES gauges
    on it - one full dial, or a top and a bottom half - each with its own needle
-   and reading. */
+   and reading. It lives in one of ui_draw's surfaces. */
 #define CORE1_MAX_GAUGES	(2u)
 
 typedef struct
@@ -236,38 +248,81 @@ typedef struct
 
 typedef struct
 {
+	uint8_t Page;
+	uint8_t Surface;
+	bool Valid;			/* a face was found and fits */
 	const DashFace_t *Face;
 	uint8_t GaugeCount;
 	Core1Gauge_t Gauges[CORE1_MAX_GAUGES];
+
+	/* A g-force page instead of, or as well as, gauges. */
+	bool HasG;
+	UiGPage_t G;
+
+	/* Or a strip chart. */
+	bool HasGraph;
+	UiGraphPage_t Graph;
 } Core1Page_t;
 
-static bool Core1FindPage(uint8_t Page, Core1Page_t *Out)
+
+/***************************************************************************************/
+/* The rectangles a frame has changed, kept apart where they are apart - two
+   needles in opposite halves of a face - and merged where they touch. */
+typedef struct
 {
-	uint8_t e, i;
+	uint32_t Count;
+	PanelRect_t Rects[PANEL_MAX_REGIONS];
+} Core1Dirty_t;
 
-	memset(Out, 0, sizeof(*Out));
+static bool Core1Touches(const PanelRect_t *A, const UiRect_t *B)
+{
+	return A->X1 <= B->X2 + 1 && B->X1 <= A->X2 + 1
+	       && A->Y1 <= B->Y2 + 1 && B->Y1 <= A->Y2 + 1;
+}
 
-	for (i = 0; i < DashFaceCount; i++)
-		if (DashFaces[i].Page == Page)
-			Out->Face = &DashFaces[i];
+static void Core1Dirty(Core1Dirty_t *D, const UiRect_t *R)
+{
+	UiRect_t M = *R;
+	uint32_t i = 0;
 
-	for (e = 0; e < Pages[Page].ElementCount && Out->GaugeCount < CORE1_MAX_GAUGES; e++)
+	/* Merge with everything it touches, repeatedly, since a merged rectangle
+	   can reach one it did not touch before. */
+	while (i < D->Count)
 	{
-		const FaceElement_t *El = &Pages[Page].Elements[e];
-		Core1Gauge_t *G;
+		if (Core1Touches(&D->Rects[i], &M))
+		{
+			PanelRect_t *P = &D->Rects[i];
 
-		if (El->Type != WIDGET_GAUGE)
-			continue;
-
-		G = &Out->Gauges[Out->GaugeCount++];
-		G->Element = El;
-		G->X = UiGauge_Pct(El->X, PANEL_WIDTH);
-		G->Y = UiGauge_Pct(El->Y, PANEL_HEIGHT);
-		G->W = UiGauge_Pct(El->W, PANEL_WIDTH);
-		G->H = UiGauge_Pct(El->H, PANEL_HEIGHT);
+			M.X1 = (P->X1 < M.X1) ? P->X1 : M.X1;
+			M.Y1 = (P->Y1 < M.Y1) ? P->Y1 : M.Y1;
+			M.X2 = (P->X2 > M.X2) ? P->X2 : M.X2;
+			M.Y2 = (P->Y2 > M.Y2) ? P->Y2 : M.Y2;
+			D->Rects[i] = D->Rects[--D->Count];
+			i = 0;
+		}
+		else
+		{
+			i++;
+		}
 	}
 
-	return Out->Face != NULL && Out->GaugeCount != 0u;
+	if (D->Count == PANEL_MAX_REGIONS)
+	{
+		/* Out of room: fold it into the last one. Correct, just larger. */
+		PanelRect_t *P = &D->Rects[D->Count - 1u];
+
+		P->X1 = (P->X1 < M.X1) ? P->X1 : M.X1;
+		P->Y1 = (P->Y1 < M.Y1) ? P->Y1 : M.Y1;
+		P->X2 = (P->X2 > M.X2) ? P->X2 : M.X2;
+		P->Y2 = (P->Y2 > M.Y2) ? P->Y2 : M.Y2;
+		return;
+	}
+
+	D->Rects[D->Count].X1 = M.X1;
+	D->Rects[D->Count].Y1 = M.Y1;
+	D->Rects[D->Count].X2 = M.X2;
+	D->Rects[D->Count].Y2 = M.Y2;
+	D->Count++;
 }
 
 
@@ -289,32 +344,32 @@ static UiNeedle_t Core1Needle(const Core1Gauge_t *G, uint32_t PositionQ)
 
 
 /***************************************************************************************/
-/* The dirty rectangle a frame accumulates. */
+/* Frame counters for the status line. */
 typedef struct
 {
-	bool Any;
-	UiRect_t Rect;
-} Core1Dirty_t;
-
-static void Core1Dirty(Core1Dirty_t *D, const UiRect_t *R)
-{
-	D->Rect = D->Any ? UiRect_Union(&D->Rect, R) : *R;
-	D->Any = true;
-}
+	uint32_t Needles;
+	uint32_t Values;
+	uint32_t Still;
+	uint32_t Slides;
+	uint32_t Swipes;
+	uint32_t Cancels;
+	uint32_t Taps;
+	uint32_t Zeroed;
+	uint32_t ZeroRefused;
+} Core1Counts_t;
 
 
 /***************************************************************************************/
 /* One gauge's frame: ease its needle and refresh its reading, restoring the
-   face under whatever moved and adding it to the frame's dirty rectangle.
+   face under whatever moved and noting what changed.
 
    NOTHING ON A FACE OVERLAPS ANYTHING ELSE LIVE: readings sit inside the centre
    ring, needles start outside it, and a split face's two needles keep to their
    own halves. So each item can be restored and redrawn without disturbing the
-   others, and one rectangle round everything that changed is all that has to
-   be sent. */
-static void Core1UpdateGauge(Core1Gauge_t *G, uint32_t NowMs, uint32_t FrameUs,
-                             bool TextDue, Core1Dirty_t *Dirty,
-                             uint32_t *NeedleFrames, uint32_t *ValueFrames)
+   others. */
+static void Core1UpdateGauge(uint8_t Surface, Core1Gauge_t *G, uint32_t NowMs,
+                             uint32_t FrameUs, bool TextDue, Core1Dirty_t *Dirty,
+                             Core1Counts_t *Counts)
 {
 	UiWidget_t W = UiModel_Widget(G->Element, NowMs);
 	UiNeedle_t Next;
@@ -329,7 +384,7 @@ static void Core1UpdateGauge(Core1Gauge_t *G, uint32_t NowMs, uint32_t FrameUs,
 
 		if (G->HaveText)
 		{
-			UiDraw_Restore(&G->TextRect);
+			UiDraw_Restore(Surface, &G->TextRect);
 			Core1Dirty(Dirty, &G->TextRect);
 		}
 
@@ -342,11 +397,11 @@ static void Core1UpdateGauge(Core1Gauge_t *G, uint32_t NowMs, uint32_t FrameUs,
 		G->HaveText = UiText_Bounds(&dash_font_value_56, G->Text, Tx, Ty, &Ink);
 		if (G->HaveText)
 		{
-			(void)UiDraw_Text(&dash_font_value_56, G->Text, Tx, Ty);
+			(void)UiDraw_Text(Surface, &dash_font_value_56, G->Text, Tx, Ty);
 			G->TextRect = Ink;
 			Core1Dirty(Dirty, &Ink);
 		}
-		(*ValueFrames)++;
+		Counts->Values++;
 	}
 
 	if (!G->HaveNeedle || !UiNeedle_Same(&Next, &G->Needle))
@@ -355,95 +410,364 @@ static void Core1UpdateGauge(Core1Gauge_t *G, uint32_t NowMs, uint32_t FrameUs,
 
 		if (G->HaveNeedle)
 		{
-			UiDraw_Restore(&G->NeedleRect);
+			UiDraw_Restore(Surface, &G->NeedleRect);
 			Core1Dirty(Dirty, &G->NeedleRect);
 		}
-		(void)UiDraw_Needle(&Next);
+		(void)UiDraw_Needle(Surface, &Next);
 		Core1Dirty(Dirty, &NextRect);
 
 		G->Needle = Next;
 		G->NeedleRect = NextRect;
 		G->HaveNeedle = true;
-		(*NeedleFrames)++;
+		Counts->Needles++;
 	}
+}
+
+static void Core1DirtySink(void *Context, const UiRect_t *R)
+{
+	Core1Dirty((Core1Dirty_t *)Context, R);
+}
+
+static void Core1UpdatePage(Core1Page_t *V, uint32_t NowMs, uint32_t FrameUs,
+                            bool TextDue, Core1Dirty_t *Dirty, Core1Counts_t *Counts)
+{
+	uint8_t g;
+
+	for (g = 0; V->Valid && g < V->GaugeCount; g++)
+		Core1UpdateGauge(V->Surface, &V->Gauges[g], NowMs, FrameUs, TextDue, Dirty,
+		                 Counts);
+
+	if (V->Valid && V->HasG)
+		UiGPage_Update(&V->G, TextDue, Core1DirtySink, Dirty);
+
+	if (V->Valid && V->HasGraph)
+		UiGraphPage_Update(&V->Graph, NowMs, TextDue, Core1DirtySink, Dirty);
 }
 
 
 /***************************************************************************************/
-/* SWIPING, FOR NOW WITHOUT ANIMATION.
+/* Build a page from scratch into a surface: its face, and its needles and
+   readings on their current values - not swinging up from zero. */
+static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_t NowMs)
+{
+	Core1Dirty_t Ignored = { 0u, { { 0, 0, 0, 0 } } };
+	Core1Counts_t Unused;
+	const FaceElement_t *GElement = NULL;
+	int32_t FaceX, FaceY;
+	uint8_t i, e;
+
+	memset(V, 0, sizeof(*V));
+	V->Page = Page;
+	V->Surface = Surface;
+	UiDraw_Clear(Surface);
+
+	for (i = 0; i < DashFaceCount; i++)
+		if (DashFaces[i].Page == Page)
+			V->Face = &DashFaces[i];
+
+	for (e = 0; e < Pages[Page].ElementCount && V->GaugeCount < CORE1_MAX_GAUGES; e++)
+	{
+		const FaceElement_t *El = &Pages[Page].Elements[e];
+		Core1Gauge_t *G;
+
+		if (El->Type == WIDGET_GFORCE && !V->HasG)
+		{
+			V->HasG = true;
+			GElement = El;
+			continue;
+		}
+		if (El->Type == WIDGET_GRAPH)
+		{
+			if (!V->HasGraph)
+			{
+				V->HasGraph = true;
+				GElement = El;
+			}
+			continue;
+		}
+		if (El->Type != WIDGET_GAUGE)
+			continue;
+
+		G = &V->Gauges[V->GaugeCount++];
+		G->Element = El;
+		G->X = UiGauge_Pct(El->X, PANEL_WIDTH);
+		G->Y = UiGauge_Pct(El->Y, PANEL_HEIGHT);
+		G->W = UiGauge_Pct(El->W, PANEL_WIDTH);
+		G->H = UiGauge_Pct(El->H, PANEL_HEIGHT);
+		G->SmoothQ = (uint32_t)UiModel_Widget(El, NowMs).Position << UI_NEEDLE_Q;
+	}
+
+	if (V->Face == NULL || (V->GaugeCount == 0u && !V->HasG && !V->HasGraph))
+	{
+		printf("page %u: no pre-rendered face - black\n", Page);
+		return;
+	}
+
+	/* The face sits where its first element does - they share a rectangle. */
+	if (V->GaugeCount != 0u)
+	{
+		FaceX = V->Gauges[0].X;
+		FaceY = V->Gauges[0].Y;
+	}
+	else
+	{
+		FaceX = UiGauge_Pct(GElement->X, PANEL_WIDTH);
+		FaceY = UiGauge_Pct(GElement->Y, PANEL_HEIGHT);
+	}
+
+	if (!UiDraw_LoadFace(Surface, V->Face, FaceX, FaceY))
+	{
+		printf("page %u: %ldx%ld face does not fit at %ld,%ld - black\n",
+		       Page, (long)V->Face->Width, (long)V->Face->Height,
+		       (long)FaceX, (long)FaceY);
+		return;
+	}
+
+	/* The g view first: the update below draws it, and before it has been
+	   given its centre it would draw round the corner of the screen - which
+	   it did, leaving a stray reading and marks at the top left that nothing
+	   ever cleaned up. */
+	if (V->HasG)
+		UiGPage_Load(&V->G, Surface,
+		             (float)FaceX + (float)V->Face->Width / 2.0f,
+		             (float)FaceY + (float)V->Face->Height / 2.0f);
+
+	if (V->HasGraph)
+		UiGraphPage_Load(&V->Graph, Surface, Page,
+		                 (float)FaceX + (float)V->Face->Width / 2.0f,
+		                 (float)FaceY + (float)V->Face->Height / 2.0f, NowMs);
+
+	V->Valid = true;
+	memset(&Unused, 0, sizeof(Unused));
+	Core1UpdatePage(V, NowMs, 0u, true, &Ignored, &Unused);
+}
+
+
+/***************************************************************************************/
+/* THE SWIPE.
  *
- * A deliberate horizontal gesture changes page when the finger lifts: it must
- * travel CORE1_SWIPE_MIN_PX, and at least twice as far across as up or down, so
- * a tap or a vertical brush does nothing. Finger moving left brings in the
- * next page, as on a phone. */
-#define CORE1_SWIPE_MIN_PX	(80)
+ * The page follows the finger: once a touch has moved CORE1_DRAG_START_PX
+ * across, and twice as far across as up or down, the neighbouring page is
+ * built into the other surface and the two are shown side by side at the
+ * finger's offset - both live, needles and readings still moving. Finger left
+ * brings in the next page from the right, as on a phone.
+ *
+ * WITH MOMENTUM. At lift-off the finger's speed is measured over its last
+ * CORE1_SPEED_WINDOW_US, and the page is where it would be CORE1_PROJECT_US
+ * later at that speed: past halfway it completes, short of it it springs back,
+ * and a hard flick decides on its own. Then it carries on at the finger's
+ * speed and slows at a constant rate to stop exactly on the page - so it never
+ * stops dead at release and restarts, which is what reads as a stall. A slow
+ * release is given a minimum speed for the same reason, and a violent flick a
+ * maximum, so the settle always takes between CORE1_SETTLE_MIN_US and
+ * CORE1_SETTLE_MAX_US.
+ *
+ * A completed swipe just swaps the two surfaces' roles - the incoming page is
+ * already drawn - and selects the page.
+ *
+ * A fault takeover outranks all of it: no swipe starts while one stands, and
+ * one arriving mid-swipe ends the swipe where it is. */
+#define CORE1_DRAG_START_PX	(16)
+#define CORE1_TAP_WANDER_PX	(12)
+#define CORE1_TAP_MAX_US	(350000u)
+#define CORE1_LONG_PRESS_US	(1500000u)
+#define CORE1_FLICK_PX_PER_S	(600)		/* lift-off speed that decides on its own */
+#define CORE1_PROJECT_US	(200000)	/* how far ahead momentum is projected */
+#define CORE1_SPEED_WINDOW_US	(100000u)	/* the finger's speed, over this much of its path */
+#define CORE1_SETTLE_MIN_US	(80000)
+#define CORE1_SETTLE_MAX_US	(250000)
+#define CORE1_SPEED_SAMPLES	(8u)
+
+typedef enum
+{
+	SWIPE_IDLE,
+	SWIPE_DRAG,
+	SWIPE_SETTLE
+} Core1SwipeState_t;
 
 typedef struct
 {
+	Core1SwipeState_t State;
+	int Direction;			/* +1 next page from the right, -1 previous from the left */
+	int32_t Revealed;		/* pixels of the incoming page on the glass */
+	int32_t Target;			/* SETTLE: PANEL_WIDTH to complete, 0 to cancel */
+
 	bool Down;
 	int32_t X0, Y0, X, Y;
-} Core1Touch_t;
 
-/* -1 previous, +1 next, 0 nothing. */
-static int Core1Swipe(Core1Touch_t *T)
+	/* For taps and long presses: when the finger landed, how far it has
+	   wandered, and whether this press has already done its long-press. */
+	uint32_t DownUs;
+	int32_t Wander;
+	bool Dragged;
+	bool LongDone;
+
+	/* The finger's recent path, one sample per touch report, newest last. */
+	uint32_t Samples;
+	uint32_t LastReports;
+	int32_t SampleX[CORE1_SPEED_SAMPLES];
+	uint32_t SampleUs[CORE1_SPEED_SAMPLES];
+
+	/* SETTLE: from where, at what speed towards the target (px/s), and for how
+	   long, starting when. */
+	int32_t From;
+	int32_t Speed;
+	int32_t DurationUs;
+	uint32_t StartUs;
+} Core1Swipe_t;
+
+static void Core1SwipeSample(Core1Swipe_t *S, int32_t X, uint32_t NowUs)
 {
-	int32_t X, Y, Dx, Dy;
-	bool Down = Panel_TouchDown(&X, &Y);
-
-	if (Down && !T->Down)
+	if (S->Samples == CORE1_SPEED_SAMPLES)
 	{
-		T->X0 = X;
-		T->Y0 = Y;
+		memmove(S->SampleX, S->SampleX + 1, sizeof(S->SampleX[0]) * (CORE1_SPEED_SAMPLES - 1u));
+		memmove(S->SampleUs, S->SampleUs + 1, sizeof(S->SampleUs[0]) * (CORE1_SPEED_SAMPLES - 1u));
+		S->Samples--;
 	}
-	if (Down)
-	{
-		T->X = X;
-		T->Y = Y;
-	}
+	S->SampleX[S->Samples] = X;
+	S->SampleUs[S->Samples] = NowUs;
+	S->Samples++;
+}
 
-	if (!(!Down && T->Down))
-	{
-		T->Down = Down;
+/* The finger's speed at lift-off, px/s, over its last CORE1_SPEED_WINDOW_US of
+   reports. Measured back from the LAST REPORT rather than from now, so the
+   time it took to notice the lift does not dilute it; and a finger that
+   stopped before lifting still reports, so its speed comes out as zero. */
+static int32_t Core1SwipeSpeed(const Core1Swipe_t *S)
+{
+	uint32_t Last, First;
+
+	if (S->Samples < 2u)
 		return 0;
+
+	Last = S->Samples - 1u;
+	First = Last;
+	while (First > 0u && (S->SampleUs[Last] - S->SampleUs[First - 1u]) <= CORE1_SPEED_WINDOW_US)
+		First--;
+	if (First == Last)
+		return 0;
+
+	return (int32_t)(((int64_t)(S->SampleX[Last] - S->SampleX[First]) * 1000000)
+	                 / (int64_t)(S->SampleUs[Last] - S->SampleUs[First]));
+}
+
+/* The screen during a swipe: two surfaces side by side. Columns before
+   PANEL_WIDTH - Offset come from Left, shifted left by Offset; the rest from
+   the start of Right. */
+typedef struct
+{
+	const uint8_t *Left;
+	const uint8_t *Right;
+	int32_t Offset;
+} Core1Slide_t;
+
+static uint32_t Core1SlideRow(void *Context, int32_t Y, int32_t X1, uint32_t Width,
+                              PanelSpan_t *Spans)
+{
+	const Core1Slide_t *S = (const Core1Slide_t *)Context;
+	uint32_t Row = (uint32_t)Y * (uint32_t)PANEL_WIDTH;
+	uint32_t LeftCount = (uint32_t)(PANEL_WIDTH - S->Offset);
+
+	/* Only ever asked for whole rows. */
+	(void)X1;
+	(void)Width;
+
+	Spans[0].Src = S->Left + Row + (uint32_t)S->Offset;
+	Spans[0].Count = LeftCount;
+	Spans[1].Src = S->Right + Row;
+	Spans[1].Count = (uint32_t)S->Offset;
+	return 2u;
+}
+
+
+/***************************************************************************************/
+/* THE SCREENSHOT. What the panel was last sent from the page on the glass, as
+ * text on the console: the palette, then every row as hex indices, framed so
+ * tools/screenshot.py can find it among the status lines and turn it into a
+ * PNG. About 440 KB of text; core 1 misses a few frames while it goes out,
+ * which is a fair price for being able to see the glass without a camera.
+ */
+static void Core1Screenshot(uint8_t Surface)
+{
+	static const char Hex[] = "0123456789abcdef";
+	const uint8_t *Px = UiDraw_Buffer(Surface);
+	const uint16_t *Pal = UiDraw_Palette();
+	char Line[(PANEL_WIDTH * 2) + 2];
+	uint32_t x, y;
+
+	printf("\nSCREENSHOT BEGIN %d %d\n", PANEL_WIDTH, PANEL_HEIGHT);
+
+	/* Palette entries as the panel receives them: high byte first. */
+	printf("PALETTE ");
+	for (x = 0; x < UI_DRAW_PALETTE_MAX; x++)
+	{
+		uint8_t Hi = (uint8_t)(Pal[x] & 0xFFu);
+		uint8_t Lo = (uint8_t)(Pal[x] >> 8);
+
+		printf("%02x%02x", Hi, Lo);
+	}
+	printf("\n");
+
+	for (y = 0; y < (uint32_t)PANEL_HEIGHT; y++)
+	{
+		const uint8_t *Row = Px + (y * (uint32_t)PANEL_WIDTH);
+
+		for (x = 0; x < (uint32_t)PANEL_WIDTH; x++)
+		{
+			Line[2 * x] = Hex[Row[x] >> 4];
+			Line[(2 * x) + 1] = Hex[Row[x] & 0x0Fu];
+		}
+		Line[2 * PANEL_WIDTH] = '\0';
+
+		/* Numbered, so a row lost on the way can be named rather than
+		   shifting every row after it; flushed, so the USB side is not
+		   outrun; and core 1 reports itself alive, or core 0's stall
+		   watcher prints into the middle of the dump. */
+		printf("R %03lu %s\n", (unsigned long)y, Line);
+		stdio_flush();
+		Panel_Alive(PANEL_STAGE_DRAW);
 	}
 
-	T->Down = false;
-	Dx = T->X - T->X0;
-	Dy = T->Y - T->Y0;
-	if ((Dx < 0 ? -Dx : Dx) < CORE1_SWIPE_MIN_PX
-	    || (Dx < 0 ? -Dx : Dx) < 2 * (Dy < 0 ? -Dy : Dy))
-		return 0;
-	return (Dx < 0) ? 1 : -1;
+	printf("SCREENSHOT END\n");
 }
 
 
 /***************************************************************************************/
 /* Core 1: the display, one panel frame per loop.
  *
- * The loop is clocked by the panel. Panel_PushPaletted() waits for the TE
- * pulse and returns once the last pixel has been clocked out, and when there
- * is nothing to send Panel_WaitFrame() waits for the pulse instead - so the
- * loop runs at the scan rate with no timer in it anywhere.
+ * The loop is clocked by the panel: every push waits for the TE pulse, and a
+ * frame with nothing to send waits for it instead - so the loop runs at the
+ * scan rate with no timer in it anywhere.
  *
- * A page change sends the whole screen. After that, each frame updates every
- * gauge on the page and sends one rectangle round everything that changed.
+ * Normally each frame updates the page's gauges and sends the rectangles that
+ * changed. During a swipe it updates both pages and sends the whole screen,
+ * composed from the two surfaces as it goes out.
  *
  * Status goes out every STATUS_PERIOD_MS from here too. Printing it costs a
  * frame, once every two seconds. */
 static void Core1Main(void)
 {
+	static Core1Page_t Views[UI_DRAW_SURFACES];
+	Core1Page_t *Cur = &Views[0];
+	Core1Page_t *In = &Views[1];
+	Core1Swipe_t Swipe;
+	Core1Counts_t Counts;
 	uint32_t NextStatusMs = 0;
-	uint8_t LastPage = 0xFFu;
 	uint32_t LastFrameUs;
-	Core1Page_t View;
-	bool HaveView = false;
-	Core1Touch_t Touch = { false, 0, 0, 0, 0 };
 	uint32_t NextValueMs = 0;
-	uint32_t NeedleFrames = 0, ValueFrames = 0, StillFrames = 0, Swipes = 0;
 	uint32_t DrawUs = 0, PushPixels = 0, WorkUs = 0, WorkMaxUs = 0;
-	const char *LastText = "";
+	uint32_t SlideWorkMaxUs = 0;
+	bool Started = false;
+
+	memset(&Swipe, 0, sizeof(Swipe));
+	memset(&Counts, 0, sizeof(Counts));
+	Views[0].Surface = 0u;
+	Views[1].Surface = 1u;
 
 	Panel_Init();
+	(void)Imu_Init();
+	UiGPage_Init();
+	UiGraphPage_Init();
 	UiDraw_Init();
 	LastFrameUs = time_us_32();
 
@@ -452,97 +776,312 @@ static void Core1Main(void)
 		uint32_t NowUs = time_us_32();
 		uint32_t NowMs = to_ms_since_boot(get_absolute_time());
 		uint32_t FrameUs = NowUs - LastFrameUs;
+		uint32_t T0;
+		bool TextDue;
+		bool Down;
+		int32_t Tx, Ty;
 		uint8_t Page;
-		int Swipe;
 
 		LastFrameUs = NowUs;
 
 		Panel_Alive(PANEL_STAGE_UI_UPDATE);
 		Panel_TouchService();
-		Swipe = Core1Swipe(&Touch);
-		if (Swipe > 0)
-			Pages_Next();
-		else if (Swipe < 0)
-			Pages_Previous();
-		if (Swipe != 0)
-			Swipes++;
-
+		UiGPage_Sample(FrameUs);
+		UiGraphPage_Sample(NowMs, FrameUs);
 		Page = Pages_Effective(NowMs);
+		TextDue = (int32_t)(NowMs - NextValueMs) >= 0;
+		if (TextDue)
+			NextValueMs = NowMs + CORE1_VALUE_PERIOD_MS;
 
-		if (Page != LastPage)
+		/* ---- the finger ---------------------------------------------- */
+
+		Down = Panel_TouchDown(&Tx, &Ty);
+		if (Down && !Swipe.Down)
 		{
-			uint8_t g;
+			Swipe.X0 = Tx;
+			Swipe.Y0 = Ty;
+			Swipe.Samples = 0u;
+			Swipe.LastReports = Panel_TouchReports();
+			Core1SwipeSample(&Swipe, Tx, NowUs);
+			Swipe.DownUs = NowUs;
+			Swipe.Wander = 0;
+			Swipe.Dragged = false;
+			Swipe.LongDone = false;
+		}
+		if (Down)
+		{
+			if (Panel_TouchReports() != Swipe.LastReports)
+			{
+				Swipe.LastReports = Panel_TouchReports();
+				Core1SwipeSample(&Swipe, Tx, NowUs);
+			}
+			Swipe.X = Tx;
+			Swipe.Y = Ty;
+			{
+				int32_t Ax = (Tx > Swipe.X0) ? Tx - Swipe.X0 : Swipe.X0 - Tx;
+				int32_t Ay = (Ty > Swipe.Y0) ? Ty - Swipe.Y0 : Swipe.Y0 - Ty;
 
-			Panel_Alive(PANEL_STAGE_DRAW);
-			UiDraw_Init();
-			HaveView = Core1FindPage(Page, &View);
+				if (Ax > Swipe.Wander)
+					Swipe.Wander = Ax;
+				if (Ay > Swipe.Wander)
+					Swipe.Wander = Ay;
+			}
+		}
 
-			if (!HaveView)
-				printf("page %u: no pre-rendered gauges - black\n", Page);
-			else if (UiDraw_LoadFace(View.Face, View.Gauges[0].X, View.Gauges[0].Y))
-				printf("page %u: face copied in %luus, %u gauge(s), palette %u of %u\n",
-				       Page, (unsigned long)UiDraw_LoadUs(), View.GaugeCount,
-				       UiDraw_PaletteUsed(), (unsigned)UI_DRAW_PALETTE_MAX);
+		/* TAP AND LONG PRESS, on a g-force page only. A press that stays put -
+		   within CORE1_TAP_WANDER_PX - and never became a swipe is a tap if it
+		   lifts inside CORE1_TAP_MAX_US, and a long press once it has been down
+		   CORE1_LONG_PRESS_US: the tap clears the peaks, the long press zeroes
+		   the meter. The long press acts while the finger is still down, so
+		   there is something to see before letting go. */
+		if (Swipe.State == SWIPE_IDLE && Cur->Valid && Cur->HasG)
+		{
+			bool Still = Swipe.Wander <= CORE1_TAP_WANDER_PX && !Swipe.Dragged;
+
+			if (Down && Swipe.Down && Still && !Swipe.LongDone
+			    && (uint32_t)(NowUs - Swipe.DownUs) >= CORE1_LONG_PRESS_US)
+			{
+				Swipe.LongDone = true;
+				if (UiGPage_Zero())
+				{
+					Counts.Zeroed++;
+					printf("g-force: zeroed at rest\n");
+				}
+				else
+				{
+					Counts.ZeroRefused++;
+					printf("g-force: not zeroed - the reading is not one of a car at rest\n");
+				}
+			}
+			else if (!Down && Swipe.Down && Still && !Swipe.LongDone
+			         && (uint32_t)(NowUs - Swipe.DownUs) <= CORE1_TAP_MAX_US)
+			{
+				UiGPage_ResetPeaks();
+				Counts.Taps++;
+			}
+		}
+
+		/* A fault ends any swipe where it stands. */
+		if (Swipe.State != SWIPE_IDLE && Pages_WarningActive(NowMs))
+			Swipe.State = SWIPE_IDLE;
+
+		switch (Swipe.State)
+		{
+		case SWIPE_IDLE:
+		{
+			int32_t Dx = Swipe.X - Swipe.X0;
+			int32_t Dy = Swipe.Y - Swipe.Y0;
+			int32_t Ax = (Dx < 0) ? -Dx : Dx;
+			int32_t Ay = (Dy < 0) ? -Dy : Dy;
+
+			if (Down && Swipe.Down && Cur->Valid && !Pages_WarningActive(NowMs)
+			    && Ax >= CORE1_DRAG_START_PX && Ax > 2 * Ay)
+			{
+				Swipe.Direction = (Dx < 0) ? 1 : -1;
+				if (Pages_Neighbour(Swipe.Direction) != Cur->Page)
+				{
+					Panel_Alive(PANEL_STAGE_DRAW);
+					Core1LoadPage(In, Pages_Neighbour(Swipe.Direction),
+					              In->Surface, NowMs);
+					Swipe.Revealed = 0;
+					Swipe.Dragged = true;
+					Swipe.State = SWIPE_DRAG;
+				}
+			}
+			break;
+		}
+
+		case SWIPE_DRAG:
+			if (Down)
+			{
+				int32_t Dx = Swipe.X - Swipe.X0;
+				int32_t R = (Swipe.Direction > 0) ? -Dx : Dx;
+
+				/* Dragged back past where it started: the other neighbour. */
+				if (R < 0 && Pages_Neighbour(-Swipe.Direction) != Cur->Page)
+				{
+					Swipe.Direction = -Swipe.Direction;
+					Core1LoadPage(In, Pages_Neighbour(Swipe.Direction),
+					              In->Surface, NowMs);
+					R = -R;
+				}
+				Swipe.Revealed = (R < 0) ? 0 : ((R > PANEL_WIDTH) ? PANEL_WIDTH : R);
+			}
 			else
 			{
-				printf("page %u: %ldx%ld face does not fit at %ld,%ld - black\n",
-				       Page, (long)View.Face->Width, (long)View.Face->Height,
-				       (long)View.Gauges[0].X, (long)View.Gauges[0].Y);
-				HaveView = false;
+				int32_t Finger = Core1SwipeSpeed(&Swipe);
+				int32_t Towards = (Swipe.Direction > 0) ? -Finger : Finger;
+				int32_t Projected = Swipe.Revealed
+				                    + (int32_t)(((int64_t)Towards * CORE1_PROJECT_US) / 1000000);
+				int32_t Dist, MinSpeed, MaxSpeed, Speed;
+				bool Complete;
+
+				if (Towards >= CORE1_FLICK_PX_PER_S)
+					Complete = true;
+				else if (Towards <= -CORE1_FLICK_PX_PER_S)
+					Complete = false;
+				else
+					Complete = Projected >= (PANEL_WIDTH / 2);
+
+				Swipe.Target = Complete ? PANEL_WIDTH : 0;
+				Swipe.From = Swipe.Revealed;
+				Dist = Swipe.Target - Swipe.From;
+				if (Dist < 0)
+					Dist = -Dist;
+
+				/* The finger's speed in the direction the page is now going,
+				   held between what finishes within the longest settle and
+				   what still takes the shortest. */
+				Speed = Complete ? Towards : -Towards;
+				MinSpeed = (int32_t)(((int64_t)2 * Dist * 1000000) / CORE1_SETTLE_MAX_US);
+				MaxSpeed = (int32_t)(((int64_t)2 * Dist * 1000000) / CORE1_SETTLE_MIN_US);
+				if (Speed < MinSpeed)
+					Speed = MinSpeed;
+				if (Speed > MaxSpeed)
+					Speed = MaxSpeed;
+
+				/* Constant deceleration from Speed to rest covers Dist in
+				   2 x Dist / Speed. */
+				Swipe.Speed = Speed;
+				Swipe.DurationUs = (Speed > 0)
+				                   ? (int32_t)(((int64_t)2 * Dist * 1000000) / Speed) : 0;
+				Swipe.StartUs = NowUs;
+				Swipe.State = SWIPE_SETTLE;
 			}
+			break;
 
-			/* A new face starts with its needles on their readings, not
-			   swinging up from zero. The readings are drawn by the first
-			   ordinary frame, below. */
-			for (g = 0; HaveView && g < View.GaugeCount; g++)
-			{
-				Core1Gauge_t *G = &View.Gauges[g];
-				UiWidget_t W = UiModel_Widget(G->Element, NowMs);
-
-				G->SmoothQ = (uint32_t)W.Position << UI_NEEDLE_Q;
-				G->Needle = Core1Needle(G, G->SmoothQ);
-				G->NeedleRect = UiNeedle_Bounds(&G->Needle);
-				(void)UiDraw_Needle(&G->Needle);
-				G->HaveNeedle = true;
-			}
-
-			Panel_Alive(PANEL_STAGE_PUSH);
-			Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH, UiDraw_Palette(),
-			                   0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1);
-			LastPage = Page;
-			NextValueMs = NowMs;
-		}
-		else if (HaveView)
+		case SWIPE_SETTLE:
 		{
-			uint32_t T0 = time_us_32();
-			bool TextDue = (int32_t)(NowMs - NextValueMs) >= 0;
-			Core1Dirty_t Dirty = { false, { 0, 0, 0, 0 } };
-			uint8_t g;
+			int64_t T = (int64_t)(uint32_t)(NowUs - Swipe.StartUs);
+
+			if (T >= (int64_t)Swipe.DurationUs)
+			{
+				Swipe.Revealed = Swipe.Target;
+			}
+			else
+			{
+				/* s = v t - v t^2 / (2 D): speed v at the start, zero at D. */
+				int64_t V = Swipe.Speed;
+				int64_t D = Swipe.DurationUs;
+				int64_t Travel = ((V * T) - ((V * T / D) * T) / 2) / 1000000;
+
+				Swipe.Revealed = (Swipe.Target > Swipe.From)
+				                 ? Swipe.From + (int32_t)Travel
+				                 : Swipe.From - (int32_t)Travel;
+			}
+			break;
+		}
+		}
+		Swipe.Down = Down;
+
+		/* ---- the frame ----------------------------------------------- */
+
+		T0 = time_us_32();
+
+		if (Swipe.State != SWIPE_IDLE)
+		{
+			Core1Dirty_t Ignored = { 0u, { { 0, 0, 0, 0 } } };
+			Core1Slide_t Slide;
+			PanelSource_t Source;
+			PanelPush_t Push;
 
 			Panel_Alive(PANEL_STAGE_DRAW);
-			for (g = 0; g < View.GaugeCount; g++)
-				Core1UpdateGauge(&View.Gauges[g], NowMs, FrameUs, TextDue, &Dirty,
-				                 &NeedleFrames, &ValueFrames);
-			if (TextDue)
-				NextValueMs = NowMs + CORE1_VALUE_PERIOD_MS;
-			LastText = View.Gauges[0].Text;
+			Core1UpdatePage(Cur, NowMs, FrameUs, TextDue, &Ignored, &Counts);
+			Ignored.Count = 0u;
+			Core1UpdatePage(In, NowMs, FrameUs, TextDue, &Ignored, &Counts);
 
-			if (!Dirty.Any)
+			if (Swipe.Direction > 0)
 			{
-				StillFrames++;
+				Slide.Left = UiDraw_Buffer(Cur->Surface);
+				Slide.Right = UiDraw_Buffer(In->Surface);
+				Slide.Offset = Swipe.Revealed;
+			}
+			else
+			{
+				Slide.Left = UiDraw_Buffer(In->Surface);
+				Slide.Right = UiDraw_Buffer(Cur->Surface);
+				Slide.Offset = PANEL_WIDTH - Swipe.Revealed;
+			}
+			Source.Row = Core1SlideRow;
+			Source.Context = &Slide;
+			Source.Palette = UiDraw_Palette();
+
+			DrawUs = time_us_32() - T0;
+			Panel_Alive(PANEL_STAGE_PUSH);
+			Panel_PushRows(&Source, 0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1);
+			Counts.Slides++;
+			PushPixels = (uint32_t)PANEL_WIDTH * (uint32_t)PANEL_HEIGHT;
+
+			Panel_Push(&Push);
+			WorkUs = DrawUs + Push.LastTotalUs;
+			if (WorkUs > SlideWorkMaxUs)
+				SlideWorkMaxUs = WorkUs;
+
+			/* Settled: the screen already shows where it ended. */
+			if (Swipe.State == SWIPE_SETTLE && Swipe.Revealed == Swipe.Target)
+			{
+				if (Swipe.Target == PANEL_WIDTH)
+				{
+					Core1Page_t *Was = Cur;
+
+					if (Swipe.Direction > 0)
+						Pages_Next();
+					else
+						Pages_Previous();
+					Cur = In;
+					In = Was;
+					Counts.Swipes++;
+				}
+				else
+				{
+					Counts.Cancels++;
+				}
+				Swipe.State = SWIPE_IDLE;
+			}
+		}
+		else if (!Started || Page != Cur->Page)
+		{
+			/* A page arrived by some other road - start-up, or the fault
+			   takeover - so it is drawn whole and sent whole. */
+			Panel_Alive(PANEL_STAGE_DRAW);
+			Started = true;
+			Core1LoadPage(Cur, Page, Cur->Surface, NowMs);
+			if (Cur->Valid)
+				printf("page %u: face copied in %luus, %u gauge(s), palette %u of %u\n",
+				       Page, (unsigned long)UiDraw_LoadUs(), Cur->GaugeCount,
+				       UiDraw_PaletteUsed(), (unsigned)UI_DRAW_PALETTE_MAX);
+
+			Panel_Alive(PANEL_STAGE_PUSH);
+			Panel_PushPaletted(UiDraw_Buffer(Cur->Surface), UI_DRAW_WIDTH,
+			                   UiDraw_Palette(),
+			                   0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1);
+		}
+		else if (Cur->Valid)
+		{
+			Core1Dirty_t Dirty = { 0u, { { 0, 0, 0, 0 } } };
+
+			Panel_Alive(PANEL_STAGE_DRAW);
+			Core1UpdatePage(Cur, NowMs, FrameUs, TextDue, &Dirty, &Counts);
+
+			if (Dirty.Count == 0u)
+			{
+				Counts.Still++;
 				Panel_WaitFrame();
 			}
 			else
 			{
 				PanelPush_t Push;
-				UiRect_t *R = &Dirty.Rect;
+				uint32_t i;
 
 				DrawUs = time_us_32() - T0;
-				PushPixels = (uint32_t)((R->X2 - R->X1 + 1) * (R->Y2 - R->Y1 + 1));
+				PushPixels = 0;
+				for (i = 0; i < Dirty.Count; i++)
+					PushPixels += (uint32_t)((Dirty.Rects[i].X2 - Dirty.Rects[i].X1 + 1)
+					                         * (Dirty.Rects[i].Y2 - Dirty.Rects[i].Y1 + 1));
 
 				Panel_Alive(PANEL_STAGE_PUSH);
-				Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH, UiDraw_Palette(),
-				                   R->X1, R->Y1, R->X2, R->Y2);
+				Panel_PushRegions(UiDraw_Buffer(Cur->Surface), UI_DRAW_WIDTH,
+				                  UiDraw_Palette(), Dirty.Rects, Dirty.Count);
 
 				/* The frame's own work: drawing, plus the push measured from
 				   the TE edge - what has to fit inside one scan. */
@@ -555,6 +1094,23 @@ static void Core1Main(void)
 		else
 		{
 			Panel_WaitFrame();
+		}
+
+		if (ScreenshotRequested)
+		{
+			ScreenshotRequested = false;
+			Core1Screenshot(Cur->Surface);
+		}
+
+		/* A console page step changes page as the fault takeover does -
+		   instantly, without a slide - and only when no swipe is under way. */
+		if (PageStepRequested != 0 && Swipe.State == SWIPE_IDLE)
+		{
+			if (PageStepRequested > 0)
+				Pages_Next();
+			else
+				Pages_Previous();
+			PageStepRequested = 0;
 		}
 
 		if ((int32_t)(NowMs - NextStatusMs) >= 0)
@@ -574,13 +1130,87 @@ static void Core1Main(void)
 			                                                    : "LINK DOWN";
 #endif
 
-			printf("frames: needles %lu  values %lu  still %lu  swipes %lu  |  last: draw %luus"
-			       "  rect %lupx  work %luus  worst work %luus  \"%s\"\n",
-			       (unsigned long)NeedleFrames, (unsigned long)ValueFrames,
-			       (unsigned long)StillFrames, (unsigned long)Swipes,
-			       (unsigned long)DrawUs, (unsigned long)PushPixels,
-			       (unsigned long)WorkUs, (unsigned long)WorkMaxUs, LastText);
-			WorkMaxUs = 0;
+			{
+				PanelPush_t Push;
+
+				Panel_Push(&Push);
+				uint32_t LiftReports, LiftTimeouts, GapMaxMs, ReadErrors;
+				uint16_t StatusSeen;
+
+				Panel_TouchLifts(&LiftReports, &LiftTimeouts, &GapMaxMs,
+				                 &StatusSeen, &ReadErrors);
+				{
+					ImuMilliG_t A;
+
+					if (!Imu_Present())
+						printf("imu: not found\n");
+					else if (!Imu_Read(&A))
+						printf("imu: read failed (%lu so far)\n",
+						       (unsigned long)Imu_ReadErrors());
+					else
+					{
+						/* Integer square root of the magnitude, in mg. */
+						uint64_t Sq = (uint64_t)((int64_t)A.X * A.X)
+						              + (uint64_t)((int64_t)A.Y * A.Y)
+						              + (uint64_t)((int64_t)A.Z * A.Z);
+						uint32_t Mag = 0;
+						uint32_t Bit = 1u << 30;
+
+						while (Bit > Sq)
+							Bit >>= 2;
+						while (Bit != 0u)
+						{
+							if (Sq >= (uint64_t)Mag + Bit)
+							{
+								Sq -= (uint64_t)Mag + Bit;
+								Mag = (Mag >> 1) + Bit;
+							}
+							else
+							{
+								Mag >>= 1;
+							}
+							Bit >>= 2;
+						}
+
+						const GMeter_t *Gm = UiGPage_Model();
+						const GMeterCal_t *Gc = UiGPage_Calibration();
+
+						printf("g: lat %ld lon %ld mg  peaks R %ld L %ld A %ld B %ld mg"
+						       "  %s rest %ld,%ld,%ld  taps %lu  zeroed %lu refused %lu\n",
+						       (long)lroundf(Gm->Lat * 1000.0f), (long)lroundf(Gm->Lon * 1000.0f),
+						       (long)lroundf(Gm->PeakRight * 1000.0f),
+						       (long)lroundf(Gm->PeakLeft * 1000.0f),
+						       (long)lroundf(Gm->PeakAccel * 1000.0f),
+						       (long)lroundf(Gm->PeakBrake * 1000.0f),
+						       Gc->Zeroed ? "zeroed" : "ASSUMED UPRIGHT",
+						       (long)Gc->Rest.X, (long)Gc->Rest.Y, (long)Gc->Rest.Z,
+						       (unsigned long)Counts.Taps, (unsigned long)Counts.Zeroed,
+						       (unsigned long)Counts.ZeroRefused);
+						printf("imu: 0x%02x rev 0x%02x  x %ld  y %ld  z %ld mg"
+						       "  |a| %lu mg  errors %lu\n",
+						       Imu_Address(), Imu_Revision(), (long)A.X, (long)A.Y,
+						       (long)A.Z, (unsigned long)Mag,
+						       (unsigned long)Imu_ReadErrors());
+					}
+				}
+				printf("touch lifts: by report %lu  by timeout %lu  longest report gap %lums"
+				       "  statuses seen 0x%04x  read errors %lu\n",
+				       (unsigned long)LiftReports, (unsigned long)LiftTimeouts,
+				       (unsigned long)GapMaxMs, (unsigned)StatusSeen,
+				       (unsigned long)ReadErrors);
+				printf("frames: needles %lu  values %lu  still %lu  slides %lu"
+				       "  swipes %lu  cancels %lu  |  last: draw %luus  %lupx in %lu"
+				       "  work %luus  worst %luus  worst slide %luus  short rows %lu\n",
+				       (unsigned long)Counts.Needles, (unsigned long)Counts.Values,
+				       (unsigned long)Counts.Still, (unsigned long)Counts.Slides,
+				       (unsigned long)Counts.Swipes, (unsigned long)Counts.Cancels,
+				       (unsigned long)DrawUs, (unsigned long)PushPixels,
+				       (unsigned long)Push.LastRegions, (unsigned long)WorkUs,
+				       (unsigned long)WorkMaxUs, (unsigned long)SlideWorkMaxUs,
+				       (unsigned long)Push.RowShortfalls);
+				WorkMaxUs = 0;
+				SlideWorkMaxUs = 0;
+			}
 			printf("node %u  page %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",
 			       DashNodeId, Page, LinkText,
@@ -737,6 +1367,21 @@ int main(void)
 
 #if DASH_HAVE_CAN2040
 		CanLink_Poll(NowMs);
+#endif
+
+#if DASH_HAVE_PANEL
+		/* Console commands: 'S' a screenshot, 'n' and 'p' the next and
+		   previous page - enough to drive the display from the bench PC. */
+		{
+			int Ch = getchar_timeout_us(0);
+
+			if (Ch == 'S')
+				ScreenshotRequested = true;
+			else if (Ch == 'n')
+				PageStepRequested = 1;
+			else if (Ch == 'p')
+				PageStepRequested = -1;
+		}
 #endif
 
 #if DASH_SIMULATE

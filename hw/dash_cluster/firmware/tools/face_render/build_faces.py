@@ -96,11 +96,20 @@ def compile_one(cl, env, src, cacheable):
         newest = max([os.path.getmtime(src)] + [os.path.getmtime(c) for c in LV_CONFS])
         if os.path.getmtime(obj) >= newest:
             return None
-    r = subprocess.run([cl] + CFLAGS + ["/c", src, "/Fo:" + obj],
+    r = subprocess.run([cl] + (CFLAGS if cacheable else APP_CFLAGS) + ["/c", src, "/Fo:" + obj],
                        env=env, capture_output=True, text=True)
     if r.returncode != 0:
         return "%s\n%s%s" % (src, r.stdout, r.stderr)
     return None
+
+
+# OUR sources are compiled with warnings on, and with a pointer passed where it
+# does not belong made an error. LVGL's stay at /w - they are someone else's,
+# and thousands of warnings nobody here will fix would bury the ones that
+# matter. This is not tidiness: with /w everywhere, a bool handed to LVGL as
+# an object pointer compiled silently and the renderer crashed on its first
+# page (C4047: differing levels of indirection).
+APP_CFLAGS = [f for f in CFLAGS if f != "/w"] + ["/W3", "/we4047", "/we4024", "/we4013"]
 
 
 # One table for every face, so any face can be dropped into the firmware's back

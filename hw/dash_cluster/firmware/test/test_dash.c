@@ -32,6 +32,8 @@
 extern int UiTests_Run(int *Checks, int *Failures);
 extern int NeedleTests_Run(int *Checks, int *Failures);
 extern int TextTests_Run(int *Checks, int *Failures);
+extern int GMeterTests_Run(int *Checks, int *Failures);
+extern int GraphTests_Run(int *Checks, int *Failures);
 
 static int Failures = 0;
 static int Checks = 0;
@@ -338,6 +340,22 @@ static void TestPageWrap(void)
 	Pages_Previous();
 	Pages_Next();
 	CHECK(Pages_Current() == Start, "previous then next is a no-op");
+
+	/* A swipe in progress asks what it is bringing in without choosing it. */
+	for (i = 0; i < PageCount - 1; i++)
+	{
+		uint8_t Next, Prev;
+
+		Pages_Init(0, i);
+		Next = Pages_Neighbour(1);
+		Prev = Pages_Neighbour(-1);
+		CHECK(Pages_Current() == i, "asking for a neighbour must not change page");
+		Pages_Next();
+		CHECK(Pages_Current() == Next, "the next neighbour is where Next goes");
+		Pages_Init(0, i);
+		Pages_Previous();
+		CHECK(Pages_Current() == Prev, "the previous neighbour is where Previous goes");
+	}
 }
 
 
@@ -497,6 +515,8 @@ int main(void)
 	UiTests_Run(&Checks, &Failures);
 	NeedleTests_Run(&Checks, &Failures);
 	TextTests_Run(&Checks, &Failures);
+	GMeterTests_Run(&Checks, &Failures);
+	GraphTests_Run(&Checks, &Failures);
 
 	printf("---------------\n");
 	printf("%d checks, %d failures\n", Checks, Failures);

@@ -115,6 +115,14 @@ static uint32_t			PushLastConvertUs;
 static uint32_t			PushLastBlockedUs;
 static uint32_t			PushLastTotalUs;
 
+/* Within a frame: conversion and waiting summed over its rectangles, and how
+   many rectangles it had. Rows whose spans came up short of the rectangle's
+   width - a composing bug, filled with black and counted. */
+static uint32_t			SendConvertUs;
+static uint32_t			SendBlockedUs;
+static uint32_t			PushRegionsLast;
+static uint32_t			RowShortfalls;
+
 /* Last known touch position, held across releases - see Panel_TouchRead(). */
 static int32_t			TouchX;
 static int32_t			TouchY;
@@ -150,10 +158,15 @@ static uint32_t			TeSyncWaits;
 static uint32_t			TeSyncTimeouts;
 static uint64_t			TeWaitUs;
 
-/* Late frames: a push that went out two or more scans after the previous one.
-   At one push per scan this is the count of scans missed. */
+/* Late frames: a push that went out two or more scans after the previous one
+   although the renderer had been busy the whole time - a scan genuinely
+   missed. A frame that deliberately sent nothing - the needle had not moved,
+   or a strip chart's next column was not due - waits for the pulse through
+   Panel_WaitFrame() and excuses the gap, or a page that redraws at 30 Hz would
+   report every second frame as late. */
 static uint32_t			TeLateFrames;
 static uint32_t			TeLastPushEdge;
+static bool			FrameIdled = true;
 
 /* Written by core 1 as Panel_Init() advances, read by core 0 so a hang can be
    named rather than guessed at. See the note in panel.h. */
@@ -184,10 +197,27 @@ static uint32_t			TouchLastReportMs;
 /* How long a press survives with no further report before it is treated as a
    lift. The controller reports continuously while a finger is down, at well
    under this interval, so a gap this long means the finger has gone and the
-   final report was missed. Short enough not to leave a phantom press behind -
-   which LVGL reads as a finger still on the glass, and is exactly what made
-   the first working display have a dead touch panel. */
-#define TOUCH_HOLD_TIMEOUT_MS	(80u)
+   final report was missed.
+
+   A FALLBACK ONLY. Lifts are found from the controller's own lift report -
+   see Panel_TouchReadReport() - which on the bench caught 17 of 17. Before
+   that fix every lift waited out this timeout, and the swipe stalled for it on
+   each release; that is why it was once cut to 40 ms. It is long again
+   because TouchGapMaxMs has seen 51 ms between reports under a finger, and a
+   timeout inside a real gap would break a drag in two. */
+#define TOUCH_HOLD_TIMEOUT_MS	(100u)
+
+/* How lifts were noticed - a report saying the finger had gone, or the timeout
+   above - and the longest gap between reports while a finger was down. */
+static uint32_t			TouchLiftReports;
+static uint32_t			TouchLiftTimeouts;
+static uint32_t			TouchGapMaxMs;
+
+/* Every status nibble seen in a report, as a bit mask, so which value means
+   "lifted" is visible on the console rather than assumed; and bounded reads
+   that failed. */
+static uint16_t			TouchStatusSeen;
+static uint32_t			TouchReadErrors;
 static bool			TouchPresent;
 static uint16_t			TouchChipType;
 
@@ -480,31 +510,95 @@ static void Panel_GpioIrq(uint Gpio, uint32_t Events)
  * TOUCH_HOLD_TIMEOUT_MS. Holding it forever would be worse than not holding it
  * at all - a stuck press is a finger the UI believes is still down.
  */
+/* The report, read here rather than through CST9217_Read_Data().
+ *
+ * THEIR DECODE CANNOT SEE A LIFT. Each point in the report carries a status
+ * nibble, 0x06 while the finger is down. The report the controller sends as
+ * the finger comes up still says one point, with a different status - and
+ * their decode, which only copies coordinates when the status is 0x06,
+ * returns success with points = 1 and the old coordinates left in place. So
+ * every lift arrived here as one more press, and only the hold timeout ever
+ * ended a touch: measured, 19 lifts out of 19. The timeout is 40 ms, and the
+ * swipe stalled for that long on every release.
+ *
+ * Their read is also unbounded - i2c_write_blocking() with nostop - which is
+ * the hang this file is careful about everywhere else.
+ *
+ * Returns false if there was no report to read. Status is the first point's
+ * status nibble, 0 when there are no points. */
+static bool Panel_TouchReadReport(bool *Pressed, uint16_t *X, uint16_t *Y,
+                                  uint8_t *Status)
+{
+	uint8_t Addr[2];
+	uint8_t Data[CST9217_DATA_LENGTH];
+	uint8_t Points;
+
+	Addr[0] = (uint8_t)(CST9217_DATA_REG >> 8);
+	Addr[1] = (uint8_t)(CST9217_DATA_REG & 0xFFu);
+
+	if (i2c_write_timeout_us(I2C_PORT, CST9217_I2C_ADDR, Addr, sizeof(Addr),
+	                         true, TOUCH_I2C_TIMEOUT_US) != (int)sizeof(Addr))
+	{
+		/* The recovery read is what puts a STOP back on the bus. */
+		(void)i2c_read_timeout_us(I2C_PORT, CST9217_I2C_ADDR, Data, 1, false,
+		                          TOUCH_I2C_TIMEOUT_US);
+		TouchReadErrors++;
+		return false;
+	}
+
+	if (i2c_read_timeout_us(I2C_PORT, CST9217_I2C_ADDR, Data, sizeof(Data), false,
+	                        TOUCH_I2C_TIMEOUT_US) != (int)sizeof(Data))
+	{
+		TouchReadErrors++;
+		return false;
+	}
+
+	/* Byte 6 marks a touch report; anything else is not one. */
+	if (Data[6] != CST9217_ACK_VALUE)
+		return false;
+
+	Points = (uint8_t)(Data[5] & 0x7Fu);
+	*Status = (Points > 0u) ? (uint8_t)(Data[0] & 0x0Fu) : 0u;
+	*Pressed = (Points > 0u) && (*Status == 0x06u);
+
+	/* Coordinates are 12 bits split over three bytes, and the panel is mounted
+	   rotated 180 degrees against the touch sensor. A reading beyond the panel
+	   is clamped to its edge rather than wrapped by the subtraction. */
+	{
+		int32_t Rx = (int32_t)((((uint32_t)Data[1]) << 4) | (((uint32_t)Data[3]) >> 4));
+		int32_t Ry = (int32_t)((((uint32_t)Data[2]) << 4) | (((uint32_t)Data[3]) & 0x0Fu));
+		int32_t Fx = 466 - Rx;
+		int32_t Fy = 466 - Ry;
+
+		*X = (uint16_t)((Fx < 0) ? 0 : Fx);
+		*Y = (uint16_t)((Fy < 0) ? 0 : Fy);
+	}
+	return true;
+}
+
+
+/***************************************************************************************/
 void Panel_TouchService(void)
 {
 	uint32_t NowMs = to_ms_since_boot(get_absolute_time());
+	bool Pressed;
+	uint16_t X, Y;
+	uint8_t Status;
 
 	if (TouchIntPending)
 	{
 		TouchIntPending = false;
 
-		/* False is not an I2C error: their read returns false when byte 6 of
-		   the reply is not 0xAB, which marks a touch report. Whether the
-		   controller is on the bus at all was settled at init by
-		   Panel_TouchProbe(). */
-		if (CST9217_Read_Data())
+		if (Panel_TouchReadReport(&Pressed, &X, &Y, &Status))
 		{
 			TouchReports++;
+			TouchStatusSeen |= (uint16_t)(1u << Status);
 
-			if (CST9217.points > 0)
+			if (Pressed)
 			{
-				/* Their driver already maps the reading to display
-				   coordinates, including the 180 degree flip - but 466 - 0 is
-				   466 and the last valid pixel is 465, so clamp rather than
-				   report a point one off the edge. */
-				uint16_t X = CST9217.data[0].x;
-				uint16_t Y = CST9217.data[0].y;
-
+				/* 466 - 0 is 466 and the last valid pixel is 465, so clamp
+				   rather than report a point one off the edge - and a wild
+				   reading, which the subtraction would wrap, the same way. */
 				if (X >= PANEL_WIDTH)
 					X = PANEL_WIDTH - 1u;
 				if (Y >= PANEL_HEIGHT)
@@ -513,19 +607,36 @@ void Panel_TouchService(void)
 				TouchX = (int32_t)X;
 				TouchY = (int32_t)Y;
 				TouchPresses++;
+				if (TouchHeld && (NowMs - TouchLastReportMs) > TouchGapMaxMs)
+					TouchGapMaxMs = NowMs - TouchLastReportMs;
 				TouchHeld = true;
 				TouchLastReportMs = NowMs;
 			}
 			else
 			{
+				if (TouchHeld)
+					TouchLiftReports++;
 				TouchHeld = false;
 			}
 		}
 	}
 	else if (TouchHeld && (NowMs - TouchLastReportMs) > TOUCH_HOLD_TIMEOUT_MS)
 	{
+		TouchLiftTimeouts++;
 		TouchHeld = false;
 	}
+}
+
+
+/***************************************************************************************/
+void Panel_TouchLifts(uint32_t *ByReport, uint32_t *ByTimeout, uint32_t *GapMaxMs,
+                      uint16_t *StatusSeen, uint32_t *ReadErrors)
+{
+	*ByReport = TouchLiftReports;
+	*ByTimeout = TouchLiftTimeouts;
+	*GapMaxMs = TouchGapMaxMs;
+	*StatusSeen = TouchStatusSeen;
+	*ReadErrors = TouchReadErrors;
 }
 
 
@@ -749,6 +860,8 @@ void Panel_WaitFrame(void)
 	uint32_t Seen = TeEdges;
 	uint32_t Start = time_us_32();
 
+	FrameIdled = true;
+
 	if (!TeSyncEnabled)
 	{
 		sleep_ms(17);
@@ -765,7 +878,7 @@ void Panel_WaitFrame(void)
 
 
 /***************************************************************************************/
-/* Convert one chunk of paletted lines into RGB565 for the wire.
+/* Convert one run of paletted pixels into RGB565 for the wire.
  *
  * A byte load, a table lookup and a halfword store per pixel. The palette
  * entries are already in the panel's byte order (see ui_draw.c), so there is
@@ -775,30 +888,61 @@ void Panel_WaitFrame(void)
  * cache lines, and cutting the loop overhead to a quarter is the one easy
  * thing available; anything further belongs in assembly, and only if the
  * measurement in PanelPush_t says the CPU is the limiter. */
-static void Panel_ConvertChunk(const uint8_t *Src, uint32_t SrcStride,
-                               uint16_t *Dst, const uint16_t *Palette,
-                               uint32_t Width, uint32_t Lines)
+static uint16_t *Panel_ConvertSpan(const uint8_t *S, uint32_t Count, uint16_t *Dst,
+                                   const uint16_t *Palette)
+{
+	while (Count >= 4u)
+	{
+		Dst[0] = Palette[S[0]];
+		Dst[1] = Palette[S[1]];
+		Dst[2] = Palette[S[2]];
+		Dst[3] = Palette[S[3]];
+		Dst += 4;
+		S += 4;
+		Count -= 4u;
+	}
+
+	while (Count-- != 0u)
+		*Dst++ = Palette[*S++];
+
+	return Dst;
+}
+
+
+/***************************************************************************************/
+/* Convert a chunk of rows, each assembled from the spans its row function
+   hands back. The spans of a row must add up to the rectangle's width; a row
+   function that gets that wrong is caught here rather than allowed to shift
+   every pixel after it. */
+static void Panel_ConvertRows(const PanelSource_t *Source, int32_t Y, int32_t X1,
+                              uint32_t Width, uint32_t Lines, uint16_t *Dst)
 {
 	uint32_t Line;
 
 	for (Line = 0; Line < Lines; Line++)
 	{
-		const uint8_t *S = Src + (Line * SrcStride);
-		uint32_t Left = Width;
+		PanelSpan_t Spans[PANEL_MAX_SPANS];
+		uint32_t Count = Source->Row(Source->Context, Y + (int32_t)Line, X1, Width, Spans);
+		uint32_t Total = 0, i;
 
-		while (Left >= 4u)
+		for (i = 0; i < Count && i < PANEL_MAX_SPANS; i++)
 		{
-			Dst[0] = Palette[S[0]];
-			Dst[1] = Palette[S[1]];
-			Dst[2] = Palette[S[2]];
-			Dst[3] = Palette[S[3]];
-			Dst += 4;
-			S += 4;
-			Left -= 4u;
+			uint32_t N = Spans[i].Count;
+
+			if (Total + N > Width)
+				N = Width - Total;
+			Dst = Panel_ConvertSpan(Spans[i].Src, N, Dst, Source->Palette);
+			Total += N;
 		}
 
-		while (Left-- != 0u)
-			*Dst++ = Palette[*S++];
+		if (Total < Width)
+		{
+			/* Short row: black out the rest, and count it - it is a bug in
+			   whoever composed the row, not a panel fault. */
+			RowShortfalls++;
+			while (Total++ < Width)
+				*Dst++ = 0u;
+		}
 	}
 }
 
@@ -880,7 +1024,15 @@ static void Panel_EndTransfer(void)
 
 
 /***************************************************************************************/
-/* Send a paletted rectangle, starting on the panel's next TE pulse.
+/* Start a chunk's DMA now. */
+static void Panel_StartChunk(const uint16_t *Data, uint32_t Bytes)
+{
+	dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm], Data, Bytes, true);
+}
+
+
+/***************************************************************************************/
+/* Send one rectangle, optionally starting on the panel's next TE pulse.
  *
  * ONE WINDOW, CHIP SELECT HELD, N CHUNKS.
  *
@@ -891,28 +1043,25 @@ static void Panel_EndTransfer(void)
  * allows the conversion of chunk N+1 to overlap the transmission of chunk N.
  *
  * If the CPU falls behind, the PIO stalls with chip select still low and the
- * frame simply takes longer: a stall is not a corruption. The failure that
+ * rectangle simply takes longer: a stall is not a corruption. The failure that
  * WOULD corrupt is losing chip select between chunks, which is why it is
  * raised in exactly one place, after the last chunk has drained.
  *
- * The whole rectangle waits for TE, not just part of it. At one push per scan
- * there is no longer any such thing as a follow-on area written while the scan
- * is already running - the thing the old LVGL flush had to reason about, and
- * the thing that used to tear.
+ * With AtTe, the first chunk is converted BEFORE the wait and its DMA started
+ * by the TE interrupt itself - see Panel_GpioIrq() - so the pixels begin
+ * moving within interrupt latency of the pulse.
  */
-void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
-                        const uint16_t *Palette,
-                        int32_t X1, int32_t Y1, int32_t X2, int32_t Y2)
+static void Panel_SendRect(const PanelSource_t *Source, int32_t X1, int32_t Y1,
+                           int32_t X2, int32_t Y2, bool AtTe)
 {
 	uint32_t Width, Height, Line, Slot, Lines;
-	uint32_t ConvertUs = 0, BlockedUs = 0, Start;
-	const uint8_t *Row;
+	uint32_t Start;
 
 	Panel_RoundArea(&X1, &Y1, &X2, &Y2);
 	Width = (uint32_t)(X2 - X1 + 1);
 	Height = (uint32_t)(Y2 - Y1 + 1);
 
-	if (Width > (uint32_t)PANEL_WIDTH || Width == 0u || Height == 0u)
+	if (X2 < X1 || Y2 < Y1 || Width > (uint32_t)PANEL_WIDTH)
 		return;
 
 	/* Both tests, because they fail differently. A busy channel means a push
@@ -924,15 +1073,10 @@ void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
 	if (gpio_get(qspi.pin_cs) == 0)
 		FlushCsOverlaps++;
 
-	Row = Src + ((uint32_t)Y1 * SrcStride) + (uint32_t)X1;
-
-	/* The first chunk is converted BEFORE the wait, so the TE interrupt has
-	   something to start immediately - the point of arming rather than
-	   converting after the edge. */
 	Lines = (Height < PANEL_CHUNK_LINES) ? Height : PANEL_CHUNK_LINES;
 	Start = time_us_32();
-	Panel_ConvertChunk(Row, SrcStride, ChunkBuf[0], Palette, Width, Lines);
-	ConvertUs += (uint32_t)(time_us_32() - Start);
+	Panel_ConvertRows(Source, Y1, X1, Width, Lines, ChunkBuf[0]);
+	SendConvertUs += (uint32_t)(time_us_32() - Start);
 
 	/* The window, and the pixel-write command that opens the stream. Their
 	   SetWindows takes an exclusive end; ours are inclusive. */
@@ -949,7 +1093,7 @@ void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
 	PushArmData = ChunkBuf[0];
 	PushArmBytes = Width * Lines * 2u;
 
-	if (TeSyncEnabled)
+	if (AtTe && TeSyncEnabled)
 	{
 		uint32_t Seen = TeEdges;
 
@@ -976,8 +1120,7 @@ void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
 					TeSyncEnabled = false;
 				PushStartUs = time_us_32();
 				FlushStartUs = PushStartUs;
-				dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm],
-				                      PushArmData, PushArmBytes, true);
+				Panel_StartChunk(PushArmData, PushArmBytes);
 				break;
 			}
 			tight_loop_contents();
@@ -988,19 +1131,21 @@ void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
 			TeSyncWaits++;
 			TeWaitUs += (uint32_t)(PushStartUs - Start);
 
-			/* Two or more scans since the last push is a scan missed. */
-			if (TeLastPushEdge != 0u
+			/* Two or more scans since the last push is a scan missed - unless
+			   a frame in between chose not to draw. */
+			if (!FrameIdled && TeLastPushEdge != 0u
 			    && (uint32_t)(TeEdges - TeLastPushEdge) >= 2u)
 				TeLateFrames++;
 			TeLastPushEdge = TeEdges;
+			FrameIdled = false;
 		}
 	}
 	else
 	{
-		PushStartUs = time_us_32();
-		FlushStartUs = PushStartUs;
-		dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm],
-		                      PushArmData, PushArmBytes, true);
+		FlushStartUs = time_us_32();
+		if (AtTe)
+			PushStartUs = FlushStartUs;
+		Panel_StartChunk(PushArmData, PushArmBytes);
 	}
 
 	FlushBytes += PushArmBytes;
@@ -1015,20 +1160,16 @@ void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
 	{
 		uint32_t Bytes;
 
-		Row += SrcStride * Lines;
 		Lines = ((Height - Line) < PANEL_CHUNK_LINES) ? (Height - Line)
 		                                              : PANEL_CHUNK_LINES;
 		Bytes = Width * Lines * 2u;
 
 		Start = time_us_32();
-		Panel_ConvertChunk(Row, SrcStride, ChunkBuf[Slot], Palette,
-		                   Width, Lines);
-		ConvertUs += (uint32_t)(time_us_32() - Start);
+		Panel_ConvertRows(Source, Y1 + (int32_t)Line, X1, Width, Lines, ChunkBuf[Slot]);
+		SendConvertUs += (uint32_t)(time_us_32() - Start);
 
-		BlockedUs += Panel_ChunkWait();
-
-		dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm],
-		                      ChunkBuf[Slot], Bytes, true);
+		SendBlockedUs += Panel_ChunkWait();
+		Panel_StartChunk(ChunkBuf[Slot], Bytes);
 
 		FlushBytes += Bytes;
 		PushChunks++;
@@ -1036,15 +1177,116 @@ void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
 		Line += Lines;
 	}
 
-	BlockedUs += Panel_ChunkWait();
+	SendBlockedUs += Panel_ChunkWait();
 	Panel_EndTransfer();
+	RenderTotalPx += Width * Height;
+}
 
-	PushLastConvertUs = ConvertUs;
-	PushLastBlockedUs = BlockedUs;
+
+/***************************************************************************************/
+/* The frame's bookkeeping around one or more rectangles sent from one TE. */
+static void Panel_FrameBegin(void)
+{
+	SendConvertUs = 0;
+	SendBlockedUs = 0;
+}
+
+static void Panel_FrameEnd(void)
+{
+	PushLastConvertUs = SendConvertUs;
+	PushLastBlockedUs = SendBlockedUs;
 	PushLastTotalUs = (uint32_t)(time_us_32() - PushStartUs);
 	PushFrames++;
 	RenderTotalUs += PushLastTotalUs;
-	RenderTotalPx += Width * Height;
+}
+
+
+/***************************************************************************************/
+/* The row function for a plain buffer: one span per row. */
+typedef struct
+{
+	const uint8_t *Src;
+	uint32_t Stride;
+} PanelBuffer_t;
+
+static uint32_t Panel_BufferRow(void *Context, int32_t Y, int32_t X1, uint32_t Width,
+                                PanelSpan_t *Spans)
+{
+	const PanelBuffer_t *B = (const PanelBuffer_t *)Context;
+
+	Spans[0].Src = B->Src + ((uint32_t)Y * B->Stride) + (uint32_t)X1;
+	Spans[0].Count = Width;
+	return 1u;
+}
+
+
+/***************************************************************************************/
+void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
+                        const uint16_t *Palette,
+                        int32_t X1, int32_t Y1, int32_t X2, int32_t Y2)
+{
+	PanelRect_t R;
+
+	R.X1 = X1;
+	R.Y1 = Y1;
+	R.X2 = X2;
+	R.Y2 = Y2;
+	Panel_PushRegions(Src, SrcStride, Palette, &R, 1u);
+}
+
+
+/***************************************************************************************/
+/* SEVERAL RECTANGLES, ONE FRAME.
+ *
+ * The first waits for TE; the rest follow it immediately, in order down the
+ * screen. That order is what keeps them tear-free: the scan also runs down the
+ * screen from the pulse, and a few small rectangles are sent in well under the
+ * time the scan takes to reach the rows below the first. Each has a window and
+ * a chip select of its own - a pixel stream fills one rectangle only. */
+void Panel_PushRegions(const uint8_t *Src, uint32_t SrcStride, const uint16_t *Palette,
+                       const PanelRect_t *Regions, uint32_t Count)
+{
+	PanelBuffer_t Buffer;
+	PanelSource_t Source;
+	PanelRect_t Sorted[PANEL_MAX_REGIONS];
+	uint32_t i, j, n;
+
+	if (Count == 0u)
+		return;
+
+	n = (Count < PANEL_MAX_REGIONS) ? Count : PANEL_MAX_REGIONS;
+	for (i = 0; i < n; i++)
+	{
+		PanelRect_t R = Regions[i];
+
+		for (j = i; j > 0u && Sorted[j - 1u].Y1 > R.Y1; j--)
+			Sorted[j] = Sorted[j - 1u];
+		Sorted[j] = R;
+	}
+
+	Buffer.Src = Src;
+	Buffer.Stride = SrcStride;
+	Source.Row = Panel_BufferRow;
+	Source.Context = &Buffer;
+	Source.Palette = Palette;
+
+	Panel_FrameBegin();
+	for (i = 0; i < n; i++)
+		Panel_SendRect(&Source, Sorted[i].X1, Sorted[i].Y1, Sorted[i].X2, Sorted[i].Y2,
+		               i == 0u);
+	PushRegionsLast = n;
+	Panel_FrameEnd();
+}
+
+
+/***************************************************************************************/
+void Panel_PushRows(const PanelSource_t *Source,
+                    int32_t X1, int32_t Y1, int32_t X2, int32_t Y2)
+{
+	Panel_FrameBegin();
+	Panel_SendRect(Source, X1, Y1, X2, Y2, true);
+	PushRegionsLast = 1u;
+	Panel_FrameEnd();
 }
 
 
@@ -1057,6 +1299,8 @@ void Panel_Push(PanelPush_t *Out)
 	Out->LastConvertUs = PushLastConvertUs;
 	Out->LastBlockedUs = PushLastBlockedUs;
 	Out->LastTotalUs = PushLastTotalUs;
+	Out->LastRegions = PushRegionsLast;
+	Out->RowShortfalls = RowShortfalls;
 }
 
 

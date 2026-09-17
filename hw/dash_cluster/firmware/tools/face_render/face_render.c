@@ -95,6 +95,9 @@ int main(int argc, char **argv)
 		const FaceElement_t *First = NULL;
 		uint8_t FirstIndex = 0;
 		bool Split = false;
+		bool GMeter = false;
+		const FaceElement_t *Graphs[2];
+		uint32_t GraphCount = 0;
 		int32_t X, Y, W, H, Row, Col;
 		lv_obj_t *Screen;
 		lv_draw_buf_t *Snap;
@@ -106,8 +109,13 @@ int main(int argc, char **argv)
 		{
 			const FaceElement_t *El = &Pages[p].Elements[e];
 
-			if (El->Type != WIDGET_GAUGE)
+			if (El->Type != WIDGET_GAUGE && El->Type != WIDGET_GFORCE
+			    && El->Type != WIDGET_GRAPH)
 				continue;
+			if (El->Type == WIDGET_GFORCE)
+				GMeter = true;
+			if (El->Type == WIDGET_GRAPH && GraphCount < 2u)
+				Graphs[GraphCount++] = El;
 			if (First == NULL)
 			{
 				First = El;
@@ -137,15 +145,23 @@ int main(int argc, char **argv)
 		Screen = MakeScreen();
 		UiGauge_CreateFace(Screen,
 		                   X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
-		                   W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE, Split);
+		                   W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE, Split,
+		                   !GMeter && GraphCount == 0u);
 		for (e = 0; e < Pages[p].ElementCount; e++)
 		{
-			if (Pages[p].Elements[e].Type != WIDGET_GAUGE)
-				continue;
-			UiGauge_CreateScale(Screen, &Pages[p].Elements[e],
+			if (Pages[p].Elements[e].Type == WIDGET_GAUGE)
+				UiGauge_CreateScale(Screen, &Pages[p].Elements[e],
+				                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
+				                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
+			else if (Pages[p].Elements[e].Type == WIDGET_GFORCE)
+				UiGauge_CreateGMeter(Screen,
+				                     X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
+				                     W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
+		}
+		if (GraphCount != 0u)
+			UiGauge_CreateGraph(Screen, Graphs, GraphCount,
 			                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
 			                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
-		}
 		lv_screen_load(Screen);
 		lv_obj_update_layout(Screen);
 
@@ -184,7 +200,8 @@ int main(int argc, char **argv)
 		fprintf(Manifest, "%u %u %d %d %d\n", p, FirstIndex, (int)W, (int)H,
 		        UI_GAUGE_RENDER_SCALE);
 		printf("page %u: %dx%d at %d,%d, %s, rendered at %dx\n",
-		       p, (int)W, (int)H, (int)X, (int)Y, Split ? "split" : "one gauge",
+		       p, (int)W, (int)H, (int)X, (int)Y,
+		       GMeter ? "g-force" : (GraphCount ? "trace" : (Split ? "split" : "one gauge")),
 		       UI_GAUGE_RENDER_SCALE);
 
 		lv_draw_buf_destroy(Snap);

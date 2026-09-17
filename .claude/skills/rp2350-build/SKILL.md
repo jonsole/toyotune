@@ -73,7 +73,7 @@ cd hw/dash_cluster/firmware
 python test/run_tests.py
 ```
 
-635 checks, and it finds MSVC through vswhere by itself. These are the places a
+765 checks, and it finds MSVC through vswhere by itself. These are the places a
 mistake is silent - a wrong byte offset gives a gauge that reads plausibly and
 wrongly - so **run them after touching anything under `src/`**. What they
 cannot cover is the display path: `panel.c` needs the vendor driver and a
@@ -235,11 +235,20 @@ identity falls back safely with no divider fitted. Confirmed as
 **RP2350 rev A2, QFN60** - i.e. RP2350A, GPIO0..29, so every pin is inside
 PIO's window.
 
-**The renderer has since replaced LVGL, and is running on the glass.** The
-needle and the reading are drawn into the paletted buffer and sent as one
-rectangle per scan - 1.5-2.4 ms of work a frame, no late frames - and the build
-is clean with 635 host checks passing. Bench builds boot at 20% brightness
-(`-DDASH_BRIGHTNESS=`) to spare the AMOLED.
+**The renderer has since replaced LVGL, and is running on the glass.** Four
+pages - rev counter, boost over mixture, a g-force friction circle and a
+ten-second boost/AFR trace - with needles, readings, a momentum swipe between
+them and the node's own accelerometer. Frames cost 1-5 ms of the 16.8 ms scan
+depending on the page; a swipe, which redraws the whole screen, 13-14. The
+build is clean with 765 host checks passing. Bench builds boot at 20%
+brightness (`-DDASH_BRIGHTNESS=`) to spare the AMOLED.
+
+**THE CONSOLE TAKES COMMANDS, which is the fastest way to see what the board
+is doing.** `S` prints a screenshot of the page on the glass - the palette and
+every row of palette indices, numbered - and `n` and `p` step pages. Pipe a
+capture through `python tools/screenshot.py capture.txt shot.png` for a PNG of
+exactly what the panel was sent. A bug that drew part of a page round the
+screen's corner was invisible on the glass and obvious in a screenshot.
 
 What is still missing:
 

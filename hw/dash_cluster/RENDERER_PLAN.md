@@ -266,8 +266,48 @@ build, so the old figures below are from the LVGL build as it stood at 9c675c7.
 - **Swiping, without animation.** A deliberate horizontal gesture - 80 px,
   twice as far across as up or down - changes page on lift-off.
 
+- **The smooth swipe.** The page follows the finger and settles with
+  momentum: release speed is measured over the finger's last 100 ms, the swipe
+  completes if its projected position passes halfway, and the page then carries
+  on at the finger's speed and slows at a constant rate to stop on the page,
+  over 80-250 ms. A second 8-bit surface holds the incoming page, both live;
+  rows are composed from the two during conversion, so nothing is copied, and
+  the surfaces swap roles at the end. Slide frames are 13-14 ms of the 16.8 ms
+  scan. Two touch bugs were in the way: the vendor decode turns the
+  controller's lift report into another press - every lift was found by the
+  100 ms timeout, which stalled each release - and the report's status nibble
+  was being ignored. Both fixed in `panel.c`, with counters proving the lift
+  now comes from the report (17 of 17 on the bench).
+- **Per-region pushes.** Up to 8 rectangles in one TE-synced burst, top to
+  bottom, merged where they touch. On the split face this took a frame from
+  24,000-73,000 px in one rectangle to 6,000-14,500 in two to four.
+- **The g-force page (page 2).** The board's QMI8658 read on core 1 over the
+  touch controller's I2C bus, bounded like every other transfer there. A
+  friction circle: rings at 0.5, 1.0 and 1.5 g, a dot, a two-second fading
+  trail and held peak marks, with lateral and longitudinal readings. A long
+  press stores the at-rest reading as level - gravity and the sensor's offsets
+  together - and the axes are then built from it, so a tilted mount reads
+  true; a tap clears the peaks. The arithmetic is in `ui_gmeter.c` and
+  host-tested against a tilted mount and a board lying flat, where the
+  sensor's +Z points straight down and "ahead" has to come from a cross
+  product rather than a projection.
+- **The strip chart (page 3).** A graph widget any page can carry, one or two
+  signals, 300 columns of 33 ms - ten seconds - newest at the right. History
+  collects for every graph page whichever is showing. A stale or missing
+  reading is a gap in the trace, never a held line. The interior is redrawn
+  whole into SRAM each new column and sent as one 57,000 px rectangle: 3-4 ms
+  a frame, every other frame.
+- **Screenshots.** The console takes `S` for a screenshot of the surface on
+  the glass - palette and numbered rows of palette indices -  and `n`/`p` to
+  step pages; `tools/screenshot.py` turns a capture into a PNG. This is how
+  the g page's stray reading, drawn round the screen's corner before the page
+  had been given its centre, was found.
+
 **Outstanding**
 
+- **Saving the g-force zeroing.** It is RAM only, so a reboot goes back to
+  assuming an upright mount. Needs the flash record `Pages_Init()` already
+  expects for the page selection.
 - **Smooth swipe.** The page follows the finger, then settles or springs
   back. A second 8-bit buffer for the incoming page (212 KB; ~270 KB free),
   rows composed from the two at the current offset during conversion, the
@@ -278,6 +318,9 @@ build, so the old figures below are from the LVGL build as it stood at 9c675c7.
 - **The value readout's calmer rate.** `CORE1_VALUE_PERIOD_MS` is 0 for the
   measurement - a reading that changes 60 times a second is smooth but not
   readable. Choose one by looking; 150-250 ms is where it is likely to settle.
+- **The one late frame per swipe**, from building the incoming page - face
+  copied out of XIP flash - at the moment the drag starts. Building it earlier
+  would remove it.
 - **The unit** under a reading, and **the boost page's** decimal reading,
   looked at on the glass.
 - **Stale and no-data states** - the needle and reading dimmed, as LVGL drew

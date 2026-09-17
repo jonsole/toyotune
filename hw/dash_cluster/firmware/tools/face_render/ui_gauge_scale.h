@@ -37,7 +37,21 @@
    RENDER pixels, UI_GAUGE_RENDER_SCALE times the panel's, and must be exact
    multiples of it. */
 extern lv_obj_t *UiGauge_CreateFace(lv_obj_t *Parent, int32_t X, int32_t Y,
-                                    int32_t W, int32_t H, bool Split);
+                                    int32_t W, int32_t H, bool Split, bool Ring);
+
+/* The g-force friction circle: rings, crosshairs and direction labels. The dot,
+   its trail, the peaks and the readings are drawn live by the firmware. */
+extern lv_obj_t *UiGauge_CreateGMeter(lv_obj_t *Parent, int32_t X, int32_t Y,
+                                      int32_t W, int32_t H);
+
+/* The strip chart's furniture: the frame round the plot, each trace's scale
+   beside it, the legends and the time axis. Up to two elements, the first
+   against the left-hand scale in red. The plot's interior - grid and traces -
+   is drawn live by the firmware, which is why nothing is put inside the frame
+   here. */
+extern lv_obj_t *UiGauge_CreateGraph(lv_obj_t *Parent, const FaceElement_t *const *Elements,
+                                     uint32_t Count, int32_t X, int32_t Y,
+                                     int32_t W, int32_t H);
 
 /* One gauge's graduations - ticks, numbers, warning band and legend - over its
    sweep, in the NORMAL state's colours, at X/Y/W/H in render pixels on the

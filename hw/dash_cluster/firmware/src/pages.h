@@ -30,7 +30,8 @@ typedef enum
 	WIDGET_ARC,			/* partial ring, good for a secondary quantity */
 	WIDGET_NUMERIC,		/* plain value and unit */
 	WIDGET_BARGRAPH,	/* horizontal bar, for per-cylinder comparisons */
-	WIDGET_GRAPH		/* rolling trace against time */
+	WIDGET_GRAPH,		/* rolling trace against time */
+	WIDGET_GFORCE		/* friction circle from the node's own accelerometer */
 } WidgetType_t;
 
 
@@ -94,6 +95,11 @@ typedef struct
 } FacePage_t;
 
 
+/* An upper bound on the page list, for anything that keeps state per page -
+   the strip chart's history. Checked against PageCount by the host tests, so
+   adding pages past it cannot go unnoticed. */
+#define PAGES_MAX		(8u)
+
 extern const FacePage_t Pages[];
 extern const uint8_t PageCount;
 
@@ -107,6 +113,10 @@ extern void Pages_Init(uint8_t NodeId, uint8_t RestoredPage);
 extern uint8_t Pages_Current(void);
 extern void Pages_Next(void);
 extern void Pages_Previous(void);
+
+/* The page Pages_Next() (Direction > 0) or Pages_Previous() (< 0) would
+   select, without selecting it - what a swipe in progress is bringing in. */
+extern uint8_t Pages_Neighbour(int Direction);
 
 /* True when a fault should take the whole face over regardless of what the
    driver selected. A driver must not be able to swipe away from a fault, so

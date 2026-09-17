@@ -76,6 +76,13 @@ typedef enum
 	   the bench simulator writes this. AFR for gasoline, hundredths. */
 	SIGNAL_AFR,
 
+	/* The node's own accelerometer. Named here so a page can refer to them,
+	   but NOT carried in the signal store: the store has one writer, core 0,
+	   and the accelerometer is read on core 1. ui_gpage.c reads it directly.
+	   Thousandths of a g. */
+	SIGNAL_G_LAT,
+	SIGNAL_G_LON,
+
 	SIGNAL_COUNT
 } SignalId_t;
 
