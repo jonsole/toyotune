@@ -10,7 +10,16 @@
 
 #include <stdint.h>
 
-#include "lvgl.h"
+/* A plain image, not an lv_image_dsc_t: LVGL is no longer linked into this
+   firmware, only into the PC-side renderer that generates this table. The
+   fields are what the generator already emitted, under our own names. */
+typedef struct
+{
+	int32_t Width;
+	int32_t Height;
+	uint32_t Stride;		/* bytes per row */
+	const uint8_t *Data;		/* RGB565, high byte first - the panel's order */
+} DashImage_t;
 
 typedef struct
 {
@@ -18,7 +27,7 @@ typedef struct
 	uint8_t Element;		/* index into that page's Elements[] */
 	int32_t Width;			/* the element size it was rendered for, so a */
 	int32_t Height;			/* face that no longer fits can be refused */
-	const lv_image_dsc_t *Image;	/* RGB565_SWAPPED, the panel's own byte order */
+	const DashImage_t *Image;
 } DashFace_t;
 
 extern const DashFace_t DashFaces[];

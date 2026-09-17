@@ -4,7 +4,7 @@
  * Dash node entry point and the two-core split.
  *
  *   Core 0   can2040 and its PIO interrupt, frame decode, the signal store
- *   Core 1   the panel and LVGL
+ *   Core 1   the panel and the renderer
  *
  * That split is not arbitrary. can2040 is software CAN: it decodes the bus a
  * bit at a time in an interrupt, so it is sensitive to interrupt latency in a
@@ -19,10 +19,10 @@
  * try them, and M4 is the gate that decides whether can2040 survives at all
  * or the design falls back to an MCP2518FD.
  *
- * The panel and LVGL live in panel.c and ui_lvgl.c. When the build cannot find
- * an LVGL checkout, core 1 reports what it would have drawn over USB serial
- * instead - which is enough to exercise the store, the page tables and the
- * cross-core handover with no glass attached.
+ * The panel is panel.c and the renderer is ui_draw.c. With DASH_HAVE_PANEL off
+ * core 1 reports what it would have drawn over USB serial instead - which is
+ * enough to exercise the store, the page tables and the cross-core handover
+ * with no glass attached.
  */
 
 #include <stdio.h>
@@ -40,9 +40,10 @@
 #include "can_link.h"
 #endif
 
-#if DASH_HAVE_LVGL
+#if DASH_HAVE_PANEL
+#include "dash_faces.h"
 #include "panel.h"
-#include "ui_lvgl.h"
+#include "ui_draw.h"
 #endif
 
 /* How often the console status line goes out. Long, because it is a
@@ -108,16 +109,14 @@ static void Simulate(uint32_t NowMs)
  * periodic status line is what makes it observable at all. */
 static uint8_t DashNodeId;
 
-#if DASH_HAVE_LVGL
+#if DASH_HAVE_PANEL
 /* CORE 1'S STACK, AND WHY IT IS NOT THE SDK'S.
  *
  * The SDK reserves core 1's stack in SCRATCH_X, which on RP2350 is a single
- * 4 KB bank - and its default is 2 KB of that. LVGL's software renderer
- * recurses through the widget tree and nests its blend and mask paths, and the
- * vendor panel driver builds a per-row fill buffer on the stack as well, so
- * 2 KB is not enough. A stack that overruns there does not report itself; it
- * appears as a hard fault somewhere inside a draw, which is a thoroughly
- * miserable thing to chase on a bench.
+ * 4 KB bank - and its default is 2 KB of that. The vendor panel driver builds
+ * a per-row fill buffer on the stack, and a stack that overruns there does not
+ * report itself: it appears as a hard fault somewhere inside a draw, which is
+ * a thoroughly miserable thing to chase on a bench.
  *
  * 4 KB - all of SCRATCH_X - would still be tight, so the stack goes in main
  * SRAM instead and is sized generously. The cost is that core 1's stack
@@ -184,49 +183,95 @@ static void Core1ReportFace(uint32_t NowMs, uint8_t Page, bool Verbose)
 }
 
 
-#if DASH_HAVE_LVGL
+#if DASH_HAVE_PANEL
+/***************************************************************************************/
+/* The pre-rendered dial for a page, or NULL if there is not one.
+
+   Element 0: every page has exactly one gauge for now. When a page carries
+   more than one, this becomes a loop over the page's elements and the buffer
+   takes each face at its own position. */
+static const DashFace_t *Core1Face(uint8_t Page)
+{
+	uint8_t i;
+
+	for (i = 0; i < DashFaceCount; i++)
+	{
+		if (DashFaces[i].Page == Page && DashFaces[i].Element == 0u)
+			return &DashFaces[i];
+	}
+
+	return NULL;
+}
+
+
 /***************************************************************************************/
 /* Core 1: the display, one panel frame per loop.
  *
- * The loop is clocked by the panel, not by timers - see Panel_FrameLoopBegin()
- * for why. Each pass runs LVGL's input and animation timers, eases every
- * gauge towards its reading by however long the last frame took, and renders.
- * The needle's flush waits for the TE pulse, so rendering is what paces the
- * loop; a frame with nothing to draw waits for the pulse instead. Either way
- * every pass is one scan, and the needle moves a little on every one.
+ * The loop is clocked by the panel. Panel_PushPaletted() waits for the TE
+ * pulse and returns once the last pixel has been clocked out, so the loop
+ * runs at exactly the scan rate with no timer in it anywhere.
  *
- * Status goes out every STATUS_PERIOD_MS from here too. Printing it can cost
- * a frame, once every two seconds. */
+ * What it sends today is the whole screen, every frame: the dial and nothing
+ * over it. That is deliberately the most expensive thing this pipeline will
+ * ever be asked to do - 434 KB a frame, about 9 ms on the wire - because it is
+ * the measurement RENDERER_PLAN.md phase 0 wants before the needle, the text
+ * and the dirty rectangles go back on top of it. The real renderer sends a
+ * rectangle a fraction of that size.
+ *
+ * Status goes out every STATUS_PERIOD_MS from here too. Printing it costs a
+ * frame, once every two seconds. */
 static void Core1Main(void)
 {
 	uint32_t NextStatusMs = 0;
-	uint32_t LastFrameUs;
+	uint8_t LastPage = 0xFFu;
 
 	Panel_Init();
-	UiLvgl_Init();
-	Panel_FrameLoopBegin();
-	LastFrameUs = time_us_32();
+	UiDraw_Init();
 
 	for (;;)
 	{
-		uint32_t NowUs = time_us_32();
 		uint32_t NowMs = to_ms_since_boot(get_absolute_time());
-		uint32_t RefreshesBefore;
-
-		/* Touch, gestures and the page crossfade. LVGL's own redraw timer is
-		   paused, so this never draws. */
-		Panel_Alive(PANEL_STAGE_LV_TIMER);
-		(void)Panel_Service();
+		uint8_t Page = Pages_Effective(NowMs);
 
 		Panel_Alive(PANEL_STAGE_UI_UPDATE);
-		UiLvgl_Update(NowMs, NowUs - LastFrameUs);
-		LastFrameUs = NowUs;
+		Panel_TouchService();
 
-		Panel_Alive(PANEL_STAGE_LV_TIMER);
-		RefreshesBefore = Panel_Refreshes();
-		Panel_RenderNow();
-		if (Panel_Refreshes() == RefreshesBefore)
-			Panel_WaitFrame();
+		if (Page != LastPage)
+		{
+			const DashFace_t *Face = Core1Face(Page);
+
+			Panel_Alive(PANEL_STAGE_DRAW);
+			UiDraw_Init();
+
+			if (Face != NULL)
+			{
+				/* Centred. The face is 447 of 466 pixels, an odd size in an
+				   even screen, so one margin is a pixel wider than the other
+				   - which is where the element's real position from Pages[]
+				   goes when there is more than one gauge on a page. */
+				int32_t X = (PANEL_WIDTH - Face->Width) / 2;
+				int32_t Y = (PANEL_HEIGHT - Face->Height) / 2;
+
+				if (!UiDraw_LoadFace(Face, X, Y))
+					printf("face p%u: does not fit, or more than %u colours "
+					       "- showing it anyway, wrongly\n",
+					       Page, (unsigned)UI_DRAW_PALETTE_MAX);
+
+				printf("face p%u: loaded in %luus, palette %u of %u\n",
+				       Page, (unsigned long)UiDraw_LoadUs(),
+				       UiDraw_PaletteUsed(), (unsigned)UI_DRAW_PALETTE_MAX);
+			}
+			else
+			{
+				printf("face p%u: none pre-rendered - black\n", Page);
+			}
+
+			LastPage = Page;
+		}
+
+		Panel_Alive(PANEL_STAGE_PUSH);
+		Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH, UiDraw_Palette(),
+		                   0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1);
 
 		if ((int32_t)(NowMs - NextStatusMs) >= 0)
 		{
@@ -247,8 +292,7 @@ static void Core1Main(void)
 
 			printf("node %u  page %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",
-			       DashNodeId, Pages_Effective(NowMs),
-			       LinkText,
+			       DashNodeId, Page, LinkText,
 			       (unsigned long)Panel_Flushes(),
 			       Panel_TouchPresent() ? "ok" : "ABSENT",
 			       (unsigned long)Panel_TouchReports(),
@@ -256,40 +300,35 @@ static void Core1Main(void)
 			printf("  int %lu up / %lu down",
 			       (unsigned long)Panel_TouchRiseEdges(),
 			       (unsigned long)Panel_TouchFallEdges());
-			printf("\n  refresh %lu  last %lums/%lupx  worst %lums",
-			       (unsigned long)Panel_Refreshes(),
-			       (unsigned long)Panel_RefreshLastMs(),
-			       (unsigned long)Panel_RefreshLastPx(),
-			       (unsigned long)Panel_RefreshMaxMs());
-			/* 32-bit on purpose. %llu printed garbage at -O2 - the value
-			   read a word out - and the low half of a microsecond counter
-			   does not wrap for 71 minutes, so it is enough to diff over a
-			   benchmark window. */
 			{
-				uint32_t HeapUsed, HeapPeak, HeapTotal;
+				PanelPush_t Push;
 
-				Panel_Heap(&HeapUsed, &HeapPeak, &HeapTotal);
-				printf("\n  heap %lu used %lu peak of %lu",
-				       (unsigned long)HeapUsed, (unsigned long)HeapPeak,
-				       (unsigned long)HeapTotal);
+				Panel_Push(&Push);
+				printf("\n  push %lu  chunks %lu  starved %lu"
+				       "  last %luus = convert %lu + blocked %lu",
+				       (unsigned long)Push.Frames,
+				       (unsigned long)Push.Chunks,
+				       (unsigned long)Push.Starved,
+				       (unsigned long)Push.LastTotalUs,
+				       (unsigned long)Push.LastConvertUs,
+				       (unsigned long)Push.LastBlockedUs);
 			}
 			{
 				PanelTe_t Te;
 
 				Panel_Te(&Te);
 				printf("\n  te %s  edges %lu  period %luus  waits %lu"
-				       "  timeouts %lu  avg wait %luus",
+				       "  timeouts %lu  avg wait %luus  late %lu",
 				       Te.Enabled ? "on" : "OFF (no edges)",
 				       (unsigned long)Te.Edges, (unsigned long)Te.PeriodUs,
 				       (unsigned long)Te.Waits, (unsigned long)Te.Timeouts,
-				       (unsigned long)Te.AvgWaitUs);
-				printf("\n  needle waits %lu  late %lu  unsynced %lu  after te last %luus  max %luus",
-				       (unsigned long)Te.NeedleWaits,
-				       (unsigned long)Te.LateFrames,
-				       (unsigned long)Te.FollowOns,
-				       (unsigned long)Te.FollowOnLastUs,
-				       (unsigned long)Te.FollowOnMaxUs);
+				       (unsigned long)Te.AvgWaitUs,
+				       (unsigned long)Te.LateFrames);
 			}
+			/* 32-bit on purpose. %llu printed garbage at -O2 - the value read
+			   a word out - and the low half of a microsecond counter does not
+			   wrap for 71 minutes, so it is enough to diff over a benchmark
+			   window. */
 			printf("\n  bench us %lu px %lu",
 			       (unsigned long)(Panel_RenderTotalUs() & 0xFFFFFFFFu),
 			       (unsigned long)(Panel_RenderTotalPx() & 0xFFFFFFFFu));
@@ -307,7 +346,7 @@ static void Core1Main(void)
 				       (unsigned long)Panel_FlushTimeouts());
 			printf("\n");
 
-			Core1ReportFace(NowMs, Pages_Effective(NowMs), false);
+			Core1ReportFace(NowMs, Page, false);
 		}
 	}
 }
@@ -345,12 +384,12 @@ int main(void)
 #if DASH_SIMULATE
 	uint32_t NextSimMs = 0;
 #endif
-#if DASH_HAVE_LVGL
+#if DASH_HAVE_PANEL
 	uint32_t NextStageReportMs = 0;
 	uint32_t LastAliveCount = 0;
 #endif
 
-#if DASH_HAVE_LVGL
+#if DASH_HAVE_PANEL
 	/* Before stdio and before CanLink_Init(): this raises the system clock to
 	   the frequency the panel's PIO divider is chosen against, and can2040
 	   computes its bit timing from clock_get_hz(clk_sys) once, at startup. A
@@ -394,7 +433,7 @@ int main(void)
 	printf("built without can2040 - see README; no telemetry will arrive\n");
 #endif
 
-#if DASH_HAVE_LVGL
+#if DASH_HAVE_PANEL
 	multicore_launch_core1_with_stack(Core1Main, Core1Stack,
 	                                  sizeof(Core1Stack));
 #else
@@ -417,7 +456,7 @@ int main(void)
 		}
 #endif
 
-#if DASH_HAVE_LVGL
+#if DASH_HAVE_PANEL
 		/* Watch core 1 for a stall. Core 0 is the one that cannot hang here -
 		   it owns USB - so this is the only place from which a wedged renderer
 		   can be seen at all.

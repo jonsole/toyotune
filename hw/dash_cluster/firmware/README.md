@@ -2,18 +2,23 @@
 
 RP2350 firmware for one gauge of the three-node dash cluster. The design
 decisions behind it — and the reasoning that is expensive to rediscover — are
-in [`../PLAN.md`](../PLAN.md); this file is only how to build and what is
-here.
+in [`../PLAN.md`](../PLAN.md), with the display layer's own rewrite in
+[`../RENDERER_PLAN.md`](../RENDERER_PLAN.md); this file is only how to build
+and what is here.
 
-**Status: running on the board, no telemetry yet. The LVGL 9 port builds
-clean and passes the host tests, but has not been seen on hardware** because
-the board was disconnected before it could be flashed. The panel is up: LVGL
-renders the page tables through partial draw buffers to the CO5300, the
-CST9217 identifies itself on I2C, and the node reports itself over USB serial
-every two seconds. What has not been exercised is the other end — no Toyotune
-board has been put on the bus with this yet, so every gauge currently reads
-`--` and the console says `LINK DOWN`. Milestone M4, whether can2040 survives
-the panel's DMA bursts, is still open and still gates the PCB.
+**Status: LVGL has been taken out of the firmware, and what replaced it has
+not been on the glass yet.** The node draws through its own renderer now —
+`src/ui_draw.c`, an 8-bit paletted back buffer the size of the screen — and
+`src/panel.c` converts it to RGB565 on its way to the CO5300. It builds clean
+under `-Wall -Wextra -Wconversion` and the 372 host checks pass, but **the
+board has been disconnected from USB throughout, so nothing here has been
+flashed or seen running.** Read every statement about what it looks like as
+untested.
+
+What was already true before the change still is. No Toyotune board has been
+put on the bus with this yet, so every gauge reads `--` and the console says
+`LINK DOWN`. Milestone M4, whether can2040 survives the panel's DMA bursts, is
+still open and still gates the PCB.
 
 ## Build
 
@@ -53,80 +58,100 @@ exactly the failure that survives a bench test.
 
 ## External dependencies
 
-Neither is vendored — both are maintained projects with public git history, so
-a copy here would only hide which revision is in use. `external/` is
-gitignored; clone them from the repo root, or pass `-DCAN2040_PATH=` /
-`-DLVGL_PATH=`:
+**can2040 is the only one the firmware has.** It is not vendored — it is a
+maintained project with public git history, so a copy here would only hide
+which revision is in use. `external/` is gitignored; clone it from the repo
+root, or pass `-DCAN2040_PATH=`:
 
 ```
 git clone https://github.com/KevinOConnor/can2040     external/can2040
+```
+
+The firmware builds without it and says so on the console rather than silently
+receiving nothing. That is what lets the parts that need no bus be worked on
+meanwhile. The display layer has its own switch, the CMake option
+`DASH_HAVE_PANEL` (default ON); turn it off and core 1 prints what it would
+have drawn instead of drawing it.
+
+**LVGL is needed only to regenerate the faces**, not to build the firmware.
+The dials are pre-rendered pictures, built on the PC by `tools/face_render`,
+and that tool is the only thing left in this tree that links LVGL:
+
+```
 git clone -b v9.5.0 https://github.com/lvgl/lvgl      external/lvgl
+python tools/face_render/build_faces.py
 ```
 
 Built against:
 
 | | revision | |
 |---|---|---|
-| LVGL | `85aa60d18b3d5e5588d7b247abf90198f07c8a63` | 9.5.0 |
 | can2040 | `2988d4f11d8bff93f5a3d317fcd5e384a6aa3481` | master, 2026-09-12 |
+| LVGL (face renderer only) | `85aa60d18b3d5e5588d7b247abf90198f07c8a63` | 9.5.0 |
 
-The firmware builds without either and says so on the console rather than
-silently doing nothing. That is what lets the parts that need no bus and no
-panel be worked on meanwhile — and without LVGL, core 1 prints what it would
-have drawn instead of drawing it.
+`lv_conf.h` still lives here rather than next to the LVGL checkout, because
+`tools/face_render/lv_conf.h` wraps it: the dial is only a faithful picture of
+what the board draws if the fonts, colour depth and every drawing option match,
+so there is one configuration and the renderer overrides the two or three lines
+that cannot apply on a PC. Nothing in `src/` reads it any more.
 
-`lv_conf.h` lives here rather than next to the LVGL checkout, and is
-deliberately minimal: LVGL supplies a default for every option it knows about,
-so each line in that file is a decision rather than an inherited template. The
-setting that will silently ruin the display if changed is `LV_COLOR_DEPTH`,
-together with `LV_DRAW_SW_SUPPORT_RGB565_SWAPPED`; `panel.c` has an `#error` on
-both.
+## The renderer
 
-### Moving from LVGL 8 to 9
+LVGL was doing very little at a real cost. The dial is a picture rendered once
+on the PC; what the toolkit drew at runtime was a line and a few glyphs over
+it, for 5.5 ms of a 16.8 ms scan, 260 KB of flash and 234 KB of SRAM between
+its heap, its draw buffer and the hot code the build pulls into
+`.time_critical`. `../RENDERER_PLAN.md` has the measurements and the argument;
+the short version is that two findings made the replacement small — the faces
+need only **151 distinct colours** across both dials, so a 256-entry palette is
+lossless rather than a quantisation, and nothing drawn live needs
+anti-aliasing at 266 dpi.
 
-Only `panel.c` and `ui_lvgl.c` bind to LVGL, and the vendor drivers do not:
-their LVGL glue was never used, only their panel and touch code. So the port
-was contained, but plenty that was configuration in v8 is a runtime call in v9:
+What came out of it, `arm-none-eabi-size -A` either side:
 
-| v8 | v9 |
-|---|---|
-| `lv_disp_drv_t` + `lv_disp_drv_register` | `lv_display_create` + setters |
-| `lv_disp_draw_buf_init`, size in **pixels** | `lv_display_set_buffers`, size in **bytes** |
-| `lv_color_t` draw buffers | `uint8_t` buffers. `lv_color_t` is RGB888 in v9 and is no longer the pixel type |
-| `LV_COLOR_16_SWAP` | `LV_COLOR_FORMAT_RGB565_SWAPPED` via `lv_display_set_color_format` |
-| `disp_drv.rounder_cb` | an `LV_EVENT_INVALIDATE_AREA` handler |
-| `disp_drv.monitor_cb` | timed between `LV_EVENT_RENDER_START` and `LV_EVENT_RENDER_READY` |
-| `LV_TICK_CUSTOM` | `lv_tick_set_cb()` at runtime |
-| `lv_coord_t` | `int32_t` |
-| `LV_USE_PERF_MONITOR` | the same, but gated behind `LV_USE_SYSMON` |
+| | with LVGL | without |
+|---|---|---|
+| `.text` | 365,896 | 42,280 |
+| `.rodata` | 899,488 | 803,744 |
+| `.data` | 123,496 | 4,364 |
+| `.bss` | 238,408 | 244,940 |
+| SRAM | 364,224 B (356 KB) | 251,624 B (246 KB) |
 
-Three traps, each of which stops the build or the display dead:
+**SRAM use fell by about 110 KB while gaining a 212 KB back buffer**, which is
+the number that makes the whole thing worth doing: LVGL's heap, its
+`.time_critical` code and the 91 KB partial draw buffer together cost more than
+a full framebuffer does. Flash went from about 1,265 KB to about 850 KB, most
+of what is left being the two 447x447 faces in `.rodata`.
 
-- **`lv_conf.h` may not `#include` anything unguarded.** v9 preprocesses it
-  from assembly as well, because its Helium blend routine is a `.S`, so a C
-  header there is handed to the assembler. LVGL's own template says to wrap any
-  include in an `__ASSEMBLY__` guard. v8 tolerated the bare `<stdint.h>` that
-  used to be at the top of this file because it had no assembly sources.
-- **v9 links its examples into the `lvgl` target itself**, with
-  `target_link_libraries(lvgl PUBLIC lvgl_examples)`. They are not an optional
-  extra to be ignored: with widgets disabled they fail to compile and take the
-  whole build with them. `CONFIG_LV_BUILD_EXAMPLES` and `_DEMOS` are forced
-  off.
-- **The byte order must not cost a pass.** v9's own header suggests calling
-  `lv_draw_sw_rgb565_swap()` inside the flush, which is an extra sweep of every
-  buffer. Rendering straight into `RGB565_SWAPPED` is free and is what
-  `panel.c` does, since the software blender has a real destination path for
-  it.
+The shape of it:
 
-**Flash grew from 313 KB to 575 KB on the move.** The bulk is v9 compiling a
-software blend path for every possible destination colour format:
-`argb8888`, `rgb565`, `i1`, `al88`, `rgb888`, `l8` and more, around 82 KB of
-them, where this build renders into exactly one. The `LV_DRAW_SW_SUPPORT_*`
-options switch the unused ones off, but LVGL warns that some features reach for
-particular formats internally, gradients for RGB888 and transparency for
-ARGB8888, so it is a change to make with the panel in front of you rather than
-on faith. There is no capacity problem at 575 KB of 4 MB, but smaller code
-means less XIP cache pressure, which is what milestone M4 cares about.
+- **`src/ui_draw.c` — the back buffer.** 466x466 at one byte a pixel is 212 KB
+  and fits; at RGB565 it would be 434 KB and would not. Faces are palettised
+  into it at boot, colours claimed as they are met, and `UiDraw_PaletteFull()`
+  reports an overflow loudly rather than leaving the caller to believe 256 was
+  enough. Index 0 is claimed for black first, so a cleared buffer is a black
+  screen rather than whatever colour was seen first.
+- **`Panel_PushPaletted()` — the way out.** It sends a rectangle of palette
+  indices under a **single window command and a single chip select**,
+  converting 8 lines at a time into one of two small scratch buffers while the
+  DMA is still clocking out the previous chunk. At the measured 46.9 MB/s a
+  chunk is 159 µs on the wire against a conversion of a byte load, a lookup and
+  a halfword store per pixel, so the CPU stays ahead; `PanelPush_t.Starved`
+  counts the chunks where it did not and the bus went idle waiting.
+- **The first chunk is started by the TE interrupt itself.** It is converted
+  before the wait, so the frame begins at the pulse rather than whenever core 1
+  next notices one. Sending a frame that is not aligned to the panel's scan is
+  what tearing is, and `Panel_WaitTe()` exists for a caller that wants the
+  cadence without sending anything.
+
+What the native renderer does **not** do yet: the needle and the value text are
+not drawn, so core 1 currently pushes the whole screen every frame — the dial
+and nothing over it. That is deliberately the most expensive thing this
+pipeline will ever be asked to do, 434 KB and about 9 ms a frame, and it is the
+measurement wanted before dirty rectangles put it back near half a millisecond.
+`src/dash_font_value_56.c` went with LVGL; `tools/gen_font.py` still emits
+LVGL's `lv_font_fmt_txt` and gains a plain-struct format when live text is
+written.
 
 ## What is here
 
@@ -137,20 +162,38 @@ means less XIP cache pressure, which is what milestone M4 cares about.
 | `signal_store.[ch]` | Seqlock storage across the two cores, plus staleness |
 | `node_id.[ch]` | Which gauge this board is, from a resistor divider |
 | `pages.[ch]` | The page list, startup assignment, and the fault takeover |
-| `ui_model.[ch]` | What a widget should show — tested, LVGL-free |
-| `ui_lvgl.[ch]` | The LVGL binding — mechanical, needs LVGL |
-| `panel.[ch]` | The CO5300 and CST9217, as an LVGL display and input device |
+| `ui_model.[ch]` | What a widget should show — tested, display-free |
+| `ui_draw.[ch]` | The paletted back buffer and its palette |
+| `ui_gauge.h` | Dial and needle geometry — shared with the face renderer, and LVGL-free, because the needle is to be drawn live and has to land on the pre-rendered graduations to the pixel |
+| `dash_faces.[ch]` | The pre-rendered dials. **Generated** — see `tools/face_render` |
+| `panel.[ch]` | The CO5300 and CST9217: QSPI/PIO/DMA transport, TE sync, touch |
 | `can_link.[ch]` | can2040 setup, receive callback, node heartbeat |
 | `main.c` | Boot and the core split |
-| `lv_conf.h` | LVGL configuration — only the settings that differ from default |
+| `lv_conf.h` | LVGL configuration — for `tools/face_render` alone |
+| `tools/face_render/` | The PC tool that draws the dials, and the only LVGL left: `ui_gauge.c`, its two fonts, and `ui_gauge_scale.h` |
+| `tools/gen_font.py` | Bitmap fonts from a TTF |
 | `vendor/` | Waveshare's drivers, as delivered — see `vendor/README.md` |
 | `test/psram_probe.c` | Standalone: is PSRAM fitted? (Answer: no) |
 
 `panel.c` is where the vendor drivers are corrected rather than in
-`vendor/`, so a future vendor release still diffs cleanly. Five of their
-mistakes are written up in `vendor/README.md`; two of them present as a board
+`vendor/`, so a future vendor release still diffs cleanly. Eight findings are
+written up in `vendor/README.md`; two of them present as a board
 that enumerates over USB and prints absolutely nothing, so read that file
 before changing anything in the display bring-up path.
+
+Two corrections are worth naming here because they outlived LVGL and are easy
+to undo:
+
+- **Chip select must not be raised when the DMA finishes.** A finished DMA
+  only means the last byte reached the PIO FIFO, not that it has been clocked
+  out. The vendor's completion handler raises CS there; ours drains the FIFO
+  first, under a bounded spin — `Panel_DrainSpinsMax()` is the evidence that
+  the bound is generous rather than lucky.
+- **The CO5300 takes its column window in 2-pixel units**, so an odd column
+  start is rounded by the panel and the strip lands a pixel out. Every window
+  goes through `Panel_RoundArea()`, which rounds starts down and ends up so
+  widths and heights come out even too. The row rounding was originally there
+  for LVGL's banding and is kept: the column rule is the panel's own.
 
 ### The split that matters
 
@@ -158,18 +201,21 @@ Core 0 runs can2040 and decode; core 1 renders. can2040 decodes the bus in a
 PIO interrupt and is sensitive to interrupt latency, so keeping the renderer
 off that core means a long draw cannot delay a CAN bit.
 
-`ui_model.c` is separate from `ui_lvgl.c` for the same kind of reason. The
+`ui_model.c` is separate from `ui_draw.c` for the same kind of reason. The
 interesting decisions in a gauge are not the drawing — they are what counts as
 stale, where a needle sits when the value is off-scale, and what a widget
 shows before any frame has arrived. Those are decided in code that builds and
-is tested on a host; the LVGL file is left as a mechanical translation small
-enough to confirm by eye.
+is tested on a host; the drawing is left small enough to confirm by eye.
 
 ## What is deliberately missing
 
-- **The panel driver.** The CO5300 QSPI flush callback and the CST9217 touch
-  read callback are the only genuinely hardware-specific parts, and they come
-  from Waveshare's driver. Everything above them is written.
+- **The live half of the renderer.** The needle, the value text and dirty
+  rectangles, in that order — see `../RENDERER_PLAN.md`. Until they exist the
+  dial is static and the whole screen is sent every frame.
+- **Touch gestures.** `Panel_TouchService()` and `Panel_TouchDown()` hold a
+  press across the finger's travel, which is what a swipe needs and what the
+  vendor's latch-per-interrupt handler could not do, but nothing measures
+  press against release yet.
 - **Page persistence.** The selected page should survive an ignition cycle,
   written to flash only on change. `Pages_Init()` already takes a restored
   index; nothing stores one yet.
@@ -185,23 +231,41 @@ Both are in `PLAN.md` and both need the board:
    Note the published pinout image is now known to be wrong in two places
    (`vendor/README.md`, finding 3), so this wants the schematic.
 2. Whether can2040 survives the panel's DMA bursts. That is milestone M4, and
-   it gates the PCB. The panel currently issues around 180 flush DMAs a second
-   with an idle bus; what that does to CAN bit timing is untested, because
-   nothing has been on the bus with it yet.
+   it gates the PCB. What competes with can2040 is the share of wall-clock time
+   the panel is mid-burst, not the frame rate, which is why
+   `Panel_FlushBusyUsPerFrame()` is measured rather than derived — and a
+   full-screen push every frame is the worst case it will ever face.
 
 ## Reading the console
 
 USB CDC discards everything printed before a host attaches, and this board
 powers up with the ignition — so the boot banner is invisible to everyone in
 practice. Anything worth knowing is repeated in a status line every two
-seconds:
+seconds. Its shape, with illustrative values — this build has not been run, so
+these are not a capture:
 
 ```
-node 0  page 0  LINK DOWN  flush 2172  touch ok 0 @233,233
+node 0  page 0  LINK DOWN  flush 2172  touch ok rep 0 press 0 @233,233
+  int 0 up / 0 down
+  push 118  chunks 6844  starved 0  last 9300us = convert 3100 + blocked 6200
+  te on  edges 7104  period 16667us  waits 118  timeouts 0  avg wait 900us  late 0
+  bench us 1098000 px 25612792
+  rounded 0  overlap dma 0 cs 0
+  bus 46.9 MB/s  9300us/frame  drain<=3
   node 0: no telemetry, none ever received
 ```
 
-`flush` should climb, `flush-timeout` should never appear, `touch` should say
-`ok`, and the count after it is presses — if it moves when a finger lands, the
-whole I2C path works. The host must raise DTR or the firmware's output is
-thrown away; see the `rp2350-build` skill.
+`flush` and `push` should climb, `flush-timeout` should never appear, `te`
+should say `on` with `period` near 16,667 µs, and `touch` should say `ok` —
+the count after it is presses, and if it moves when a finger lands, the whole
+I2C path works.
+
+The two push figures are the ones to read together. A frame held down by
+`blocked` is bus-bound and only a smaller rectangle will help; one held down by
+`convert` with `starved` climbing is CPU-bound, and the conversion loop is
+where to look.
+
+The host must raise DTR or the firmware's output is thrown away; see the
+`rp2350-build` skill. And if core 1 wedges during bring-up, core 0 prints the
+stage it wedged on rather than leaving a silent board — that silence used to be
+the symptom of every panel fault in this project.

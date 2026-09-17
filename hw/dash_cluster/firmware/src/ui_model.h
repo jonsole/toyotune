@@ -12,10 +12,10 @@
  * pinned at zero looks like an idling engine, not like a dead bus.
  *
  * So they are decided here, in code that builds and is tested on a host, and
- * ui_lvgl.c is left as a mechanical translation into lv_arc/lv_label/lv_bar
- * calls. The binding is small enough to read and confirm by eye; the
- * judgements are small enough to test exhaustively. Neither would be true of
- * one file that did both.
+ * ui_draw.c is left with the drawing: spans, glyphs and pixels, none of which
+ * has an opinion about what a reading means. The renderer is small enough to
+ * read and confirm by eye; the judgements are small enough to test
+ * exhaustively. Neither would be true of one file that did both.
  */
 
 #ifndef UI_MODEL_H_

@@ -1,27 +1,24 @@
 /*
  * ui_gauge.h
  *
- * The needle gauge's geometry and dial, shared by the firmware and the face
- * renderer.
+ * The needle gauge's geometry, shared by the firmware and the face renderer.
  *
- * A gauge's graduations and numbers are not drawn live any more. They are
- * rendered once on the PC by tools/face_render - with this same LVGL checkout,
- * this same lv_conf.h and this same UiGauge_CreateScale() - and embedded in the
- * firmware as an image (src/dash_faces.c). Measured on the board, lv_scale
- * spent about two thirds of every frame regenerating ticks and labels outside
- * the area being redrawn; a picture costs a copy.
+ * A gauge's graduations and numbers are not drawn live. They are rendered once
+ * on the PC by tools/face_render - which is the only place LVGL is still used
+ * - and embedded here as an image (src/dash_faces.c).
  *
- * The needle is still drawn live, in ui_lvgl.c, and it has to land on those
- * pre-rendered graduations: the same start angle, the same sweep, the same
- * placement to the pixel. So both sides take all of it from here rather than
- * each keeping a copy that could drift.
+ * The needle IS drawn live, and it has to land on those pre-rendered
+ * graduations: the same start angle, the same sweep, the same placement to the
+ * pixel. So both sides take all of it from here rather than each keeping a
+ * copy that could drift - which is why this header has no LVGL in it. The
+ * dial-building half lives beside the renderer, in
+ * tools/face_render/ui_gauge_scale.h.
  */
 #ifndef UI_GAUGE_H_
 #define UI_GAUGE_H_
 
 #include <stdint.h>
 
-#include "lvgl.h"
 #include "pages.h"
 
 /* How far a gauge sweeps, and where it starts.
@@ -75,6 +72,23 @@
    it is baked into the pre-rendered face and costs nothing per frame. */
 #define UI_GAUGE_RING_WIDTH		(3)
 
+/* The warning band, drawn as separate blocks between the ticks rather than one
+   continuous arc - the graduations show through the gaps and stand proud of
+   the blocks, as on the car's own dial. One block per minor-tick interval.
+   INSET is how far inside the rim the blocks sit, so the ticks reach past
+   them; GAP_DEG is the angular space left around each tick.
+
+   GAP_DEG is the space either side of a tick, and it is deliberately small: the
+   blocks should come right up to the graduations. There is only about eight
+   degrees between minor ticks, so three degrees a side left two-degree blocks
+   adrift in the middle of each gap. One degree still clears a tick, whose 3 px
+   stroke is about 0.8 degrees wide at this radius, even with the half-degree of
+   rounding lv_arc costs - it takes whole degrees while lv_scale places its
+   ticks to a tenth. */
+#define UI_GAUGE_BAND_INSET		(3)
+#define UI_GAUGE_BAND_WIDTH		(16)
+#define UI_GAUGE_BAND_GAP_DEG		(1)
+
 /* The dial's radius, as both the needle and the ring measure it. */
 static inline int32_t UiGauge_Radius(int32_t W, int32_t H)
 {
@@ -106,15 +120,5 @@ static inline int32_t UiGauge_Pct(uint8_t Percent, int32_t Extent)
 {
 	return (int32_t)(((int32_t)Percent * Extent) / 100);
 }
-
-/* The dial itself - graduations and numbers - as an lv_scale in the NORMAL
-   state's colours, at X/Y/W/H in the parent's coordinates.
-
-   The face renderer snapshots exactly this to make the embedded image. The
-   firmware only calls it when a gauge has no image, or its image no longer
-   fits the element, so the face is still drawn - just slowly - rather than
-   missing. */
-extern lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
-                                     int32_t X, int32_t Y, int32_t W, int32_t H);
 
 #endif /* UI_GAUGE_H_ */

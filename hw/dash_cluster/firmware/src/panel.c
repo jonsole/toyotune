@@ -1,7 +1,8 @@
 /*
  * panel.c
  *
- * The CO5300 AMOLED and the CST9217 touch controller, bound to LVGL.
+ * The CO5300 AMOLED and the CST9217 touch controller: the transport, and
+ * nothing above it.
  *
  * The transport, the panel init sequence and the touch register map all come
  * from Waveshare's drivers in firmware/vendor/ - see vendor/README.md for
@@ -10,13 +11,12 @@
  * is wrong are corrected here instead of there. Three of them:
  *
  *  1. THE DRAW BUFFER. Their example allocates
- *     malloc(DISP_HOR_RES * DISP_VER_RES) - a count in bytes - and tells LVGL
- *     that number of PIXELS, so LVGL believes it has twice the memory it was
- *     given: a 212 KB overflow. The buffers here are static lv_color_t arrays
- *     and the count handed to LVGL is the array length, so the unit cannot
- *     drift from the allocation. They are also partial rather than
- *     full-screen, because no PSRAM is fitted (measured - see
- *     test/psram_probe.c) and a 424 KB framebuffer does not fit.
+ *     malloc(DISP_HOR_RES * DISP_VER_RES) - a count in BYTES - and then uses
+ *     it as though it held that many PIXELS: a 212 KB overflow. There is no
+ *     such buffer here at all. The renderer keeps one 8-bit paletted back
+ *     buffer (ui_draw.c) and this file converts it to RGB565 a chunk of lines
+ *     at a time on its way out, so nothing ever holds a 434 KB frame - which
+ *     is just as well, since no PSRAM is fitted (measured, test/psram_probe.c).
  *
  *  2. CHIP SELECT AFTER THE DMA. Their completion handler raises chip select
  *     as soon as the DMA finishes, but a finished DMA only means the last byte
@@ -24,12 +24,12 @@
  *     in Panel_FlushDoneIrq().
  *
  *  3. TOUCH AS AN INTERRUPT. Their handler latches a press per interrupt and
- *     releases it on the next read, which LVGL can only ever read as a tap.
- *     Swiping between faces needs the press held while the finger moves, so
- *     this polls. See Panel_TouchRead().
+ *     releases it on the next read, so a swipe can only ever read as a tap.
+ *     Swiping between faces needs the press held while the finger moves. See
+ *     Panel_TouchService().
  *
- * Everything here runs on core 1 except Panel_ClockInit(). LVGL is not
- * thread-safe and nothing in this file may be called from core 0.
+ * Everything here runs on core 1 except Panel_ClockInit(). Nothing in this
+ * file may be called from core 0.
  */
 
 #include <stdio.h>
@@ -42,8 +42,6 @@
 #include "hardware/pio.h"
 #include "hardware/structs/pio.h"
 
-#include "lvgl.h"
-
 /* Vendor. DEV_Config.h carries the pin map and declares the globals dma_tx
    and c - the DMA channel and its config - that their panel driver transmits
    through. The name `c` for a global is theirs; do not shadow it here. */
@@ -54,50 +52,23 @@
 
 #include "panel.h"
 
-/* The panel takes RGB565 high byte first and the flush hands LVGL's buffer
-   straight to DMA, so LVGL has to render it pre-swapped. Wrong and the gauges
-   simply come out in wrong colours - no error, no clue - which is worth an
-   #error rather than a comment.
-
-   v8 arranged this with LV_COLOR_16_SWAP. v9 has no such option: the byte
-   order is a property of the display's colour format, set below with
-   lv_display_set_color_format(), and it only works if the software blender
-   was built with the swapped format compiled in. */
-#if LV_COLOR_DEPTH != 16
-#error "The CO5300 flush path assumes RGB565 - set LV_COLOR_DEPTH 16 in lv_conf.h"
-#endif
-#if LV_DRAW_SW_SUPPORT_RGB565_SWAPPED != 1
-#error "The CO5300 wants the high byte first - LV_DRAW_SW_SUPPORT_RGB565_SWAPPED must be 1"
-#endif
-
-/* Draw buffer height, in whole display lines - and why there is one buffer.
+/* THE CHUNK, AND WHY THE FRAME IS NOT HELD IN 16-BIT FORM ANYWHERE.
  *
- * The needle tore because a frame reached the panel in pieces. The panel scans
- * out of its own memory at its own rate, and a needle update used to arrive as
- * 60-line bands spread over ~45 ms, so a scan could land between two bands and
- * show half an old needle beside half a new one.
+ * A 466x466 RGB565 frame is 434 KB and does not fit. The back buffer is 8-bit
+ * paletted (ui_draw.c, 212 KB) and this file converts it on the way out, a
+ * few lines at a time, into a scratch buffer small enough to be free:
+ * 466 x 8 pixels is 7,456 bytes, and there are two so the CPU can build the
+ * next chunk while the DMA is still clocking out the last one.
  *
- * So the buffer is sized to take a whole ordinary frame at once. LVGL renders
- * an invalid area into it completely and then flushes it, which makes each
- * frame one ~1 ms DMA burst rather than a write smeared across many scans. That
- * only fits because the gauge needle now invalidates just the region it swept
- * (UiLvgl_SetNeedle() in ui_lvgl.c) instead of a square from the corner of the
- * dial - 100 lines of 466 is 46,600 pixels, comfortably above a needle frame.
- * A full-screen redraw, a page change, still goes out in bands; that is a
- * crossfade and does not show a tear the way a moving edge does.
- *
- * One buffer, not two. A second buffer only paid for LVGL rendering the next
- * band while the previous one was on the wire, and a 1 ms transfer leaves
- * nothing worth overlapping. 93 KB, against 110 KB for the old pair.
- *
- * On its own that narrows the tear window from ~42 ms to ~1 ms without closing
- * it, since a scan can still cross a 1 ms burst. Panel_WaitForTe() closes it,
- * by starting each burst at the panel's TE pulse. Reading the scan position
- * from register 45h was tried first and does not work on this board - see
- * vendor/README.md finding 8. */
-#define PANEL_BUF_LINES		(100)
-#define PANEL_BUF_PIXELS	((uint32_t)PANEL_WIDTH * (uint32_t)PANEL_BUF_LINES)
-#define PANEL_BUF_BYTES		(PANEL_BUF_PIXELS * 2u)
+ * Eight lines is chosen so the transfer is comfortably longer than the
+ * conversion. At the measured 46.9 MB/s a chunk takes 159 us on the wire; the
+ * conversion is a byte load, a table lookup and a halfword store per pixel.
+ * If the CPU ever falls behind, nothing breaks - the PIO simply stalls with
+ * chip select still low and the frame takes longer. PanelPush_t.Starved
+ * counts the opposite case, where the DMA finished first and the bus went
+ * idle, which is what says the split is generous. */
+#define PANEL_CHUNK_LINES	(8u)
+#define PANEL_CHUNK_PIXELS	((uint32_t)PANEL_WIDTH * PANEL_CHUNK_LINES)
 
 /* Bound on the PIO drain below. The FIFO holds four words plus one in the
    output shift register - at most 40 nibbles, around 400 ns - so this is
@@ -120,16 +91,24 @@
    never pulses TE would otherwise cost every single frame the full timeout. */
 #define PANEL_TE_GIVE_UP	(5u)
 
-static lv_display_t	       *Disp;
-static lv_indev_t	       *Touch;
+/* The two conversion scratch buffers, and the state the TE interrupt needs to
+   start the first chunk of a frame the moment the pulse arrives. */
+static uint16_t			ChunkBuf[2][PANEL_CHUNK_PIXELS];
 
-/* Byte arrays, not lv_color_t. In v9 lv_color_t is a 24-bit RGB888 struct and
-   is no longer the framebuffer pixel type - the pixel format belongs to the
-   display, so a buffer is just bytes. lv_display_set_buffers() takes its size
-   in bytes too, unlike v8's lv_disp_draw_buf_init() which took pixels, so
-   sizeof() is the right thing to pass and there is no unit left to confuse.
-   That confusion is exactly what broke the vendor example (vendor/README.md). */
-static uint8_t			DrawBuf[PANEL_BUF_BYTES];
+/* Set by Panel_PushPaletted() once the window is open and the first chunk is
+   converted; cleared by the TE interrupt as it starts that chunk's DMA.
+   volatile because the two are different contexts. */
+static volatile bool		PushArmed;
+static const void	       *PushArmData;
+static uint32_t			PushArmBytes;
+static volatile uint32_t	PushStartUs;
+
+static uint32_t			PushFrames;
+static uint32_t			PushChunks;
+static uint32_t			PushStarved;
+static uint32_t			PushLastConvertUs;
+static uint32_t			PushLastBlockedUs;
+static uint32_t			PushLastTotalUs;
 
 /* Last known touch position, held across releases - see Panel_TouchRead(). */
 static int32_t			TouchX;
@@ -138,21 +117,11 @@ static int32_t			TouchY;
 static uint32_t			Flushes;
 static uint32_t			FlushTimeouts;
 
-/* Filled in by LVGL after every refresh. RefreshMaxMs is the one that matters:
-   a page transition invalidates the whole screen, so the worst refresh is a
-   full-screen one and its reciprocal is the frame rate a slide actually gets. */
-static uint32_t			RefreshLastMs;
-static uint32_t			RefreshMaxMs;
-static uint32_t			RenderStartMs;
-
-/* Cumulative render time and pixels over every refresh that drew something,
-   for benchmarking: diff two snapshots to get throughput over a window.
-   Microseconds, because a millisecond tick quantises a 45 ms frame by 2%. */
-static uint32_t			RenderStartUs;
+/* Cumulative render time and pixels over every frame pushed, for
+   benchmarking: diff two snapshots to get throughput over a window.
+   Microseconds, because a millisecond tick quantises a 9 ms frame by 11%. */
 static uint64_t			RenderTotalUs;
 static uint64_t			RenderTotalPx;
-static uint32_t			RefreshLastPx;
-static uint32_t			Refreshes;
 
 /* How long the panel holds the bus, and how much it moves while holding it.
    64-bit because a full screen is 434 KB and this would wrap a 32-bit byte
@@ -176,42 +145,10 @@ static uint32_t			TeSyncWaits;
 static uint32_t			TeSyncTimeouts;
 static uint64_t			TeWaitUs;
 
-/* Which flushes wait for TE - see Panel_Flush().
-
-   SyncArea is where the needle is moving through: its old position joined with
-   its new one, in screen coordinates, accumulated by Panel_SyncArea() since the
-   last render began. RenderStart latches it into FrameSync for the render about
-   to run, so an update arriving mid-frame belongs to the next one. Both are
-   touched only on core 1, where LVGL and the UI run, so there is no race. */
-static bool			SyncValid;
-static int32_t			SyncX1, SyncY1, SyncX2, SyncY2;
-static bool			FrameSyncValid;
-static int32_t			FrameSyncX1, FrameSyncY1, FrameSyncX2, FrameSyncY2;
-
-/* When the needle has not moved, the frame's first area waits instead. Set at
-   the start of each render, cleared by the first flush of it. */
-static bool			TeWaitPending;
-
-/* Flushes that waited because they touched the needle. */
-static uint32_t			TeNeedleWaits;
-
-/* Late frames: a needle flush that went out two or more scans after the
-   previous one although the loop had been busy drawing the whole time - a scan
-   genuinely missed, rather than one with nothing new to show. LastNeedleEdge is
-   the TE edge the last needle flush went out on; FrameLoopIdled is set when
-   the loop waits for a pulse because a frame drew nothing, which excuses the
-   gap. */
+/* Late frames: a push that went out two or more scans after the previous one.
+   At one push per scan this is the count of scans missed. */
 static uint32_t			TeLateFrames;
-static uint32_t			TeLastNeedleEdge;
-static bool			FrameLoopIdled = true;
-
-/* The areas sent without a TE wait of their own, and how long after the TE
-   edge each started. That lateness is their tear risk: an unsynced area only
-   stays clean while the scan has not yet reached its rows. None of them is
-   ever the needle. */
-static uint32_t			TeFollowOns;
-static uint32_t			TeFollowOnLastUs;
-static uint32_t			TeFollowOnMaxUs;
+static uint32_t			TeLastPushEdge;
 
 /* Written by core 1 as Panel_Init() advances, read by core 0 so a hang can be
    named rather than guessed at. See the note in panel.h. */
@@ -251,16 +188,6 @@ static uint16_t			TouchChipType;
 
 
 /***************************************************************************************/
-/* LVGL's millisecond tick. v8 took this as an expression in lv_conf.h; v9 asks
-   for a callback, which is tidier - LVGL no longer needs the SDK headers on
-   its include path just to know the time. */
-static uint32_t Panel_TickMs(void)
-{
-	return to_ms_since_boot(get_absolute_time());
-}
-
-
-/***************************************************************************************/
 void Panel_ClockInit(void)
 {
 	/* 200 MHz, which is what the vendor's PIO clock divider of 1.0 is chosen
@@ -283,7 +210,7 @@ void Panel_ClockInit(void)
 
 
 /***************************************************************************************/
-/* Expand an invalidated area to what the panel can actually address.
+/* Expand an area to what the panel can actually address.
  *
  * The CO5300 takes its column window in 2-pixel units, so an odd column start
  * is rounded by the panel and the strip is drawn one pixel out. That went
@@ -314,43 +241,39 @@ void Panel_ClockInit(void)
  * same pixels. Widening it in the flush instead would send the wrong pixels
  * for the added column or row.
  *
- * This was disp_drv.rounder_cb in v8. v9 deleted that callback and hands the
- * area out through LV_EVENT_INVALIDATE_AREA instead; the arithmetic is
- * untouched, and LVGL still probes it to pick a band height whose ROUNDED
- * height fits the draw buffer.
+ * The banding described above was LVGL's; this renderer sends whole
+ * rectangles. The column rule is the panel's own, though, and outlives it -
+ * every window handed to AMOLED_1IN75_SetWindows() goes through here.
  *
  * Start down to even and end up to odd also makes every width and height even.
  * Both clamps land on values that already have the right parity - 0 is even,
  * 465 is odd - so clamping cannot put the alignment back. */
-static void Panel_InvalidateArea(lv_event_t *Event)
+void Panel_RoundArea(int32_t *X1, int32_t *Y1, int32_t *X2, int32_t *Y2)
 {
-	lv_area_t *Area = lv_event_get_invalidated_area(Event);
 	bool Needed;
 
-	Needed = ((Area->x1 & 1) != 0) || ((Area->x2 & 1) == 0)
-	         || ((Area->y1 & 1) != 0) || ((Area->y2 & 1) == 0);
+	Needed = ((*X1 & 1) != 0) || ((*X2 & 1) == 0)
+	         || ((*Y1 & 1) != 0) || ((*Y2 & 1) == 0);
 
-	if ((Area->x1 & 1) != 0)
-		Area->x1 = (int32_t)(Area->x1 - 1);
-	if ((Area->x2 & 1) == 0)
-		Area->x2 = (int32_t)(Area->x2 + 1);
+	if ((*X1 & 1) != 0)
+		*X1 = *X1 - 1;
+	if ((*X2 & 1) == 0)
+		*X2 = *X2 + 1;
 
-	if ((Area->y1 & 1) != 0)
-		Area->y1 = (int32_t)(Area->y1 - 1);
-	if ((Area->y2 & 1) == 0)
-		Area->y2 = (int32_t)(Area->y2 + 1);
+	if ((*Y1 & 1) != 0)
+		*Y1 = *Y1 - 1;
+	if ((*Y2 & 1) == 0)
+		*Y2 = *Y2 + 1;
 
-	if (Area->x1 < 0)
-		Area->x1 = 0;
-	if (Area->x2 > (int32_t)(PANEL_WIDTH - 1))
-		Area->x2 = (int32_t)(PANEL_WIDTH - 1);
-	if (Area->y1 < 0)
-		Area->y1 = 0;
-	if (Area->y2 > (int32_t)(PANEL_HEIGHT - 1))
-		Area->y2 = (int32_t)(PANEL_HEIGHT - 1);
+	if (*X1 < 0)
+		*X1 = 0;
+	if (*X2 > (int32_t)(PANEL_WIDTH - 1))
+		*X2 = (int32_t)(PANEL_WIDTH - 1);
+	if (*Y1 < 0)
+		*Y1 = 0;
+	if (*Y2 > (int32_t)(PANEL_HEIGHT - 1))
+		*Y2 = (int32_t)(PANEL_HEIGHT - 1);
 
-	/* Counts LVGL's own probe calls from get_max_row() as well as real areas,
-	   so treat it as "is this firing at all" rather than as a frame count. */
 	if (Needed)
 		RoundedAreas++;
 }
@@ -378,7 +301,7 @@ static void Panel_InvalidateArea(lv_event_t *Event)
  * the frame rate capped at the panel's own 60 Hz - which is roughly where this
  * renderer was anyway.
  */
-static void Panel_WaitForTe(void)
+void Panel_WaitTe(void)
 {
 	uint32_t Seen, Start;
 
@@ -405,255 +328,6 @@ static void Panel_WaitForTe(void)
 
 	TeSyncWaits++;
 	TeWaitUs += (uint32_t)(time_us_32() - Start);
-}
-
-
-/***************************************************************************************/
-/* Called by LVGL when a rectangle is ready to go to the glass. Starts the DMA
-   and returns immediately; completion is reported from the interrupt below. */
-static void Panel_Flush(lv_display_t *Display, const lv_area_t *Area,
-                        uint8_t *Pixels)
-{
-	uint32_t Bytes;
-
-	(void)Display;
-
-	/* Both tests, because they fail differently. A busy channel means LVGL
-	   handed us a second area while the first was still moving. Chip select
-	   still low means the channel finished but our completion handler has not
-	   run, so the PIO may not have drained and CS was never raised. */
-	if (dma_channel_is_busy(dma_tx))
-		FlushOverlaps++;
-	if (gpio_get(qspi.pin_cs) == 0)
-		FlushCsOverlaps++;
-
-	/* Two bytes a pixel, from the display's own colour format rather than a
-	   literal - this is the multiplication the vendor example got wrong, and
-	   deriving it means a format change cannot silently halve it. */
-	Bytes = (uint32_t)lv_area_get_width(Area)
-	        * (uint32_t)lv_area_get_height(Area)
-	        * (uint32_t)lv_color_format_get_size(lv_display_get_color_format(Disp));
-
-	/* THE NEEDLE ALWAYS STARTS IN VERTICAL BLANKING.
-	 *
-	 * Any area that touches where the needle was or where it is going waits
-	 * for TE - see Panel_WaitForTe() - so the scan can never show it half
-	 * erased or half drawn. That is decided by the needle's own region, not by
-	 * the order LVGL happens to render in: the rule before this one synced
-	 * whichever area came first in a frame, which is the needle only if LVGL
-	 * put it first.
-	 *
-	 * Other areas - the value label - go straight out without waiting. Waiting
-	 * for every area cost half the frame rate: each wait lands on the NEXT
-	 * edge, so a frame with a needle and a value in it spanned two scans, 30
-	 * fps against the panel's 60 Hz, measured. Their lateness is recorded in
-	 * TeFollowOn*.
-	 *
-	 * When the needle has not moved at all, the frame's first area waits
-	 * instead, so a value or a page change on a still gauge stays clean. */
-	if (FrameSyncValid)
-	{
-		if (Area->x1 <= FrameSyncX2 && Area->x2 >= FrameSyncX1 &&
-		    Area->y1 <= FrameSyncY2 && Area->y2 >= FrameSyncY1)
-		{
-			Panel_WaitForTe();
-			TeNeedleWaits++;
-
-			if (!FrameLoopIdled && TeLastNeedleEdge != 0u
-			    && (uint32_t)(TeEdges - TeLastNeedleEdge) >= 2u)
-				TeLateFrames++;
-			TeLastNeedleEdge = TeEdges;
-			FrameLoopIdled = false;
-		}
-		else
-		{
-			TeFollowOnLastUs = (uint32_t)(time_us_32() - TeLastUs);
-			if (TeFollowOnLastUs > TeFollowOnMaxUs)
-				TeFollowOnMaxUs = TeFollowOnLastUs;
-			TeFollowOns++;
-		}
-	}
-	else if (TeWaitPending)
-	{
-		Panel_WaitForTe();
-		TeWaitPending = false;
-
-		/* A synced frame too, so it counts in the late-frame spacing. */
-		if (!FrameLoopIdled && TeLastNeedleEdge != 0u
-		    && (uint32_t)(TeEdges - TeLastNeedleEdge) >= 2u)
-			TeLateFrames++;
-		TeLastNeedleEdge = TeEdges;
-		FrameLoopIdled = false;
-	}
-	else
-	{
-		TeFollowOnLastUs = (uint32_t)(time_us_32() - TeLastUs);
-		if (TeFollowOnLastUs > TeFollowOnMaxUs)
-			TeFollowOnMaxUs = TeFollowOnLastUs;
-		TeFollowOns++;
-	}
-
-	/* LVGL's area bounds are inclusive; the panel's window registers are not. */
-	AMOLED_1IN75_SetWindows((uint32_t)Area->x1, (uint32_t)Area->y1,
-	                        (uint32_t)Area->x2 + 1u, (uint32_t)Area->y2 + 1u);
-
-	QSPI_Select(qspi);
-	QSPI_Pixel_Write(qspi, 0x2C);
-
-	/* The vendor's own init sets this dreq to the receive direction, which is
-	   wrong; every one of their transmit paths quietly overrides it on the way
-	   past. Set it correctly here too rather than depending on that. */
-	channel_config_set_dreq(&c, pio_get_dreq(qspi.pio, qspi.sm, true));
-
-	FlushBytes += Bytes;
-	RefreshLastPx += (uint32_t)lv_area_get_width(Area)
-	                 * (uint32_t)lv_area_get_height(Area);
-	FlushStartUs = time_us_32();
-
-	/* DMA_SIZE_8, so the count is in bytes. Byte writes to a PIO TX FIFO are
-	   replicated across the word, which is what lets an 8-bit DMA feed a
-	   program whose autopull threshold is 8 and which shifts out of the top of
-	   the register. */
-	dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm], Pixels, Bytes,
-	                      true);
-
-	/* No wait. lv_disp_flush_ready() comes from the interrupt, so LVGL draws
-	   into the other buffer while this one is still on the wire. */
-}
-
-
-/***************************************************************************************/
-/* Refresh timing: how long a redraw took and how many pixels it covered.
-   v8 handed both to a monitor_cb; v9 has no such callback, so the time is
-   taken between LV_EVENT_RENDER_START and LV_EVENT_RENDER_READY and the pixel
-   count is accumulated by the flush. Reported over the serial console, which
-   is why this exists alongside the on-screen LV_USE_PERF_MONITOR - the console
-   figures can be read without a camera pointed at the gauge. */
-static void Panel_RenderStart(lv_event_t *Event)
-{
-	(void)Event;
-
-	RenderStartMs = lv_tick_get();
-	RenderStartUs = time_us_32();
-	RefreshLastPx = 0;
-	TeWaitPending = true;
-
-	FrameSyncValid = SyncValid;
-	FrameSyncX1 = SyncX1;
-	FrameSyncY1 = SyncY1;
-	FrameSyncX2 = SyncX2;
-	FrameSyncY2 = SyncY2;
-	SyncValid = false;
-}
-
-
-/***************************************************************************************/
-void Panel_SyncArea(int32_t X1, int32_t Y1, int32_t X2, int32_t Y2)
-{
-	if (!SyncValid)
-	{
-		SyncX1 = X1;
-		SyncY1 = Y1;
-		SyncX2 = X2;
-		SyncY2 = Y2;
-		SyncValid = true;
-		return;
-	}
-
-	/* More than one update before the next render: the frame has to cover
-	   everywhere the needle went. */
-	if (X1 < SyncX1) SyncX1 = X1;
-	if (Y1 < SyncY1) SyncY1 = Y1;
-	if (X2 > SyncX2) SyncX2 = X2;
-	if (Y2 > SyncY2) SyncY2 = Y2;
-}
-
-
-/***************************************************************************************/
-static void Panel_RenderReady(lv_event_t *Event)
-{
-	uint32_t TimeMs = lv_tick_elaps(RenderStartMs);
-
-	(void)Event;
-
-	/* Ignore refresh cycles that drew nothing. v9 sends these events even when
-	   there was no invalid area, and counting them would bury the real figures
-	   under zeroes - which matters here because unchanged widgets are never
-	   repainted, so most cycles draw nothing at all. */
-	if (RefreshLastPx == 0u)
-		return;
-
-	RefreshLastMs = TimeMs;
-	Refreshes++;
-	RenderTotalUs += (uint32_t)(time_us_32() - RenderStartUs);
-	RenderTotalPx += RefreshLastPx;
-
-	if (TimeMs > RefreshMaxMs)
-		RefreshMaxMs = TimeMs;
-}
-
-
-/***************************************************************************************/
-static void Panel_FlushDoneIrq(void)
-{
-	uint32_t Spins = 0;
-
-	if (!dma_channel_get_irq0_status(dma_tx))
-		return;
-
-	dma_channel_acknowledge_irq0(dma_tx);
-
-	/* A finished DMA means the last byte reached the PIO FIFO, not that it has
-	   been clocked out of it. Four words of FIFO and one in the output shift
-	   register can still be pending, so raising chip select here - which is
-	   what the vendor's handler does - cuts the final pixels off every flushed
-	   rectangle. Small enough to miss in a demo that repaints the whole screen
-	   continuously; not small enough here, where nothing repaints a face that
-	   has not changed, so truncated pixels persist and accumulate.
-
-	   WAIT ON FSTAT, NOT ON TXSTALL.
-	   TXSTALL reads like the exact condition - the state machine sets it when
-	   an autopull finds the FIFO empty - and using it cost two bugs. Clearing
-	   it before the transfer was the first: the 8-bit DMA cannot keep this
-	   state machine fed, measured at 33 MB/s against a 50 MB/s PIO, so it
-	   stalls repeatedly mid-transfer and sets the flag long before the last
-	   byte. Clearing it here and reading it straight back was the second: that
-	   is a posted peripheral write followed by a read of the same register, and
-	   a clear that has not landed yet reads back as still set. Either way the
-	   wait passes immediately on a stale flag and the truncation it exists to
-	   prevent still happens.
-
-	   FSTAT is live status, not a sticky flag, so there is nothing to clear and
-	   nothing to race. */
-	while (!pio_sm_is_tx_fifo_empty(qspi.pio, qspi.sm))
-	{
-		if (++Spins > PANEL_DRAIN_SPINS)
-		{
-			/* Should never happen. Counted rather than ignored because the
-			   alternative reading - a wedged PIO - would otherwise show up
-			   only as a display that has stopped updating. */
-			FlushTimeouts++;
-			break;
-		}
-	}
-
-	/* The FIFO is empty; at most one byte remains in the output shift
-	   register, which is two nibble clocks - four system cycles at this
-	   divider. A microsecond is a hundred times that, and at eight chunks a
-	   frame it costs eight microseconds of a twenty-six millisecond frame. Not
-	   worth being clever about. */
-	busy_wait_us_32(1);
-
-	QSPI_Deselect(qspi);
-	Flushes++;
-
-	/* Measured to here, not to the end of the DMA: the bus is held until chip
-	   select rises, and the drain above is part of holding it. */
-	FlushBusyUs += time_us_32() - FlushStartUs;
-	if (Spins > DrainSpinsMax)
-		DrainSpinsMax = Spins;
-
-	lv_display_flush_ready(Disp);
 }
 
 
@@ -743,6 +417,23 @@ static void Panel_GpioIrq(uint Gpio, uint32_t Events)
 			TePeriodUs = Now - TeLastUs;
 		TeLastUs = Now;
 		TeEdges++;
+
+		/* THE FRAME STARTS HERE, NOT WHEN CORE 1 NOTICES THE EDGE.
+		 *
+		 * Panel_PushPaletted() opens the window, converts the first chunk and
+		 * arms; the transfer itself begins in this handler, so the pixels
+		 * start moving within the interrupt latency of the pulse rather than
+		 * after core 1 has come round its wait loop. Everything needed is
+		 * already in memory, so this is one DMA register write group and
+		 * nothing else. */
+		if (PushArmed)
+		{
+			PushStartUs = Now;
+			FlushStartUs = Now;
+			PushArmed = false;
+			dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm],
+			                      PushArmData, PushArmBytes, true);
+		}
 		return;
 	}
 
@@ -782,13 +473,11 @@ static void Panel_GpioIrq(uint Gpio, uint32_t Events)
  * So the interrupt says when a report exists, and the press is held until
  * either a report says the finger has gone or nothing arrives for
  * TOUCH_HOLD_TIMEOUT_MS. Holding it forever would be worse than not holding it
- * at all - a stuck press is a finger LVGL believes is still down.
+ * at all - a stuck press is a finger the UI believes is still down.
  */
-static void Panel_TouchRead(lv_indev_t *Indev, lv_indev_data_t *Data)
+void Panel_TouchService(void)
 {
 	uint32_t NowMs = to_ms_since_boot(get_absolute_time());
-
-	(void)Indev;
 
 	if (TouchIntPending)
 	{
@@ -807,7 +496,7 @@ static void Panel_TouchRead(lv_indev_t *Indev, lv_indev_data_t *Data)
 				/* Their driver already maps the reading to display
 				   coordinates, including the 180 degree flip - but 466 - 0 is
 				   466 and the last valid pixel is 465, so clamp rather than
-				   hand LVGL a point one off the edge. */
+				   report a point one off the edge. */
 				uint16_t X = CST9217.data[0].x;
 				uint16_t Y = CST9217.data[0].y;
 
@@ -832,14 +521,18 @@ static void Panel_TouchRead(lv_indev_t *Indev, lv_indev_data_t *Data)
 	{
 		TouchHeld = false;
 	}
+}
 
-	Data->state = TouchHeld ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 
-	/* The last known position travels with a release too: LVGL reads the point
-	   on the releasing call to work out where the gesture ended, and (0,0)
-	   there would look like a sudden drag to the corner. */
-	Data->point.x = TouchX;
-	Data->point.y = TouchY;
+/***************************************************************************************/
+/* The press, and where it is. The position is the last one seen, held across a
+   release: a gesture is measured between the press and the release, and (0,0)
+   on the releasing read would look like a sudden drag to the corner. */
+bool Panel_TouchDown(int32_t *X, int32_t *Y)
+{
+	*X = TouchX;
+	*Y = TouchY;
+	return TouchHeld;
 }
 
 
@@ -948,79 +641,25 @@ bool Panel_Init(void)
 	sleep_ms(30);
 	InitStage = PANEL_STAGE_TOUCH_RESTORE;
 
-	/* ---- LVGL --------------------------------------------------------- */
-
-	lv_init();
-
-	/* AFTER lv_init(), not before. lv_init() resets LVGL's global state, which
-	   includes the tick callback - registering it first looks tidier and is
-	   silently undone, leaving lv_tick_get() stuck at zero. LVGL does say so,
-	   with "It seems lv_tick_inc() is not called" out of lv_timer_handler, but
-	   that warning goes to a console nobody is attached to yet. Everything
-	   downstream then measures zero: no animation advances, no timer fires on
-	   schedule, and every render time reads 0 ms. */
-	lv_tick_set_cb(Panel_TickMs);
-	InitStage = PANEL_STAGE_LV_INIT;
-
-	Disp = lv_display_create(PANEL_WIDTH, PANEL_HEIGHT);
-	InitStage = PANEL_STAGE_DISPLAY_CREATE;
-
-	/* Pre-swapped RGB565: the panel wants the high byte first and the flush
-	   hands the buffer straight to DMA, so the renderer produces that order
-	   itself rather than a pass being made over every buffer. See the note at
-	   the top of this file. */
-	lv_display_set_color_format(Disp, LV_COLOR_FORMAT_RGB565_SWAPPED);
-
-	/* Size in BYTES in v9, where v8 wanted pixels - and sizeof() is the whole
-	   array, so the two cannot disagree. */
-	lv_display_set_buffers(Disp, DrawBuf, NULL, sizeof(DrawBuf),
-	                       LV_DISPLAY_RENDER_MODE_PARTIAL);
-	InitStage = PANEL_STAGE_BUFFERS;
-
-	lv_display_set_flush_cb(Disp, Panel_Flush);
-
-	/* The window alignment the CO5300 requires, and the refresh timing, are
-	   events in v9 rather than driver callbacks. */
-	lv_display_add_event_cb(Disp, Panel_InvalidateArea,
-	                        LV_EVENT_INVALIDATE_AREA, NULL);
-	lv_display_add_event_cb(Disp, Panel_RenderStart,
-	                        LV_EVENT_RENDER_START, NULL);
-	lv_display_add_event_cb(Disp, Panel_RenderReady,
-	                        LV_EVENT_RENDER_READY, NULL);
-	InitStage = PANEL_STAGE_EVENTS;
-
-	Touch = lv_indev_create();
-	lv_indev_set_type(Touch, LV_INDEV_TYPE_POINTER);
-	lv_indev_set_read_cb(Touch, Panel_TouchRead);
-	InitStage = PANEL_STAGE_INDEV;
-
 	/* Start centred, so a release before any press cannot read as a gesture
 	   from the corner. */
 	TouchX = PANEL_WIDTH / 2;
 	TouchY = PANEL_HEIGHT / 2;
 
-	/* ---- flush completion --------------------------------------------- */
+	/* ---- the transfer channel ----------------------------------------- */
 
-	/* Installed from core 1, which is where it must run: the vector table is
-	   per core, and lv_disp_flush_ready() has to be called on the core that
-	   owns LVGL. Core 0 leaves DMA_IRQ_0 alone. */
-	/* Clear any latched completion first. AMOLED_1IN75_Clear() above runs 466
-	   polled DMA transfers, which leave the channel's interrupt status set;
-	   enabling the interrupt on top of that fires the handler immediately, for
-	   a flush that never happened. Harmless in itself - LVGL is not waiting on
-	   anything yet - but it calls lv_disp_flush_ready() unbidden and it
-	   reported a 759 ms first flush, because the handler timed against a start
-	   stamp that had never been taken. */
+	/* Clear any latched completion. AMOLED_1IN75_Clear() above runs 466 polled
+	   DMA transfers, which leave the channel's interrupt status set; the push
+	   polls the channel rather than taking an interrupt, but leaving a stale
+	   flag behind is the sort of thing that confuses the next person to
+	   attach a debugger. */
 	dma_channel_acknowledge_irq0(dma_tx);
-
-	dma_channel_set_irq0_enabled(dma_tx, true);
-	irq_set_exclusive_handler(DMA_IRQ_0, Panel_FlushDoneIrq);
-	irq_set_enabled(DMA_IRQ_0, true);
 	InitStage = PANEL_STAGE_FLUSH_IRQ;
 
 	/* Likewise core 1, and for the same reason: the flag it sets is read by
 	   the LVGL callback. Only enabled once the controller is out of reset and
-	   has been identified, so a reset pulse cannot be counted as a report. */
+	   has been identified, so a reset pulse cannot be counted as a report.
+	   Core 1, because that is where the renderer reads it. */
 	if (TouchPresent)
 		gpio_set_irq_enabled(TOUCH_INT_PIN,
 		                     GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
@@ -1029,8 +668,8 @@ bool Panel_Init(void)
 	   input can latch at about 2.2 V on RP2350 (erratum E9), and nothing is
 	   gained by one here. Registering it is also what installs the shared
 	   callback, which is why touch above only enables its events - see
-	   Panel_GpioIrq(). Order does not matter: both are enabled before LVGL
-	   draws a thing. */
+	   Panel_GpioIrq(). Order does not matter: both are enabled before
+	   anything is drawn. */
 	gpio_init(PANEL_TE_PIN);
 	gpio_set_dir(PANEL_TE_PIN, GPIO_IN);
 	gpio_disable_pulls(PANEL_TE_PIN);
@@ -1039,9 +678,9 @@ bool Panel_Init(void)
 
 	InitStage = PANEL_STAGE_TOUCH_IRQ;
 
-	printf("panel: %dx%d, one %u-line draw buffer (%lu bytes)\n",
-	       PANEL_WIDTH, PANEL_HEIGHT, (unsigned)PANEL_BUF_LINES,
-	       (unsigned long)sizeof(DrawBuf));
+	printf("panel: %dx%d, %u-line chunks (2 x %lu bytes)\n",
+	       PANEL_WIDTH, PANEL_HEIGHT, (unsigned)PANEL_CHUNK_LINES,
+	       (unsigned long)sizeof(ChunkBuf[0]));
 	if (TouchPresent)
 		printf("touch: CST9217 on the bus\n");
 	else if (Acked)
@@ -1096,40 +735,6 @@ const char *Panel_StageName(uint8_t Stage)
 
 
 /***************************************************************************************/
-uint32_t Panel_Service(void)
-{
-	return lv_timer_handler();
-}
-
-
-/***************************************************************************************/
-/* Why the loop is locked to TE rather than run on timers.
- *
- * Core 1 used to update the widgets on a free-running 10 ms tick, and LVGL
- * redrew on its own 10 ms timer. Neither knows the panel scans every 16.8 ms,
- * so each frame landed on whichever scan the two clocks happened to reach:
- * one scan here, two there. Measured at ~50 fps with every frame synced, which
- * can only be a mix of 16.7 and 33.3 ms frames - and an irregular rhythm reads
- * as judder however well each frame is synced.
- *
- * Locked, a frame is updated and rendered as soon as the previous one has
- * gone out, and its needle flush waits for the next pulse. Render work is
- * ~10 ms against a 16.8 ms scan, so every frame should land on the very next
- * scan. */
-void Panel_FrameLoopBegin(void)
-{
-	lv_timer_pause(lv_display_get_refr_timer(Disp));
-}
-
-
-/***************************************************************************************/
-void Panel_RenderNow(void)
-{
-	lv_refr_now(Disp);
-}
-
-
-/***************************************************************************************/
 /* Wait for the next TE edge without drawing, to keep the loop on the scan's
    cadence when a frame had nothing to draw. Not counted in the flush's TE
    statistics. If TE never arrived, fall back to a frame's worth of sleep so
@@ -1138,8 +743,6 @@ void Panel_WaitFrame(void)
 {
 	uint32_t Seen = TeEdges;
 	uint32_t Start = time_us_32();
-
-	FrameLoopIdled = true;
 
 	if (!TeSyncEnabled)
 	{
@@ -1157,11 +760,298 @@ void Panel_WaitFrame(void)
 
 
 /***************************************************************************************/
-/* The screen LVGL created for this display. ui_lvgl.c needs it to blank the
-   very first frame; everything after that is its own screens. */
-lv_display_t *Panel_Display(void)
+/* Convert one chunk of paletted lines into RGB565 for the wire.
+ *
+ * A byte load, a table lookup and a halfword store per pixel. The palette
+ * entries are already in the panel's byte order (see ui_draw.c), so there is
+ * no swapping here and nothing in this loop knows what a colour is.
+ *
+ * Unrolled by four. The loop is memory-bound on a table that fits in a few
+ * cache lines, and cutting the loop overhead to a quarter is the one easy
+ * thing available; anything further belongs in assembly, and only if the
+ * measurement in PanelPush_t says the CPU is the limiter. */
+static void Panel_ConvertChunk(const uint8_t *Src, uint32_t SrcStride,
+                               uint16_t *Dst, const uint16_t *Palette,
+                               uint32_t Width, uint32_t Lines)
 {
-	return Disp;
+	uint32_t Line;
+
+	for (Line = 0; Line < Lines; Line++)
+	{
+		const uint8_t *S = Src + (Line * SrcStride);
+		uint32_t Left = Width;
+
+		while (Left >= 4u)
+		{
+			Dst[0] = Palette[S[0]];
+			Dst[1] = Palette[S[1]];
+			Dst[2] = Palette[S[2]];
+			Dst[3] = Palette[S[3]];
+			Dst += 4;
+			S += 4;
+			Left -= 4u;
+		}
+
+		while (Left-- != 0u)
+			*Dst++ = Palette[*S++];
+	}
+}
+
+
+/***************************************************************************************/
+/* Wait for the DMA to finish the chunk it is on, and say whether it had
+   already finished when we got here - which means the bus went idle waiting
+   for the CPU, and the conversion is the limiter rather than the wire. */
+static uint32_t Panel_ChunkWait(void)
+{
+	uint32_t Start = time_us_32();
+
+	if (!dma_channel_is_busy(dma_tx))
+	{
+		PushStarved++;
+		return 0;
+	}
+
+	while (dma_channel_is_busy(dma_tx))
+		tight_loop_contents();
+
+	return (uint32_t)(time_us_32() - Start);
+}
+
+
+/***************************************************************************************/
+/* Raise chip select, once the PIO has actually finished with the data.
+ *
+ * A finished DMA means the last byte reached the PIO FIFO, not that it has
+ * been clocked out. Four words of FIFO and one in the output shift register
+ * can still be pending, so raising chip select on the DMA's completion - which
+ * is what the vendor's handler does - cuts the final pixels off every
+ * rectangle sent. Small enough to miss in a demo that repaints continuously;
+ * not small enough here, where nothing repaints what has not changed.
+ *
+ * WAIT ON FSTAT, NOT ON TXSTALL. TXSTALL reads like the exact condition - the
+ * state machine sets it when an autopull finds the FIFO empty - and using it
+ * cost two bugs. Clearing it before the transfer was the first: an 8-bit DMA
+ * cannot keep this state machine fed, measured at 33 MB/s against a 50 MB/s
+ * PIO, so it stalls repeatedly mid-transfer and sets the flag long before the
+ * last byte. Clearing it here and reading it straight back was the second:
+ * that is a posted peripheral write followed by a read of the same register,
+ * and a clear that has not landed yet reads back as still set. Either way the
+ * wait passes on a stale flag and the truncation it exists to prevent still
+ * happens.
+ *
+ * FSTAT is live status, not a sticky flag, so there is nothing to clear and
+ * nothing to race. */
+static void Panel_EndTransfer(void)
+{
+	uint32_t Spins = 0;
+
+	while (!pio_sm_is_tx_fifo_empty(qspi.pio, qspi.sm))
+	{
+		if (++Spins > PANEL_DRAIN_SPINS)
+		{
+			/* Should never happen. Counted rather than ignored because the
+			   alternative reading - a wedged PIO - would otherwise show up
+			   only as a display that has stopped updating. */
+			FlushTimeouts++;
+			break;
+		}
+	}
+
+	/* The FIFO is empty; at most one byte remains in the output shift
+	   register, which is two nibble clocks - four system cycles at this
+	   divider. A microsecond is a hundred times that. */
+	busy_wait_us_32(1);
+
+	QSPI_Deselect(qspi);
+	Flushes++;
+
+	/* Measured to here, not to the end of the DMA: the bus is held until chip
+	   select rises, and the drain above is part of holding it. */
+	FlushBusyUs += time_us_32() - FlushStartUs;
+	if (Spins > DrainSpinsMax)
+		DrainSpinsMax = Spins;
+}
+
+
+/***************************************************************************************/
+/* Send a paletted rectangle, starting on the panel's next TE pulse.
+ *
+ * ONE WINDOW, CHIP SELECT HELD, N CHUNKS.
+ *
+ * The window command and the 0x2C that follows it open a single pixel stream;
+ * the panel takes as many pixels as the window holds, and does not care how
+ * they are grouped on the wire. So the chunks are not separate transfers to
+ * the panel - they are one transfer the DMA is fed in pieces, which is what
+ * allows the conversion of chunk N+1 to overlap the transmission of chunk N.
+ *
+ * If the CPU falls behind, the PIO stalls with chip select still low and the
+ * frame simply takes longer: a stall is not a corruption. The failure that
+ * WOULD corrupt is losing chip select between chunks, which is why it is
+ * raised in exactly one place, after the last chunk has drained.
+ *
+ * The whole rectangle waits for TE, not just part of it. At one push per scan
+ * there is no longer any such thing as a follow-on area written while the scan
+ * is already running - the thing the old LVGL flush had to reason about, and
+ * the thing that used to tear.
+ */
+void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
+                        const uint16_t *Palette,
+                        int32_t X1, int32_t Y1, int32_t X2, int32_t Y2)
+{
+	uint32_t Width, Height, Line, Slot, Lines;
+	uint32_t ConvertUs = 0, BlockedUs = 0, Start;
+	const uint8_t *Row;
+
+	Panel_RoundArea(&X1, &Y1, &X2, &Y2);
+	Width = (uint32_t)(X2 - X1 + 1);
+	Height = (uint32_t)(Y2 - Y1 + 1);
+
+	if (Width > (uint32_t)PANEL_WIDTH || Width == 0u || Height == 0u)
+		return;
+
+	/* Both tests, because they fail differently. A busy channel means a push
+	   was started while the last one was still moving. Chip select still low
+	   means the previous push never ended - which would put these pixels into
+	   the previous window. */
+	if (dma_channel_is_busy(dma_tx))
+		FlushOverlaps++;
+	if (gpio_get(qspi.pin_cs) == 0)
+		FlushCsOverlaps++;
+
+	Row = Src + ((uint32_t)Y1 * SrcStride) + (uint32_t)X1;
+
+	/* The first chunk is converted BEFORE the wait, so the TE interrupt has
+	   something to start immediately - the point of arming rather than
+	   converting after the edge. */
+	Lines = (Height < PANEL_CHUNK_LINES) ? Height : PANEL_CHUNK_LINES;
+	Start = time_us_32();
+	Panel_ConvertChunk(Row, SrcStride, ChunkBuf[0], Palette, Width, Lines);
+	ConvertUs += (uint32_t)(time_us_32() - Start);
+
+	/* The window, and the pixel-write command that opens the stream. Their
+	   SetWindows takes an exclusive end; ours are inclusive. */
+	AMOLED_1IN75_SetWindows((uint32_t)X1, (uint32_t)Y1,
+	                        (uint32_t)X2 + 1u, (uint32_t)Y2 + 1u);
+	QSPI_Select(qspi);
+	QSPI_Pixel_Write(qspi, 0x2C);
+
+	/* The vendor's own init sets this dreq to the receive direction, which is
+	   wrong; every one of their transmit paths quietly overrides it on the way
+	   past. Set it correctly here too rather than depending on that. */
+	channel_config_set_dreq(&c, pio_get_dreq(qspi.pio, qspi.sm, true));
+
+	PushArmData = ChunkBuf[0];
+	PushArmBytes = Width * Lines * 2u;
+
+	if (TeSyncEnabled)
+	{
+		uint32_t Seen = TeEdges;
+
+		Start = time_us_32();
+		PushArmed = true;
+
+		while (PushArmed)
+		{
+			if ((uint32_t)(time_us_32() - Start) > PANEL_TE_TIMEOUT_US)
+			{
+				/* The pulse can arrive between the test above and here, and
+				   the handler would then already have started the transfer.
+				   Starting it again would restart a running DMA from the top
+				   of the buffer, so check the flag rather than the clock. */
+				if (!PushArmed)
+					break;
+
+				/* No pulse. Disarm and send it now rather than drop the frame:
+				   a panel that has stopped pulsing TE should still show
+				   something, and Panel_Te() reports the timeout. */
+				PushArmed = false;
+				TeSyncTimeouts++;
+				if (TeEdges == 0u && TeSyncTimeouts >= PANEL_TE_GIVE_UP)
+					TeSyncEnabled = false;
+				PushStartUs = time_us_32();
+				FlushStartUs = PushStartUs;
+				dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm],
+				                      PushArmData, PushArmBytes, true);
+				break;
+			}
+			tight_loop_contents();
+		}
+
+		if (TeEdges != Seen)
+		{
+			TeSyncWaits++;
+			TeWaitUs += (uint32_t)(PushStartUs - Start);
+
+			/* Two or more scans since the last push is a scan missed. */
+			if (TeLastPushEdge != 0u
+			    && (uint32_t)(TeEdges - TeLastPushEdge) >= 2u)
+				TeLateFrames++;
+			TeLastPushEdge = TeEdges;
+		}
+	}
+	else
+	{
+		PushStartUs = time_us_32();
+		FlushStartUs = PushStartUs;
+		dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm],
+		                      PushArmData, PushArmBytes, true);
+	}
+
+	FlushBytes += PushArmBytes;
+	PushChunks++;
+
+	/* Convert, wait, hand over. The wait is after the conversion, so the
+	   conversion happens while the wire is busy - which is the whole point. */
+	Line = Lines;
+	Slot = 1u;
+
+	while (Line < Height)
+	{
+		uint32_t Bytes;
+
+		Row += SrcStride * Lines;
+		Lines = ((Height - Line) < PANEL_CHUNK_LINES) ? (Height - Line)
+		                                              : PANEL_CHUNK_LINES;
+		Bytes = Width * Lines * 2u;
+
+		Start = time_us_32();
+		Panel_ConvertChunk(Row, SrcStride, ChunkBuf[Slot], Palette,
+		                   Width, Lines);
+		ConvertUs += (uint32_t)(time_us_32() - Start);
+
+		BlockedUs += Panel_ChunkWait();
+
+		dma_channel_configure(dma_tx, &c, &qspi.pio->txf[qspi.sm],
+		                      ChunkBuf[Slot], Bytes, true);
+
+		FlushBytes += Bytes;
+		PushChunks++;
+		Slot ^= 1u;
+		Line += Lines;
+	}
+
+	BlockedUs += Panel_ChunkWait();
+	Panel_EndTransfer();
+
+	PushLastConvertUs = ConvertUs;
+	PushLastBlockedUs = BlockedUs;
+	PushLastTotalUs = (uint32_t)(time_us_32() - PushStartUs);
+	PushFrames++;
+	RenderTotalUs += PushLastTotalUs;
+	RenderTotalPx += Width * Height;
+}
+
+
+/***************************************************************************************/
+void Panel_Push(PanelPush_t *Out)
+{
+	Out->Frames = PushFrames;
+	Out->Chunks = PushChunks;
+	Out->Starved = PushStarved;
+	Out->LastConvertUs = PushLastConvertUs;
+	Out->LastBlockedUs = PushLastBlockedUs;
+	Out->LastTotalUs = PushLastTotalUs;
 }
 
 
@@ -1174,10 +1064,6 @@ void Panel_SetBrightness(uint8_t Percent)
 
 /***************************************************************************************/
 uint32_t Panel_Flushes(void)		{ return Flushes; }
-uint32_t Panel_RefreshLastMs(void)	{ return RefreshLastMs; }
-uint32_t Panel_RefreshMaxMs(void)	{ return RefreshMaxMs; }
-uint32_t Panel_RefreshLastPx(void)	{ return RefreshLastPx; }
-uint32_t Panel_Refreshes(void)		{ return Refreshes; }
 
 
 void Panel_Te(PanelTe_t *Out)
@@ -1188,25 +1074,10 @@ void Panel_Te(PanelTe_t *Out)
 	Out->Waits = TeSyncWaits;
 	Out->Timeouts = TeSyncTimeouts;
 	Out->AvgWaitUs = (TeSyncWaits == 0u) ? 0u : (uint32_t)(TeWaitUs / TeSyncWaits);
-	Out->NeedleWaits = TeNeedleWaits;
 	Out->LateFrames = TeLateFrames;
-	Out->FollowOns = TeFollowOns;
-	Out->FollowOnLastUs = TeFollowOnLastUs;
-	Out->FollowOnMaxUs = TeFollowOnMaxUs;
 }
 
 
-/* LVGL's own heap: current and peak use, in bytes. For sizing LV_MEM_SIZE from
-   a measurement rather than a guess. Core 1 only, like the rest of LVGL. */
-void Panel_Heap(uint32_t *UsedBytes, uint32_t *PeakBytes, uint32_t *TotalBytes)
-{
-	lv_mem_monitor_t Mon;
-
-	lv_mem_monitor(&Mon);
-	*TotalBytes = (uint32_t)Mon.total_size;
-	*UsedBytes = (uint32_t)(Mon.total_size - Mon.free_size);
-	*PeakBytes = (uint32_t)Mon.max_used;
-}
 uint64_t Panel_RenderTotalUs(void)	{ return RenderTotalUs; }
 uint64_t Panel_RenderTotalPx(void)	{ return RenderTotalPx; }
 uint32_t Panel_DrainSpinsMax(void)	{ return DrainSpinsMax; }
@@ -1232,10 +1103,10 @@ uint32_t Panel_FlushMbPerSx10(void)
    panel spends mid-burst rather than the frame rate. */
 uint32_t Panel_FlushBusyUsPerFrame(void)
 {
-	if (Refreshes == 0u)
+	if (PushFrames == 0u)
 		return 0;
 
-	return (uint32_t)(FlushBusyUs / Refreshes);
+	return (uint32_t)(FlushBusyUs / PushFrames);
 }
 uint32_t Panel_FlushTimeouts(void)	{ return FlushTimeouts; }
 bool Panel_TouchPresent(void)		{ return TouchPresent; }

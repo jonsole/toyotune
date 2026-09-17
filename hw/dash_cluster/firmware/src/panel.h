@@ -1,20 +1,19 @@
 /*
  * panel.h
  *
- * The CO5300 AMOLED panel and the CST9217 touch controller, wrapped as an
- * LVGL display and input device.
+ * The CO5300 AMOLED panel and the CST9217 touch controller.
  *
  * This is the only file that talks to the vendor drivers in firmware/vendor/,
  * and the only genuinely board-specific part of the display path. Everything
  * above it - the page tables, what a gauge decides to show, how a value is
- * formatted - is in pages.c, ui_model.c and ui_lvgl.c and does not know a
+ * formatted - is in pages.c, ui_model.c and ui_draw.c and does not know a
  * panel exists.
  *
  * CALL ORDER MATTERS, AND IT SPANS BOTH CORES
  *
  *   core 0, first thing in main():   Panel_ClockInit()
  *   core 1, once:                    Panel_Init()
- *   core 1, in the render loop:      Panel_Service()
+ *   core 1, once per frame:          Panel_TouchService(), Panel_PushPaletted()
  *
  * Panel_ClockInit() is separate, and runs on core 0 before anything else,
  * because it changes the system clock. Doing that from core 1 while core 0 is
@@ -38,8 +37,7 @@
    CanLink_Init(). */
 extern void Panel_ClockInit(void);
 
-/* Bring up the panel, the touch controller and LVGL, and register both as LVGL
-   drivers. Core 1 only, once.
+/* Bring up the panel and the touch controller. Core 1 only, once.
 
    Returns false if the touch controller did not identify itself. The display
    still works in that case and the node still shows gauges - it just cannot
@@ -71,19 +69,15 @@ typedef enum
 	PANEL_STAGE_TOUCH_RESET,
 	PANEL_STAGE_TOUCH_PROBE,
 	PANEL_STAGE_TOUCH_RESTORE,
-	PANEL_STAGE_LV_INIT,
-	PANEL_STAGE_DISPLAY_CREATE,
-	PANEL_STAGE_BUFFERS,
-	PANEL_STAGE_EVENTS,
-	PANEL_STAGE_INDEV,
 	PANEL_STAGE_FLUSH_IRQ,
 	PANEL_STAGE_TOUCH_IRQ,
 	PANEL_STAGE_DONE,
 
-	/* Inside the render loop. Two of them, so a stall says whether core 1 is
-	   stuck in our own model update or somewhere inside LVGL. */
+	/* Inside the render loop. Three of them, so a stall says which part of a
+	   frame core 1 is stuck in. */
 	PANEL_STAGE_UI_UPDATE,
-	PANEL_STAGE_LV_TIMER
+	PANEL_STAGE_DRAW,
+	PANEL_STAGE_PUSH
 } PanelStage_t;
 
 extern uint8_t Panel_Stage(void);
@@ -95,32 +89,61 @@ extern const char *Panel_StageName(uint8_t Stage);
 extern void Panel_Alive(uint8_t Stage);
 extern uint32_t Panel_AliveCount(void);
 
-/* The LVGL display this panel is registered as. Opaque to callers except that
-   ui_lvgl.c needs it for lv_display_enable_invalidation(). */
-struct _lv_display_t;
-extern struct _lv_display_t *Panel_Display(void);
-
-/* Run LVGL's timers, which is what actually draws. Returns the number of
-   milliseconds until it next wants to be called. Core 1 only.
-
-   Wrapped rather than calling lv_timer_handler() from main.c so that LVGL
-   stays confined to the files that bind to it. */
-extern uint32_t Panel_Service(void);
-
 /* THE FRAME LOOP. Core 1 draws on the panel's rhythm rather than on a timer:
  *
- *   Panel_FrameLoopBegin()   once, after Panel_Init(): stops LVGL redrawing on
- *                            its own 10 ms timer
- *   Panel_Service()          LVGL's other timers - touch, gestures, animation
- *   ...update the widgets...
- *   Panel_RenderNow()        draw whatever changed; the needle's flush starts
- *                            at the next TE pulse
- *   Panel_WaitFrame()        when nothing was drawn, wait for that pulse
- *                            anyway, so the loop keeps the scan's cadence
+ *   Panel_TouchService()     fetch a touch report if the interrupt flagged one
+ *   ...update the back buffer...
+ *   Panel_PushPaletted()     send it, starting on the next TE pulse
+ *   Panel_WaitFrame()        when there was nothing to send, wait for the
+ *                            pulse anyway so the loop keeps the scan's cadence
  */
-extern void Panel_FrameLoopBegin(void);
-extern void Panel_RenderNow(void);
 extern void Panel_WaitFrame(void);
+
+/* Wait for the panel's next TE pulse. Panel_PushPaletted() does this itself;
+   this is for a caller that wants the cadence without sending anything. */
+extern void Panel_WaitTe(void);
+
+/* Expand a rectangle to something the CO5300 can address: even columns and
+   rows, clamped to the screen. The panel takes its column window in 2-pixel
+   units and rounds an odd one itself, drawing the strip a pixel out - see the
+   comment in panel.c. Inclusive coordinates, adjusted in place. */
+extern void Panel_RoundArea(int32_t *X1, int32_t *Y1, int32_t *X2, int32_t *Y2);
+
+/* SEND A PALETTED RECTANGLE, STARTING ON THE NEXT TE PULSE.
+ *
+ * Src is 8-bit palette indices, SrcStride bytes between rows; Palette is 256
+ * RGB565 entries already in the panel's byte order. The rectangle is converted
+ * and sent a chunk of lines at a time, the conversion of each chunk overlapping
+ * the transmission of the one before it, under a single window and a single
+ * chip select. Coordinates are inclusive and are rounded as above.
+ *
+ * Blocks until the last pixel has been clocked out. Core 1 only. */
+extern void Panel_PushPaletted(const uint8_t *Src, uint32_t SrcStride,
+                               const uint16_t *Palette,
+                               int32_t X1, int32_t Y1, int32_t X2, int32_t Y2);
+
+/* What the last push cost, and how the work divided.
+ *
+ * LastConvertUs and LastBlockedUs are the two halves of a frame's time on
+ * core 1: converting, and waiting for the wire. Starved is the count of chunks
+ * whose DMA had ALREADY finished when the CPU came back with the next one -
+ * the bus idling for want of pixels. A frame rate held down by LastBlockedUs
+ * is bus-bound and nothing but a smaller rectangle will help; one held down by
+ * LastConvertUs with Starved climbing is CPU-bound, and the conversion loop is
+ * where to look. LastTotalUs is measured from the TE edge itself, so it is
+ * also how far into the scan the frame ran - the number to compare against the
+ * 16.8 ms the panel gives. */
+typedef struct
+{
+	uint32_t Frames;
+	uint32_t Chunks;
+	uint32_t Starved;
+	uint32_t LastConvertUs;
+	uint32_t LastBlockedUs;
+	uint32_t LastTotalUs;
+} PanelPush_t;
+
+extern void Panel_Push(PanelPush_t *Out);
 
 /* Panel brightness, 0 to 100 percent. A dashboard gauge at full brightness at
    night is a hazard, so this exists to be driven from something - a light
@@ -141,15 +164,6 @@ extern void Panel_SetBrightness(uint8_t Percent);
    counts the subset with a finger in them. */
 extern uint32_t Panel_Flushes(void);
 
-/* Refresh timing, straight from LVGL. A page transition invalidates the whole
-   screen, so Panel_RefreshMaxMs() is the cost of a full-screen frame and its
-   reciprocal is the frame rate a slide gets - which is the number to look at
-   before trying to make a transition smoother. */
-extern uint32_t Panel_RefreshLastMs(void);
-extern uint32_t Panel_RefreshMaxMs(void);
-extern uint32_t Panel_RefreshLastPx(void);
-extern uint32_t Panel_Refreshes(void);
-
 /* TE sync. Edges should climb at the panel frame rate and PeriodUs sit near
    16,667; Enabled goes false only if no edge ever arrived. AvgWaitUs is the
    latency the sync adds to a frame. */
@@ -161,23 +175,10 @@ typedef struct
 	uint32_t Waits;
 	uint32_t Timeouts;
 	uint32_t AvgWaitUs;
-	uint32_t NeedleWaits;		/* flushes that waited because they touched the needle */
-	uint32_t LateFrames;		/* needle frames that missed a scan while busy */
-	uint32_t FollowOns;		/* areas sent without waiting - never the needle */
-	uint32_t FollowOnLastUs;	/* how long after the TE edge the last one started */
-	uint32_t FollowOnMaxUs;		/* ...and the latest since boot */
+	uint32_t LateFrames;		/* frames that missed a scan while busy */
 } PanelTe_t;
 
 extern void Panel_Te(PanelTe_t *Out);
-
-/* Where the needle is moving through this frame - its old position joined with
-   its new one, in screen coordinates, inclusive. Any area the renderer sends
-   that touches it starts at the panel's TE pulse, so the needle is always
-   synced however LVGL orders the frame. Core 1 only, like LVGL. */
-extern void Panel_SyncArea(int32_t X1, int32_t Y1, int32_t X2, int32_t Y2);
-
-/* LVGL heap: in use now, peak since boot, and the pool size. */
-extern void Panel_Heap(uint32_t *UsedBytes, uint32_t *PeakBytes, uint32_t *TotalBytes);
 
 /* Cumulative since boot, for benchmarking a build: diff two snapshots taken a
    few seconds apart for pixels per second and mean frame time. */
@@ -193,9 +194,7 @@ extern uint32_t Panel_FlushMbPerSx10(void);
 extern uint32_t Panel_FlushBusyUsPerFrame(void);
 extern uint32_t Panel_DrainSpinsMax(void);
 
-/* Invalidated areas that had to be aligned to even columns. Non-zero means the
-   panel was being handed odd column windows, which it rounds itself - see
-   Panel_Rounder(). */
+/* Areas that had to be aligned to even columns - see Panel_RoundArea(). */
 extern uint32_t Panel_RoundedAreas(void);
 
 /* Both should stay at zero. Panel_FlushOverlaps() counts flushes that arrived
@@ -218,5 +217,13 @@ extern uint32_t Panel_TouchRiseEdges(void);
 extern uint32_t Panel_TouchFallEdges(void);
 extern uint32_t Panel_TouchPresses(void);
 extern void Panel_TouchLast(uint16_t *X, uint16_t *Y);
+
+/* Fetch a touch report if the interrupt flagged one, and age out a press whose
+   reports have stopped. Once per frame, core 1. */
+extern void Panel_TouchService(void);
+
+/* Is a finger down, and where was it last seen? The position is held across a
+   release so a gesture can be measured between press and release. */
+extern bool Panel_TouchDown(int32_t *X, int32_t *Y);
 
 #endif /* PANEL_H_ */

@@ -3,8 +3,8 @@
  *
  * The gauge dial, styled after the SW20 MR2's own instruments: a charcoal face,
  * heavy warm-white graduations every major with medium ones halfway and small
- * ones between, bold condensed numerals inside them, a solid red warning band
- * at the top of the range, and a legend under the centre.
+ * ones between, bold condensed numerals inside them, a red warning band blocked
+ * between the ticks at the top of the range, and a legend under the centre.
  *
  * Compiled into two programs: the face renderer on the PC, which snapshots it
  * into src/dash_faces.c, and the firmware, which only builds it live as a
@@ -13,7 +13,7 @@
  * firmware will keep showing the old picture.
  */
 
-#include "ui_gauge.h"
+#include "ui_gauge_scale.h"
 #include "ui_model.h"
 
 LV_FONT_DECLARE(dash_font_numeral_40);
@@ -91,29 +91,53 @@ lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
 		lv_obj_remove_flag(Face, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 	}
 
-	/* The warning band: a solid red arc at the rim from BandFrom to the end of
-	   the scale, as wide as a major tick is long, so the graduations cross it.
+	/* The warning band: separate blocks, one for each minor-tick interval from
+	   BandFrom to the end of the scale, inset from the rim so the graduations
+	   stand proud of them and show through the gaps between.
+
 	   Angles are in the scale's own convention - 0 at three o'clock, clockwise -
 	   which is lv_arc's too. Painted only: whether the gauge itself turns to its
 	   warning state is UiModel_SignalWarning()'s decision, not this. */
 	if (Element->BandFrom > Element->Min && Element->BandFrom < Element->Max)
 	{
-		lv_obj_t *Band = lv_arc_create(Parent);
-		int32_t From = UI_GAUGE_ROTATION
-		               + (int32_t)((UI_GAUGE_ANGLE_RANGE
-		                            * (uint32_t)UiGauge_Position(Element, Element->BandFrom))
-		                           / UI_POSITION_MAX);
-		int32_t To = UI_GAUGE_ROTATION + (int32_t)UI_GAUGE_ANGLE_RANGE;
+		uint32_t Ticks = ((Majors - 1u) * UI_GAUGE_MINOR_PER_MAJOR) + 1u;
+		int32_t FromPos = UiGauge_Position(Element, Element->BandFrom);
+		uint32_t i;
 
-		lv_obj_remove_style_all(Band);
-		lv_obj_set_pos(Band, X, Y);
-		lv_obj_set_size(Band, W, H);
-		lv_arc_set_bg_angles(Band, From % 360, To % 360);
-		lv_obj_set_style_arc_width(Band, UI_GAUGE_MAJOR_LENGTH, LV_PART_MAIN);
-		lv_obj_set_style_arc_color(Band, lv_color_hex(UI_GAUGE_BAND_COLOUR), LV_PART_MAIN);
-		lv_obj_set_style_arc_opa(Band, LV_OPA_COVER, LV_PART_MAIN);
-		lv_obj_set_style_arc_rounded(Band, false, LV_PART_MAIN);
-		lv_obj_remove_flag(Band, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+		for (i = 0; i + 1u < Ticks; i++)
+		{
+			/* This interval's ends, as tick indices turned into angles the same
+			   way the scale turns them - so the blocks line up with the ticks
+			   they sit between. */
+			int32_t Pos = (int32_t)(((uint32_t)UI_POSITION_MAX * i) / (Ticks - 1u));
+			int32_t A0, A1;
+			lv_obj_t *Block;
+
+			if (Pos < FromPos)
+				continue;
+
+			A0 = UI_GAUGE_ROTATION
+			     + (int32_t)(((UI_GAUGE_ANGLE_RANGE * i) + ((Ticks - 1u) / 2u))
+			                 / (Ticks - 1u));
+			A1 = UI_GAUGE_ROTATION
+			     + (int32_t)(((UI_GAUGE_ANGLE_RANGE * (i + 1u)) + ((Ticks - 1u) / 2u))
+			                 / (Ticks - 1u));
+
+			Block = lv_arc_create(Parent);
+			lv_obj_remove_style_all(Block);
+			lv_obj_set_pos(Block, X + UI_GAUGE_BAND_INSET, Y + UI_GAUGE_BAND_INSET);
+			lv_obj_set_size(Block, W - (2 * UI_GAUGE_BAND_INSET),
+			                H - (2 * UI_GAUGE_BAND_INSET));
+			lv_arc_set_bg_angles(Block,
+			                     (A0 + UI_GAUGE_BAND_GAP_DEG) % 360,
+			                     (A1 - UI_GAUGE_BAND_GAP_DEG) % 360);
+			lv_obj_set_style_arc_width(Block, UI_GAUGE_BAND_WIDTH, LV_PART_MAIN);
+			lv_obj_set_style_arc_color(Block, lv_color_hex(UI_GAUGE_BAND_COLOUR),
+			                           LV_PART_MAIN);
+			lv_obj_set_style_arc_opa(Block, LV_OPA_COVER, LV_PART_MAIN);
+			lv_obj_set_style_arc_rounded(Block, false, LV_PART_MAIN);
+			lv_obj_remove_flag(Block, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+		}
 	}
 
 	/* Heavy ticks every major and small ones every minor, with the numerals.

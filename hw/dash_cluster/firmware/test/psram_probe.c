@@ -4,15 +4,16 @@
  * Is PSRAM actually fitted to this board, and does it work?
  *
  * PLAN.md records the RP2350-Touch-AMOLED-1.75 as having a *reserved* PSRAM
- * pad - unpopulated - which is why the dash node renders through LVGL partial
- * buffers rather than a full framebuffer. But Waveshare ship a complete PSRAM
- * driver and a TLSF allocator in their C examples, and a driver can exist for
- * a footprint nobody filled. This settles it.
+ * pad - unpopulated - which is why the dash node keeps its back buffer at 8
+ * bits and converts on the way out rather than holding a 16-bit framebuffer.
+ * But Waveshare ship a complete PSRAM driver and a TLSF allocator in their C
+ * examples, and a driver can exist for a footprint nobody filled. This
+ * settles it.
  *
- * The answer matters: 466x466 at 16bpp is 424 KB, which does not fit
- * comfortably in 520 KB of SRAM alongside LVGL's heap, can2040 and the
- * application. With PSRAM it fits easily, and partial rendering becomes a
- * preference rather than a necessity.
+ * The answer matters: 466x466 at 16bpp is 424 KB, which does not fit in
+ * 520 KB of SRAM alongside can2040, the faces and the application - the
+ * paletted buffer is 212 KB and does. With PSRAM the 16-bit one would fit
+ * easily, and paletting would become a preference rather than a necessity.
  *
  * WHY THIS DOES MORE THAN READ THE CHIP ID
  *

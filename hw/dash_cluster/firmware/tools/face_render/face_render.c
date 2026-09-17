@@ -27,7 +27,7 @@
 
 #include "pages.h"
 #include "panel.h"
-#include "ui_gauge.h"
+#include "ui_gauge_scale.h"
 
 static uint8_t DrawBuf[PANEL_WIDTH * PANEL_HEIGHT * 2];
 

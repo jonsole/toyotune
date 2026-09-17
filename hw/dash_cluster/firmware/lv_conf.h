@@ -1,18 +1,26 @@
 /*
  * lv_conf.h - LVGL configuration for the dash node.
  *
+ * THE FIRMWARE NO LONGER LINKS LVGL. This file survives for the PC-side face
+ * renderer, tools/face_render, which wraps it in its own lv_conf.h and
+ * overrides only the few settings that cannot apply on a PC. Deliberately the
+ * same file underneath rather than a copy: a pre-rendered dial is a faithful
+ * picture of what the board draws only if the fonts, colour depth and every
+ * drawing option match. See hw/dash_cluster/RENDERER_PLAN.md.
+ *
+ * Several comments below still describe what the firmware did while it was an
+ * LVGL application - the draw buffers, the hot code in .time_critical, the
+ * widget set. They are kept because they are why a setting has the value it
+ * has, and because they are the measurements the decision to drop LVGL was
+ * made on. They are history, not a description of the current firmware.
+ *
  * Deliberately minimal. LVGL's lv_conf_internal.h supplies a default for every
  * option it knows about, so this file lists only the settings where the default
- * is wrong for this board - which makes each line here a decision someone made
- * rather than a line inherited from a template.
+ * is wrong - which makes each line here a decision someone made rather than a
+ * line inherited from a template.
  *
- * Found by CMake through LV_BUILD_CONF_PATH, not by being next to the lvgl/
- * directory: LVGL lives in external/ (gitignored, cloned per machine) and this
- * belongs with the firmware that depends on it.
- *
- * LVGL 9.5.0. firmware/README.md records what the v8 to v9 move changed, and
- * why several things that were configuration in v8 are runtime calls in
- * panel.c now.
+ * It lives here rather than next to the lvgl/ directory because LVGL lives in
+ * external/ (gitignored, cloned per machine). LVGL 9.5.0.
  */
 
 #ifndef LV_CONF_H
@@ -43,25 +51,31 @@
  * suggests is to call lv_draw_sw_rgb565_swap() inside the flush - a whole
  * extra pass over the buffer on every flush, 217k pixels for a full screen.
  *
- * The better route, and what panel.c does, is to render straight into the
+ * The better route, and what panel.c did, was to render straight into the
  * swapped format with lv_display_set_color_format(). RGB565_SWAPPED is a real
  * destination for the software blender - lv_draw_sw_blend.c dispatches it to
  * lv_draw_sw_blend_color_to_rgb565_swapped() - so it costs nothing, exactly as
- * v8 did. That needs this support left on, which is also the default. */
+ * v8 did. That needs this support left on, which is also the default.
+ *
+ * The face renderer takes the other route, and deliberately: it renders plain
+ * RGB565 and swaps the bytes itself as it writes each face out (face_render.c),
+ * once per face on a PC rather than once per frame on the board. The support
+ * stays on so that this file still describes the same LVGL either way. */
 #define LV_DRAW_SW_SUPPORT_RGB565_SWAPPED	1
 
 /*---------------------------------------------------------------------------*/
 /* Memory                                                                    */
 /*---------------------------------------------------------------------------*/
 
-/* LVGL's own heap, for the object tree. The tree here is small - at most eight
- * widgets on a face, rebuilt only on a page change (see src/ui_lvgl.c) - but
- * lv_chart's point arrays come out of here too, and running out shows up as
- * widgets silently failing to appear rather than as a crash.
+/* LVGL's own heap, for the object tree. The tree is small - at most eight
+ * widgets on a face - but lv_chart's point arrays come out of here too, and
+ * running out shows up as widgets silently failing to appear rather than as a
+ * crash.
  *
- * Separate from the draw buffers, which are static arrays in panel.c and
- * deliberately not malloc'd. v9 defaults to 64 KB; 48 is already generous for
- * this tree, and LV_USE_MEM_MONITOR would say by how much. */
+ * 128 KB was the firmware's figure, against a measured peak use of 14 KB; it
+ * is one of the numbers that made dropping LVGL worth it. The face renderer
+ * overrides it to 16 MB, because a snapshot of the whole panel is a 434 KB
+ * draw buffer allocated from here and memory is free on a PC. */
 #define LV_USE_STDLIB_MALLOC	LV_STDLIB_BUILTIN
 #define LV_MEM_SIZE		(128U * 1024U)
 
@@ -80,9 +94,11 @@
 #define LV_DEF_REFR_PERIOD	10
 
 /* There is no tick setting here any more. v8 had LV_TICK_CUSTOM pointing at an
- * expression; v9 takes a callback at runtime, so panel.c calls
- * lv_tick_set_cb(). A welcome side effect is that LVGL no longer needs the
- * Pico SDK headers on its include path in order to build. */
+ * expression; v9 takes a callback at runtime through lv_tick_set_cb(), which
+ * is how panel.c supplied it while the firmware was an LVGL application. A
+ * welcome side effect was that LVGL no longer needed the Pico SDK headers on
+ * its include path in order to build. The face renderer needs no tick at all:
+ * it builds a dial, snapshots it and exits without ever running a timer. */
 
 /*---------------------------------------------------------------------------*/
 /* No floating point, anywhere                                               */
@@ -164,10 +180,10 @@
  * that drew more than a threshold of pixels and reports frames per second as
  * though they had been rendered back to back - so it measures render
  * throughput, and is capped at 1000 / LV_DEF_REFR_PERIOD, which is 100 here.
- * When nothing was drawn at all it reports that cap rather than zero, so now
- * that unchanged widgets are never repainted (see src/ui_lvgl.c) a still gauge
- * sits at 100 FPS / 0% CPU. That is the display doing nothing, not doing
- * brilliantly. The figure only means something while something is moving.
+ * When nothing was drawn at all it reports that cap rather than zero, so once
+ * unchanged widgets were never repainted a still gauge sat at 100 FPS / 0% CPU.
+ * That is the display doing nothing, not doing brilliantly. The figure only
+ * means something while something is moving.
  *
  * Position is the middle of the face: the default, bottom right, is off the
  * edge of a round panel entirely. It sits over the gauge, which is the point -
@@ -198,10 +214,11 @@
 /* Widgets                                                                   */
 /*---------------------------------------------------------------------------*/
 
-/* src/ui_lvgl.c builds arcs, bars, charts and labels and nothing else - those
- * are the four shapes the page tables can describe (see src/pages.h). The rest
- * are off to keep the image small; a WIDGET_* type added to the page tables
- * needs its widget turned back on here, and the build will say so. */
+/* The dial is built from lv_scale, lv_arc and lv_label and nothing else - see
+ * UiGauge_CreateScale() in tools/face_render/ui_gauge.c. The rest are off to
+ * keep the renderer's build small and, historically, the firmware image: a
+ * widget reached for by either side has to be turned back on here, and the
+ * build will say so. */
 #define LV_USE_ANIMIMG		0
 #define LV_USE_ARCLABEL		0
 #define LV_USE_CALENDAR		0

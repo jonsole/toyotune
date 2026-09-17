@@ -82,23 +82,24 @@ set(DASH_SOURCES
 )
 
 # ---------------------------------------------------------------------------
-# LVGL - the widget toolkit
+# The display
 # ---------------------------------------------------------------------------
 #
-# LVGL 9.x. The vendor's CO5300 and CST9217 drivers are written against 8.1,
-# but nothing in this build uses their LVGL glue - src/panel.c is the only
-# binding and it targets v9 directly. See firmware/README.md for what the move
-# changed.
+# LVGL IS NOT PART OF THIS BUILD, AND THAT IS DELIBERATE.
 #
-# Like can2040, not vendored:
+# The dials are pre-rendered pictures and what is drawn live is a needle and a
+# number, so the toolkit was doing very little at a real cost - see
+# hw/dash_cluster/RENDERER_PLAN.md for the measurements. The renderer is now
+# src/ui_draw.c: an 8-bit paletted back buffer, converted to RGB565 on its way
+# to the panel by src/panel.c.
 #
-#   git clone -b v9.5.0 https://github.com/lvgl/lvgl
+# LVGL is still used to DESIGN the dials, on the PC, by tools/face_render -
+# which is where lv_conf.h and src/ui_gauge.c now belong. Neither is compiled
+# into the firmware. That tool needs an LVGL checkout; this does not.
 #
-# ui_model.c does not depend on LVGL and is always built, which is the point of
-# splitting it out: the decisions a gauge makes are testable on a host whether
-# or not a toolkit is present. Only the thin binding in ui_lvgl.c needs it.
-set(LVGL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../external/lvgl"
-    CACHE PATH "Path to an LVGL checkout")
+# ui_model.c does not depend on the display at all and is always built, which
+# is the point of splitting it out: the decisions a gauge makes are testable on
+# a host whether or not there is a panel.
 
 # Waveshare's CO5300 panel driver, its PIO-QSPI transport and the CST9217 touch
 # driver, vendored from their demo zip - see vendor/README.md for provenance,
@@ -115,42 +116,15 @@ set(PANEL_VENDOR_SOURCES
     vendor/qspi_pio.c
 )
 
-if(EXISTS "${LVGL_PATH}/lvgl.h")
-    message(STATUS "LVGL: ${LVGL_PATH}")
-
-    # LVGL finds our config through this. The variable was LV_CONF_PATH in v8
-    # and is LV_BUILD_CONF_PATH in v9; LVGL's own CMake turns it into a
-    # -DLV_CONF_PATH="..." for its sources. Set before add_subdirectory or it
-    # has no effect.
-    set(LV_BUILD_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h"
-        CACHE FILEPATH "The dash node's LVGL configuration")
-
-    # v9 builds its examples and demos by default AND links them into the lvgl
-    # target itself - target_link_libraries(lvgl PUBLIC lvgl_examples) in its
-    # os_desktop.cmake. So they are not optional extras that can be ignored:
-    # with widgets disabled in lv_conf.h they simply fail to compile, and take
-    # the whole build with them.
-    set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
-
-    add_subdirectory("${LVGL_PATH}" lvgl_build)
-
-    # No pico_stdlib_headers on the lvgl target any more: v9 takes its tick
-    # from a callback registered at runtime rather than from an expression in
-    # lv_conf.h, so LVGL no longer needs the SDK headers to build.
-
-    list(APPEND DASH_SOURCES src/panel.c src/ui_lvgl.c
-                             src/dash_font_value_56.c src/dash_font_numeral_40.c
-                             src/dash_font_legend_26.c
-                             src/ui_gauge.c src/dash_faces.c)
+option(DASH_HAVE_PANEL "Build the display layer" ON)
+if(DASH_HAVE_PANEL)
+    list(APPEND DASH_SOURCES src/panel.c src/ui_draw.c src/dash_faces.c)
     list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})
-    set(DASH_HAVE_LVGL 1)
+    set(DASH_HAVE_PANEL 1)
 else()
-    message(WARNING
-        "LVGL not found at ${LVGL_PATH} - building WITHOUT the display layer. "
-        "Clone https://github.com/lvgl/lvgl (branch release/v8.3) there, or "
-        "pass -DLVGL_PATH=<path>.")
-    set(DASH_HAVE_LVGL 0)
+    message(STATUS "DASH_HAVE_PANEL is OFF - core 1 will report over USB "
+                   "serial instead of drawing.")
+    set(DASH_HAVE_PANEL 0)
 endif()
 
 if(EXISTS "${CAN2040_PATH}/src/can2040.c")
@@ -178,7 +152,7 @@ add_executable(dash_node ${DASH_SOURCES} ${VENDOR_SOURCES})
 
 target_compile_definitions(dash_node PRIVATE
     DASH_HAVE_CAN2040=${DASH_HAVE_CAN2040}
-    DASH_HAVE_LVGL=${DASH_HAVE_LVGL}
+    DASH_HAVE_PANEL=${DASH_HAVE_PANEL}
     DASH_SIMULATE=$<BOOL:${DASH_SIMULATE}>
 )
 
@@ -186,15 +160,15 @@ target_include_directories(dash_node PRIVATE src)
 if(DASH_HAVE_CAN2040)
     target_include_directories(dash_node PRIVATE "${CAN2040_PATH}/src")
 endif()
-if(DASH_HAVE_LVGL)
+if(DASH_HAVE_PANEL)
     target_include_directories(dash_node PRIVATE vendor)
-    target_link_libraries(dash_node lvgl hardware_i2c hardware_pwm hardware_spi
+    target_link_libraries(dash_node hardware_i2c hardware_pwm hardware_spi
                           hardware_watchdog hardware_clocks)
 
     # Core 1 gets its own stack, declared in main.c, rather than the SDK's.
     # See the comment there: the reserved one lives in SCRATCH_X, which is 4 KB
-    # in total on RP2350 and too small for LVGL's draw paths. Zero here so the
-    # unused reservation is not made at all.
+    # in total on RP2350 and too small. Zero here so the unused reservation is
+    # not made at all.
     target_compile_definitions(dash_node PRIVATE PICO_CORE1_STACK_SIZE=0)
 endif()
 
