@@ -41,13 +41,20 @@ static int Failures;
 
 static uint8_t Buf[H * W];
 
-static UiNeedle_t Place(uint32_t PositionQ)
+static UiNeedle_t PlaceOn(GaugeSweep_t Sweep, uint32_t PositionQ)
 {
 	return UiNeedle_Place((float)DIAL_X + (float)DIAL_SIZE / 2.0f,
 	                      (float)DIAL_X + (float)DIAL_SIZE / 2.0f,
 	                      (float)UiGauge_NeedleInner(DIAL_SIZE, DIAL_SIZE),
 	                      (float)UiGauge_NeedleOuter(DIAL_SIZE, DIAL_SIZE),
-	                      (float)UI_GAUGE_NEEDLE_WIDTH / 2.0f, PositionQ);
+	                      (float)UI_GAUGE_NEEDLE_WIDTH / 2.0f,
+	                      UiGauge_SweepStart(Sweep), UiGauge_SweepSpan(Sweep),
+	                      PositionQ);
+}
+
+static UiNeedle_t Place(uint32_t PositionQ)
+{
+	return PlaceOn(GAUGE_SWEEP_FULL, PositionQ);
 }
 
 static uint32_t Q(uint32_t Permille)
@@ -171,6 +178,51 @@ static void TestEnds(void)
 
 
 /***************************************************************************************/
+/* The halves: the top stays above the centre, the bottom below it, both read
+   left to right, and they never meet at the ends. */
+static void TestHalves(void)
+{
+	UiNeedle_t T0 = PlaceOn(GAUGE_SWEEP_TOP, 0);
+	UiNeedle_t T1 = PlaceOn(GAUGE_SWEEP_TOP, Q(UI_POSITION_MAX));
+	UiNeedle_t Tm = PlaceOn(GAUGE_SWEEP_TOP, Q(UI_POSITION_MAX / 2u));
+	UiNeedle_t B0 = PlaceOn(GAUGE_SWEEP_BOTTOM, 0);
+	UiNeedle_t B1 = PlaceOn(GAUGE_SWEEP_BOTTOM, Q(UI_POSITION_MAX));
+	UiNeedle_t Bm = PlaceOn(GAUGE_SWEEP_BOTTOM, Q(UI_POSITION_MAX / 2u));
+	uint32_t P;
+	bool TopAbove = true, BottomBelow = true;
+
+	CHECK(T0.X1 < 232.5f && T1.X1 > 232.5f, "top half should read left to right");
+	CHECK(B0.X1 < 232.5f && B1.X1 > 232.5f, "bottom half should read left to right");
+	CHECK(Tm.Y1 < 232.5f - 180.0f, "top half's middle should point up, tip y %.1f",
+	      (double)Tm.Y1);
+	CHECK(Bm.Y1 > 232.5f + 180.0f, "bottom half's middle should point down, tip y %.1f",
+	      (double)Bm.Y1);
+
+	for (P = 0; P <= UI_POSITION_MAX; P += 10u)
+	{
+		UiNeedle_t T = PlaceOn(GAUGE_SWEEP_TOP, Q(P));
+		UiNeedle_t B = PlaceOn(GAUGE_SWEEP_BOTTOM, Q(P));
+		UiRect_t Rt = UiNeedle_Bounds(&T);
+		UiRect_t Rb = UiNeedle_Bounds(&B);
+
+		/* Whole pixels, needle stroke included: the top needle never reaches
+		   the row the bottom one starts on at the same end. */
+		if (Rt.Y2 >= 232)
+			TopAbove = false;
+		if (Rb.Y1 <= 232)
+			BottomBelow = false;
+	}
+	CHECK(TopAbove, "the top needle should stay above the centre line");
+	CHECK(BottomBelow, "the bottom needle should stay below the centre line");
+
+	/* At the same end, the tips are well apart. */
+	CHECK(fabsf(T0.Y1 - B0.Y1) > 25.0f && fabsf(T1.Y1 - B1.Y1) > 25.0f,
+	      "the halves' tips should be clear of each other at the ends: %.1f, %.1f",
+	      (double)fabsf(T0.Y1 - B0.Y1), (double)fabsf(T1.Y1 - B1.Y1));
+}
+
+
+/***************************************************************************************/
 static void TestSame(void)
 {
 	UiNeedle_t A = Place(Q(300));
@@ -237,6 +289,7 @@ int NeedleTests_Run(int *OutChecks, int *OutFailures)
 	printf("needle - symmetry and sweep ends\n");
 	TestSymmetry();
 	TestEnds();
+	TestHalves();
 	printf("needle - change detection, clipping, union\n");
 	TestSame();
 	TestClipping();

@@ -38,11 +38,13 @@ typedef struct
 } UiNeedle_t;
 
 /* Put a needle at a position: PositionQ is 0..UI_POSITION_MAX with UI_NEEDLE_Q
-   fractional bits, as UiModel_NeedleStep() produces, turned into an angle the
-   same way the face's graduations were laid out (ui_gauge.h). Cx, Cy is the
-   pivot; Inner and Outer are distances from it along the needle. */
+   fractional bits, as UiModel_NeedleStep() produces, turned into an angle over
+   the gauge's sweep - StartDeg plus that fraction of SpanDeg, in ui_gauge.h's
+   convention, which is how the face's graduations were laid out. Cx, Cy is
+   the pivot; Inner and Outer are distances from it along the needle. */
 extern UiNeedle_t UiNeedle_Place(float Cx, float Cy, float Inner, float Outer,
-                                 float HalfWidth, uint32_t PositionQ);
+                                 float HalfWidth, int32_t StartDeg, int32_t SpanDeg,
+                                 uint32_t PositionQ);
 
 /* Every pixel the needle can touch. Exact to the pixel centres, so at most a
    row or column of it can come out empty - this is what is sent each frame. */

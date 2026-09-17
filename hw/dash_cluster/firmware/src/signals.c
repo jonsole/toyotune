@@ -56,7 +56,10 @@ const SignalDescriptor_t SignalDescriptors[SIGNAL_COUNT] =
 	[SIGNAL_ECU_FAMILY]        = { "Family", "", 0, 0,   255, INFO_MS },
 	[SIGNAL_CPU_INDEX]         = { "CPU",    "", 0, 0,   255, INFO_MS },
 	[SIGNAL_TX_DROPPED]        = { "TxDrop", "", 0, 0, 65535, INFO_MS },
-	[SIGNAL_BUS_OFF_RECOVERIES]= { "BusOff", "", 0, 0, 65535, INFO_MS }
+	[SIGNAL_BUS_OFF_RECOVERIES]= { "BusOff", "", 0, 0, 65535, INFO_MS },
+
+	/* The wideband. Its period is a guess until the device is logged. */
+	[SIGNAL_AFR]           = { "AFR",     "",     2,   700,  2200, FAST_MS }
 };
 
 

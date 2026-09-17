@@ -34,6 +34,17 @@ typedef enum
 } WidgetType_t;
 
 
+/* How much of the dial a gauge sweeps. A page may carry one FULL gauge, or a
+   TOP and a BOTTOM sharing the same centre - two instruments in one face. The
+   angles are in ui_gauge.h. */
+typedef enum
+{
+	GAUGE_SWEEP_FULL = 0,	/* 270 degrees, lower left round to lower right */
+	GAUGE_SWEEP_TOP,	/* the upper half, left to right over the top */
+	GAUGE_SWEEP_BOTTOM	/* the lower half, left to right under the bottom */
+} GaugeSweep_t;
+
+
 typedef struct
 {
 	WidgetType_t Type;
@@ -63,6 +74,15 @@ typedef struct
 	   more - whether the gauge itself turns to its warning state is
 	   UiModel_SignalWarning()'s decision, which this does not feed. */
 	int32_t BandFrom;
+
+	/* WIDGET_GAUGE only: how much of the dial it takes. Zero is FULL, so a
+	   table that does not mention it gets the ordinary dial. */
+	GaugeSweep_t Sweep;
+
+	/* How the reading is printed, when the signal's own units are not the ones
+	   the face is marked in - boost read in bar from a MAP sensor in kPa.
+	   NULL prints the signal as its descriptor says. Returns Out. */
+	const char *(*Format)(int32_t Value, char *Out, uint32_t OutSize);
 } FaceElement_t;
 
 

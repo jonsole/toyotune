@@ -125,6 +125,71 @@ static inline int32_t UiGauge_NeedleOuter(int32_t W, int32_t H)
 	return (UiGauge_Radius(W, H) * UI_GAUGE_NEEDLE_PCT) / 100;
 }
 
+/* SWEEPS. Angles are degrees, 0 at three o'clock and increasing CLOCKWISE on
+ * the screen (y grows downward), which is lv_scale's convention too. A gauge
+ * runs from its start angle through its span; a negative span runs
+ * anticlockwise, which is how the bottom half reads left to right.
+ *
+ * The two halves stop HALF_MARGIN short of the horizontal. Their needles then
+ * can never lie on top of each other - boost at full scale and a lean AFR both
+ * point right - and, the reason for the size, the numerals at the two ends
+ * clear each other: at 5 degrees "-1" sat on "10" and "1.5" on "20". 12 puts
+ * about 60 px between each pair. */
+#define UI_GAUGE_HALF_MARGIN_DEG	(12)
+
+static inline int32_t UiGauge_SweepStart(GaugeSweep_t Sweep)
+{
+	switch (Sweep)
+	{
+	case GAUGE_SWEEP_TOP:		return 180 + UI_GAUGE_HALF_MARGIN_DEG;
+	case GAUGE_SWEEP_BOTTOM:	return 180 - UI_GAUGE_HALF_MARGIN_DEG;
+	default:			return UI_GAUGE_ROTATION;
+	}
+}
+
+static inline int32_t UiGauge_SweepSpan(GaugeSweep_t Sweep)
+{
+	switch (Sweep)
+	{
+	case GAUGE_SWEEP_TOP:		return 180 - (2 * UI_GAUGE_HALF_MARGIN_DEG);
+	case GAUGE_SWEEP_BOTTOM:	return -(180 - (2 * UI_GAUGE_HALF_MARGIN_DEG));
+	default:			return (int32_t)UI_GAUGE_ANGLE_RANGE;
+	}
+}
+
+/* A SPLIT FACE puts each half's reading inside the centre ring on its own side
+   of a divider, with its legend beyond it: READING_DY is the reading's centre
+   and LEGEND_DY the legend's, in pixels from the dial's centre. A full gauge
+   has its reading on the centre and its legend below, at LEGEND_PCT of the
+   radius. */
+#define UI_GAUGE_SPLIT_READING_DY	(30)
+#define UI_GAUGE_SPLIT_LEGEND_DY	(72)
+
+/* The divider across the ring's interior on a split face: its thickness, and
+   how far short of the ring it stops at each end. */
+#define UI_GAUGE_DIVIDER_WIDTH		(2)
+#define UI_GAUGE_DIVIDER_INSET		(14)
+
+static inline int32_t UiGauge_ReadingDy(GaugeSweep_t Sweep)
+{
+	switch (Sweep)
+	{
+	case GAUGE_SWEEP_TOP:		return -UI_GAUGE_SPLIT_READING_DY;
+	case GAUGE_SWEEP_BOTTOM:	return UI_GAUGE_SPLIT_READING_DY;
+	default:			return 0;
+	}
+}
+
+static inline int32_t UiGauge_LegendDy(GaugeSweep_t Sweep, int32_t Radius)
+{
+	switch (Sweep)
+	{
+	case GAUGE_SWEEP_TOP:		return -UI_GAUGE_SPLIT_LEGEND_DY;
+	case GAUGE_SWEEP_BOTTOM:	return UI_GAUGE_SPLIT_LEGEND_DY;
+	default:			return (Radius * UI_GAUGE_LEGEND_PCT) / 100;
+	}
+}
+
 /* Element geometry is in percent of the panel. */
 static inline int32_t UiGauge_Pct(uint8_t Percent, int32_t Extent)
 {

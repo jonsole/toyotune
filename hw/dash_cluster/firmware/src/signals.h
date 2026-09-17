@@ -71,6 +71,11 @@ typedef enum
 	SIGNAL_TX_DROPPED,
 	SIGNAL_BUS_OFF_RECOVERIES,
 
+	/* Other devices on the bus. The 14Point7 wideband (PLAN.md 4.9) is not
+	   decoded yet - its identifiers are still to be logged - so for now only
+	   the bench simulator writes this. AFR for gasoline, hundredths. */
+	SIGNAL_AFR,
+
 	SIGNAL_COUNT
 } SignalId_t;
 

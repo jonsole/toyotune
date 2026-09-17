@@ -289,6 +289,97 @@ static void TestNeedleSmoothing(void)
 
 
 /***************************************************************************************/
+/* The boost-over-AFR page: its two gauges, their sweeps, and the readings
+   printed in the face's own units rather than the signals'. */
+static void TestSplitPage(void)
+{
+	const FacePage_t *P = NULL;
+	const FaceElement_t *Boost = NULL, *Afr = NULL;
+	UiWidget_t W;
+	uint8_t i;
+
+	for (i = 0; i < PageCount; i++)
+		if (strcmp(Pages[i].Name, "Boost / AFR") == 0)
+			P = &Pages[i];
+	CHECK(P != NULL, "the boost / AFR page should exist");
+	if (P == NULL)
+		return;
+
+	for (i = 0; i < P->ElementCount; i++)
+	{
+		if (P->Elements[i].Signal == SIGNAL_MAP)
+			Boost = &P->Elements[i];
+		if (P->Elements[i].Signal == SIGNAL_AFR)
+			Afr = &P->Elements[i];
+	}
+	CHECK(Boost != NULL && Boost->Sweep == GAUGE_SWEEP_TOP, "boost is the top half");
+	CHECK(Afr != NULL && Afr->Sweep == GAUGE_SWEEP_BOTTOM, "AFR is the bottom half");
+	if (Boost == NULL || Afr == NULL)
+		return;
+
+	SignalStore_Init();
+
+	/* Boost in bar from absolute pressure in tenths of a kPa: atmospheric is
+	   zero, with the sign and the rounding right either side of it. */
+	{
+		static const struct { int32_t Kpa10; const char *Text; } Cases[] =
+		{
+			{ 1013, "0.00" },	/* atmospheric */
+			{ 2263, "1.25" },
+			{ 2513, "1.50" },	/* full scale */
+			{  513, "-0.50" },
+			{   13, "-1.00" },	/* bottom of scale */
+			{ 1008, "-0.01" },	/* half a hundredth below rounds away */
+			{ 1017, "0.00" },	/* under half a hundredth above */
+			{ 1018, "0.01" },
+		};
+		size_t n;
+
+		for (n = 0; n < sizeof(Cases) / sizeof(Cases[0]); n++)
+		{
+			SignalStore_Set(SIGNAL_MAP, Cases[n].Kpa10, 1000);
+			W = UiModel_Widget(Boost, 1000);
+			CHECK(strcmp(W.Text, Cases[n].Text) == 0,
+			      "MAP %d should read %s bar, got %s",
+			      (int)Cases[n].Kpa10, Cases[n].Text, W.Text);
+		}
+	}
+
+	/* The needle: atmospheric sits at 1 bar of the 2.5 bar sweep. */
+	SignalStore_Set(SIGNAL_MAP, 1013, 1000);
+	W = UiModel_Widget(Boost, 1000);
+	CHECK(W.Position == 400, "atmospheric should be 400 of the sweep, got %u", W.Position);
+
+	/* AFR to one decimal, rounded. */
+	{
+		static const struct { int32_t Afr100; const char *Text; } Cases[] =
+		{
+			{ 1470, "14.7" }, { 1474, "14.7" }, { 1475, "14.8" },
+			{ 1000, "10.0" }, { 2000, "20.0" }, { 1150, "11.5" },
+		};
+		size_t n;
+
+		for (n = 0; n < sizeof(Cases) / sizeof(Cases[0]); n++)
+		{
+			SignalStore_Set(SIGNAL_AFR, Cases[n].Afr100, 1000);
+			W = UiModel_Widget(Afr, 1000);
+			CHECK(strcmp(W.Text, Cases[n].Text) == 0, "AFR %d should read %s, got %s",
+			      (int)Cases[n].Afr100, Cases[n].Text, W.Text);
+		}
+	}
+
+	SignalStore_Set(SIGNAL_AFR, 1500, 1000);
+	CHECK(UiModel_Widget(Afr, 1000).Position == UI_POSITION_MAX / 2,
+	      "15.0 is the middle of a 10-20 sweep");
+
+	/* The reading's text must fit what UiWidget_t carries, at both extremes. */
+	SignalStore_Set(SIGNAL_MAP, -99999, 1000);
+	W = UiModel_Widget(Boost, 1000);
+	CHECK(strlen(W.Text) < sizeof(W.Text) - 1u, "a wild MAP reading still fits: %s", W.Text);
+}
+
+
+/***************************************************************************************/
 int UiTests_Run(int *OutChecks, int *OutFailures)
 {
 	Checks = 0;
@@ -301,6 +392,7 @@ int UiTests_Run(int *OutChecks, int *OutFailures)
 	TestWarningBands();
 	TestEveryElementRenders();
 	TestNeedleSmoothing();
+	TestSplitPage();
 
 	*OutChecks += Checks;
 	*OutFailures += Failures;

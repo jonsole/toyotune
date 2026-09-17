@@ -12,6 +12,8 @@
  * outline is measured against the 180x50 mm aperture.
  */
 
+#include <stdio.h>
+
 #include "node_id.h"
 #include "pages.h"
 #include "signal_store.h"
@@ -31,19 +33,67 @@ static const char *const RpmTicks[] =
 
 static const FaceElement_t RpmElements[] =
 {
-	{ WIDGET_GAUGE,   SIGNAL_RPM, 0, 8000,  2,  2, 96, 96, RpmTicks, "x1000r/min", 7000 }
+	{ WIDGET_GAUGE,   SIGNAL_RPM, 0, 8000,  2,  2, 96, 96, RpmTicks, "x1000r/min", 7000, GAUGE_SWEEP_FULL, NULL }
 };
 
-/* --- page 1: boost ------------------------------------------------------- */
+/* --- page 1: boost over AFR ---------------------------------------------- *
+ *
+ * Two half gauges on one face: boost across the top, the wideband's mixture
+ * across the bottom - the two numbers that matter together under load.
+ */
 
-/* Manifold pressure absolute, in kPa. The signal is in tenths, so 2500 is
-   250.0 kPa - a bit over 1.5 bar of boost. */
+/* Boost as a gauge reads it: bar above atmospheric, vacuum below zero. The
+   sensor measures ABSOLUTE pressure in tenths of a kPa, so the scale is
+   offset by a standard atmosphere. That is an assumption - the true ambient
+   pressure moves with the weather and the altitude by a few kPa - and it is
+   the same one every boost gauge plumbed to a manifold makes. */
+#define BOOST_ATMOSPHERE	(1013)		/* 101.3 kPa, tenths */
+#define BOOST_KPA10_PER_BAR	(1000)
+
 static const char *const BoostTicks[] =
-	{ "0", "50", "100", "150", "200", "250", NULL };
+	{ "-1", "-0.5", "0", "0.5", "1", "1.5", NULL };
+
+/* The reading, in hundredths of a bar: "1.23", "-0.45". Integer arithmetic,
+   rounded to the nearest hundredth. */
+static const char *Pages_FormatBoost(int32_t Value, char *Out, uint32_t OutSize)
+{
+	int32_t Gauge = Value - BOOST_ATMOSPHERE;	/* tenths of a kPa above atmosphere */
+	int32_t Centi, Mag;
+
+	/* A bar is 1000 tenths of a kPa, so a hundredth of a bar is ten of them. */
+	Centi = (Gauge >= 0) ? ((Gauge + 5) / 10) : -(((-Gauge) + 5) / 10);
+	Mag = (Centi < 0) ? -Centi : Centi;
+	(void)snprintf(Out, OutSize, "%s%ld.%02ld", (Centi < 0) ? "-" : "",
+	               (long)(Mag / 100), (long)(Mag % 100));
+	return Out;
+}
+
+/* AFR to one decimal: the wideband's hundredths are more than a reading can
+   usefully show, and the second digit would never settle. */
+static const char *Pages_FormatAfr(int32_t Value, char *Out, uint32_t OutSize)
+{
+	int32_t Tenths = (Value + 5) / 10;
+
+	(void)snprintf(Out, OutSize, "%ld.%ld", (long)(Tenths / 10), (long)(Tenths % 10));
+	return Out;
+}
+
+/* Gasoline AFR, rich on the left and lean on the right. */
+static const char *const AfrTicks[] =
+	{ "10", "12", "14", "16", "18", "20", NULL };
 
 static const FaceElement_t BoostElements[] =
 {
-	{ WIDGET_GAUGE,   SIGNAL_MAP, 0, 2500,  2,  2, 96, 96, BoostTicks, "kPa", 2000 }
+	/* -1.0 to +1.5 bar, red from +1.0. */
+	{ WIDGET_GAUGE, SIGNAL_MAP,
+	  BOOST_ATMOSPHERE - BOOST_KPA10_PER_BAR,
+	  BOOST_ATMOSPHERE + (3 * BOOST_KPA10_PER_BAR) / 2,
+	  2, 2, 96, 96, BoostTicks, "bar",
+	  BOOST_ATMOSPHERE + BOOST_KPA10_PER_BAR,
+	  GAUGE_SWEEP_TOP, Pages_FormatBoost },
+	{ WIDGET_GAUGE, SIGNAL_AFR, 1000, 2000,
+	  2, 2, 96, 96, AfrTicks, "AFR", 0,
+	  GAUGE_SWEEP_BOTTOM, Pages_FormatAfr }
 };
 
 /* --- page 2: the warning takeover ----------------------------------------
@@ -55,10 +105,10 @@ static const FaceElement_t BoostElements[] =
  */
 static const FaceElement_t WarningElements[] =
 {
-	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS1,  0,  255, 10, 20, 80, 16, NULL, NULL, 0 },
-	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS2,  0,  255, 10, 38, 80, 16, NULL, NULL, 0 },
-	{ WIDGET_NUMERIC, SIGNAL_LIMITER_FLAGS, 0,  255, 10, 56, 80, 16, NULL, NULL, 0 },
-	{ WIDGET_NUMERIC, SIGNAL_KNOCK_RETARD,  0, 2000, 10, 72, 80, 16, NULL, NULL, 0 }
+	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS1,  0,  255, 10, 20, 80, 16, NULL, NULL, 0, GAUGE_SWEEP_FULL, NULL },
+	{ WIDGET_NUMERIC, SIGNAL_ERROR_FLAGS2,  0,  255, 10, 38, 80, 16, NULL, NULL, 0, GAUGE_SWEEP_FULL, NULL },
+	{ WIDGET_NUMERIC, SIGNAL_LIMITER_FLAGS, 0,  255, 10, 56, 80, 16, NULL, NULL, 0, GAUGE_SWEEP_FULL, NULL },
+	{ WIDGET_NUMERIC, SIGNAL_KNOCK_RETARD,  0, 2000, 10, 72, 80, 16, NULL, NULL, 0, GAUGE_SWEEP_FULL, NULL }
 };
 
 #define PAGE(name, elems) { name, elems, (uint8_t)(sizeof(elems) / sizeof((elems)[0])) }
@@ -66,7 +116,7 @@ static const FaceElement_t WarningElements[] =
 const FacePage_t Pages[] =
 {
 	PAGE("Engine Speed", RpmElements),
-	PAGE("Boost",        BoostElements),
+	PAGE("Boost / AFR",  BoostElements),
 	PAGE("WARNING",      WarningElements)
 };
 

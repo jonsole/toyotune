@@ -250,8 +250,31 @@ build, so the old figures below are from the LVGL build as it stood at 9c675c7.
   on the glass. 47 host checks, including that every glyph draws exactly the
   pixels its bitmap holds, and that a reading's ink is centred on the dial.
 
+- **Split faces: boost over AFR (page 1).** A page may carry one full gauge
+  or a top and a bottom half sharing the face (`GaugeSweep_t`). The halves
+  stop 12 degrees short of horizontal, which keeps the end numerals clear of
+  each other and the two needles apart. Boost reads in gauge bar, -1 to +1.5,
+  from absolute MAP less a standard atmosphere; AFR 10-20 from a new
+  `SIGNAL_AFR`, which only the simulator writes until the 14Point7 is logged
+  (PLAN.md 4.9). Readings print through a per-element `Format`. The renderer
+  now draws one face per page - disc, ring, and the divider a split face has -
+  and each gauge's graduations over its sweep, with the labels reversed for
+  the anticlockwise bottom half since lv_scale only sweeps clockwise.
+  Measured: 2.7-5.0 ms a frame, worst 6.1. The single dirty rectangle round
+  two needles in opposite halves reaches 73,000 px for ~8,000 changed, which
+  is what the per-region push below is for.
+- **Swiping, without animation.** A deliberate horizontal gesture - 80 px,
+  twice as far across as up or down - changes page on lift-off.
+
 **Outstanding**
 
+- **Smooth swipe.** The page follows the finger, then settles or springs
+  back. A second 8-bit buffer for the incoming page (212 KB; ~270 KB free),
+  rows composed from the two at the current offset during conversion, the
+  buffers swapped at the end. Full-screen pushes while it runs: 8.7 ms of the
+  scan and 52% bus duty, briefly - M4's worst case.
+- **Per-region pushes.** Several rectangles in one TE-synced burst, top to
+  bottom, instead of one rectangle round everything that changed.
 - **The value readout's calmer rate.** `CORE1_VALUE_PERIOD_MS` is 0 for the
   measurement - a reading that changes 60 times a second is smooth but not
   readable. Choose one by looking; 150-250 ms is where it is likely to settle.

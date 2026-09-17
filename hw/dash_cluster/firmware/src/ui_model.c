@@ -169,7 +169,10 @@ UiWidget_t UiModel_Widget(const FaceElement_t *Element, uint32_t NowMs)
 	}
 
 	W.Position = UiModel_Position(R.Value, Element->Min, Element->Max, &W.OffScale);
-	Signal_Format(Element->Signal, R.Value, W.Text, sizeof(W.Text));
+	if (Element->Format != NULL)
+		(void)Element->Format(R.Value, W.Text, (uint32_t)sizeof(W.Text));
+	else
+		Signal_Format(Element->Signal, R.Value, W.Text, sizeof(W.Text));
 
 	/* Staleness outranks a warning band. A value that is too old to trust
 	   should not also be asserting that the engine is too hot - the reading

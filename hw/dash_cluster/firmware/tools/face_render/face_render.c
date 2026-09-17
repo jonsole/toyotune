@@ -1,19 +1,21 @@
 /*
  * face_render.c - render every gauge dial with LVGL on the PC.
  *
- * Built and run by build_faces.py; not part of the firmware. For each gauge in
- * Pages[] this builds the dial with UiGauge_CreateScale() on a black screen
+ * Built and run by build_faces.py; not part of the firmware. For each page in
+ * Pages[] that has gauges, this builds the face with UiGauge_CreateFace() and
+ * each gauge with UiGauge_CreateScale() on a black screen
  * UI_GAUGE_RENDER_SCALE times the panel's size, snapshots it in RGB888, and
- * crops out the gauge's own rectangle. RGB888 rather than the panel's RGB565
+ * crops out the gauges' rectangle - one picture per page, since a page's
+ * gauges share a face. RGB888 rather than the panel's RGB565
  * because the design colours must come through exactly: build_faces.py
  * recognises them by value when it reduces the image to the panel's size.
  *
  *   face_render <outdir>
  *
  * writes <outdir>/p<page>_e<element>.rgb (R, G, B per render pixel) for each
- * gauge and <outdir>/faces.txt, one "page element width height scale" line
- * each - width and height in PANEL pixels - which build_faces.py turns into
- * src/dash_faces.c.
+ * page, named after its first gauge, and <outdir>/faces.txt, one
+ * "page element width height scale" line each - width and height in PANEL
+ * pixels - which build_faces.py turns into src/dash_faces.c.
  *
  * Snapshotting the screen rather than the scale object matters: an object's
  * snapshot includes its extended draw area and so is not the element's size,
@@ -90,72 +92,103 @@ int main(int argc, char **argv)
 
 	for (p = 0; p < PageCount; p++)
 	{
+		const FaceElement_t *First = NULL;
+		uint8_t FirstIndex = 0;
+		bool Split = false;
+		int32_t X, Y, W, H, Row, Col;
+		lv_obj_t *Screen;
+		lv_draw_buf_t *Snap;
+		FILE *Out;
+
+		/* A page's gauges share one face, so they must share one rectangle -
+		   a half gauge is half of the same dial, not a dial of its own. */
 		for (e = 0; e < Pages[p].ElementCount; e++)
 		{
 			const FaceElement_t *El = &Pages[p].Elements[e];
-			int32_t X, Y, W, H, Row, Col;
-			lv_obj_t *Screen;
-			lv_draw_buf_t *Snap;
-			FILE *Out;
 
 			if (El->Type != WIDGET_GAUGE)
 				continue;
+			if (First == NULL)
+			{
+				First = El;
+				FirstIndex = e;
+			}
+			else if (El->X != First->X || El->Y != First->Y
+			         || El->W != First->W || El->H != First->H)
+			{
+				fprintf(stderr, "page %u: gauges %u and %u do not share a rectangle\n",
+				        p, FirstIndex, e);
+				return 1;
+			}
+			if (El->Sweep != GAUGE_SWEEP_FULL)
+				Split = true;
+		}
+		if (First == NULL)
+			continue;
 
-			/* In PANEL pixels, from the panel's resolution, then scaled - so
-			   the render rectangle is an exact multiple and every panel pixel
-			   is a whole block of render pixels. */
-			X = UiGauge_Pct(El->X, PANEL_WIDTH);
-			Y = UiGauge_Pct(El->Y, PANEL_HEIGHT);
-			W = UiGauge_Pct(El->W, PANEL_WIDTH);
-			H = UiGauge_Pct(El->H, PANEL_HEIGHT);
+		/* In PANEL pixels, from the panel's resolution, then scaled - so the
+		   render rectangle is an exact multiple and every panel pixel is a
+		   whole block of render pixels. */
+		X = UiGauge_Pct(First->X, PANEL_WIDTH);
+		Y = UiGauge_Pct(First->Y, PANEL_HEIGHT);
+		W = UiGauge_Pct(First->W, PANEL_WIDTH);
+		H = UiGauge_Pct(First->H, PANEL_HEIGHT);
 
-			Screen = MakeScreen();
-			UiGauge_CreateScale(Screen, El,
+		Screen = MakeScreen();
+		UiGauge_CreateFace(Screen,
+		                   X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
+		                   W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE, Split);
+		for (e = 0; e < Pages[p].ElementCount; e++)
+		{
+			if (Pages[p].Elements[e].Type != WIDGET_GAUGE)
+				continue;
+			UiGauge_CreateScale(Screen, &Pages[p].Elements[e],
 			                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
 			                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
-			lv_screen_load(Screen);
-			lv_obj_update_layout(Screen);
-
-			Snap = lv_snapshot_take(Screen, LV_COLOR_FORMAT_RGB888);
-			if (Snap == NULL
-			    || Snap->header.w != RENDER_WIDTH || Snap->header.h != RENDER_HEIGHT)
-			{
-				fprintf(stderr, "page %u element %u: snapshot failed\n", p, e);
-				return 1;
-			}
-
-			snprintf(Path, sizeof(Path), "%s/p%u_e%u.rgb", argv[1], p, e);
-			Out = fopen(Path, "wb");
-			if (Out == NULL)
-			{
-				fprintf(stderr, "cannot write %s\n", Path);
-				return 1;
-			}
-
-			for (Row = Y * UI_GAUGE_RENDER_SCALE;
-			     Row < (Y + H) * UI_GAUGE_RENDER_SCALE; Row++)
-			{
-				const uint8_t *Line = Snap->data + (uint32_t)Row * Snap->header.stride;
-
-				for (Col = X * UI_GAUGE_RENDER_SCALE;
-				     Col < (X + W) * UI_GAUGE_RENDER_SCALE; Col++)
-				{
-					/* LVGL's RGB888 is stored B, G, R. */
-					fputc(Line[Col * 3 + 2], Out);
-					fputc(Line[Col * 3 + 1], Out);
-					fputc(Line[Col * 3], Out);
-				}
-			}
-			fclose(Out);
-
-			fprintf(Manifest, "%u %u %d %d %d\n", p, e, (int)W, (int)H,
-			        UI_GAUGE_RENDER_SCALE);
-			printf("page %u element %u: %dx%d at %d,%d, rendered at %dx\n",
-			       p, e, (int)W, (int)H, (int)X, (int)Y, UI_GAUGE_RENDER_SCALE);
-
-			lv_draw_buf_destroy(Snap);
-			Written++;
 		}
+		lv_screen_load(Screen);
+		lv_obj_update_layout(Screen);
+
+		Snap = lv_snapshot_take(Screen, LV_COLOR_FORMAT_RGB888);
+		if (Snap == NULL
+		    || Snap->header.w != RENDER_WIDTH || Snap->header.h != RENDER_HEIGHT)
+		{
+			fprintf(stderr, "page %u: snapshot failed\n", p);
+			return 1;
+		}
+
+		snprintf(Path, sizeof(Path), "%s/p%u_e%u.rgb", argv[1], p, FirstIndex);
+		Out = fopen(Path, "wb");
+		if (Out == NULL)
+		{
+			fprintf(stderr, "cannot write %s\n", Path);
+			return 1;
+		}
+
+		for (Row = Y * UI_GAUGE_RENDER_SCALE;
+		     Row < (Y + H) * UI_GAUGE_RENDER_SCALE; Row++)
+		{
+			const uint8_t *Line = Snap->data + (uint32_t)Row * Snap->header.stride;
+
+			for (Col = X * UI_GAUGE_RENDER_SCALE;
+			     Col < (X + W) * UI_GAUGE_RENDER_SCALE; Col++)
+			{
+				/* LVGL's RGB888 is stored B, G, R. */
+				fputc(Line[Col * 3 + 2], Out);
+				fputc(Line[Col * 3 + 1], Out);
+				fputc(Line[Col * 3], Out);
+			}
+		}
+		fclose(Out);
+
+		fprintf(Manifest, "%u %u %d %d %d\n", p, FirstIndex, (int)W, (int)H,
+		        UI_GAUGE_RENDER_SCALE);
+		printf("page %u: %dx%d at %d,%d, %s, rendered at %dx\n",
+		       p, (int)W, (int)H, (int)X, (int)Y, Split ? "split" : "one gauge",
+		       UI_GAUGE_RENDER_SCALE);
+
+		lv_draw_buf_destroy(Snap);
+		Written++;
 	}
 
 	fclose(Manifest);

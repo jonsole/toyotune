@@ -105,6 +105,21 @@ static void Simulate(uint32_t NowMs)
 
 	SignalStore_Set(SIGNAL_RPM, Rpm, NowMs);
 	SignalStore_Set(SIGNAL_MAP, Map, NowMs);
+
+	/* Mixture, in hundredths of AFR: near stoichiometric off boost, richening
+	   to 11.5 as boost builds on the way up, and lean on the overrun as the
+	   revs fall - the shapes a real wideband shows. */
+	{
+		int32_t Afr;
+
+		if (Phase < Half && Map > 1013)
+			Afr = 1470 - ((Map - 1013) * (1470 - 1150)) / (2300 - 1013);
+		else if (Phase >= Half && Rpm > 1500)
+			Afr = 1650 + (T * 250) / Half;
+		else
+			Afr = 1470;
+		SignalStore_Set(SIGNAL_AFR, Afr, NowMs);
+	}
 }
 #endif
 
@@ -199,49 +214,66 @@ static void Core1ReportFace(uint32_t NowMs, uint8_t Page, bool Verbose)
 
 #if DASH_HAVE_PANEL
 /***************************************************************************************/
-/* The page's gauge: the first gauge element, with its pre-rendered face. Every
-   page has one gauge for now; when a page carries more, this becomes a list and
-   each gets its own needle. */
+/* A page's live state. A page has one face and up to CORE1_MAX_GAUGES gauges
+   on it - one full dial, or a top and a bottom half - each with its own needle
+   and reading. */
+#define CORE1_MAX_GAUGES	(2u)
+
 typedef struct
 {
 	const FaceElement_t *Element;
-	const DashFace_t *Face;
 	int32_t X, Y, W, H;		/* the element, in panel pixels */
+
+	uint32_t SmoothQ;		/* the eased needle position */
+	bool HaveNeedle;
+	UiNeedle_t Needle;
+	UiRect_t NeedleRect;
+
+	bool HaveText;
+	char Text[sizeof(((UiWidget_t *)0)->Text)];
+	UiRect_t TextRect;
 } Core1Gauge_t;
 
-static bool Core1FindGauge(uint8_t Page, Core1Gauge_t *Out)
+typedef struct
+{
+	const DashFace_t *Face;
+	uint8_t GaugeCount;
+	Core1Gauge_t Gauges[CORE1_MAX_GAUGES];
+} Core1Page_t;
+
+static bool Core1FindPage(uint8_t Page, Core1Page_t *Out)
 {
 	uint8_t e, i;
 
-	for (e = 0; e < Pages[Page].ElementCount; e++)
+	memset(Out, 0, sizeof(*Out));
+
+	for (i = 0; i < DashFaceCount; i++)
+		if (DashFaces[i].Page == Page)
+			Out->Face = &DashFaces[i];
+
+	for (e = 0; e < Pages[Page].ElementCount && Out->GaugeCount < CORE1_MAX_GAUGES; e++)
 	{
 		const FaceElement_t *El = &Pages[Page].Elements[e];
+		Core1Gauge_t *G;
 
 		if (El->Type != WIDGET_GAUGE)
 			continue;
 
-		for (i = 0; i < DashFaceCount; i++)
-		{
-			if (DashFaces[i].Page == Page && DashFaces[i].Element == e)
-			{
-				Out->Element = El;
-				Out->Face = &DashFaces[i];
-				Out->X = UiGauge_Pct(El->X, PANEL_WIDTH);
-				Out->Y = UiGauge_Pct(El->Y, PANEL_HEIGHT);
-				Out->W = UiGauge_Pct(El->W, PANEL_WIDTH);
-				Out->H = UiGauge_Pct(El->H, PANEL_HEIGHT);
-				return true;
-			}
-		}
+		G = &Out->Gauges[Out->GaugeCount++];
+		G->Element = El;
+		G->X = UiGauge_Pct(El->X, PANEL_WIDTH);
+		G->Y = UiGauge_Pct(El->Y, PANEL_HEIGHT);
+		G->W = UiGauge_Pct(El->W, PANEL_WIDTH);
+		G->H = UiGauge_Pct(El->H, PANEL_HEIGHT);
 	}
 
-	return false;
+	return Out->Face != NULL && Out->GaugeCount != 0u;
 }
 
 
 /***************************************************************************************/
-/* The needle for a gauge at an eased position. The pivot is the element's
-   true centre - half-pixel and all, see ui_needle.h - which is where the face
+/* A gauge's needle at an eased position. The pivot is the element's true
+   centre - half-pixel and all, see ui_needle.h - which is where the face
    renderer put the centre of the dial. */
 static UiNeedle_t Core1Needle(const Core1Gauge_t *G, uint32_t PositionQ)
 {
@@ -250,7 +282,138 @@ static UiNeedle_t Core1Needle(const Core1Gauge_t *G, uint32_t PositionQ)
 	                      (float)UiGauge_NeedleInner(G->W, G->H),
 	                      (float)UiGauge_NeedleOuter(G->W, G->H),
 	                      (float)UI_GAUGE_NEEDLE_WIDTH / 2.0f,
+	                      UiGauge_SweepStart(G->Element->Sweep),
+	                      UiGauge_SweepSpan(G->Element->Sweep),
 	                      PositionQ);
+}
+
+
+/***************************************************************************************/
+/* The dirty rectangle a frame accumulates. */
+typedef struct
+{
+	bool Any;
+	UiRect_t Rect;
+} Core1Dirty_t;
+
+static void Core1Dirty(Core1Dirty_t *D, const UiRect_t *R)
+{
+	D->Rect = D->Any ? UiRect_Union(&D->Rect, R) : *R;
+	D->Any = true;
+}
+
+
+/***************************************************************************************/
+/* One gauge's frame: ease its needle and refresh its reading, restoring the
+   face under whatever moved and adding it to the frame's dirty rectangle.
+
+   NOTHING ON A FACE OVERLAPS ANYTHING ELSE LIVE: readings sit inside the centre
+   ring, needles start outside it, and a split face's two needles keep to their
+   own halves. So each item can be restored and redrawn without disturbing the
+   others, and one rectangle round everything that changed is all that has to
+   be sent. */
+static void Core1UpdateGauge(Core1Gauge_t *G, uint32_t NowMs, uint32_t FrameUs,
+                             bool TextDue, Core1Dirty_t *Dirty,
+                             uint32_t *NeedleFrames, uint32_t *ValueFrames)
+{
+	UiWidget_t W = UiModel_Widget(G->Element, NowMs);
+	UiNeedle_t Next;
+
+	G->SmoothQ = UiModel_NeedleStep(G->SmoothQ, W.Position, FrameUs);
+	Next = Core1Needle(G, G->SmoothQ);
+
+	if (TextDue && strcmp(W.Text, G->Text) != 0)
+	{
+		int32_t Tx, Ty;
+		UiRect_t Ink;
+
+		if (G->HaveText)
+		{
+			UiDraw_Restore(&G->TextRect);
+			Core1Dirty(Dirty, &G->TextRect);
+		}
+
+		(void)snprintf(G->Text, sizeof(G->Text), "%s", W.Text);
+		UiText_Centre(&dash_font_value_56, G->Text,
+		              (float)G->X + ((float)G->W / 2.0f),
+		              (float)G->Y + ((float)G->H / 2.0f)
+		              + (float)UiGauge_ReadingDy(G->Element->Sweep),
+		              &Tx, &Ty);
+		G->HaveText = UiText_Bounds(&dash_font_value_56, G->Text, Tx, Ty, &Ink);
+		if (G->HaveText)
+		{
+			(void)UiDraw_Text(&dash_font_value_56, G->Text, Tx, Ty);
+			G->TextRect = Ink;
+			Core1Dirty(Dirty, &Ink);
+		}
+		(*ValueFrames)++;
+	}
+
+	if (!G->HaveNeedle || !UiNeedle_Same(&Next, &G->Needle))
+	{
+		UiRect_t NextRect = UiNeedle_Bounds(&Next);
+
+		if (G->HaveNeedle)
+		{
+			UiDraw_Restore(&G->NeedleRect);
+			Core1Dirty(Dirty, &G->NeedleRect);
+		}
+		(void)UiDraw_Needle(&Next);
+		Core1Dirty(Dirty, &NextRect);
+
+		G->Needle = Next;
+		G->NeedleRect = NextRect;
+		G->HaveNeedle = true;
+		(*NeedleFrames)++;
+	}
+}
+
+
+/***************************************************************************************/
+/* SWIPING, FOR NOW WITHOUT ANIMATION.
+ *
+ * A deliberate horizontal gesture changes page when the finger lifts: it must
+ * travel CORE1_SWIPE_MIN_PX, and at least twice as far across as up or down, so
+ * a tap or a vertical brush does nothing. Finger moving left brings in the
+ * next page, as on a phone. */
+#define CORE1_SWIPE_MIN_PX	(80)
+
+typedef struct
+{
+	bool Down;
+	int32_t X0, Y0, X, Y;
+} Core1Touch_t;
+
+/* -1 previous, +1 next, 0 nothing. */
+static int Core1Swipe(Core1Touch_t *T)
+{
+	int32_t X, Y, Dx, Dy;
+	bool Down = Panel_TouchDown(&X, &Y);
+
+	if (Down && !T->Down)
+	{
+		T->X0 = X;
+		T->Y0 = Y;
+	}
+	if (Down)
+	{
+		T->X = X;
+		T->Y = Y;
+	}
+
+	if (!(!Down && T->Down))
+	{
+		T->Down = Down;
+		return 0;
+	}
+
+	T->Down = false;
+	Dx = T->X - T->X0;
+	Dy = T->Y - T->Y0;
+	if ((Dx < 0 ? -Dx : Dx) < CORE1_SWIPE_MIN_PX
+	    || (Dx < 0 ? -Dx : Dx) < 2 * (Dy < 0 ? -Dy : Dy))
+		return 0;
+	return (Dx < 0) ? 1 : -1;
 }
 
 
@@ -262,10 +425,8 @@ static UiNeedle_t Core1Needle(const Core1Gauge_t *G, uint32_t PositionQ)
  * is nothing to send Panel_WaitFrame() waits for the pulse instead - so the
  * loop runs at the scan rate with no timer in it anywhere.
  *
- * A page change sends the whole screen. After that, each frame eases the
- * needle towards its reading by however long the last frame took, and when it
- * has moved: puts the face back where it was, draws it where it is, and sends
- * only the rectangle covering both.
+ * A page change sends the whole screen. After that, each frame updates every
+ * gauge on the page and sends one rectangle round everything that changed.
  *
  * Status goes out every STATUS_PERIOD_MS from here too. Printing it costs a
  * frame, once every two seconds. */
@@ -274,18 +435,13 @@ static void Core1Main(void)
 	uint32_t NextStatusMs = 0;
 	uint8_t LastPage = 0xFFu;
 	uint32_t LastFrameUs;
-	Core1Gauge_t Gauge;
-	bool HaveGauge = false;
-	bool HaveNeedle = false;
-	UiNeedle_t Needle;
-	UiRect_t NeedleRect = { 0, 0, 0, 0 };
-	uint32_t SmoothQ = 0;
-	char Text[sizeof(((UiWidget_t *)0)->Text)] = "";
-	bool HaveText = false;
-	UiRect_t TextRect = { 0, 0, 0, 0 };
+	Core1Page_t View;
+	bool HaveView = false;
+	Core1Touch_t Touch = { false, 0, 0, 0, 0 };
 	uint32_t NextValueMs = 0;
-	uint32_t NeedleFrames = 0, ValueFrames = 0, StillFrames = 0;
+	uint32_t NeedleFrames = 0, ValueFrames = 0, StillFrames = 0, Swipes = 0;
 	uint32_t DrawUs = 0, PushPixels = 0, WorkUs = 0, WorkMaxUs = 0;
+	const char *LastText = "";
 
 	Panel_Init();
 	UiDraw_Init();
@@ -296,48 +452,58 @@ static void Core1Main(void)
 		uint32_t NowUs = time_us_32();
 		uint32_t NowMs = to_ms_since_boot(get_absolute_time());
 		uint32_t FrameUs = NowUs - LastFrameUs;
-		uint8_t Page = Pages_Effective(NowMs);
+		uint8_t Page;
+		int Swipe;
 
 		LastFrameUs = NowUs;
 
 		Panel_Alive(PANEL_STAGE_UI_UPDATE);
 		Panel_TouchService();
+		Swipe = Core1Swipe(&Touch);
+		if (Swipe > 0)
+			Pages_Next();
+		else if (Swipe < 0)
+			Pages_Previous();
+		if (Swipe != 0)
+			Swipes++;
+
+		Page = Pages_Effective(NowMs);
 
 		if (Page != LastPage)
 		{
+			uint8_t g;
+
 			Panel_Alive(PANEL_STAGE_DRAW);
 			UiDraw_Init();
-			HaveGauge = Core1FindGauge(Page, &Gauge);
-			HaveNeedle = false;
-			HaveText = false;
-			Text[0] = '\0';
+			HaveView = Core1FindPage(Page, &View);
 
-			if (!HaveGauge)
-				printf("face p%u: no pre-rendered gauge - black\n", Page);
-			else if (UiDraw_LoadFace(Gauge.Face, Gauge.X, Gauge.Y))
-				printf("face p%u: copied in %luus, palette %u of %u\n",
-				       Page, (unsigned long)UiDraw_LoadUs(),
+			if (!HaveView)
+				printf("page %u: no pre-rendered gauges - black\n", Page);
+			else if (UiDraw_LoadFace(View.Face, View.Gauges[0].X, View.Gauges[0].Y))
+				printf("page %u: face copied in %luus, %u gauge(s), palette %u of %u\n",
+				       Page, (unsigned long)UiDraw_LoadUs(), View.GaugeCount,
 				       UiDraw_PaletteUsed(), (unsigned)UI_DRAW_PALETTE_MAX);
 			else
 			{
-				printf("face p%u: %ldx%ld does not fit at %ld,%ld - black\n",
-				       Page, (long)Gauge.Face->Width, (long)Gauge.Face->Height,
-				       (long)Gauge.X, (long)Gauge.Y);
-				HaveGauge = false;
+				printf("page %u: %ldx%ld face does not fit at %ld,%ld - black\n",
+				       Page, (long)View.Face->Width, (long)View.Face->Height,
+				       (long)View.Gauges[0].X, (long)View.Gauges[0].Y);
+				HaveView = false;
 			}
 
-			/* A new face starts with its needle on the reading, not swinging
-			   up from zero. The reading itself is drawn by the first ordinary
-			   frame, below. */
-			if (HaveGauge)
+			/* A new face starts with its needles on their readings, not
+			   swinging up from zero. The readings are drawn by the first
+			   ordinary frame, below. */
+			for (g = 0; HaveView && g < View.GaugeCount; g++)
 			{
-				UiWidget_t W = UiModel_Widget(Gauge.Element, NowMs);
+				Core1Gauge_t *G = &View.Gauges[g];
+				UiWidget_t W = UiModel_Widget(G->Element, NowMs);
 
-				SmoothQ = (uint32_t)W.Position << UI_NEEDLE_Q;
-				Needle = Core1Needle(&Gauge, SmoothQ);
-				NeedleRect = UiNeedle_Bounds(&Needle);
-				(void)UiDraw_Needle(&Needle);
-				HaveNeedle = true;
+				G->SmoothQ = (uint32_t)W.Position << UI_NEEDLE_Q;
+				G->Needle = Core1Needle(G, G->SmoothQ);
+				G->NeedleRect = UiNeedle_Bounds(&G->Needle);
+				(void)UiDraw_Needle(&G->Needle);
+				G->HaveNeedle = true;
 			}
 
 			Panel_Alive(PANEL_STAGE_PUSH);
@@ -346,76 +512,22 @@ static void Core1Main(void)
 			LastPage = Page;
 			NextValueMs = NowMs;
 		}
-		else if (HaveGauge)
+		else if (HaveView)
 		{
-			UiWidget_t W = UiModel_Widget(Gauge.Element, NowMs);
 			uint32_t T0 = time_us_32();
-			UiNeedle_t Next;
-			bool NeedleMoved, TextChanged;
-			bool HaveDirty = false;
-			UiRect_t Dirty = { 0, 0, 0, 0 };
+			bool TextDue = (int32_t)(NowMs - NextValueMs) >= 0;
+			Core1Dirty_t Dirty = { false, { 0, 0, 0, 0 } };
+			uint8_t g;
 
 			Panel_Alive(PANEL_STAGE_DRAW);
-			SmoothQ = UiModel_NeedleStep(SmoothQ, W.Position, FrameUs);
-			Next = Core1Needle(&Gauge, SmoothQ);
-			NeedleMoved = !HaveNeedle || !UiNeedle_Same(&Next, &Needle);
-			TextChanged = (int32_t)(NowMs - NextValueMs) >= 0
-			              && strcmp(W.Text, Text) != 0;
-
-			/* THE READING AND THE NEEDLE NEVER OVERLAP: the reading is inside
-			   the centre ring and the needle starts outside it. So each can be
-			   restored and redrawn without disturbing the other, and one
-			   rectangle round both is all that has to be sent. */
-			if (TextChanged)
-			{
-				int32_t Tx, Ty;
-				UiRect_t Ink;
-
-				if (HaveText)
-				{
-					UiDraw_Restore(&TextRect);
-					Dirty = TextRect;
-					HaveDirty = true;
-				}
-
-				(void)snprintf(Text, sizeof(Text), "%s", W.Text);
-				UiText_Centre(&dash_font_value_56, Text,
-				              (float)Gauge.X + ((float)Gauge.W / 2.0f),
-				              (float)Gauge.Y + ((float)Gauge.H / 2.0f), &Tx, &Ty);
-				HaveText = UiText_Bounds(&dash_font_value_56, Text, Tx, Ty, &Ink);
-				if (HaveText)
-				{
-					(void)UiDraw_Text(&dash_font_value_56, Text, Tx, Ty);
-					TextRect = Ink;
-					Dirty = HaveDirty ? UiRect_Union(&Dirty, &Ink) : Ink;
-					HaveDirty = true;
-				}
-
-				ValueFrames++;
+			for (g = 0; g < View.GaugeCount; g++)
+				Core1UpdateGauge(&View.Gauges[g], NowMs, FrameUs, TextDue, &Dirty,
+				                 &NeedleFrames, &ValueFrames);
+			if (TextDue)
 				NextValueMs = NowMs + CORE1_VALUE_PERIOD_MS;
-			}
+			LastText = View.Gauges[0].Text;
 
-			if (NeedleMoved)
-			{
-				UiRect_t NextRect = UiNeedle_Bounds(&Next);
-
-				if (HaveNeedle)
-				{
-					UiDraw_Restore(&NeedleRect);
-					Dirty = HaveDirty ? UiRect_Union(&Dirty, &NeedleRect) : NeedleRect;
-					HaveDirty = true;
-				}
-				(void)UiDraw_Needle(&Next);
-				Dirty = HaveDirty ? UiRect_Union(&Dirty, &NextRect) : NextRect;
-				HaveDirty = true;
-
-				Needle = Next;
-				NeedleRect = NextRect;
-				HaveNeedle = true;
-				NeedleFrames++;
-			}
-
-			if (!HaveDirty)
+			if (!Dirty.Any)
 			{
 				StillFrames++;
 				Panel_WaitFrame();
@@ -423,15 +535,14 @@ static void Core1Main(void)
 			else
 			{
 				PanelPush_t Push;
+				UiRect_t *R = &Dirty.Rect;
 
 				DrawUs = time_us_32() - T0;
-				PushPixels = (uint32_t)((Dirty.X2 - Dirty.X1 + 1)
-				                        * (Dirty.Y2 - Dirty.Y1 + 1));
+				PushPixels = (uint32_t)((R->X2 - R->X1 + 1) * (R->Y2 - R->Y1 + 1));
 
 				Panel_Alive(PANEL_STAGE_PUSH);
-				Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH,
-				                   UiDraw_Palette(),
-				                   Dirty.X1, Dirty.Y1, Dirty.X2, Dirty.Y2);
+				Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH, UiDraw_Palette(),
+				                   R->X1, R->Y1, R->X2, R->Y2);
 
 				/* The frame's own work: drawing, plus the push measured from
 				   the TE edge - what has to fit inside one scan. */
@@ -463,12 +574,12 @@ static void Core1Main(void)
 			                                                    : "LINK DOWN";
 #endif
 
-			printf("frames: needle %lu  value %lu  still %lu  |  last: draw %luus"
+			printf("frames: needles %lu  values %lu  still %lu  swipes %lu  |  last: draw %luus"
 			       "  rect %lupx  work %luus  worst work %luus  \"%s\"\n",
 			       (unsigned long)NeedleFrames, (unsigned long)ValueFrames,
-			       (unsigned long)StillFrames, (unsigned long)DrawUs,
-			       (unsigned long)PushPixels, (unsigned long)WorkUs,
-			       (unsigned long)WorkMaxUs, Text);
+			       (unsigned long)StillFrames, (unsigned long)Swipes,
+			       (unsigned long)DrawUs, (unsigned long)PushPixels,
+			       (unsigned long)WorkUs, (unsigned long)WorkMaxUs, LastText);
 			WorkMaxUs = 0;
 			printf("node %u  page %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",

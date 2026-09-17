@@ -31,11 +31,17 @@
  * firmware's live needle relies on is unchanged, only finer. */
 #define UI_GAUGE_RENDER_SCALE	(4)
 
-/* The dial itself - graduations, numbers, warning band, centre ring and legend
-   - as LVGL objects in the NORMAL state's colours, at X/Y/W/H in the parent's
-   coordinates. Those four are in RENDER pixels, UI_GAUGE_RENDER_SCALE times
-   the panel's, and must be exact multiples of it. face_render.c snapshots
-   exactly this. */
+/* The face every gauge on a page shares: the charcoal disc, the centre ring,
+   and on a Split face - one carrying a top and a bottom half - the divider
+   between their readings. Once per page, before the gauges. X/Y/W/H are in
+   RENDER pixels, UI_GAUGE_RENDER_SCALE times the panel's, and must be exact
+   multiples of it. */
+extern lv_obj_t *UiGauge_CreateFace(lv_obj_t *Parent, int32_t X, int32_t Y,
+                                    int32_t W, int32_t H, bool Split);
+
+/* One gauge's graduations - ticks, numbers, warning band and legend - over its
+   sweep, in the NORMAL state's colours, at X/Y/W/H in render pixels on the
+   parent. face_render.c snapshots the page these make. */
 extern lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
                                      int32_t X, int32_t Y, int32_t W, int32_t H);
 

@@ -6,7 +6,6 @@
 
 #include <math.h>
 
-#include "ui_gauge.h"
 #include "ui_model.h"
 
 #define UI_NEEDLE_DEG_TO_RAD	(3.14159265358979f / 180.0f)
@@ -14,15 +13,15 @@
 
 /***************************************************************************************/
 UiNeedle_t UiNeedle_Place(float Cx, float Cy, float Inner, float Outer,
-                          float HalfWidth, uint32_t PositionQ)
+                          float HalfWidth, int32_t StartDeg, int32_t SpanDeg,
+                          uint32_t PositionQ)
 {
 	UiNeedle_t N;
 
-	/* The graduations were laid out by lv_scale over UI_GAUGE_ANGLE_RANGE
-	   degrees from UI_GAUGE_ROTATION, 0 at three o'clock and clockwise - which,
-	   with y growing downward, is plain cos and sin. */
-	float Deg = (float)UI_GAUGE_ROTATION
-	            + ((float)UI_GAUGE_ANGLE_RANGE * (float)PositionQ)
+	/* 0 at three o'clock and clockwise on the screen - which, with y growing
+	   downward, is plain cos and sin. */
+	float Deg = (float)StartDeg
+	            + ((float)SpanDeg * (float)PositionQ)
 	              / ((float)UI_POSITION_MAX * (float)(1u << UI_NEEDLE_Q));
 	float C = cosf(Deg * UI_NEEDLE_DEG_TO_RAD);
 	float S = sinf(Deg * UI_NEEDLE_DEG_TO_RAD);
