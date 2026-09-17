@@ -34,6 +34,7 @@
 #include "dash_faces.h"
 #include "panel.h"
 #include "ui_needle.h"
+#include "ui_text.h"
 
 #define UI_DRAW_WIDTH		(PANEL_WIDTH)
 #define UI_DRAW_HEIGHT		(PANEL_HEIGHT)
@@ -44,7 +45,7 @@
 #define UI_DRAW_PALETTE_MAX	(DASH_FACE_PALETTE_SIZE)
 
 /* Clear the buffer to black, load the faces' palette and add the live
-   colours - the needle's - after it. */
+   colours after it: the needle's, and the ramp text is drawn with. */
 extern void UiDraw_Init(void);
 
 /* Copy a pre-rendered face into the back buffer at X,Y.
@@ -60,6 +61,12 @@ extern void UiDraw_Restore(const UiRect_t *Area);
 /* Draw a needle into the buffer, hard-edged, in the needle's colour. Returns
    the pixels set. */
 extern uint32_t UiDraw_Needle(const UiNeedle_t *Needle);
+
+/* Draw text in the markings' colour, pen at X on baseline Y. Anti-aliased by
+   index, so correct over the plain face only - see ui_text.h. Returns the
+   pixels set. */
+extern uint32_t UiDraw_Text(const DashFont_t *Font, const char *Text,
+                            int32_t X, int32_t Y);
 
 /* The buffer and the table, for the panel to convert and send. */
 extern uint8_t *UiDraw_Buffer(void);

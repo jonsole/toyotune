@@ -73,7 +73,7 @@ cd hw/dash_cluster/firmware
 python test/run_tests.py
 ```
 
-372 checks, and it finds MSVC through vswhere by itself. These are the places a
+635 checks, and it finds MSVC through vswhere by itself. These are the places a
 mistake is silent - a wrong byte offset gives a gauge that reads plausibly and
 wrongly - so **run them after touching anything under `src/`**. What they
 cannot cover is the display path: `panel.c` needs the vendor driver and a
@@ -235,18 +235,17 @@ identity falls back safely with no divider fitted. Confirmed as
 **RP2350 rev A2, QFN60** - i.e. RP2350A, GPIO0..29, so every pin is inside
 PIO's window.
 
-**The renderer has changed under all of that and has not been on the glass.**
-LVGL is out, `ui_draw.c` is in, and the build is clean with the 372 host checks
-passing - but the board has been disconnected from USB since before the change,
-so nothing has been flashed. Anything about how it looks is untested until
-someone plugs it in.
+**The renderer has since replaced LVGL, and is running on the glass.** The
+needle and the reading are drawn into the paletted buffer and sent as one
+rectangle per scan - 1.5-2.4 ms of work a frame, no late frames - and the build
+is clean with 635 host checks passing. Bench builds boot at 20% brightness
+(`-DDASH_BRIGHTNESS=`) to spare the AMOLED.
 
 What is still missing:
 
-- **The live half of the renderer.** The needle, the value text and dirty
-  rectangles are not written yet, so core 1 pushes the whole screen every
-  frame - 434 KB, about 9 ms on the wire. That is the deliberate worst case
-  `RENDERER_PLAN.md` wants measured before rectangles shrink it.
+- **The rest of the renderer:** the unit, stale and no-data styling, the
+  warning page, and touch and swipe on the native path. `RENDERER_PLAN.md` §5.
+- **Night dimming** - designed in PLAN.md §4.10, not built.
 - **Real telemetry.** No Toyotune board has been on the bus with this yet, so
   gauges read `--` and the console says `LINK DOWN`. Milestone M4 - whether
   can2040 survives the panel's DMA bursts - is still open, and a full-screen

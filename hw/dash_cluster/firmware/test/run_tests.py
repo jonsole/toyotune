@@ -28,6 +28,7 @@ SOURCES = [
     os.path.join(HERE, "test_dash.c"),
     os.path.join(HERE, "test_ui_model.c"),
     os.path.join(HERE, "test_ui_needle.c"),
+    os.path.join(HERE, "test_ui_text.c"),
     os.path.join(SRC, "node_id.c"),
     os.path.join(SRC, "pages.c"),
     os.path.join(SRC, "signal_store.c"),
@@ -35,6 +36,8 @@ SOURCES = [
     os.path.join(SRC, "telemetry.c"),
     os.path.join(SRC, "ui_model.c"),
     os.path.join(SRC, "ui_needle.c"),
+    os.path.join(SRC, "ui_text.c"),
+    os.path.join(SRC, "dash_font_value_56.c"),
 ]
 
 

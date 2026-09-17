@@ -31,6 +31,7 @@
    because they exercise a different layer, but they share this runner. */
 extern int UiTests_Run(int *Checks, int *Failures);
 extern int NeedleTests_Run(int *Checks, int *Failures);
+extern int TextTests_Run(int *Checks, int *Failures);
 
 static int Failures = 0;
 static int Checks = 0;
@@ -495,6 +496,7 @@ int main(void)
 	TestPagesReferenceRealSignals();
 	UiTests_Run(&Checks, &Failures);
 	NeedleTests_Run(&Checks, &Failures);
+	TextTests_Run(&Checks, &Failures);
 
 	printf("---------------\n");
 	printf("%d checks, %d failures\n", Checks, Failures);

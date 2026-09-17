@@ -477,7 +477,7 @@ multifunctional GPIO pins" comes from: **GPIO25..29 are what is left.**
 | **25** | `RXD1` (UART) | **can2040 RX** |
 | **26** | `TXD1` (UART), ADC0 | **can2040 TX** |
 | **28** | `IMU_INT1`, ADC2 | **Node ID divider** — the QMI8658 is polled over I2C, so its interrupt is never enabled |
-| 27 | `RTC_INT`, ADC1 | Spare. Usable provided PCF85063 alarms stay disabled |
+| 27 | `RTC_INT`, ADC1 | **Proposed: illumination sense** (§4.10). Usable provided PCF85063 alarms stay disabled |
 | 29 | `IMU_INT2` + **`AXP_IRQ`**, ADC3 | **Avoid** — the PMIC genuinely asserts this one |
 
 **Confirmed 2026-09-04: no GNSS module is fitted**, so `GPS_RST`/`RXD1`/`TXD1`
@@ -981,6 +981,70 @@ resolution matches.
 
 ---
 
+### 4.10 Night-time dimming
+
+**Design item, not built.** An AMOLED set bright enough to read against a sunlit
+windscreen is a glare source at night, and the dash nodes sit beside the car's
+own instruments, which the driver dims with the panel-light wheel. The nodes
+must follow.
+
+The output side is solved: brightness is a CO5300 register write (§4.1), and
+`Panel_SetBrightness()` already takes a percentage. What is missing is the
+**input** - something that says it is dark, and how dark the driver wants it.
+
+**Recommended: sense the car's instrument-illumination feed.** The circuit that
+lights the SW20's own gauges when the side lights are on, downstream of the
+dimmer wheel, goes through a divider to **GPIO27 / ADC1** on each node:
+
+- **no voltage** - lights off - day brightness;
+- **voltage present** - lights on - night brightness, scaled by the level, so
+  the wheel dims the new gauges together with the old ones.
+
+One wire per node, all three in the same binnacle and harness, and no pin is
+spent that is not already spare (§4.1 GPIO table). It follows the driver's own
+choice rather than guessing at it.
+
+**Two things to measure on the car before designing the input:**
+
+1. **How the SW20 dimmer controls the lamps.** A series rheostat gives a
+   steady, lower voltage, which a divider and the ADC read directly. A pulsed
+   (PWM) dimmer gives full-voltage pulses at some duty, which a divider alone
+   would read as noise - it needs an RC filter ahead of the ADC, or the duty
+   measured on a digital input instead. Put a scope on the feed with the wheel
+   at both ends and in the middle.
+2. **The voltage range at the feed**, lights on, engine running, wheel at both
+   ends. A 12 V system runs to about 14.5 V charging and spikes beyond it, so
+   the divider needs margin, and the input a clamp and series resistance -
+   the same protection the node's other car-facing lines get.
+
+**Alternatives considered**
+
+- *An ambient light sensor per node.* Automatic, no car wiring - but the board
+  has none, it would need a view of the cabin from inside the binnacle, and it
+  ignores the driver's dimmer: the new gauges would disagree with the old ones.
+- *Over CAN.* One node, or the Toyotune board, reads the feed and broadcasts a
+  level; the heartbeat (§4.7) could carry it. That moves the wiring rather than
+  removing it, and makes night brightness depend on the bus being up. The ECU
+  does not appear to know the light state itself - nothing in the
+  reverse-engineering notes mentions a lighting input - so it cannot be taken
+  from the existing telemetry. Worth keeping in mind if one node turns out to
+  be much easier to wire than the other two.
+
+**Firmware, whichever source**
+
+- A **day level** and a **night level**, the night level scaled by the sensed
+  dimmer position when there is one.
+- A **floor**, so the wheel turned fully down never leaves a gauge unreadable -
+  and a warning takeover (§4.6) may want to override the floor upward.
+- A **fade** between levels over about half a second rather than a step, which
+  reads as a fault at night.
+- **Hysteresis** on the on/off decision and **filtering** on the level, so a
+  noisy reading, or the voltage dip of the starter, does not make the display
+  flicker.
+- The **cold-start** level: the node boots before any reading settles, so it
+  starts at the last level used or at night level - never at full - and fades
+  from there.
+
 ## 5. Milestones
 
 Each has an explicit exit criterion. **M1 and M2 are independent and can run
@@ -1043,7 +1107,10 @@ in either order.**
    to protect a *static* gauge face: dim aggressively, shift elements by a few
    pixels periodically, or both. Dash power being ignition-switched limits the
    exposure, but decide the policy before M5 rather than after a face has
-   burned in.
+   burned in. Night dimming (§4.10) cuts exposure for every hour driven after
+   dark, which bears on how aggressive the daytime policy needs to be.
+   Meanwhile bench builds boot at 20% (`DASH_BRIGHTNESS`) so a development
+   board left running does not burn the dial in.
 
 ---
 

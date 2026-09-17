@@ -23,6 +23,10 @@ static uint8_t		BackBuf[UI_DRAW_PIXELS];
 static uint16_t		Palette[UI_DRAW_PALETTE_MAX];
 static uint16_t		PaletteUsed;
 static uint8_t		NeedleIndex;
+
+/* Coverage to palette index for text: the markings' colour mixed that far over
+   the face - see ui_text.h. */
+static uint8_t		TextRamp[UI_TEXT_LEVELS];
 static uint32_t		LoadUs;
 
 /* The face in the buffer, and where, so what a needle covered can be put back. */
@@ -69,6 +73,33 @@ static uint8_t UiDraw_AddColour(uint32_t Rgb)
 
 
 /***************************************************************************************/
+/* UI_TEXT_LEVELS shades from Back to Fore, mixed in the same space the face
+   renderer mixes its edge shades in, so text sits on the dial the way the
+   printed numerals do. Entry 0 is Back itself and is never drawn. */
+static void UiDraw_AddRamp(uint32_t Back, uint32_t Fore, uint8_t *Ramp)
+{
+	uint32_t Level;
+
+	Ramp[0] = 0u;
+	for (Level = 1u; Level < UI_TEXT_LEVELS; Level++)
+	{
+		uint32_t Mix = 0;
+		uint32_t Shift;
+
+		for (Shift = 0; Shift <= 16u; Shift += 8u)
+		{
+			uint32_t B = (Back >> Shift) & 0xFFu;
+			uint32_t F = (Fore >> Shift) & 0xFFu;
+			uint32_t Top = (UI_TEXT_LEVELS - 1u);
+
+			Mix |= (((B * (Top - Level)) + (F * Level) + (Top / 2u)) / Top) << Shift;
+		}
+		Ramp[Level] = UiDraw_AddColour(Mix);
+	}
+}
+
+
+/***************************************************************************************/
 void UiDraw_Init(void)
 {
 	/* Index 0 is black - the generator guarantees it - so a cleared buffer is
@@ -77,6 +108,7 @@ void UiDraw_Init(void)
 	memcpy(Palette, DashFacePalette, sizeof(Palette));
 	PaletteUsed = DashFacePaletteUsed;
 	NeedleIndex = UiDraw_AddColour(UI_GAUGE_NEEDLE_COLOUR);
+	UiDraw_AddRamp(UI_GAUGE_FACE_COLOUR, UI_GAUGE_MARK_COLOUR, TextRamp);
 	Face = NULL;
 }
 
@@ -175,6 +207,14 @@ uint32_t UiDraw_Needle(const UiNeedle_t *Needle)
 {
 	return UiNeedle_Draw(Needle, BackBuf, (uint32_t)UI_DRAW_WIDTH,
 	                     UI_DRAW_WIDTH, UI_DRAW_HEIGHT, NeedleIndex);
+}
+
+
+/***************************************************************************************/
+uint32_t UiDraw_Text(const DashFont_t *Font, const char *Text, int32_t X, int32_t Y)
+{
+	return UiText_Draw(Font, Text, X, Y, TextRamp, BackBuf, (uint32_t)UI_DRAW_WIDTH,
+	                   UI_DRAW_WIDTH, UI_DRAW_HEIGHT);
 }
 
 

@@ -26,6 +26,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
@@ -47,6 +48,16 @@
 #include "ui_gauge.h"
 #include "ui_model.h"
 #include "ui_needle.h"
+#include "ui_text.h"
+
+extern const DashFont_t dash_font_value_56;
+
+/* How often the reading in the middle of the dial may change, in milliseconds.
+   0 redraws it on every frame the value changes - the heaviest case, and the
+   one to measure before choosing a calmer rate for the car: a digital readout
+   that changes 60 times a second is smooth but not readable, which is why
+   instruments usually settle it to a few updates a second. */
+#define CORE1_VALUE_PERIOD_MS	(0u)
 #endif
 
 /* How often the console status line goes out. Long, because it is a
@@ -269,8 +280,12 @@ static void Core1Main(void)
 	UiNeedle_t Needle;
 	UiRect_t NeedleRect = { 0, 0, 0, 0 };
 	uint32_t SmoothQ = 0;
-	uint32_t NeedleFrames = 0, StillFrames = 0;
-	uint32_t DrawUs = 0, PushPixels = 0;
+	char Text[sizeof(((UiWidget_t *)0)->Text)] = "";
+	bool HaveText = false;
+	UiRect_t TextRect = { 0, 0, 0, 0 };
+	uint32_t NextValueMs = 0;
+	uint32_t NeedleFrames = 0, ValueFrames = 0, StillFrames = 0;
+	uint32_t DrawUs = 0, PushPixels = 0, WorkUs = 0, WorkMaxUs = 0;
 
 	Panel_Init();
 	UiDraw_Init();
@@ -294,6 +309,8 @@ static void Core1Main(void)
 			UiDraw_Init();
 			HaveGauge = Core1FindGauge(Page, &Gauge);
 			HaveNeedle = false;
+			HaveText = false;
+			Text[0] = '\0';
 
 			if (!HaveGauge)
 				printf("face p%u: no pre-rendered gauge - black\n", Page);
@@ -310,7 +327,8 @@ static void Core1Main(void)
 			}
 
 			/* A new face starts with its needle on the reading, not swinging
-			   up from zero. */
+			   up from zero. The reading itself is drawn by the first ordinary
+			   frame, below. */
 			if (HaveGauge)
 			{
 				UiWidget_t W = UiModel_Widget(Gauge.Element, NowMs);
@@ -326,37 +344,87 @@ static void Core1Main(void)
 			Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH, UiDraw_Palette(),
 			                   0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1);
 			LastPage = Page;
+			NextValueMs = NowMs;
 		}
 		else if (HaveGauge)
 		{
 			UiWidget_t W = UiModel_Widget(Gauge.Element, NowMs);
+			uint32_t T0 = time_us_32();
 			UiNeedle_t Next;
+			bool NeedleMoved, TextChanged;
+			bool HaveDirty = false;
+			UiRect_t Dirty = { 0, 0, 0, 0 };
 
 			Panel_Alive(PANEL_STAGE_DRAW);
 			SmoothQ = UiModel_NeedleStep(SmoothQ, W.Position, FrameUs);
 			Next = Core1Needle(&Gauge, SmoothQ);
+			NeedleMoved = !HaveNeedle || !UiNeedle_Same(&Next, &Needle);
+			TextChanged = (int32_t)(NowMs - NextValueMs) >= 0
+			              && strcmp(W.Text, Text) != 0;
 
-			if (HaveNeedle && UiNeedle_Same(&Next, &Needle))
+			/* THE READING AND THE NEEDLE NEVER OVERLAP: the reading is inside
+			   the centre ring and the needle starts outside it. So each can be
+			   restored and redrawn without disturbing the other, and one
+			   rectangle round both is all that has to be sent. */
+			if (TextChanged)
+			{
+				int32_t Tx, Ty;
+				UiRect_t Ink;
+
+				if (HaveText)
+				{
+					UiDraw_Restore(&TextRect);
+					Dirty = TextRect;
+					HaveDirty = true;
+				}
+
+				(void)snprintf(Text, sizeof(Text), "%s", W.Text);
+				UiText_Centre(&dash_font_value_56, Text,
+				              (float)Gauge.X + ((float)Gauge.W / 2.0f),
+				              (float)Gauge.Y + ((float)Gauge.H / 2.0f), &Tx, &Ty);
+				HaveText = UiText_Bounds(&dash_font_value_56, Text, Tx, Ty, &Ink);
+				if (HaveText)
+				{
+					(void)UiDraw_Text(&dash_font_value_56, Text, Tx, Ty);
+					TextRect = Ink;
+					Dirty = HaveDirty ? UiRect_Union(&Dirty, &Ink) : Ink;
+					HaveDirty = true;
+				}
+
+				ValueFrames++;
+				NextValueMs = NowMs + CORE1_VALUE_PERIOD_MS;
+			}
+
+			if (NeedleMoved)
+			{
+				UiRect_t NextRect = UiNeedle_Bounds(&Next);
+
+				if (HaveNeedle)
+				{
+					UiDraw_Restore(&NeedleRect);
+					Dirty = HaveDirty ? UiRect_Union(&Dirty, &NeedleRect) : NeedleRect;
+					HaveDirty = true;
+				}
+				(void)UiDraw_Needle(&Next);
+				Dirty = HaveDirty ? UiRect_Union(&Dirty, &NextRect) : NextRect;
+				HaveDirty = true;
+
+				Needle = Next;
+				NeedleRect = NextRect;
+				HaveNeedle = true;
+				NeedleFrames++;
+			}
+
+			if (!HaveDirty)
 			{
 				StillFrames++;
 				Panel_WaitFrame();
 			}
 			else
 			{
-				uint32_t T0 = time_us_32();
-				UiRect_t NextRect = UiNeedle_Bounds(&Next);
-				UiRect_t Dirty = HaveNeedle ? UiRect_Union(&NeedleRect, &NextRect)
-				                            : NextRect;
+				PanelPush_t Push;
 
-				if (HaveNeedle)
-					UiDraw_Restore(&NeedleRect);
-				(void)UiDraw_Needle(&Next);
 				DrawUs = time_us_32() - T0;
-
-				Needle = Next;
-				NeedleRect = NextRect;
-				HaveNeedle = true;
-				NeedleFrames++;
 				PushPixels = (uint32_t)((Dirty.X2 - Dirty.X1 + 1)
 				                        * (Dirty.Y2 - Dirty.Y1 + 1));
 
@@ -364,6 +432,13 @@ static void Core1Main(void)
 				Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH,
 				                   UiDraw_Palette(),
 				                   Dirty.X1, Dirty.Y1, Dirty.X2, Dirty.Y2);
+
+				/* The frame's own work: drawing, plus the push measured from
+				   the TE edge - what has to fit inside one scan. */
+				Panel_Push(&Push);
+				WorkUs = DrawUs + Push.LastTotalUs;
+				if (WorkUs > WorkMaxUs)
+					WorkMaxUs = WorkUs;
 			}
 		}
 		else
@@ -388,9 +463,13 @@ static void Core1Main(void)
 			                                                    : "LINK DOWN";
 #endif
 
-			printf("needle frames %lu  still %lu  last draw %luus  rect %lupx\n",
-			       (unsigned long)NeedleFrames, (unsigned long)StillFrames,
-			       (unsigned long)DrawUs, (unsigned long)PushPixels);
+			printf("frames: needle %lu  value %lu  still %lu  |  last: draw %luus"
+			       "  rect %lupx  work %luus  worst work %luus  \"%s\"\n",
+			       (unsigned long)NeedleFrames, (unsigned long)ValueFrames,
+			       (unsigned long)StillFrames, (unsigned long)DrawUs,
+			       (unsigned long)PushPixels, (unsigned long)WorkUs,
+			       (unsigned long)WorkMaxUs, Text);
+			WorkMaxUs = 0;
 			printf("node %u  page %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",
 			       DashNodeId, Page, LinkText,

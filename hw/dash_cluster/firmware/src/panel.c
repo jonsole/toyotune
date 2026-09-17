@@ -77,7 +77,12 @@
    forever is a fault this repo has been bitten by before. */
 #define PANEL_DRAIN_SPINS	(1000u)
 
-#define PANEL_DEFAULT_BRIGHTNESS	(80u)
+/* Percent, from the build - see DASH_BRIGHTNESS in CMakeLists.txt, which keeps
+   bench builds dim so a static dial does not burn into the AMOLED. */
+#ifndef DASH_BRIGHTNESS
+#define DASH_BRIGHTNESS			(20)
+#endif
+#define PANEL_DEFAULT_BRIGHTNESS	((uint8_t)DASH_BRIGHTNESS)
 
 /* The panel's tearing-effect output. Not in Waveshare's pin map or sources at
    all - GPIO17 comes from the board schematic. */

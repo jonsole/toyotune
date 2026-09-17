@@ -118,7 +118,8 @@ set(PANEL_VENDOR_SOURCES
 
 option(DASH_HAVE_PANEL "Build the display layer" ON)
 if(DASH_HAVE_PANEL)
-    list(APPEND DASH_SOURCES src/panel.c src/ui_draw.c src/ui_needle.c src/dash_faces.c)
+    list(APPEND DASH_SOURCES src/panel.c src/ui_draw.c src/ui_needle.c src/ui_text.c
+                             src/dash_faces.c src/dash_font_value_56.c)
     list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})
     set(DASH_HAVE_PANEL 1)
 else()
@@ -148,12 +149,20 @@ if(DASH_SIMULATE)
     message(WARNING "DASH_SIMULATE is ON - this build shows SYNTHETIC telemetry, not ECU data.")
 endif()
 
+# Panel brightness at boot, in percent. LOW BY DEFAULT ON PURPOSE: the dial is
+# a static picture on an AMOLED, and a development board left running at full
+# brightness for days is how burn-in happens. Raise it for the car, where a
+# light sensor or the illumination line should be driving Panel_SetBrightness()
+# anyway.
+set(DASH_BRIGHTNESS 20 CACHE STRING "Panel brightness at boot, percent (0-100)")
+
 add_executable(dash_node ${DASH_SOURCES} ${VENDOR_SOURCES})
 
 target_compile_definitions(dash_node PRIVATE
     DASH_HAVE_CAN2040=${DASH_HAVE_CAN2040}
     DASH_HAVE_PANEL=${DASH_HAVE_PANEL}
     DASH_SIMULATE=$<BOOL:${DASH_SIMULATE}>
+    DASH_BRIGHTNESS=${DASH_BRIGHTNESS}
 )
 
 target_include_directories(dash_node PRIVATE src)

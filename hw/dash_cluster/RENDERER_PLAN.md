@@ -236,13 +236,31 @@ build, so the old figures below are from the LVGL build as it stood at 9c675c7.
   crowded. 216 host checks cover its area, containment, ring clearance,
   symmetry, sweep ends and clipping.
 
+- **The reading (phase 3, second half).** `gen_font.py --format plain`
+  writes a `DashFont_t` (`src/dash_font.h`) - no LVGL types - and
+  `src/ui_text.c` draws it into the 8-bit buffer. Glyph edges keep their 4 bpp
+  coverage, blended by index through a 15-entry face-to-markings ramp added
+  after the faces' palette: exact, since a reading sits inside the centre
+  ring where the face is one solid colour. The reading and the needle never
+  overlap, so each is restored and redrawn independently and one rectangle
+  round both is sent - a second push would wait for the next TE and halve
+  the frame rate. Measured with the reading redrawn on every frame it
+  changed (704 of 839): 12,600-23,300 px a frame, 1.0-1.4 ms drawing,
+  0.5-0.95 ms on the bus, worst frame 2.9 ms of 16.8, no late frames. Smooth
+  on the glass. 47 host checks, including that every glyph draws exactly the
+  pixels its bitmap holds, and that a reading's ink is centred on the dial.
+
 **Outstanding**
 
-- **Phase 3, second half - the value text.** `dash_font_value_56.c` was
-  deleted with the rest of the `lv_font_t` data and `gen_font.py` needs a
-  plain-struct output before text comes back. The idea: blend 4 bpp glyph
-  edges by index, through the white-charcoal shades already in the palette.
-- **The needle's other states** - dimmed when stale, as LVGL drew it.
+- **The value readout's calmer rate.** `CORE1_VALUE_PERIOD_MS` is 0 for the
+  measurement - a reading that changes 60 times a second is smooth but not
+  readable. Choose one by looking; 150-250 ms is where it is likely to settle.
+- **The unit** under a reading, and **the boost page's** decimal reading,
+  looked at on the glass.
+- **Stale and no-data states** - the needle and reading dimmed, as LVGL drew
+  them.
+- **Keeping the dial's centre in SRAM**, if a frame ever gets crowded: the
+  restores read the face from XIP flash and are most of the drawing time.
 - **Phase 4 - touch, swipe and the warning page** on the native path.
 
 ## 6. Tests
