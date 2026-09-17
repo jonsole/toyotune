@@ -52,8 +52,8 @@ flash), plus `.elf` and `.bin`. `build/` is gitignored, so deleting it is
 always safe.
 
 A full build with the panel and can2040 in is around **42 KB text**, and the
-whole image about 850 KB - almost all of the rest being the two pre-rendered
-dials in `.rodata`. It was 366 KB of text and ~1,265 KB of image with LVGL, so
+whole image about 440 KB - almost all of the rest being the two pre-rendered,
+paletted dials in `.rodata`, 195 KB each. It was 366 KB of text and ~1,265 KB of image with LVGL, so
 a build that has somehow found LVGL again is obvious from the size alone. Ninja
 prints `ninja: no work to do.` for a no-op.
 
@@ -77,7 +77,8 @@ python test/run_tests.py
 mistake is silent - a wrong byte offset gives a gauge that reads plausibly and
 wrongly - so **run them after touching anything under `src/`**. What they
 cannot cover is the display path: `panel.c` needs the vendor driver and a
-panel, and `ui_draw.c` needs a face to palettise.
+panel. The faces' palettising is checked by `build_faces.py` itself, which
+refuses to write a face that does not decode back exactly.
 
 ## 3. Dependencies - one, and it is optional
 

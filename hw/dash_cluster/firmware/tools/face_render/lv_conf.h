@@ -20,9 +20,15 @@
 #undef LV_USE_SNAPSHOT
 #define LV_USE_SNAPSHOT		1
 
-/* A snapshot of the full panel is a 434 KB draw buffer, allocated from LVGL's
-   own heap - far past the firmware's 128 KB, and free on a PC. */
-#undef LV_MEM_SIZE
-#define LV_MEM_SIZE		(16U * 1024U * 1024U)
+/* A snapshot is taken at four times the panel's size in RGB888 - 10 MB -
+   and a few layers of that size can be alive at once. The C library's
+   allocator rather than a fixed pool: sizing a pool for that is guesswork, and
+   a PC has the memory. */
+#undef LV_USE_STDLIB_MALLOC
+#define LV_USE_STDLIB_MALLOC	LV_STDLIB_CLIB
+
+/* The snapshot is RGB888, so the software renderer must be able to draw it. */
+#undef LV_DRAW_SW_SUPPORT_RGB888
+#define LV_DRAW_SW_SUPPORT_RGB888	1
 
 #endif /* DASH_FACE_RENDER_LV_CONF_H */

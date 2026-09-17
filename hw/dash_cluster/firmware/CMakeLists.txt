@@ -118,7 +118,7 @@ set(PANEL_VENDOR_SOURCES
 
 option(DASH_HAVE_PANEL "Build the display layer" ON)
 if(DASH_HAVE_PANEL)
-    list(APPEND DASH_SOURCES src/panel.c src/ui_draw.c src/dash_faces.c)
+    list(APPEND DASH_SOURCES src/panel.c src/ui_draw.c src/ui_needle.c src/dash_faces.c)
     list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})
     set(DASH_HAVE_PANEL 1)
 else()

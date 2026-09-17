@@ -9,9 +9,9 @@ unless it says "estimated".
 
 **Progress.** LVGL came out of the firmware in one go rather than over the
 phases below — see §5, which now records what was done against what was
-planned. The transport, the paletted buffer and the chunked push are written
-and build clean; **nothing has been on the glass yet**, so every runtime figure
-in §3 and §4 marked "estimated" still is.
+planned. The transport, the paletted buffer, the chunked push and the needle
+are running on the glass; §5 has the measured figures, which supersede the
+estimates in §3 and §4. The value text is not written yet.
 
 ---
 
@@ -133,14 +133,19 @@ Predicted, then measured from `arm-none-eabi-size -A` once LVGL was out:
 
 | | LVGL (9c675c7) | predicted | measured |
 |---|---|---|---|
-| Flash | 1,265 KB | ~740 KB | **846 KB** |
+| Flash | 1,265 KB | ~740 KB | **440 KB** |
 | SRAM | 356 KB | ~215 KB | **246 KB** |
 | Render work/frame | 5.5 ms | 2-3 ms | not yet on glass |
 
-Both land short of the prediction for the same reason: the faces are still
-stored as 16-bit images and palettised at boot (phase 1 outstanding), so the
-390 KB of flash and the 195 KB of SRAM that paletting the *stored* face would
-save have not been taken yet.
+Flash beat the prediction because LVGL's code turned out to be far more than
+the 260 KB assumed: `.text` fell by 324 KB on its own, before the faces were
+paletted (on the PC, which halved them to 390 KB) - see the table below.
+
+SRAM missed it, and the prediction was the thing that was wrong. It assumed
+the paletted face would live in SRAM *instead of* anything else; in fact
+there is a full 212 KB back buffer, and the faces stay in flash and are copied
+into it on a page change. That is the better arrangement - the back buffer is
+what the needle and text are drawn into - and 274 KB is still free.
 
 The SRAM figure is the striking one: it fell by 110 KB **while adding the
 212 KB back buffer**. LVGL's heap, its hot code copied into `.time_critical`
@@ -149,10 +154,10 @@ framebuffer does.
 
 | | bytes, LVGL | bytes, now |
 |---|---|---|
-| `.text` | 365,896 | 42,280 |
-| `.rodata` | 899,488 | 803,744 |
+| `.text` | 365,896 | 41,992 |
+| `.rodata` | 899,488 | 404,608 |
 | `.data` | 123,496 | 4,364 |
-| `.bss` | 238,408 | 244,940 |
+| `.bss` | 238,408 | 244,932 |
 
 ## 5. Phases
 
@@ -171,10 +176,32 @@ build, so the old figures below are from the LVGL build as it stood at 9c675c7.
   the input device and the render-event plumbing. `Panel_TouchRead()` (an
   `lv_indev` callback) became `Panel_TouchService()` + `Panel_TouchDown()`.
 - **The paletted back buffer**, `ui_draw.c`: 466x466 8-bit, one 256-entry
-  table. Faces are palettised into it at boot rather than on the PC - a
-  linear search with a run cache, reported by `UiDraw_LoadUs()` - so phase 1
-  below is still outstanding. It fails loudly over 256 colours rather than
-  quantising.
+  table copied into SRAM. A face is a `memcpy` per row into it.
+- **Paletted faces from the PC (phase 1).** One table shared by every face,
+  black at index 0; each face is indices into it. The faces halved, 781 KB to
+  390 KB.
+- **Faces rendered at 4x and reduced, 34 colours.** LVGL's own anti-aliasing
+  spent 151 palette entries on edge shades nobody chose. Now the dial is drawn
+  at 4x (fonts regenerated at 160 and 104 px), every render pixel is snapped
+  to the design colour it belongs to - LVGL has no switch to turn its vector
+  anti-aliasing off, so this does it afterwards, as a 50% coverage threshold -
+  and each panel pixel is its 4x4 block, quantised to 8 shades per pair of
+  colours that meet. Measured against a plain box filter of LVGL's render the
+  result differs by 0.2 on average (8-bit units), under 7 for 99% of pixels;
+  seven pixels per face exceed 40, all tick tips where three colours share a
+  pixel. Two things that were not obvious: snapping must look at the solid
+  colours around a pixel, because the design greys are nearly collinear and
+  plain nearest-colour snapping grew a ring-grey fringe on every white edge;
+  and `lv_scale` adds a private, unscaled 15 px to the numeral padding, which
+  moved every numeral 11 px outward until compensated.
+- **Even gaps in the warning band.** The blocks used to be one `lv_arc` per
+  tick interval, and `lv_arc` takes whole degrees against ticks 8.4375 degrees
+  apart, so the two sides of a tick got gaps up to 4 px apart in width. The
+  band is now one arc, cut into blocks by a face-coloured copy of the tick
+  rings, each tick `2 x UI_GAUGE_BAND_GAP` wider than its white twin; lv_scale
+  places both to the same tenth of a degree. Measured on the 4x render: 2 px
+  either side of every tick, to within the 0.25 px the render resolves. White
+  no longer touches red anywhere, which took the palette to 34.
 - **The chunked push**, `Panel_PushPaletted()`: one window, one chip select,
   8 lines converted at a time into one of two scratch buffers while the DMA
   clocks out the previous chunk. The first chunk is converted before the wait
@@ -189,19 +216,33 @@ build, so the old figures below are from the LVGL build as it stood at 9c675c7.
 - **The build has no LVGL in it.** `DASH_HAVE_LVGL` became `DASH_HAVE_PANEL`;
   the firmware needs no LVGL checkout at all. 372 host checks still pass.
 
+**Done since**
+
+- **Phase 0 - measured on the board, 2026-09-17.** The panel takes one
+  window's pixels split across 59 DMA transfers with chip select held, and the
+  picture is right. A whole-screen push is 8.7 ms of the 16.8 ms scan at
+  49.9 MB/s: conversion ~101 us a chunk (the estimate was 56-75), the wire
+  ~147 us, so the pipeline is wire-bound as intended. One push per scan, no
+  late frames, no overlaps or drain spins.
+- **The needle (phase 3, first half).** `src/ui_needle.c`: placed from the
+  eased position with `UiModel_NeedleStep()` as before, hard-edged round-ended
+  stroke, pivot on the dial's true half-pixel centre, exact pixel-centre
+  bounds. Each frame the face is restored under the old needle, the new one
+  drawn, and only the union of the two rectangles sent: 1,300-3,100 px,
+  60-140 us on the bus - under 1% of the scan, against 52% for a whole
+  screen. Reported "really smooth" on the glass; one push per scan, no late
+  frames. Drawing is now the bigger cost, 250-510 us a frame, most of it the
+  restore reading the face from XIP flash; worth taking if a frame gets
+  crowded. 216 host checks cover its area, containment, ring clearance,
+  symmetry, sweep ends and clipping.
+
 **Outstanding**
 
-- **Phase 0 - measure, on the board.** Everything above is untested on glass.
-  The two questions are whether the panel accepts a pixel stream split across
-  several DMA transfers with chip select held, and what the conversion actually
-  costs per chunk. `Panel_Push()` reports both: `LastConvertUs` against
-  `LastBlockedUs`, and `Starved` for chunks whose DMA had already finished.
-- **Phase 1 - paletted faces from the PC.** Move the palettising into
-  `build_faces.py` so the stored face halves to 195 KB and boot does no work.
-- **Phase 3 - the needle and the text.** Span-fill needle, glyph blit, dirty
-  rectangles. `dash_font_value_56.c` was deleted with the rest of the
-  `lv_font_t` data and `gen_font.py` needs a plain-struct output before text
-  comes back.
+- **Phase 3, second half - the value text.** `dash_font_value_56.c` was
+  deleted with the rest of the `lv_font_t` data and `gen_font.py` needs a
+  plain-struct output before text comes back. The idea: blend 4 bpp glyph
+  edges by index, through the white-charcoal shades already in the palette.
+- **The needle's other states** - dimmed when stale, as LVGL drew it.
 - **Phase 4 - touch, swipe and the warning page** on the native path.
 
 ## 6. Tests
@@ -237,6 +278,7 @@ tool is **not** lost - it moves to the PC, where `lv_scale` costs nothing.
 
 1. 4 bpp or 1 bpp glyphs (4 bpp assumed above).
 2. Whether the needle gets the end-pixel blend - decide by looking.
-3. Whether the paletted face lives in SRAM (fast, needs LVGL gone) or stays in
-   XIP flash (slower, frees 195 KB). SRAM assumed.
+3. ~~Whether the paletted face lives in SRAM or XIP flash.~~ Settled by the
+   back buffer: faces stay in flash and are copied in on a page change, so
+   XIP speed only matters there. `UiDraw_LoadUs()` reports it.
 4. Whether a page transition is wanted at all after the crossfade goes.

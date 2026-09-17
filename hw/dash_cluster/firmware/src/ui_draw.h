@@ -14,9 +14,10 @@
  *
  * The faces cost nothing to palette: both dials together use 151 distinct
  * colours, anti-aliased edges included, so a 256-entry table is LOSSLESS. It
- * is not a quantisation - no pixel changes value. UiDraw_PaletteFull() says so
- * rather than leaving it to be believed: if a face ever needs more, the table
- * fills and the report is loud.
+ * is not a quantisation - no pixel changes value. The palettising is done on
+ * the PC by tools/face_render/build_faces.py, which checks the round trip and
+ * refuses rather than quantises if the faces ever need more; see
+ * dash_faces.h. So a face arrives here already in the buffer's format.
  *
  * The cost is one lookup per pixel on the way out, and that is paid where
  * there is time for it - see Panel_PushPaletted(), which converts the next
@@ -32,36 +33,42 @@
 
 #include "dash_faces.h"
 #include "panel.h"
+#include "ui_needle.h"
 
 #define UI_DRAW_WIDTH		(PANEL_WIDTH)
 #define UI_DRAW_HEIGHT		(PANEL_HEIGHT)
 #define UI_DRAW_PIXELS		((uint32_t)UI_DRAW_WIDTH * (uint32_t)UI_DRAW_HEIGHT)
 
 /* One byte per pixel, so the table can address every value a byte can hold.
-   Index 0 is reserved for black by UiDraw_Init(), so a cleared buffer is a
-   black screen rather than whatever colour happened to be seen first. */
-#define UI_DRAW_PALETTE_MAX	(256u)
+   Index 0 is black, so a cleared buffer is a black screen. */
+#define UI_DRAW_PALETTE_MAX	(DASH_FACE_PALETTE_SIZE)
 
-/* Empty the palette and clear the buffer to black. */
+/* Clear the buffer to black, load the faces' palette and add the live
+   colours - the needle's - after it. */
 extern void UiDraw_Init(void);
 
-/* Copy a pre-rendered face into the back buffer at X,Y, adding its colours to
-   the palette as they are met.
+/* Copy a pre-rendered face into the back buffer at X,Y.
 
-   Returns false if it did not fit the buffer or the palette overflowed - in
-   which case what landed is wrong, not merely approximate, and the caller
-   should say so rather than show it. */
+   Returns false, having copied nothing, if it would not fit - a geometry
+   mistake upstream that the caller should report rather than show. */
 extern bool UiDraw_LoadFace(const DashFace_t *Face, int32_t X, int32_t Y);
+
+/* Put the face back over an area - under where a needle was, typically. Black
+   wherever the area lies outside the face. Clipped to the screen. */
+extern void UiDraw_Restore(const UiRect_t *Area);
+
+/* Draw a needle into the buffer, hard-edged, in the needle's colour. Returns
+   the pixels set. */
+extern uint32_t UiDraw_Needle(const UiNeedle_t *Needle);
 
 /* The buffer and the table, for the panel to convert and send. */
 extern uint8_t *UiDraw_Buffer(void);
 extern const uint16_t *UiDraw_Palette(void);
 extern uint16_t UiDraw_PaletteUsed(void);
-extern bool UiDraw_PaletteFull(void);
 
-/* How long the last UiDraw_LoadFace() took, in microseconds. Boot-time cost,
-   worth knowing because it is the price of palettising on the node instead of
-   on the PC - the step RENDERER_PLAN.md phase 1 moves into face_render. */
+/* How long the last UiDraw_LoadFace() took, in microseconds: a copy of the
+   face out of XIP flash, and so a direct reading of what flash costs to read
+   here, which the needle and text will have to live with too. */
 extern uint32_t UiDraw_LoadUs(void);
 
 #endif /* UI_DRAW_H_ */

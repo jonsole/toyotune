@@ -21,9 +21,21 @@
 #include "pages.h"
 #include "ui_gauge.h"
 
+/* HOW MUCH LARGER THAN THE PANEL THE DIAL IS RENDERED.
+ *
+ * The faces are drawn at four times the panel's resolution and reduced on the
+ * way into the firmware, by build_faces.py: each panel pixel is the 4x4 block
+ * under it, which gives 16 levels of true area coverage at every edge, and the
+ * reduction then chooses how many of those levels the palette may spend. Every
+ * pixel dimension in ui_gauge.h is multiplied by this here, so the geometry the
+ * firmware's live needle relies on is unchanged, only finer. */
+#define UI_GAUGE_RENDER_SCALE	(4)
+
 /* The dial itself - graduations, numbers, warning band, centre ring and legend
    - as LVGL objects in the NORMAL state's colours, at X/Y/W/H in the parent's
-   coordinates. face_render.c snapshots exactly this. */
+   coordinates. Those four are in RENDER pixels, UI_GAUGE_RENDER_SCALE times
+   the panel's, and must be exact multiples of it. face_render.c snapshots
+   exactly this. */
 extern lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
                                      int32_t X, int32_t Y, int32_t W, int32_t H);
 

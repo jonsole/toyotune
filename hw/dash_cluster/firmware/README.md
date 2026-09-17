@@ -111,26 +111,33 @@ What came out of it, `arm-none-eabi-size -A` either side:
 
 | | with LVGL | without |
 |---|---|---|
-| `.text` | 365,896 | 42,280 |
-| `.rodata` | 899,488 | 803,744 |
+| `.text` | 365,896 | 41,992 |
+| `.rodata` | 899,488 | 404,608 |
 | `.data` | 123,496 | 4,364 |
-| `.bss` | 238,408 | 244,940 |
-| SRAM | 364,224 B (356 KB) | 251,624 B (246 KB) |
+| `.bss` | 238,408 | 244,932 |
+| SRAM | 364,224 B (356 KB) | 251,616 B (246 KB) |
 
 **SRAM use fell by about 110 KB while gaining a 212 KB back buffer**, which is
 the number that makes the whole thing worth doing: LVGL's heap, its
 `.time_critical` code and the 91 KB partial draw buffer together cost more than
-a full framebuffer does. Flash went from about 1,265 KB to about 850 KB, most
-of what is left being the two 447x447 faces in `.rodata`.
+a full framebuffer does. Flash went from about 1,265 KB to about 440 KB, most
+of what is left being the two 447x447 faces in `.rodata` - 195 KB each at a
+byte a pixel.
 
 The shape of it:
 
 - **`src/ui_draw.c` — the back buffer.** 466x466 at one byte a pixel is 212 KB
-  and fits; at RGB565 it would be 434 KB and would not. Faces are palettised
-  into it at boot, colours claimed as they are met, and `UiDraw_PaletteFull()`
-  reports an overflow loudly rather than leaving the caller to believe 256 was
-  enough. Index 0 is claimed for black first, so a cleared buffer is a black
-  screen rather than whatever colour was seen first.
+  and fits; at RGB565 it would be 434 KB and would not. The faces arrive
+  already in its format, so loading one is a copy per row.
+- **`tools/face_render/build_faces.py` — rendering and palettising.** The
+  dials are drawn by LVGL at 4x the panel's resolution, every render pixel is
+  snapped to the design colour it belongs to (the colours are read from
+  `src/ui_gauge.h`), and each panel pixel becomes its 4x4 block as one of 8
+  shades between the two colours meeting there. Both dials together need 34
+  entries of one shared 256-entry table; index 0 is always black, so a
+  cleared buffer is a black screen. The script refuses to write a face that
+  contains colours nobody designed, and checks the table's byte order the way
+  the firmware reads it. `RAMP_LEVELS` sets the shades per edge.
 - **`Panel_PushPaletted()` — the way out.** It sends a rectangle of palette
   indices under a **single window command and a single chip select**,
   converting 8 lines at a time into one of two small scratch buffers while the

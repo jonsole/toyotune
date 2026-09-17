@@ -52,8 +52,11 @@
 
 /* Colours, 0xRRGGBB, taken from the MR2's lit instruments: a charcoal face,
    warm-white markings, a red warning band and a red needle. The needle is the
-   brighter red, so it stays visible where it crosses the band. */
-#define UI_GAUGE_FACE_COLOUR		(0x242221)
+   brighter red, so it stays visible where it crosses the band.
+
+   The face was 0x242221 and read too light on the AMOLED, whose blacks are
+   true black; it is now about two thirds of that, with the same warm cast. */
+#define UI_GAUGE_FACE_COLOUR		(0x181716)
 #define UI_GAUGE_MARK_COLOUR		(0xF2EEE4)
 #define UI_GAUGE_BAND_COLOUR		(0xC8201A)
 #define UI_GAUGE_NEEDLE_COLOUR		(0xFF3B30)
@@ -64,6 +67,10 @@
    the radius and a disc 50% of the diameter are the same circle. */
 #define UI_GAUGE_NEEDLE_INNER_PCT	(50)
 
+/* Where the needle ends: long enough to reach in among the graduations, short
+   of the numerals' ring of the ticks' own inner ends. */
+#define UI_GAUGE_NEEDLE_PCT		(85)
+
 /* The needle's stroke. Its ends are rounded, so each end reaches half this
    past the point it is drawn to. */
 #define UI_GAUGE_NEEDLE_WIDTH		(5)
@@ -72,22 +79,19 @@
    it is baked into the pre-rendered face and costs nothing per frame. */
 #define UI_GAUGE_RING_WIDTH		(3)
 
-/* The warning band, drawn as separate blocks between the ticks rather than one
-   continuous arc - the graduations show through the gaps and stand proud of
-   the blocks, as on the car's own dial. One block per minor-tick interval.
-   INSET is how far inside the rim the blocks sit, so the ticks reach past
-   them; GAP_DEG is the angular space left around each tick.
+/* The warning band, broken into blocks by the ticks that cross it - the
+   graduations show through the gaps and stand proud of the blocks, as on the
+   car's own dial. INSET is how far inside the rim the band sits, so the ticks
+   reach past it; GAP is the clear space, in pixels, either side of each tick.
 
-   GAP_DEG is the space either side of a tick, and it is deliberately small: the
-   blocks should come right up to the graduations. There is only about eight
-   degrees between minor ticks, so three degrees a side left two-degree blocks
-   adrift in the middle of each gap. One degree still clears a tick, whose 3 px
-   stroke is about 0.8 degrees wide at this radius, even with the half-degree of
-   rounding lv_arc costs - it takes whole degrees while lv_scale places its
-   ticks to a tenth. */
+   GAP is in PIXELS, and the same beside every tick, because the gaps are cut
+   by the ticks themselves: see the face renderer's ui_gauge.c. It was once an
+   angle given to lv_arc, which takes whole degrees while the ticks are 8.4375
+   degrees apart - so each block's two ends rounded differently and the gaps
+   either side of a tick differed by up to 4 px. */
 #define UI_GAUGE_BAND_INSET		(3)
 #define UI_GAUGE_BAND_WIDTH		(16)
-#define UI_GAUGE_BAND_GAP_DEG		(1)
+#define UI_GAUGE_BAND_GAP		(2)
 
 /* The dial's radius, as both the needle and the ring measure it. */
 static inline int32_t UiGauge_Radius(int32_t W, int32_t H)
@@ -113,6 +117,12 @@ static inline int32_t UiGauge_NeedleInner(int32_t W, int32_t H)
 static inline int32_t UiGauge_RingRadius(int32_t W, int32_t H)
 {
 	return UiGauge_NeedleInner(W, H) - (UI_GAUGE_NEEDLE_WIDTH / 2);
+}
+
+/* Pixels from the pivot to the needle's tip. */
+static inline int32_t UiGauge_NeedleOuter(int32_t W, int32_t H)
+{
+	return (UiGauge_Radius(W, H) * UI_GAUGE_NEEDLE_PCT) / 100;
 }
 
 /* Element geometry is in percent of the panel. */

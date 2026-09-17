@@ -2,16 +2,17 @@
  * face_render.c - render every gauge dial with LVGL on the PC.
  *
  * Built and run by build_faces.py; not part of the firmware. For each gauge in
- * Pages[] this builds the dial with UiGauge_CreateScale() on a screen set up
- * exactly as the firmware sets one up, snapshots the whole panel, crops the
- * gauge's own rectangle out of it, and writes it byte-swapped - the CO5300 and
- * the firmware's draw buffer are both RGB565 high byte first, so the image
- * blits without a per-pixel conversion.
+ * Pages[] this builds the dial with UiGauge_CreateScale() on a black screen
+ * UI_GAUGE_RENDER_SCALE times the panel's size, snapshots it in RGB888, and
+ * crops out the gauge's own rectangle. RGB888 rather than the panel's RGB565
+ * because the design colours must come through exactly: build_faces.py
+ * recognises them by value when it reduces the image to the panel's size.
  *
  *   face_render <outdir>
  *
- * writes <outdir>/p<page>_e<element>.bin for each gauge and <outdir>/faces.txt,
- * one "page element width height" line each, which build_faces.py turns into
+ * writes <outdir>/p<page>_e<element>.rgb (R, G, B per render pixel) for each
+ * gauge and <outdir>/faces.txt, one "page element width height scale" line
+ * each - width and height in PANEL pixels - which build_faces.py turns into
  * src/dash_faces.c.
  *
  * Snapshotting the screen rather than the scale object matters: an object's
@@ -29,7 +30,12 @@
 #include "panel.h"
 #include "ui_gauge_scale.h"
 
-static uint8_t DrawBuf[PANEL_WIDTH * PANEL_HEIGHT * 2];
+#define RENDER_WIDTH	(PANEL_WIDTH * UI_GAUGE_RENDER_SCALE)
+#define RENDER_HEIGHT	(PANEL_HEIGHT * UI_GAUGE_RENDER_SCALE)
+
+/* The display's own buffer is never looked at - the snapshot renders into one
+   of its own - but LVGL wants one to exist. A band of rows is plenty. */
+static uint8_t DrawBuf[RENDER_WIDTH * 64 * 2];
 
 static void Flush(lv_display_t *Display, const lv_area_t *Area, uint8_t *Pixels)
 {
@@ -38,7 +44,7 @@ static void Flush(lv_display_t *Display, const lv_area_t *Area, uint8_t *Pixels)
 	lv_display_flush_ready(Display);
 }
 
-/* The same screen UiLvgl_MakeScreen() builds, less its gesture handler. */
+/* A black, borderless, unscrollable screen - what the firmware draws on. */
 static lv_obj_t *MakeScreen(void)
 {
 	lv_obj_t *New = lv_obj_create(NULL);
@@ -68,7 +74,7 @@ int main(int argc, char **argv)
 
 	lv_init();
 
-	Display = lv_display_create(PANEL_WIDTH, PANEL_HEIGHT);
+	Display = lv_display_create(RENDER_WIDTH, RENDER_HEIGHT);
 	lv_display_set_color_format(Display, LV_COLOR_FORMAT_RGB565);
 	lv_display_set_buffers(Display, DrawBuf, NULL, sizeof(DrawBuf),
 	                       LV_DISPLAY_RENDER_MODE_PARTIAL);
@@ -95,26 +101,30 @@ int main(int argc, char **argv)
 			if (El->Type != WIDGET_GAUGE)
 				continue;
 
-			/* From the display resolution, as UiLvgl_BuildPage() does. */
+			/* In PANEL pixels, from the panel's resolution, then scaled - so
+			   the render rectangle is an exact multiple and every panel pixel
+			   is a whole block of render pixels. */
 			X = UiGauge_Pct(El->X, PANEL_WIDTH);
 			Y = UiGauge_Pct(El->Y, PANEL_HEIGHT);
 			W = UiGauge_Pct(El->W, PANEL_WIDTH);
 			H = UiGauge_Pct(El->H, PANEL_HEIGHT);
 
 			Screen = MakeScreen();
-			UiGauge_CreateScale(Screen, El, X, Y, W, H);
+			UiGauge_CreateScale(Screen, El,
+			                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
+			                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
 			lv_screen_load(Screen);
 			lv_obj_update_layout(Screen);
 
-			Snap = lv_snapshot_take(Screen, LV_COLOR_FORMAT_RGB565);
+			Snap = lv_snapshot_take(Screen, LV_COLOR_FORMAT_RGB888);
 			if (Snap == NULL
-			    || Snap->header.w != PANEL_WIDTH || Snap->header.h != PANEL_HEIGHT)
+			    || Snap->header.w != RENDER_WIDTH || Snap->header.h != RENDER_HEIGHT)
 			{
 				fprintf(stderr, "page %u element %u: snapshot failed\n", p, e);
 				return 1;
 			}
 
-			snprintf(Path, sizeof(Path), "%s/p%u_e%u.bin", argv[1], p, e);
+			snprintf(Path, sizeof(Path), "%s/p%u_e%u.rgb", argv[1], p, e);
 			Out = fopen(Path, "wb");
 			if (Out == NULL)
 			{
@@ -122,26 +132,26 @@ int main(int argc, char **argv)
 				return 1;
 			}
 
-			for (Row = Y; Row < Y + H; Row++)
+			for (Row = Y * UI_GAUGE_RENDER_SCALE;
+			     Row < (Y + H) * UI_GAUGE_RENDER_SCALE; Row++)
 			{
 				const uint8_t *Line = Snap->data + (uint32_t)Row * Snap->header.stride;
 
-				for (Col = X; Col < X + W; Col++)
+				for (Col = X * UI_GAUGE_RENDER_SCALE;
+				     Col < (X + W) * UI_GAUGE_RENDER_SCALE; Col++)
 				{
-					/* Native RGB565 is low byte first; the panel wants high
-					   byte first. */
-					uint8_t Lo = Line[Col * 2];
-					uint8_t Hi = Line[Col * 2 + 1];
-
-					fputc(Hi, Out);
-					fputc(Lo, Out);
+					/* LVGL's RGB888 is stored B, G, R. */
+					fputc(Line[Col * 3 + 2], Out);
+					fputc(Line[Col * 3 + 1], Out);
+					fputc(Line[Col * 3], Out);
 				}
 			}
 			fclose(Out);
 
-			fprintf(Manifest, "%u %u %d %d\n", p, e, (int)W, (int)H);
-			printf("page %u element %u: %dx%d at %d,%d\n", p, e,
-			       (int)W, (int)H, (int)X, (int)Y);
+			fprintf(Manifest, "%u %u %d %d %d\n", p, e, (int)W, (int)H,
+			        UI_GAUGE_RENDER_SCALE);
+			printf("page %u element %u: %dx%d at %d,%d, rendered at %dx\n",
+			       p, e, (int)W, (int)H, (int)X, (int)Y, UI_GAUGE_RENDER_SCALE);
 
 			lv_draw_buf_destroy(Snap);
 			Written++;

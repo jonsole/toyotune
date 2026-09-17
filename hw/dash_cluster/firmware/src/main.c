@@ -44,6 +44,9 @@
 #include "dash_faces.h"
 #include "panel.h"
 #include "ui_draw.h"
+#include "ui_gauge.h"
+#include "ui_model.h"
+#include "ui_needle.h"
 #endif
 
 /* How often the console status line goes out. Long, because it is a
@@ -185,22 +188,58 @@ static void Core1ReportFace(uint32_t NowMs, uint8_t Page, bool Verbose)
 
 #if DASH_HAVE_PANEL
 /***************************************************************************************/
-/* The pre-rendered dial for a page, or NULL if there is not one.
-
-   Element 0: every page has exactly one gauge for now. When a page carries
-   more than one, this becomes a loop over the page's elements and the buffer
-   takes each face at its own position. */
-static const DashFace_t *Core1Face(uint8_t Page)
+/* The page's gauge: the first gauge element, with its pre-rendered face. Every
+   page has one gauge for now; when a page carries more, this becomes a list and
+   each gets its own needle. */
+typedef struct
 {
-	uint8_t i;
+	const FaceElement_t *Element;
+	const DashFace_t *Face;
+	int32_t X, Y, W, H;		/* the element, in panel pixels */
+} Core1Gauge_t;
 
-	for (i = 0; i < DashFaceCount; i++)
+static bool Core1FindGauge(uint8_t Page, Core1Gauge_t *Out)
+{
+	uint8_t e, i;
+
+	for (e = 0; e < Pages[Page].ElementCount; e++)
 	{
-		if (DashFaces[i].Page == Page && DashFaces[i].Element == 0u)
-			return &DashFaces[i];
+		const FaceElement_t *El = &Pages[Page].Elements[e];
+
+		if (El->Type != WIDGET_GAUGE)
+			continue;
+
+		for (i = 0; i < DashFaceCount; i++)
+		{
+			if (DashFaces[i].Page == Page && DashFaces[i].Element == e)
+			{
+				Out->Element = El;
+				Out->Face = &DashFaces[i];
+				Out->X = UiGauge_Pct(El->X, PANEL_WIDTH);
+				Out->Y = UiGauge_Pct(El->Y, PANEL_HEIGHT);
+				Out->W = UiGauge_Pct(El->W, PANEL_WIDTH);
+				Out->H = UiGauge_Pct(El->H, PANEL_HEIGHT);
+				return true;
+			}
+		}
 	}
 
-	return NULL;
+	return false;
+}
+
+
+/***************************************************************************************/
+/* The needle for a gauge at an eased position. The pivot is the element's
+   true centre - half-pixel and all, see ui_needle.h - which is where the face
+   renderer put the centre of the dial. */
+static UiNeedle_t Core1Needle(const Core1Gauge_t *G, uint32_t PositionQ)
+{
+	return UiNeedle_Place((float)G->X + ((float)G->W / 2.0f),
+	                      (float)G->Y + ((float)G->H / 2.0f),
+	                      (float)UiGauge_NeedleInner(G->W, G->H),
+	                      (float)UiGauge_NeedleOuter(G->W, G->H),
+	                      (float)UI_GAUGE_NEEDLE_WIDTH / 2.0f,
+	                      PositionQ);
 }
 
 
@@ -208,15 +247,14 @@ static const DashFace_t *Core1Face(uint8_t Page)
 /* Core 1: the display, one panel frame per loop.
  *
  * The loop is clocked by the panel. Panel_PushPaletted() waits for the TE
- * pulse and returns once the last pixel has been clocked out, so the loop
- * runs at exactly the scan rate with no timer in it anywhere.
+ * pulse and returns once the last pixel has been clocked out, and when there
+ * is nothing to send Panel_WaitFrame() waits for the pulse instead - so the
+ * loop runs at the scan rate with no timer in it anywhere.
  *
- * What it sends today is the whole screen, every frame: the dial and nothing
- * over it. That is deliberately the most expensive thing this pipeline will
- * ever be asked to do - 434 KB a frame, about 9 ms on the wire - because it is
- * the measurement RENDERER_PLAN.md phase 0 wants before the needle, the text
- * and the dirty rectangles go back on top of it. The real renderer sends a
- * rectangle a fraction of that size.
+ * A page change sends the whole screen. After that, each frame eases the
+ * needle towards its reading by however long the last frame took, and when it
+ * has moved: puts the face back where it was, draws it where it is, and sends
+ * only the rectangle covering both.
  *
  * Status goes out every STATUS_PERIOD_MS from here too. Printing it costs a
  * frame, once every two seconds. */
@@ -224,54 +262,114 @@ static void Core1Main(void)
 {
 	uint32_t NextStatusMs = 0;
 	uint8_t LastPage = 0xFFu;
+	uint32_t LastFrameUs;
+	Core1Gauge_t Gauge;
+	bool HaveGauge = false;
+	bool HaveNeedle = false;
+	UiNeedle_t Needle;
+	UiRect_t NeedleRect = { 0, 0, 0, 0 };
+	uint32_t SmoothQ = 0;
+	uint32_t NeedleFrames = 0, StillFrames = 0;
+	uint32_t DrawUs = 0, PushPixels = 0;
 
 	Panel_Init();
 	UiDraw_Init();
+	LastFrameUs = time_us_32();
 
 	for (;;)
 	{
+		uint32_t NowUs = time_us_32();
 		uint32_t NowMs = to_ms_since_boot(get_absolute_time());
+		uint32_t FrameUs = NowUs - LastFrameUs;
 		uint8_t Page = Pages_Effective(NowMs);
+
+		LastFrameUs = NowUs;
 
 		Panel_Alive(PANEL_STAGE_UI_UPDATE);
 		Panel_TouchService();
 
 		if (Page != LastPage)
 		{
-			const DashFace_t *Face = Core1Face(Page);
-
 			Panel_Alive(PANEL_STAGE_DRAW);
 			UiDraw_Init();
+			HaveGauge = Core1FindGauge(Page, &Gauge);
+			HaveNeedle = false;
 
-			if (Face != NULL)
-			{
-				/* Centred. The face is 447 of 466 pixels, an odd size in an
-				   even screen, so one margin is a pixel wider than the other
-				   - which is where the element's real position from Pages[]
-				   goes when there is more than one gauge on a page. */
-				int32_t X = (PANEL_WIDTH - Face->Width) / 2;
-				int32_t Y = (PANEL_HEIGHT - Face->Height) / 2;
-
-				if (!UiDraw_LoadFace(Face, X, Y))
-					printf("face p%u: does not fit, or more than %u colours "
-					       "- showing it anyway, wrongly\n",
-					       Page, (unsigned)UI_DRAW_PALETTE_MAX);
-
-				printf("face p%u: loaded in %luus, palette %u of %u\n",
+			if (!HaveGauge)
+				printf("face p%u: no pre-rendered gauge - black\n", Page);
+			else if (UiDraw_LoadFace(Gauge.Face, Gauge.X, Gauge.Y))
+				printf("face p%u: copied in %luus, palette %u of %u\n",
 				       Page, (unsigned long)UiDraw_LoadUs(),
 				       UiDraw_PaletteUsed(), (unsigned)UI_DRAW_PALETTE_MAX);
+			else
+			{
+				printf("face p%u: %ldx%ld does not fit at %ld,%ld - black\n",
+				       Page, (long)Gauge.Face->Width, (long)Gauge.Face->Height,
+				       (long)Gauge.X, (long)Gauge.Y);
+				HaveGauge = false;
+			}
+
+			/* A new face starts with its needle on the reading, not swinging
+			   up from zero. */
+			if (HaveGauge)
+			{
+				UiWidget_t W = UiModel_Widget(Gauge.Element, NowMs);
+
+				SmoothQ = (uint32_t)W.Position << UI_NEEDLE_Q;
+				Needle = Core1Needle(&Gauge, SmoothQ);
+				NeedleRect = UiNeedle_Bounds(&Needle);
+				(void)UiDraw_Needle(&Needle);
+				HaveNeedle = true;
+			}
+
+			Panel_Alive(PANEL_STAGE_PUSH);
+			Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH, UiDraw_Palette(),
+			                   0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1);
+			LastPage = Page;
+		}
+		else if (HaveGauge)
+		{
+			UiWidget_t W = UiModel_Widget(Gauge.Element, NowMs);
+			UiNeedle_t Next;
+
+			Panel_Alive(PANEL_STAGE_DRAW);
+			SmoothQ = UiModel_NeedleStep(SmoothQ, W.Position, FrameUs);
+			Next = Core1Needle(&Gauge, SmoothQ);
+
+			if (HaveNeedle && UiNeedle_Same(&Next, &Needle))
+			{
+				StillFrames++;
+				Panel_WaitFrame();
 			}
 			else
 			{
-				printf("face p%u: none pre-rendered - black\n", Page);
+				uint32_t T0 = time_us_32();
+				UiRect_t NextRect = UiNeedle_Bounds(&Next);
+				UiRect_t Dirty = HaveNeedle ? UiRect_Union(&NeedleRect, &NextRect)
+				                            : NextRect;
+
+				if (HaveNeedle)
+					UiDraw_Restore(&NeedleRect);
+				(void)UiDraw_Needle(&Next);
+				DrawUs = time_us_32() - T0;
+
+				Needle = Next;
+				NeedleRect = NextRect;
+				HaveNeedle = true;
+				NeedleFrames++;
+				PushPixels = (uint32_t)((Dirty.X2 - Dirty.X1 + 1)
+				                        * (Dirty.Y2 - Dirty.Y1 + 1));
+
+				Panel_Alive(PANEL_STAGE_PUSH);
+				Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH,
+				                   UiDraw_Palette(),
+				                   Dirty.X1, Dirty.Y1, Dirty.X2, Dirty.Y2);
 			}
-
-			LastPage = Page;
 		}
-
-		Panel_Alive(PANEL_STAGE_PUSH);
-		Panel_PushPaletted(UiDraw_Buffer(), UI_DRAW_WIDTH, UiDraw_Palette(),
-		                   0, 0, PANEL_WIDTH - 1, PANEL_HEIGHT - 1);
+		else
+		{
+			Panel_WaitFrame();
+		}
 
 		if ((int32_t)(NowMs - NextStatusMs) >= 0)
 		{
@@ -290,6 +388,9 @@ static void Core1Main(void)
 			                                                    : "LINK DOWN";
 #endif
 
+			printf("needle frames %lu  still %lu  last draw %luus  rect %lupx\n",
+			       (unsigned long)NeedleFrames, (unsigned long)StillFrames,
+			       (unsigned long)DrawUs, (unsigned long)PushPixels);
 			printf("node %u  page %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",
 			       DashNodeId, Page, LinkText,
