@@ -23,6 +23,7 @@
 
 #include "node_id.h"
 #include "pages.h"
+#include "ui_model.h"
 #include "signal_store.h"
 #include "signals.h"
 #include "telemetry.h"
@@ -362,6 +363,97 @@ static void TestPageWrap(void)
 
 
 /* The fault takeover has to outrank the selection, and has to let go again. */
+/* The vertical swipe: every page but the warning has a second view, the
+   graph views carry the same readings as the gauges they flip with, and a
+   page remembers its own view. */
+static void TestViews(void)
+{
+	uint8_t p, n, e, Count, AltCount;
+
+	printf("pages - views, and what a vertical swipe flips to\n");
+
+	for (p = 0; p < PageCount; p++)
+	{
+		const FaceElement_t *Main = Pages_Elements(p, 0u, &Count);
+		const FaceElement_t *Alt = Pages_Elements(p, 1u, &AltCount);
+		bool Warning = strcmp(Pages[p].Name, "WARNING") == 0;
+
+		CHECK(Main == Pages[p].Elements && Count == Pages[p].ElementCount,
+		      "page %u: view 0 is its own elements", p);
+		CHECK(Warning ? !Pages_HasAlt(p) : Pages_HasAlt(p),
+		      "page %u: %s", p, Warning ? "the warning page has one view only"
+		                                : "every other page has a second view");
+		if (!Pages_HasAlt(p))
+		{
+			CHECK(Alt == NULL && AltCount == 0u, "page %u: no second view to fetch", p);
+			continue;
+		}
+
+		/* A graph view must show exactly the readings of the gauges it
+		   flips with, in order, on the same scale - otherwise a reading
+		   would change meaning across a swipe. */
+		if (Alt[0].Type == WIDGET_GRAPH && Main[0].Type == WIDGET_GAUGE)
+		{
+			CHECK(AltCount == Count, "page %u: one trace per gauge", p);
+			for (e = 0; e < AltCount && e < Count; e++)
+			{
+				CHECK(Alt[e].Type == WIDGET_GRAPH, "page %u trace %u is a graph", p, e);
+				CHECK(Alt[e].Signal == Main[e].Signal && Alt[e].Min == Main[e].Min
+				      && Alt[e].Max == Main[e].Max && Alt[e].Format == Main[e].Format,
+				      "page %u trace %u: same signal, range and format as its gauge", p, e);
+			}
+		}
+	}
+
+	/* Flipping is per page and survives swiping away and back. */
+	Pages_Init(0, 0);
+	CHECK(Pages_ViewOf(0) == 0u, "every page opens on its first view");
+	Pages_Flip();
+	CHECK(Pages_ViewOf(0) == 1u, "a flip selects the second view");
+	Pages_Next();
+	CHECK(Pages_ViewOf(Pages_Current()) == 0u, "the next page is still on its own view");
+	Pages_Previous();
+	CHECK(Pages_ViewOf(0) == 1u, "and coming back finds the flipped view again");
+	Pages_Flip();
+	CHECK(Pages_ViewOf(0) == 0u, "flipping twice returns");
+
+	/* The warning takeover always shows its only view, whatever was chosen. */
+	for (n = 0; n < PageCount; n++)
+	{
+		if (strcmp(Pages[n].Name, "WARNING") == 0)
+			CHECK(Pages_ViewOf(n) == 0u, "the warning page has no second view to be on");
+	}
+
+	/* A re-initialisation - a power cycle - starts every page on view 0. */
+	Pages_Init(0, 0);
+	Pages_Flip();
+	Pages_Init(0, 0);
+	CHECK(Pages_ViewOf(0) == 0u, "power-on forgets the views");
+
+	/* The g-force trace reads the accelerometer through the model's local
+	   readings, with the same staleness as anything from the bus. */
+	for (p = 0; p < PageCount; p++)
+	{
+		const FaceElement_t *Alt = Pages_Elements(p, 1u, &AltCount);
+
+		if (Alt == NULL || Alt[0].Signal != SIGNAL_G_LAT)
+			continue;
+
+		UiModel_SetLocal(SIGNAL_G_LAT, 450, 10000u);
+		{
+			UiWidget_t W = UiModel_Widget(&Alt[0], 10100u);
+
+			CHECK(W.State == UI_STATE_NORMAL && W.Value == 450,
+			      "a local reading is read back: state %d value %ld", (int)W.State,
+			      (long)W.Value);
+			CHECK(strcmp(W.Text, "0.45") == 0, "and formatted in g: %s", W.Text);
+		}
+		CHECK(UiModel_Widget(&Alt[0], 10000u + UI_MODEL_LOCAL_STALE_MS + 1u).State
+		      == UI_STATE_STALE, "and goes stale when the accelerometer stops");
+	}
+}
+
+
 static void TestWarningTakeover(void)
 {
 	uint8_t Slow[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -509,6 +601,7 @@ int main(void)
 	TestNodeId();
 	TestPages();
 	TestPageWrap();
+	TestViews();
 	TestWarningTakeover();
 	TestKnockThreshold();
 	TestFormatting();

@@ -18,6 +18,7 @@
 #include "ui_text.h"
 
 extern const DashFont_t dash_font_clock_36;
+extern const DashFont_t dash_font_clock_160;
 
 /* The time as the node believes it, and where it came from. */
 static RtcTime_t	Now;
@@ -137,7 +138,7 @@ static uint32_t UiClockPage_Shapes(const UiClockPage_t *P, UiNeedle_t *Shapes, b
 	uint32_t Frac;
 	uint32_t n = 0;
 
-	if (!Valid)
+	if (!Valid || P->Digital)
 		return 0u;
 
 	Frac = (uint32_t)(((uint64_t)(time_us_32() - SecondStartUs) * UI_CLOCK_FRAC_ONE)
@@ -172,32 +173,33 @@ static bool UiClockPage_Overlaps(const UiRect_t *A, const UiRect_t *B)
 
 
 /***************************************************************************************/
-static void UiClockPage_Digital(UiClockPage_t *P, bool Force, UiClockDirty_t Dirty,
-                                void *Ctx)
+/* One line of text, centred at Dy below the dial's centre: redrawn only when
+   it reads differently, or when forced, putting the face back under the old
+   one first. */
+static void UiClockPage_Line(UiClockPage_t *P, const DashFont_t *Font, const char *Text,
+                             float Dy, char *Held, uint32_t HeldSize, bool *Have,
+                             UiRect_t *Rect, bool Force, UiClockDirty_t Dirty, void *Ctx)
 {
-	char Text[sizeof(P->Text)];
 	int32_t Tx, Ty;
 	UiRect_t Ink;
 
-	UiClock_Format(Valid, Now.Hours, Now.Minutes, Text, sizeof(Text));
-	if (!Force && P->HaveText && strcmp(Text, P->Text) == 0)
+	if (!Force && *Have && strcmp(Text, Held) == 0)
 		return;
 
-	if (P->HaveText)
+	if (*Have)
 	{
-		UiDraw_Restore(P->Surface, &P->TextRect);
+		UiDraw_Restore(P->Surface, Rect);
 		if (Dirty != NULL)
-			Dirty(Ctx, &P->TextRect);
+			Dirty(Ctx, Rect);
 	}
 
-	memcpy(P->Text, Text, sizeof(Text));
-	UiText_Centre(&dash_font_clock_36, Text, P->Cx,
-	              P->Cy + (float)UI_CLOCK_DIGITAL_DY, &Tx, &Ty);
-	P->HaveText = UiText_Bounds(&dash_font_clock_36, Text, Tx, Ty, &Ink);
-	if (P->HaveText)
+	(void)snprintf(Held, HeldSize, "%s", Text);
+	UiText_Centre(Font, Held, P->Cx, P->Cy + Dy, &Tx, &Ty);
+	*Have = UiText_Bounds(Font, Held, Tx, Ty, &Ink);
+	if (*Have)
 	{
-		(void)UiDraw_Text(P->Surface, &dash_font_clock_36, Text, Tx, Ty);
-		P->TextRect = Ink;
+		(void)UiDraw_Text(P->Surface, Font, Held, Tx, Ty);
+		*Rect = Ink;
 		if (Dirty != NULL)
 			Dirty(Ctx, &Ink);
 	}
@@ -205,8 +207,46 @@ static void UiClockPage_Digital(UiClockPage_t *P, bool Force, UiClockDirty_t Dir
 
 
 /***************************************************************************************/
+/* The time in figures: small under the analogue hands, or as the whole of the
+   digital view with the seconds beneath. */
+static void UiClockPage_Digital(UiClockPage_t *P, bool Force, UiClockDirty_t Dirty,
+                                void *Ctx)
+{
+	char Text[sizeof(P->Text)];
+
+	UiClock_Format(Valid, Now.Hours, Now.Minutes, Text, sizeof(Text));
+
+	if (!P->Digital)
+	{
+		UiClockPage_Line(P, &dash_font_clock_36, Text, (float)UI_CLOCK_DIGITAL_DY,
+		                 P->Text, sizeof(P->Text), &P->HaveText, &P->TextRect,
+		                 Force, Dirty, Ctx);
+		return;
+	}
+
+	UiClockPage_Line(P, &dash_font_clock_160, Text, (float)UI_CLOCK_BIG_DY,
+	                 P->Text, sizeof(P->Text), &P->HaveText, &P->TextRect,
+	                 Force, Dirty, Ctx);
+
+	/* Seconds on their own line, "--" with no trustworthy time for the same
+	   reason the hours and minutes read "--:--". */
+	{
+		char Sec[sizeof(P->Seconds)];
+
+		if (Valid && Now.Seconds < 60u)
+			(void)snprintf(Sec, sizeof(Sec), "%02u", (unsigned)Now.Seconds);
+		else
+			(void)snprintf(Sec, sizeof(Sec), "--");
+		UiClockPage_Line(P, &dash_font_clock_36, Sec, (float)UI_CLOCK_SECONDS_DY,
+		                 P->Seconds, sizeof(P->Seconds), &P->HaveSeconds,
+		                 &P->SecondsRect, Force, Dirty, Ctx);
+	}
+}
+
+
+/***************************************************************************************/
 void UiClockPage_Load(UiClockPage_t *P, uint8_t Surface, float Cx, float Cy,
-                      int32_t Radius)
+                      int32_t Radius, bool Digital)
 {
 	uint32_t i;
 
@@ -215,6 +255,7 @@ void UiClockPage_Load(UiClockPage_t *P, uint8_t Surface, float Cx, float Cy,
 	P->Cx = Cx;
 	P->Cy = Cy;
 	P->Radius = Radius;
+	P->Digital = Digital;
 
 	P->ShapeCount = UiClockPage_Shapes(P, P->Shapes, P->Red);
 	for (i = 0; i < P->ShapeCount; i++)
@@ -271,6 +312,6 @@ void UiClockPage_Update(UiClockPage_t *P, bool TextDue, UiClockDirty_t Dirty, vo
 	   has just had the FACE put back underneath - which takes the text with
 	   it. Redrawing it here rather than only once a minute is what keeps the
 	   hands passing behind it instead of erasing pieces of it. */
-	if (TextDue || Touched)
+	if (TextDue || Touched || P->Digital)
 		UiClockPage_Digital(P, Touched, Dirty, Ctx);
 }

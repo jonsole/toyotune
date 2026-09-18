@@ -32,7 +32,8 @@ typedef struct
 typedef struct
 {
 	uint8_t Page;			/* index into Pages[] */
-	uint8_t Element;		/* index into that page's Elements[] */
+	uint8_t View;			/* 0 the page's own view, 1 its alternative */
+	uint8_t Element;		/* index into that view's elements */
 	int32_t Width;			/* the element size it was rendered for, so a */
 	int32_t Height;			/* face that no longer fits can be refused */
 	const DashImage_t *Image;

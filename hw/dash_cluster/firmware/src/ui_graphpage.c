@@ -29,15 +29,23 @@ static uint32_t		DueUs;
 
 
 /***************************************************************************************/
-/* A page's graph elements, in order. Returns how many. */
+/* A page's graph elements, in order, from whichever of its views is the
+   graph - so the history belongs to the page and is there whichever view it
+   is flipped to. Returns how many. */
 static uint32_t UiGraphPage_Elements(uint8_t Page, const FaceElement_t **Out)
 {
 	uint32_t n = 0;
-	uint8_t e;
+	uint8_t v, e;
 
-	for (e = 0; e < Pages[Page].ElementCount && n < UI_GRAPHPAGE_TRACES; e++)
-		if (Pages[Page].Elements[e].Type == WIDGET_GRAPH)
-			Out[n++] = &Pages[Page].Elements[e];
+	for (v = 0; v < PAGES_VIEWS && n == 0u; v++)
+	{
+		uint8_t Count;
+		const FaceElement_t *Els = Pages_Elements(Page, v, &Count);
+
+		for (e = 0; Els != NULL && e < Count && n < UI_GRAPHPAGE_TRACES; e++)
+			if (Els[e].Type == WIDGET_GRAPH)
+				Out[n++] = &Els[e];
+	}
 
 	return n;
 }
@@ -134,7 +142,8 @@ static void UiGraphPage_Readings(UiGraphPage_t *V, uint32_t NowMs, bool Force,
 	for (t = 0; t < n; t++)
 	{
 		UiWidget_t W = UiModel_Widget(Elements[t], NowMs);
-		int32_t Dx = (t == 0u) ? -UI_GRAPH_READING_DX : UI_GRAPH_READING_DX;
+		int32_t Dx = (n == 1u) ? 0
+		             : ((t == 0u) ? -UI_GRAPH_READING_DX : UI_GRAPH_READING_DX);
 		int32_t Tx, Ty;
 		UiRect_t Ink;
 

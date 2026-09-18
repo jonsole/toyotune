@@ -271,23 +271,23 @@ def emit_bytes(lines, data, per_line):
 
 def write_generated(manifest):
     names, bases = design_colours()
-    scale = manifest[0][4]
+    scale = manifest[0][5]
     faces = []
-    for page, elem, w, h, sc in manifest:
-        name = "face_p%d_e%d" % (page, elem)
-        raw = open(os.path.join(OUT, "p%d_e%d.rgb" % (page, elem)), "rb").read()
+    for page, view, elem, w, h, sc in manifest:
+        name = "face_p%d_v%d_e%d" % (page, view, elem)
+        raw = open(os.path.join(OUT, "p%d_v%d_e%d.rgb" % (page, view, elem)), "rb").read()
         if len(raw) != w * h * sc * sc * 3:
             sys.exit("%s: %d bytes, expected %d" % (name, len(raw), w * h * sc * sc * 3))
         render = np.frombuffer(raw, dtype=np.uint8).reshape(h * sc, w * sc, 3)
         keys, boxed = reduce_face(render, w, h, sc, bases, name)
-        faces.append((page, elem, w, h, name, keys, boxed))
+        faces.append((page, view, elem, w, h, name, keys, boxed))
 
     # The palette: black first, so a cleared buffer is black; then the design
     # colours the faces use; then the shades, in a stable order. Keyed by RGB565
     # value, so two shades that land on the same 565 colour share an entry.
     used = set()
     for f in faces:
-        used.update(f[5])
+        used.update(f[6])
     ordered = [("solid", c) for c in range(len(bases))]
     ordered += sorted(k for k in used if k[0] == "ramp")
     palette, lookup = [], {}
@@ -340,7 +340,7 @@ def write_generated(manifest):
     lines += ["};", "", "const uint16_t DashFacePaletteUsed = %du;" % len(palette), ""]
 
     entries = []
-    for page, elem, w, h, name, keys, boxed in faces:
+    for page, view, elem, w, h, name, keys, boxed in faces:
         colour = {k: key_rgb(k, bases) for k in set(keys)}
         want = [to565(colour[k]) for k in keys]
         indices = bytes(lookup[v] for v in want)
@@ -360,7 +360,7 @@ def write_generated(manifest):
                  float(np.percentile(err, 99)), float(err.max())))
 
         Image.fromarray(np.clip(got + 0.5, 0, 255).astype(np.uint8)).save(
-            os.path.join(OUT, "p%d_e%d_preview.png" % (page, elem)))
+            os.path.join(OUT, "p%d_v%d_e%d_preview.png" % (page, view, elem)))
 
         lines.append("static const uint8_t %s_map[] = {" % name)
         emit_bytes(lines, indices, 32)
@@ -371,7 +371,7 @@ def write_generated(manifest):
                   "    .Stride = %d," % w,
                   "    .Data = %s_map," % name,
                   "};", ""]
-        entries.append("    { %d, %d, %d, %d, &%s }," % (page, elem, w, h, name))
+        entries.append("    { %d, %d, %d, %d, %d, &%s }," % (page, view, elem, w, h, name))
 
     lines += ["const DashFace_t DashFaces[] =", "{"] + entries + ["};", "",
               "const uint8_t DashFaceCount = (uint8_t)(sizeof(DashFaces) / sizeof(DashFaces[0]));", ""]

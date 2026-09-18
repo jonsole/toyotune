@@ -129,6 +129,17 @@ static void Simulate(uint32_t NowMs)
 			Afr = 1470;
 		SignalStore_Set(SIGNAL_AFR, Afr, NowMs);
 	}
+
+	/* Exhaust temperature, whole degrees: 350 at idle, climbing with revs to
+	   about 880 at the top - short of the face's 900 red. Air temperatures in
+	   hundredths: the intake a steady 18 C, the manifold warming from 25 to
+	   65 C as boost builds, which crosses the manifold's red at 60. */
+	SignalStore_Set(SIGNAL_EGT, 350 + ((Rpm - SIM_RPM_IDLE) * 530) / (SIM_RPM_TOP - SIM_RPM_IDLE),
+	                NowMs);
+	SignalStore_Set(SIGNAL_THA, 1800, NowMs);
+	SignalStore_Set(SIGNAL_THAM,
+	                (Map <= 1013) ? 2500 : 2500 + ((Map - 1013) * 4000) / (2300 - 1013),
+	                NowMs);
 }
 #endif
 
@@ -154,6 +165,7 @@ static volatile bool ScreenshotRequested;
 /* A page change asked for over the console - 'n' next, 'p' previous - served
    by core 1, which owns the page selection. +1, -1, or 0 for none. */
 static volatile int8_t PageStepRequested;
+static volatile bool FlipRequested;		/* 'f': the page's other view */
 
 /* A clock setting asked for over the console - "Thhmmss" - served by core 1,
    which owns the I2C bus the clock is on. Written by core 0 and read by
@@ -268,6 +280,7 @@ typedef struct
 typedef struct
 {
 	uint8_t Page;
+	uint8_t View;			/* which of the page's two views this is */
 	uint8_t Surface;
 	bool Valid;			/* a face was found and fits */
 	const DashFace_t *Face;
@@ -472,28 +485,33 @@ static void Core1UpdatePage(Core1Page_t *V, uint32_t NowMs, uint32_t FrameUs,
 
 
 /***************************************************************************************/
-/* Build a page from scratch into a surface: its face, and its needles and
-   readings on their current values - not swinging up from zero. */
-static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_t NowMs)
+/* Build one view of a page from scratch into a surface: its face, and its
+   needles and readings on their current values - not swinging up from zero. */
+static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t View, uint8_t Surface,
+                          uint32_t NowMs)
 {
 	Core1Dirty_t Ignored = { 0u, { { 0, 0, 0, 0 } } };
 	Core1Counts_t Unused;
 	const FaceElement_t *GElement = NULL;
+	const FaceElement_t *Els;
+	bool Digital = false;
 	int32_t FaceX, FaceY;
-	uint8_t i, e;
+	uint8_t i, e, Count;
 
 	memset(V, 0, sizeof(*V));
 	V->Page = Page;
+	V->View = View;
 	V->Surface = Surface;
 	UiDraw_Clear(Surface);
 
 	for (i = 0; i < DashFaceCount; i++)
-		if (DashFaces[i].Page == Page)
+		if (DashFaces[i].Page == Page && DashFaces[i].View == View)
 			V->Face = &DashFaces[i];
 
-	for (e = 0; e < Pages[Page].ElementCount && V->GaugeCount < CORE1_MAX_GAUGES; e++)
+	Els = Pages_Elements(Page, View, &Count);
+	for (e = 0; Els != NULL && e < Count && V->GaugeCount < CORE1_MAX_GAUGES; e++)
 	{
-		const FaceElement_t *El = &Pages[Page].Elements[e];
+		const FaceElement_t *El = &Els[e];
 		Core1Gauge_t *G;
 
 		if (El->Type == WIDGET_GFORCE && !V->HasG)
@@ -511,9 +529,10 @@ static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_
 			}
 			continue;
 		}
-		if (El->Type == WIDGET_CLOCK && !V->HasClock)
+		if ((El->Type == WIDGET_CLOCK || El->Type == WIDGET_CLOCK_DIGITAL) && !V->HasClock)
 		{
 			V->HasClock = true;
+			Digital = (El->Type == WIDGET_CLOCK_DIGITAL);
 			GElement = El;
 			continue;
 		}
@@ -532,7 +551,7 @@ static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_
 	if (V->Face == NULL
 	    || (V->GaugeCount == 0u && !V->HasG && !V->HasGraph && !V->HasClock))
 	{
-		printf("page %u: no pre-rendered face - black\n", Page);
+		printf("page %u view %u: no pre-rendered face - black\n", Page, View);
 		return;
 	}
 
@@ -574,7 +593,7 @@ static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_
 		UiClockPage_Load(&V->Clock, Surface,
 		                 (float)FaceX + (float)V->Face->Width / 2.0f,
 		                 (float)FaceY + (float)V->Face->Height / 2.0f,
-		                 UiGauge_Radius(V->Face->Width, V->Face->Height));
+		                 UiGauge_Radius(V->Face->Width, V->Face->Height), Digital);
 
 	V->Valid = true;
 	memset(&Unused, 0, sizeof(Unused));
@@ -627,7 +646,10 @@ typedef enum
 typedef struct
 {
 	Core1SwipeState_t State;
-	int Direction;			/* +1 next page from the right, -1 previous from the left */
+	uint8_t Axis;			/* 0 across - pages; 1 up and down - views */
+	int Direction;			/* across: +1 next page from the right, -1 previous
+					   from the left; up and down: +1 the other view
+					   from below, -1 from above */
 	int32_t Revealed;		/* pixels of the incoming page on the glass */
 	int32_t Target;			/* SETTLE: PANEL_WIDTH to complete, 0 to cancel */
 
@@ -645,6 +667,7 @@ typedef struct
 	uint32_t Samples;
 	uint32_t LastReports;
 	int32_t SampleX[CORE1_SPEED_SAMPLES];
+	int32_t SampleY[CORE1_SPEED_SAMPLES];
 	uint32_t SampleUs[CORE1_SPEED_SAMPLES];
 
 	/* SETTLE: from where, at what speed towards the target (px/s), and for how
@@ -655,15 +678,17 @@ typedef struct
 	uint32_t StartUs;
 } Core1Swipe_t;
 
-static void Core1SwipeSample(Core1Swipe_t *S, int32_t X, uint32_t NowUs)
+static void Core1SwipeSample(Core1Swipe_t *S, int32_t X, int32_t Y, uint32_t NowUs)
 {
 	if (S->Samples == CORE1_SPEED_SAMPLES)
 	{
 		memmove(S->SampleX, S->SampleX + 1, sizeof(S->SampleX[0]) * (CORE1_SPEED_SAMPLES - 1u));
+		memmove(S->SampleY, S->SampleY + 1, sizeof(S->SampleY[0]) * (CORE1_SPEED_SAMPLES - 1u));
 		memmove(S->SampleUs, S->SampleUs + 1, sizeof(S->SampleUs[0]) * (CORE1_SPEED_SAMPLES - 1u));
 		S->Samples--;
 	}
 	S->SampleX[S->Samples] = X;
+	S->SampleY[S->Samples] = Y;
 	S->SampleUs[S->Samples] = NowUs;
 	S->Samples++;
 }
@@ -674,6 +699,7 @@ static void Core1SwipeSample(Core1Swipe_t *S, int32_t X, uint32_t NowUs)
    stopped before lifting still reports, so its speed comes out as zero. */
 static int32_t Core1SwipeSpeed(const Core1Swipe_t *S)
 {
+	const int32_t *Pos = (S->Axis != 0u) ? S->SampleY : S->SampleX;
 	uint32_t Last, First;
 
 	if (S->Samples < 2u)
@@ -686,7 +712,7 @@ static int32_t Core1SwipeSpeed(const Core1Swipe_t *S)
 	if (First == Last)
 		return 0;
 
-	return (int32_t)(((int64_t)(S->SampleX[Last] - S->SampleX[First]) * 1000000)
+	return (int32_t)(((int64_t)(Pos[Last] - Pos[First]) * 1000000)
 	                 / (int64_t)(S->SampleUs[Last] - S->SampleUs[First]));
 }
 
@@ -716,6 +742,34 @@ static uint32_t Core1SlideRow(void *Context, int32_t Y, int32_t X1, uint32_t Wid
 	Spans[1].Src = S->Right + Row;
 	Spans[1].Count = (uint32_t)S->Offset;
 	return 2u;
+}
+
+
+/* The same up and down: rows before PANEL_HEIGHT - Offset come from Top,
+   Offset rows further down it; the rest from the top of Bottom. One span a
+   row, which is cheaper than the sideways slide rather than dearer. */
+typedef struct
+{
+	const uint8_t *Top;
+	const uint8_t *Bottom;
+	int32_t Offset;
+} Core1VSlide_t;
+
+static uint32_t Core1VSlideRow(void *Context, int32_t Y, int32_t X1, uint32_t Width,
+                               PanelSpan_t *Spans)
+{
+	const Core1VSlide_t *S = (const Core1VSlide_t *)Context;
+	int32_t Split = PANEL_HEIGHT - S->Offset;
+
+	(void)X1;
+	(void)Width;
+
+	if (Y < Split)
+		Spans[0].Src = S->Top + ((uint32_t)(Y + S->Offset) * (uint32_t)PANEL_WIDTH);
+	else
+		Spans[0].Src = S->Bottom + ((uint32_t)(Y - Split) * (uint32_t)PANEL_WIDTH);
+	Spans[0].Count = (uint32_t)PANEL_WIDTH;
+	return 1u;
 }
 
 
@@ -839,6 +893,18 @@ static void Core1Main(void)
 		Panel_Alive(PANEL_STAGE_UI_UPDATE);
 		Panel_TouchService();
 		UiGPage_Sample(FrameUs);
+		{
+			/* The g-force trace reads these like any other signal - see
+			   UiModel_SetLocal(). Only once the meter has a reading, so a
+			   board with no accelerometer shows gaps rather than zero. */
+			const GMeter_t *M = UiGPage_Model();
+
+			if (Imu_Present() && M->Primed)
+			{
+				UiModel_SetLocal(SIGNAL_G_LAT, (int32_t)(M->Lat * 1000.0f), NowMs);
+				UiModel_SetLocal(SIGNAL_G_LON, (int32_t)(M->Lon * 1000.0f), NowMs);
+			}
+		}
 		UiGraphPage_Sample(NowMs, FrameUs);
 		UiClockPage_Sample(NowMs, FrameUs);
 		Page = Pages_Effective(NowMs);
@@ -890,7 +956,7 @@ static void Core1Main(void)
 			Swipe.Y0 = Ty;
 			Swipe.Samples = 0u;
 			Swipe.LastReports = Panel_TouchReports();
-			Core1SwipeSample(&Swipe, Tx, NowUs);
+			Core1SwipeSample(&Swipe, Tx, Ty, NowUs);
 			Swipe.DownUs = NowUs;
 			Swipe.Wander = 0;
 			Swipe.Dragged = false;
@@ -901,7 +967,7 @@ static void Core1Main(void)
 			if (Panel_TouchReports() != Swipe.LastReports)
 			{
 				Swipe.LastReports = Panel_TouchReports();
-				Core1SwipeSample(&Swipe, Tx, NowUs);
+				Core1SwipeSample(&Swipe, Tx, Ty, NowUs);
 			}
 			Swipe.X = Tx;
 			Swipe.Y = Ty;
@@ -965,16 +1031,33 @@ static void Core1Main(void)
 			if (Down && Swipe.Down && Cur->Valid && !Pages_WarningActive(NowMs)
 			    && Ax >= CORE1_DRAG_START_PX && Ax > 2 * Ay)
 			{
+				Swipe.Axis = 0u;
 				Swipe.Direction = (Dx < 0) ? 1 : -1;
 				if (Pages_Neighbour(Swipe.Direction) != Cur->Page)
 				{
+					uint8_t Next = Pages_Neighbour(Swipe.Direction);
+
 					Panel_Alive(PANEL_STAGE_DRAW);
-					Core1LoadPage(In, Pages_Neighbour(Swipe.Direction),
-					              In->Surface, NowMs);
+					Core1LoadPage(In, Next, Pages_ViewOf(Next), In->Surface, NowMs);
 					Swipe.Revealed = 0;
 					Swipe.Dragged = true;
 					Swipe.State = SWIPE_DRAG;
 				}
+			}
+			/* Up or down flips the page to its other view, which comes in from
+			   the side the finger is moving away from - up brings it from
+			   below, as on a phone. Same thresholds, same momentum. */
+			else if (Down && Swipe.Down && Cur->Valid && !Pages_WarningActive(NowMs)
+			         && Pages_HasAlt(Cur->Page)
+			         && Ay >= CORE1_DRAG_START_PX && Ay > 2 * Ax)
+			{
+				Swipe.Axis = 1u;
+				Swipe.Direction = (Dy < 0) ? 1 : -1;
+				Panel_Alive(PANEL_STAGE_DRAW);
+				Core1LoadPage(In, Cur->Page, (uint8_t)(Cur->View ^ 1u), In->Surface, NowMs);
+				Swipe.Revealed = 0;
+				Swipe.Dragged = true;
+				Swipe.State = SWIPE_DRAG;
 			}
 			break;
 		}
@@ -982,18 +1065,29 @@ static void Core1Main(void)
 		case SWIPE_DRAG:
 			if (Down)
 			{
-				int32_t Dx = Swipe.X - Swipe.X0;
-				int32_t R = (Swipe.Direction > 0) ? -Dx : Dx;
+				int32_t Extent = (Swipe.Axis != 0u) ? PANEL_HEIGHT : PANEL_WIDTH;
+				int32_t D = (Swipe.Axis != 0u) ? Swipe.Y - Swipe.Y0 : Swipe.X - Swipe.X0;
+				int32_t R = (Swipe.Direction > 0) ? -D : D;
 
-				/* Dragged back past where it started: the other neighbour. */
-				if (R < 0 && Pages_Neighbour(-Swipe.Direction) != Cur->Page)
+				/* Dragged back past where it started. Across, that is the
+				   other neighbour, which has to be built; up and down there is
+				   only one other view, already built, now coming in from the
+				   other side. */
+				if (R < 0 && Swipe.Axis != 0u)
 				{
 					Swipe.Direction = -Swipe.Direction;
-					Core1LoadPage(In, Pages_Neighbour(Swipe.Direction),
-					              In->Surface, NowMs);
 					R = -R;
 				}
-				Swipe.Revealed = (R < 0) ? 0 : ((R > PANEL_WIDTH) ? PANEL_WIDTH : R);
+				else if (R < 0 && Pages_Neighbour(-Swipe.Direction) != Cur->Page)
+				{
+					uint8_t Next;
+
+					Swipe.Direction = -Swipe.Direction;
+					Next = Pages_Neighbour(Swipe.Direction);
+					Core1LoadPage(In, Next, Pages_ViewOf(Next), In->Surface, NowMs);
+					R = -R;
+				}
+				Swipe.Revealed = (R < 0) ? 0 : ((R > Extent) ? Extent : R);
 			}
 			else
 			{
@@ -1002,6 +1096,7 @@ static void Core1Main(void)
 				int32_t Projected = Swipe.Revealed
 				                    + (int32_t)(((int64_t)Towards * CORE1_PROJECT_US) / 1000000);
 				int32_t Dist, MinSpeed, MaxSpeed, Speed;
+				int32_t Extent = (Swipe.Axis != 0u) ? PANEL_HEIGHT : PANEL_WIDTH;
 				bool Complete;
 
 				if (Towards >= CORE1_FLICK_PX_PER_S)
@@ -1009,9 +1104,9 @@ static void Core1Main(void)
 				else if (Towards <= -CORE1_FLICK_PX_PER_S)
 					Complete = false;
 				else
-					Complete = Projected >= (PANEL_WIDTH / 2);
+					Complete = Projected >= (Extent / 2);
 
-				Swipe.Target = Complete ? PANEL_WIDTH : 0;
+				Swipe.Target = Complete ? Extent : 0;
 				Swipe.From = Swipe.Revealed;
 				Dist = Swipe.Target - Swipe.From;
 				if (Dist < 0)
@@ -1070,6 +1165,7 @@ static void Core1Main(void)
 		{
 			Core1Dirty_t Ignored = { 0u, { { 0, 0, 0, 0 } } };
 			Core1Slide_t Slide;
+			Core1VSlide_t VSlide;
 			PanelSource_t Source;
 			PanelPush_t Push;
 
@@ -1078,20 +1174,40 @@ static void Core1Main(void)
 			Ignored.Count = 0u;
 			Core1UpdatePage(In, NowMs, FrameUs, TextDue, &Ignored, &Counts);
 
-			if (Swipe.Direction > 0)
+			if (Swipe.Axis != 0u)
 			{
-				Slide.Left = UiDraw_Buffer(Cur->Surface);
-				Slide.Right = UiDraw_Buffer(In->Surface);
-				Slide.Offset = Swipe.Revealed;
+				if (Swipe.Direction > 0)
+				{
+					VSlide.Top = UiDraw_Buffer(Cur->Surface);
+					VSlide.Bottom = UiDraw_Buffer(In->Surface);
+					VSlide.Offset = Swipe.Revealed;
+				}
+				else
+				{
+					VSlide.Top = UiDraw_Buffer(In->Surface);
+					VSlide.Bottom = UiDraw_Buffer(Cur->Surface);
+					VSlide.Offset = PANEL_HEIGHT - Swipe.Revealed;
+				}
+				Source.Row = Core1VSlideRow;
+				Source.Context = &VSlide;
 			}
 			else
 			{
-				Slide.Left = UiDraw_Buffer(In->Surface);
-				Slide.Right = UiDraw_Buffer(Cur->Surface);
-				Slide.Offset = PANEL_WIDTH - Swipe.Revealed;
+				if (Swipe.Direction > 0)
+				{
+					Slide.Left = UiDraw_Buffer(Cur->Surface);
+					Slide.Right = UiDraw_Buffer(In->Surface);
+					Slide.Offset = Swipe.Revealed;
+				}
+				else
+				{
+					Slide.Left = UiDraw_Buffer(In->Surface);
+					Slide.Right = UiDraw_Buffer(Cur->Surface);
+					Slide.Offset = PANEL_WIDTH - Swipe.Revealed;
+				}
+				Source.Row = Core1SlideRow;
+				Source.Context = &Slide;
 			}
-			Source.Row = Core1SlideRow;
-			Source.Context = &Slide;
 			Source.Palette = UiDraw_Palette();
 
 			DrawUs = time_us_32() - T0;
@@ -1108,11 +1224,13 @@ static void Core1Main(void)
 			/* Settled: the screen already shows where it ended. */
 			if (Swipe.State == SWIPE_SETTLE && Swipe.Revealed == Swipe.Target)
 			{
-				if (Swipe.Target == PANEL_WIDTH)
+				if (Swipe.Target != 0)
 				{
 					Core1Page_t *Was = Cur;
 
-					if (Swipe.Direction > 0)
+					if (Swipe.Axis != 0u)
+						Pages_Flip();
+					else if (Swipe.Direction > 0)
 						Pages_Next();
 					else
 						Pages_Previous();
@@ -1127,13 +1245,14 @@ static void Core1Main(void)
 				Swipe.State = SWIPE_IDLE;
 			}
 		}
-		else if (!Started || Page != Cur->Page)
+		else if (!Started || Page != Cur->Page || Pages_ViewOf(Page) != Cur->View)
 		{
-			/* A page arrived by some other road - start-up, or the fault
-			   takeover - so it is drawn whole and sent whole. */
+			/* A page arrived by some other road - start-up, the fault
+			   takeover, or the console - so it is drawn whole and sent
+			   whole. */
 			Panel_Alive(PANEL_STAGE_DRAW);
 			Started = true;
-			Core1LoadPage(Cur, Page, Cur->Surface, NowMs);
+			Core1LoadPage(Cur, Page, Pages_ViewOf(Page), Cur->Surface, NowMs);
 			if (Cur->Valid)
 				printf("page %u: face copied in %luus, %u gauge(s), palette %u of %u\n",
 				       Page, (unsigned long)UiDraw_LoadUs(), Cur->GaugeCount,
@@ -1215,6 +1334,11 @@ static void Core1Main(void)
 			else
 				Pages_Previous();
 			PageStepRequested = 0;
+		}
+		if (FlipRequested && Swipe.State == SWIPE_IDLE)
+		{
+			Pages_Flip();
+			FlipRequested = false;
 		}
 
 		if ((int32_t)(NowMs - NextStatusMs) >= 0)
@@ -1347,9 +1471,9 @@ static void Core1Main(void)
 				WorkMaxUs = 0;
 				SlideWorkMaxUs = 0;
 			}
-			printf("node %u  page %u  %s  flush %lu  "
+			printf("node %u  page %u view %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",
-			       DashNodeId, Page, LinkText,
+			       DashNodeId, Page, (unsigned)Pages_ViewOf(Page), LinkText,
 			       (unsigned long)Panel_Flushes(),
 			       Panel_TouchPresent() ? "ok" : "ABSENT",
 			       (unsigned long)Panel_TouchReports(),
@@ -1507,7 +1631,8 @@ int main(void)
 
 #if DASH_HAVE_PANEL
 		/* Console commands: 'S' a screenshot, 'n' and 'p' the next and
-		   previous page, "Thhmmss" to set the clock, '1'..'4' to sound each
+		   previous page, 'f' to flip the page to its other view, "Thhmmss"
+		   to set the clock, '1'..'4' to sound each
 		   warning and '0' to stop, "Vnn" for the volume - enough to drive the
 		   display, the clock and the speaker from the bench PC. The sounds
 		   matter most: nothing else here can prove a speaker works without an
@@ -1554,6 +1679,8 @@ int main(void)
 				PageStepRequested = 1;
 			else if (Ch == 'p')
 				PageStepRequested = -1;
+			else if (Ch == 'f')
+				FlipRequested = true;
 			else if (Ch == 'T')
 			{
 				Collecting = 'T';

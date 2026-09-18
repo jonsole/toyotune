@@ -71,10 +71,13 @@ typedef enum
 	SIGNAL_TX_DROPPED,
 	SIGNAL_BUS_OFF_RECOVERIES,
 
-	/* Other devices on the bus. The 14Point7 wideband (PLAN.md 4.9) is not
-	   decoded yet - its identifiers are still to be logged - so for now only
-	   the bench simulator writes this. AFR for gasoline, hundredths. */
+	/* Other devices on the bus: the 14Point7 Spartan 3 wideband (PLAN.md 4.9),
+	   which reports both the mixture and, from its thermocouple input, the
+	   exhaust gas temperature. Not decoded yet - its identifiers are still to
+	   be logged - so for now only the bench simulator writes these.
+	   AFR for gasoline in hundredths; EGT in whole degrees C. */
 	SIGNAL_AFR,
+	SIGNAL_EGT,
 
 	/* The node's own accelerometer. Named here so a page can refer to them,
 	   but NOT carried in the signal store: the store has one writer, core 0,

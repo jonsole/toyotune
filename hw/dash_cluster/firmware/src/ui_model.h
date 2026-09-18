@@ -73,6 +73,14 @@ typedef struct
    staleness decision, so a caller must pass a real clock rather than zero. */
 extern UiWidget_t UiModel_Widget(const FaceElement_t *Element, uint32_t NowMs);
 
+/* Readings made on the display core itself - the accelerometer's - which are
+   not in the signal store because the store has a single writer on the other
+   core. Set once a frame; a widget on one of these signals reads from here
+   instead, with the same staleness rule, so a graph of them behaves exactly
+   like a graph of anything else. Ignored for any signal the store carries. */
+#define UI_MODEL_LOCAL_STALE_MS		(500u)
+extern void UiModel_SetLocal(SignalId_t Signal, int32_t Value, uint32_t NowMs);
+
 /* True when this signal's value is in its warning band. Exposed separately
    because a page may want to colour a whole face, not just one widget. */
 extern bool UiModel_SignalWarning(SignalId_t Signal, int32_t Value);

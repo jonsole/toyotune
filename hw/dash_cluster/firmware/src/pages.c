@@ -3,9 +3,12 @@
  *
  * The page list, the startup assignment, and page selection.
  *
- * Four faces: the rev counter, boost over mixture, the g-force circle and the
- * boost trace. The warning page below them is a takeover rather than a fifth
- * face - see Pages_Effective().
+ * Six pages: the rev counter, boost over mixture, mixture over exhaust
+ * temperature, intake over manifold air temperature, the g-force circle and
+ * the clock. Each has a second view a vertical swipe away - a strip chart of
+ * the same readings, or for the clock, the time in figures. The warning page
+ * below them is a takeover rather than a seventh page - see
+ * Pages_Effective().
  *
  * Geometry is in percent of the panel rather than pixels, so the same table
  * serves whichever panel the car ends up with - the 1.43" and 1.75" modules
@@ -35,6 +38,14 @@ static const char *const RpmTicks[] =
 static const FaceElement_t RpmElements[] =
 {
 	{ WIDGET_GAUGE,   SIGNAL_RPM, 0, 8000,  2,  2, 96, 96, RpmTicks, "x1000r/min", 7000, GAUGE_SWEEP_FULL, NULL }
+};
+
+/* The graph views all follow one rule: the same signals, ranges, scale labels
+   and formatting as the gauges they flip with, so a reading means the same on
+   either side of the swipe. Red is the first trace, white the second. */
+static const FaceElement_t RpmGraph[] =
+{
+	{ WIDGET_GRAPH,   SIGNAL_RPM, 0, 8000,  2,  2, 96, 96, RpmTicks, "x1000r/min", 0, GAUGE_SWEEP_FULL, NULL }
 };
 
 /* --- page 1: boost over AFR ---------------------------------------------- *
@@ -97,7 +108,84 @@ static const FaceElement_t BoostElements[] =
 	  GAUGE_SWEEP_BOTTOM, Pages_FormatAfr }
 };
 
-/* --- page 2: g-force --------------------------------------------------------
+/* --- page 2: mixture over exhaust temperature -----------------------------
+ *
+ * Both from the Spartan 3 wideband: the mixture across the top on the same
+ * scale as page 1, and the exhaust gas temperature under it. Together they
+ * say whether the engine is being fuelled for the load it is under - lean
+ * shows on one and the heat it makes on the other.
+ *
+ * Red from 900 C. Where that should sit depends on where the thermocouple is
+ * - pre-turbine reads hotter than a downpipe - so it is a placeholder until
+ * the probe is fitted.
+ */
+static const char *const EgtTicks[] =
+	{ "0", "200", "400", "600", "800", "1000", NULL };
+
+static const FaceElement_t AfrEgtElements[] =
+{
+	{ WIDGET_GAUGE, SIGNAL_AFR, 1000, 2000,
+	  2, 2, 96, 96, AfrTicks, "AFR", 0,
+	  GAUGE_SWEEP_TOP, Pages_FormatAfr },
+	{ WIDGET_GAUGE, SIGNAL_EGT, 0, 1000,
+	  2, 2, 96, 96, EgtTicks, "EGT \xC2\xB0" "C", 900,
+	  GAUGE_SWEEP_BOTTOM, NULL }
+};
+
+static const FaceElement_t AfrEgtGraph[] =
+{
+	{ WIDGET_GRAPH, SIGNAL_AFR, 1000, 2000,
+	  2, 2, 96, 96, AfrTicks, "AFR", 0, GAUGE_SWEEP_FULL, Pages_FormatAfr },
+	{ WIDGET_GRAPH, SIGNAL_EGT, 0, 1000,
+	  2, 2, 96, 96, EgtTicks, "EGT \xC2\xB0" "C", 0, GAUGE_SWEEP_FULL, NULL }
+};
+
+/* --- page 3: intake over manifold air temperature ----------------------------
+ *
+ * The ECU's two air temperature sensors, THA and THAM, on the same scale so
+ * the gap between them reads straight off the face: intake across the top,
+ * the charge in the manifold under it. Red from 60 C on the manifold only -
+ * a hot charge is where knock comes from, and the intake reading on its own
+ * is mostly the weather.
+ *
+ * Minus 20 to 100, because a British winter morning is below zero and a
+ * needle pinned at the stop would read as a fault.
+ */
+static const char *const AirTempTicks[] =
+	{ "-20", "0", "20", "40", "60", "80", "100", NULL };
+
+/* Whole degrees from the hundredths the ECU sends, rounded - a tenth of a
+   degree of intake air is nothing a driver can act on, and it would never
+   settle. */
+static const char *Pages_FormatTemp(int32_t Value, char *Out, uint32_t OutSize)
+{
+	int32_t Deg = (Value >= 0) ? ((Value + 50) / 100) : -(((-Value) + 50) / 100);
+
+	(void)snprintf(Out, OutSize, "%ld", (long)Deg);
+	return Out;
+}
+
+static const FaceElement_t AirTempElements[] =
+{
+	{ WIDGET_GAUGE, SIGNAL_THA, -2000, 10000,
+	  2, 2, 96, 96, AirTempTicks, "Intake \xC2\xB0" "C", PAGES_NO_BAND,
+	  GAUGE_SWEEP_TOP, Pages_FormatTemp },
+	{ WIDGET_GAUGE, SIGNAL_THAM, -2000, 10000,
+	  2, 2, 96, 96, AirTempTicks, "Manifold \xC2\xB0" "C", 6000,
+	  GAUGE_SWEEP_BOTTOM, Pages_FormatTemp }
+};
+
+static const FaceElement_t AirTempGraph[] =
+{
+	{ WIDGET_GRAPH, SIGNAL_THA, -2000, 10000,
+	  2, 2, 96, 96, AirTempTicks, "Intake \xC2\xB0" "C", 0,
+	  GAUGE_SWEEP_FULL, Pages_FormatTemp },
+	{ WIDGET_GRAPH, SIGNAL_THAM, -2000, 10000,
+	  2, 2, 96, 96, AirTempTicks, "Manifold \xC2\xB0" "C", 0,
+	  GAUGE_SWEEP_FULL, Pages_FormatTemp }
+};
+
+/* --- page 4: g-force --------------------------------------------------------
  *
  * A friction circle from the node's own accelerometer, +-1.5 g. Min and Max
  * are the scale in thousandths of a g; the element has no ticks - its rings
@@ -109,14 +197,42 @@ static const FaceElement_t GForceElements[] =
 	  GAUGE_SWEEP_FULL, NULL }
 };
 
-/* --- page 3: boost and mixture over time -----------------------------------
+/* Its trace: cornering in red, acceleration and braking in white, over the
+   same +-1.5 g. Where the circle shows the shape of a corner, this shows its
+   timing - the brake coming off as the turn goes in. */
+static const char *const GTicks[] =
+	{ "-1.5", "-1", "-0.5", "0", "0.5", "1", "1.5", NULL };
+
+/* Hundredths of a g from thousandths, rounded, signed. */
+static const char *Pages_FormatG(int32_t Value, char *Out, uint32_t OutSize)
+{
+	int32_t Centi = (Value >= 0) ? ((Value + 5) / 10) : -(((-Value) + 5) / 10);
+	int32_t Mag = (Centi < 0) ? -Centi : Centi;
+
+	(void)snprintf(Out, OutSize, "%s%ld.%02ld", (Centi < 0) ? "-" : "",
+	               (long)(Mag / 100), (long)(Mag % 100));
+	return Out;
+}
+
+static const FaceElement_t GForceGraph[] =
+{
+	{ WIDGET_GRAPH, SIGNAL_G_LAT, -1500, 1500, 2, 2, 96, 96, GTicks, "lat g", 0,
+	  GAUGE_SWEEP_FULL, Pages_FormatG },
+	{ WIDGET_GRAPH, SIGNAL_G_LON, -1500, 1500, 2, 2, 96, 96, GTicks, "lon g", 0,
+	  GAUGE_SWEEP_FULL, Pages_FormatG }
+};
+
+/* --- page 1's graph view: boost and mixture over time ------------------------
  *
  * The same two signals as page 1, as a scrolling trace: boost in red against
  * the left-hand scale, mixture in white against the right. A needle says what
  * is happening now; this says what just happened, which is where a lean spike
  * on a gearchange or boost falling away at the top of a gear shows up.
+ *
+ * It used to be a page of its own. As a view of page 1 it is one swipe up
+ * from the needles showing the same thing, rather than four pages away.
  */
-static const FaceElement_t TraceElements[] =
+static const FaceElement_t BoostGraph[] =
 {
 	{ WIDGET_GRAPH, SIGNAL_MAP,
 	  BOOST_ATMOSPHERE - BOOST_KPA10_PER_BAR,
@@ -126,7 +242,7 @@ static const FaceElement_t TraceElements[] =
 	  2, 2, 96, 96, AfrTicks, "AFR", 0, GAUGE_SWEEP_FULL, Pages_FormatAfr }
 };
 
-/* --- page 4: the clock -----------------------------------------------------
+/* --- page 5: the clock -----------------------------------------------------
  *
  * Hands, from the RTC - which this board does not back up, so the time comes
  * from the bus (clock_link.h) or the console and is lost at every power-off.
@@ -141,7 +257,14 @@ static const FaceElement_t ClockElements[] =
 	  GAUGE_SWEEP_CLOCK, NULL }
 };
 
-/* --- page 5: the warning takeover ----------------------------------------
+/* And in figures: hours and minutes large, seconds small beneath. */
+static const FaceElement_t ClockDigital[] =
+{
+	{ WIDGET_CLOCK_DIGITAL, SIGNAL_CLOCK, 0, 86399, 2, 2, 96, 96, NULL, NULL, 0,
+	  GAUGE_SWEEP_FULL, NULL }
+};
+
+/* --- page 6: the warning takeover ----------------------------------------
  *
  * Not reachable by swiping. Pages_Effective() substitutes it while a fault
  * stands, which is why it is here rather than in the list: a driver must not
@@ -156,36 +279,46 @@ static const FaceElement_t WarningElements[] =
 	{ WIDGET_NUMERIC, SIGNAL_KNOCK_RETARD,  0, 2000, 10, 72, 80, 16, NULL, NULL, 0, GAUGE_SWEEP_FULL, NULL }
 };
 
-#define PAGE(name, elems) { name, elems, (uint8_t)(sizeof(elems) / sizeof((elems)[0])) }
+#define COUNT(elems)	((uint8_t)(sizeof(elems) / sizeof((elems)[0])))
+#define PAGE(name, elems)	{ name, elems, COUNT(elems), NULL, 0u }
+#define PAGE2(name, elems, alt)	{ name, elems, COUNT(elems), alt, COUNT(alt) }
 
 const FacePage_t Pages[] =
 {
-	PAGE("Engine Speed", RpmElements),
-	PAGE("Boost / AFR",  BoostElements),
-	PAGE("G-force",      GForceElements),
-	PAGE("Boost trace",  TraceElements),
-	PAGE("Clock",        ClockElements),
-	PAGE("WARNING",      WarningElements)
+	PAGE2("Engine Speed", RpmElements,     RpmGraph),
+	PAGE2("Boost / AFR",  BoostElements,   BoostGraph),
+	PAGE2("AFR / EGT",    AfrEgtElements,  AfrEgtGraph),
+	PAGE2("Air temps",    AirTempElements, AirTempGraph),
+	PAGE2("G-force",      GForceElements,  GForceGraph),
+	PAGE2("Clock",        ClockElements,   ClockDigital),
+	PAGE("WARNING",       WarningElements)
 };
 
 const uint8_t PageCount = (uint8_t)(sizeof(Pages) / sizeof(Pages[0]));
 
 /* The warning page is the last entry and is excluded from swiping. */
-#define PAGE_WARNING		(5)
+#define PAGE_WARNING		(6)
 #define PAGE_SWIPEABLE_COUNT	(PAGE_WARNING)
 
-/* Five faces and a three-gauge cluster: each node opens on a different one -
-   rev counter, boost and mixture, g-force - and a fourth identity on the
-   trace; the clock is a swipe away from any of them. Each is still swipeable to the others, which is the whole
-   point of the shared list. */
-const uint8_t StartupPage[NODE_ID_COUNT] = { 0, 1, 2, 3 };
+/* Six pages and a three-gauge cluster: each node opens on a different one -
+   rev counter, boost and mixture, g-force - and a fourth identity on mixture
+   and exhaust temperature; the rest are a swipe away from any of them. Each is
+   still swipeable to the others, which is the whole point of the shared list.
+   Every page opens on its first view. */
+const uint8_t StartupPage[NODE_ID_COUNT] = { 0, 1, 4, 2 };
 
 static uint8_t Current;
+static uint8_t View[PAGES_MAX];		/* each page's view, 0 or 1 */
 
 
 /***************************************************************************************/
 void Pages_Init(uint8_t NodeId, uint8_t RestoredPage)
 {
+	uint8_t p;
+
+	for (p = 0; p < PAGES_MAX; p++)
+		View[p] = 0u;
+
 	/* A restored selection wins, because resetting to the startup page on
 	   every ignition cycle would make swiping useless. An out-of-range value
 	   - a corrupt or never-written flash record - falls back to the node's
@@ -230,6 +363,50 @@ uint8_t Pages_Neighbour(int Direction)
 void Pages_Previous(void)
 {
 	Current = (uint8_t)((Current + PAGE_SWIPEABLE_COUNT - 1u) % PAGE_SWIPEABLE_COUNT);
+}
+
+
+/***************************************************************************************/
+bool Pages_HasAlt(uint8_t Page)
+{
+	return Page < PageCount && Page < PAGES_MAX && Pages[Page].AltElements != NULL
+	       && Pages[Page].AltElementCount != 0u;
+}
+
+
+/***************************************************************************************/
+uint8_t Pages_ViewOf(uint8_t Page)
+{
+	return Pages_HasAlt(Page) ? View[Page] : 0u;
+}
+
+
+/***************************************************************************************/
+void Pages_Flip(void)
+{
+	if (Pages_HasAlt(Current))
+		View[Current] = (uint8_t)(View[Current] ^ 1u);
+}
+
+
+/***************************************************************************************/
+const FaceElement_t *Pages_Elements(uint8_t Page, uint8_t ViewIndex, uint8_t *Count)
+{
+	*Count = 0u;
+	if (Page >= PageCount)
+		return NULL;
+
+	if (ViewIndex == 0u)
+	{
+		*Count = Pages[Page].ElementCount;
+		return Pages[Page].Elements;
+	}
+	if (ViewIndex == 1u && Pages_HasAlt(Page))
+	{
+		*Count = Pages[Page].AltElementCount;
+		return Pages[Page].AltElements;
+	}
+	return NULL;
 }
 
 

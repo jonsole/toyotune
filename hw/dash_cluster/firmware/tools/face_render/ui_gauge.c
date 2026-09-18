@@ -347,10 +347,17 @@ lv_obj_t *UiGauge_CreateGraph(lv_obj_t *Parent, const FaceElement_t *const *Elem
 		/* The topmost label would sit on the frame's corner, so it is the one
 		   label left off: the scale's ends are the frame itself. */
 
+		/* Over its reading: centred above a lone trace, whose reading the
+		   firmware centres too, and otherwise each in its own half - as wide
+		   as the gap between the two readings allows. The legend box used to
+		   be a scale label's width, which wrapped "x1000r/min" and
+		   "Manifold degC" onto two lines. */
 		if (El->Legend != NULL)
 			UiGauge_BoxLabel(Box, El->Legend,
-			                 Left ? -S(UI_GRAPH_READING_DX) : S(UI_GRAPH_READING_DX),
-			                 S(UI_GRAPH_LEGEND_DY), S(UI_GRAPH_AXIS_W),
+			                 (Count == 1u) ? 0
+			                 : (Left ? -S(UI_GRAPH_READING_DX) : S(UI_GRAPH_READING_DX)),
+			                 S(UI_GRAPH_LEGEND_DY),
+			                 (Count == 1u) ? FrameW : S((2 * UI_GRAPH_READING_DX) - 8),
 			                 LV_TEXT_ALIGN_CENTER, Colour);
 	}
 

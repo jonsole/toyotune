@@ -41,6 +41,13 @@ typedef struct
 	bool HaveText;
 	char Text[8];
 	UiRect_t TextRect;
+
+	/* The digital view: no hands, the time in large figures, and the
+	   seconds - in the fields below - under them. */
+	bool Digital;
+	bool HaveSeconds;
+	char Seconds[4];
+	UiRect_t SecondsRect;
 } UiClockPage_t;
 
 extern void UiClockPage_Init(void);
@@ -49,9 +56,10 @@ extern void UiClockPage_Init(void);
    the RTC. Once a frame, whichever page is showing. */
 extern void UiClockPage_Sample(uint32_t NowMs, uint32_t FrameUs);
 
-/* A view of the clock page, in a surface whose face is already loaded. */
+/* A view of the clock page, in a surface whose face is already loaded:
+   analogue, or with Digital set, the time in figures. */
 extern void UiClockPage_Load(UiClockPage_t *View, uint8_t Surface, float Cx, float Cy,
-                             int32_t Radius);
+                             int32_t Radius, bool Digital);
 
 /* Redraw whatever has moved, reporting every rectangle touched. */
 extern void UiClockPage_Update(UiClockPage_t *View, bool TextDue, UiClockDirty_t Dirty,

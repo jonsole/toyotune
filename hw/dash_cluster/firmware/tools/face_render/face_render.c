@@ -92,130 +92,147 @@ int main(int argc, char **argv)
 
 	for (p = 0; p < PageCount; p++)
 	{
-		const FaceElement_t *First = NULL;
-		uint8_t FirstIndex = 0;
-		bool Split = false;
-		bool GMeter = false;
-		bool Clock = false;
-		const FaceElement_t *Graphs[2];
-		uint32_t GraphCount = 0;
-		int32_t X, Y, W, H, Row, Col;
-		lv_obj_t *Screen;
-		lv_draw_buf_t *Snap;
-		FILE *Out;
+		uint8_t v;
 
-		/* A page's gauges share one face, so they must share one rectangle -
-		   a half gauge is half of the same dial, not a dial of its own. */
-		for (e = 0; e < Pages[p].ElementCount; e++)
+		/* Each view of a page is a face of its own - the needle dial and
+		   the strip chart it flips to, or the clock's two. */
+		for (v = 0; v < PAGES_VIEWS; v++)
 		{
-			const FaceElement_t *El = &Pages[p].Elements[e];
+		uint8_t N;
+		const FaceElement_t *Els = Pages_Elements(p, v, &N);
+		bool DigitalClock = false;
 
-			if (El->Type != WIDGET_GAUGE && El->Type != WIDGET_GFORCE
-			    && El->Type != WIDGET_GRAPH && El->Type != WIDGET_CLOCK)
-				continue;
-			if (El->Type == WIDGET_CLOCK)
-				Clock = true;
-			if (El->Type == WIDGET_GFORCE)
-				GMeter = true;
-			if (El->Type == WIDGET_GRAPH && GraphCount < 2u)
-				Graphs[GraphCount++] = El;
+			const FaceElement_t *First = NULL;
+			uint8_t FirstIndex = 0;
+			bool Split = false;
+			bool GMeter = false;
+			bool Clock = false;
+			const FaceElement_t *Graphs[2];
+			uint32_t GraphCount = 0;
+			int32_t X, Y, W, H, Row, Col;
+			lv_obj_t *Screen;
+			lv_draw_buf_t *Snap;
+			FILE *Out;
+
+			/* A page's gauges share one face, so they must share one rectangle -
+			   a half gauge is half of the same dial, not a dial of its own. */
+			for (e = 0; e < N; e++)
+			{
+				const FaceElement_t *El = &Els[e];
+
+				if (El->Type != WIDGET_GAUGE && El->Type != WIDGET_GFORCE
+				    && El->Type != WIDGET_GRAPH && El->Type != WIDGET_CLOCK
+				    && El->Type != WIDGET_CLOCK_DIGITAL)
+					continue;
+				if (El->Type == WIDGET_CLOCK)
+					Clock = true;
+				/* The digital clock is a bare face: the figures are drawn live. */
+				if (El->Type == WIDGET_CLOCK_DIGITAL)
+					DigitalClock = true;
+				if (El->Type == WIDGET_GFORCE)
+					GMeter = true;
+				if (El->Type == WIDGET_GRAPH && GraphCount < 2u)
+					Graphs[GraphCount++] = El;
+				if (First == NULL)
+				{
+					First = El;
+					FirstIndex = e;
+				}
+				else if (El->X != First->X || El->Y != First->Y
+				         || El->W != First->W || El->H != First->H)
+				{
+					fprintf(stderr, "page %u view %u: gauges %u and %u do not share a rectangle\n",
+					        p, v, FirstIndex, e);
+					return 1;
+				}
+				/* A split face is one with a top and a bottom half sharing it -
+				   which is about the HALF sweeps, not about any sweep that is not
+				   the full dial. A clock is a full circle and had been getting the
+				   divider drawn across it. */
+				if (El->Sweep == GAUGE_SWEEP_TOP || El->Sweep == GAUGE_SWEEP_BOTTOM)
+					Split = true;
+			}
 			if (First == NULL)
-			{
-				First = El;
-				FirstIndex = e;
-			}
-			else if (El->X != First->X || El->Y != First->Y
-			         || El->W != First->W || El->H != First->H)
-			{
-				fprintf(stderr, "page %u: gauges %u and %u do not share a rectangle\n",
-				        p, FirstIndex, e);
-				return 1;
-			}
-			/* A split face is one with a top and a bottom half sharing it -
-			   which is about the HALF sweeps, not about any sweep that is not
-			   the full dial. A clock is a full circle and had been getting the
-			   divider drawn across it. */
-			if (El->Sweep == GAUGE_SWEEP_TOP || El->Sweep == GAUGE_SWEEP_BOTTOM)
-				Split = true;
-		}
-		if (First == NULL)
-			continue;
+				continue;
 
-		/* In PANEL pixels, from the panel's resolution, then scaled - so the
-		   render rectangle is an exact multiple and every panel pixel is a
-		   whole block of render pixels. */
-		X = UiGauge_Pct(First->X, PANEL_WIDTH);
-		Y = UiGauge_Pct(First->Y, PANEL_HEIGHT);
-		W = UiGauge_Pct(First->W, PANEL_WIDTH);
-		H = UiGauge_Pct(First->H, PANEL_HEIGHT);
+			/* In PANEL pixels, from the panel's resolution, then scaled - so the
+			   render rectangle is an exact multiple and every panel pixel is a
+			   whole block of render pixels. */
+			X = UiGauge_Pct(First->X, PANEL_WIDTH);
+			Y = UiGauge_Pct(First->Y, PANEL_HEIGHT);
+			W = UiGauge_Pct(First->W, PANEL_WIDTH);
+			H = UiGauge_Pct(First->H, PANEL_HEIGHT);
 
-		Screen = MakeScreen();
-		UiGauge_CreateFace(Screen,
-		                   X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
-		                   W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE, Split,
-		                   !GMeter && !Clock && GraphCount == 0u);
-		for (e = 0; e < Pages[p].ElementCount; e++)
-		{
-			if (Pages[p].Elements[e].Type == WIDGET_GAUGE
-			    || Pages[p].Elements[e].Type == WIDGET_CLOCK)
-				UiGauge_CreateScale(Screen, &Pages[p].Elements[e],
+			Screen = MakeScreen();
+			UiGauge_CreateFace(Screen,
+			                   X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
+			                   W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE, Split,
+			                   !GMeter && !Clock && !DigitalClock && GraphCount == 0u);
+			for (e = 0; e < N; e++)
+			{
+				if (Els[e].Type == WIDGET_GAUGE
+				    || Els[e].Type == WIDGET_CLOCK)
+					UiGauge_CreateScale(Screen, &Els[e],
+					                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
+					                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
+				else if (Els[e].Type == WIDGET_GFORCE)
+					UiGauge_CreateGMeter(Screen,
+					                     X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
+					                     W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
+			}
+			if (GraphCount != 0u)
+				UiGauge_CreateGraph(Screen, Graphs, GraphCount,
 				                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
 				                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
-			else if (Pages[p].Elements[e].Type == WIDGET_GFORCE)
-				UiGauge_CreateGMeter(Screen,
-				                     X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
-				                     W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
-		}
-		if (GraphCount != 0u)
-			UiGauge_CreateGraph(Screen, Graphs, GraphCount,
-			                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
-			                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
-		lv_screen_load(Screen);
-		lv_obj_update_layout(Screen);
+			lv_screen_load(Screen);
+			lv_obj_update_layout(Screen);
 
-		Snap = lv_snapshot_take(Screen, LV_COLOR_FORMAT_RGB888);
-		if (Snap == NULL
-		    || Snap->header.w != RENDER_WIDTH || Snap->header.h != RENDER_HEIGHT)
-		{
-			fprintf(stderr, "page %u: snapshot failed\n", p);
-			return 1;
-		}
-
-		snprintf(Path, sizeof(Path), "%s/p%u_e%u.rgb", argv[1], p, FirstIndex);
-		Out = fopen(Path, "wb");
-		if (Out == NULL)
-		{
-			fprintf(stderr, "cannot write %s\n", Path);
-			return 1;
-		}
-
-		for (Row = Y * UI_GAUGE_RENDER_SCALE;
-		     Row < (Y + H) * UI_GAUGE_RENDER_SCALE; Row++)
-		{
-			const uint8_t *Line = Snap->data + (uint32_t)Row * Snap->header.stride;
-
-			for (Col = X * UI_GAUGE_RENDER_SCALE;
-			     Col < (X + W) * UI_GAUGE_RENDER_SCALE; Col++)
+			Snap = lv_snapshot_take(Screen, LV_COLOR_FORMAT_RGB888);
+			if (Snap == NULL
+			    || Snap->header.w != RENDER_WIDTH || Snap->header.h != RENDER_HEIGHT)
 			{
-				/* LVGL's RGB888 is stored B, G, R. */
-				fputc(Line[Col * 3 + 2], Out);
-				fputc(Line[Col * 3 + 1], Out);
-				fputc(Line[Col * 3], Out);
+				fprintf(stderr, "page %u view %u: snapshot failed\n", p, v);
+				return 1;
 			}
+
+			snprintf(Path, sizeof(Path), "%s/p%u_v%u_e%u.rgb", argv[1], p, v, FirstIndex);
+			Out = fopen(Path, "wb");
+			if (Out == NULL)
+			{
+				fprintf(stderr, "cannot write %s\n", Path);
+				return 1;
+			}
+
+			for (Row = Y * UI_GAUGE_RENDER_SCALE;
+			     Row < (Y + H) * UI_GAUGE_RENDER_SCALE; Row++)
+			{
+				const uint8_t *Line = Snap->data + (uint32_t)Row * Snap->header.stride;
+
+				for (Col = X * UI_GAUGE_RENDER_SCALE;
+				     Col < (X + W) * UI_GAUGE_RENDER_SCALE; Col++)
+				{
+					/* LVGL's RGB888 is stored B, G, R. */
+					fputc(Line[Col * 3 + 2], Out);
+					fputc(Line[Col * 3 + 1], Out);
+					fputc(Line[Col * 3], Out);
+				}
+			}
+			fclose(Out);
+
+			fprintf(Manifest, "%u %u %u %d %d %d\n", p, v, FirstIndex, (int)W, (int)H,
+			        UI_GAUGE_RENDER_SCALE);
+			printf("page %u view %u: %dx%d at %d,%d, %s, rendered at %dx\n",
+			       p, v, (int)W, (int)H, (int)X, (int)Y,
+			       GMeter ? "g-force"
+			              : (GraphCount ? "trace"
+			                            : (Clock ? "clock"
+			                                     : (DigitalClock ? "digital clock"
+			                                                     : (Split ? "split" : "one gauge")))),
+			       UI_GAUGE_RENDER_SCALE);
+
+			lv_draw_buf_destroy(Snap);
+			Written++;
 		}
-		fclose(Out);
-
-		fprintf(Manifest, "%u %u %d %d %d\n", p, FirstIndex, (int)W, (int)H,
-		        UI_GAUGE_RENDER_SCALE);
-		printf("page %u: %dx%d at %d,%d, %s, rendered at %dx\n",
-		       p, (int)W, (int)H, (int)X, (int)Y,
-		       GMeter ? "g-force"
-		              : (GraphCount ? "trace"
-		                            : (Clock ? "clock" : (Split ? "split" : "one gauge"))),
-		       UI_GAUGE_RENDER_SCALE);
-
-		lv_draw_buf_destroy(Snap);
-		Written++;
 	}
 
 	fclose(Manifest);

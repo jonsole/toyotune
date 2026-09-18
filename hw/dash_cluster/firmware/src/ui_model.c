@@ -126,6 +126,42 @@ static uint16_t UiModel_SweepPosition(uint32_t NowMs)
 
 
 /***************************************************************************************/
+/* The local readings. Only the accelerometer's for now. */
+static bool UiModel_IsLocal(SignalId_t Signal)
+{
+	return Signal == SIGNAL_G_LAT || Signal == SIGNAL_G_LON;
+}
+
+static int32_t LocalValue[SIGNAL_COUNT];
+static uint32_t LocalMs[SIGNAL_COUNT];
+static bool LocalValid[SIGNAL_COUNT];
+
+void UiModel_SetLocal(SignalId_t Signal, int32_t Value, uint32_t NowMs)
+{
+	if (Signal >= SIGNAL_COUNT || !UiModel_IsLocal(Signal))
+		return;
+	LocalValue[Signal] = Value;
+	LocalMs[Signal] = NowMs;
+	LocalValid[Signal] = true;
+}
+
+static SignalReading_t UiModel_Reading(SignalId_t Signal, uint32_t NowMs)
+{
+	SignalReading_t R;
+
+	if (!UiModel_IsLocal(Signal))
+		return SignalStore_Get(Signal, NowMs);
+
+	memset(&R, 0, sizeof(R));
+	R.Valid = LocalValid[Signal];
+	R.Value = LocalValue[Signal];
+	R.UpdatedMs = LocalMs[Signal];
+	R.Fresh = R.Valid && (uint32_t)(NowMs - LocalMs[Signal]) <= UI_MODEL_LOCAL_STALE_MS;
+	return R;
+}
+
+
+/***************************************************************************************/
 UiWidget_t UiModel_Widget(const FaceElement_t *Element, uint32_t NowMs)
 {
 	UiWidget_t W;
@@ -147,7 +183,7 @@ UiWidget_t UiModel_Widget(const FaceElement_t *Element, uint32_t NowMs)
 	W.Label = D->Name;
 	W.Unit = D->Unit;
 
-	R = SignalStore_Get(Element->Signal, NowMs);
+	R = UiModel_Reading(Element->Signal, NowMs);
 	W.Value = R.Value;
 
 	if (!R.Valid)

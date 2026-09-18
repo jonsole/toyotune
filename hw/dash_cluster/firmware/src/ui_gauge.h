@@ -282,6 +282,13 @@ static inline int32_t UiGauge_LegendDy(GaugeSweep_t Sweep, int32_t Radius)
    on top and intact. */
 #define UI_CLOCK_DIGITAL_DY		(118)
 
+/* THE DIGITAL CLOCK VIEW: hours and minutes in 160 px figures, seconds in the
+   analogue face's 36 px figures under them. Offsets are of each line's centre
+   from the dial's, chosen so the two together sit centred: the big figures
+   are 114 px tall, a 24 px gap, then 26 px of seconds. */
+#define UI_CLOCK_BIG_DY			(-25)
+#define UI_CLOCK_SECONDS_DY		(70)
+
 /* Element geometry is in percent of the panel. */
 static inline int32_t UiGauge_Pct(uint8_t Percent, int32_t Extent)
 {

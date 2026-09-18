@@ -32,7 +32,8 @@ typedef enum
 	WIDGET_BARGRAPH,	/* horizontal bar, for per-cylinder comparisons */
 	WIDGET_GRAPH,		/* rolling trace against time */
 	WIDGET_GFORCE,		/* friction circle from the node's own accelerometer */
-	WIDGET_CLOCK		/* hands, from the RTC and the time announced on the bus */
+	WIDGET_CLOCK,		/* hands, from the RTC and the time announced on the bus */
+	WIDGET_CLOCK_DIGITAL	/* the same time, in large figures */
 } WidgetType_t;
 
 
@@ -73,9 +74,14 @@ typedef struct
 	const char *Legend;
 
 	/* WIDGET_GAUGE only: where the red warning band starts, in the element's
-	   own units; it runs to Max. 0 for no band. Painted on the face and nothing
-	   more - whether the gauge itself turns to its warning state is
-	   UiModel_SignalWarning()'s decision, which this does not feed. */
+	   own units; it runs to Max. Painted on the face and nothing more - whether
+	   the gauge itself turns to its warning state is UiModel_SignalWarning()'s
+	   decision, which this does not feed.
+
+	   A band is painted whenever this lies strictly inside Min..Max, so 0
+	   means "no band" only on a scale that starts at or above zero. On one
+	   that goes negative - the air temperatures - 0 is a real place on the
+	   dial and paints red from there; use PAGES_NO_BAND. */
 	int32_t BandFrom;
 
 	/* WIDGET_GAUGE only: how much of the dial it takes. Zero is FULL, so a
@@ -89,13 +95,28 @@ typedef struct
 } FaceElement_t;
 
 
+/* A page, and the other way of looking at it.
+
+   Swiping sideways moves between pages; swiping up or down flips the page
+   between its two VIEWS - a needle gauge and a strip chart of the same
+   readings, or an analogue clock and a digital one. The second view is part
+   of the page rather than a page of its own, so a reading has one place in the
+   list whichever way it is being shown, and the page remembers which view it
+   was left on. AltElements is NULL for a page with only one view. */
 typedef struct
 {
 	const char *Name;
 	const FaceElement_t *Elements;
 	uint8_t ElementCount;
+	const FaceElement_t *AltElements;
+	uint8_t AltElementCount;
 } FacePage_t;
 
+#define PAGES_VIEWS		(2u)
+
+
+/* BandFrom for "no red band", whatever the scale's range. */
+#define PAGES_NO_BAND		(INT32_MAX)
 
 /* An upper bound on the page list, for anything that keeps state per page -
    the strip chart's history. Checked against PageCount by the host tests, so
@@ -119,6 +140,16 @@ extern void Pages_Previous(void);
 /* The page Pages_Next() (Direction > 0) or Pages_Previous() (< 0) would
    select, without selecting it - what a swipe in progress is bringing in. */
 extern uint8_t Pages_Neighbour(int Direction);
+
+/* Views. Each page remembers its own, so swiping away from a trace and back
+   finds the trace again. The warning takeover has one view only. */
+extern bool Pages_HasAlt(uint8_t Page);
+extern uint8_t Pages_ViewOf(uint8_t Page);
+extern void Pages_Flip(void);		/* the selected page's other view */
+
+/* A view's elements: 0 is the page's own, 1 its alternative. NULL, with
+   Count 0, for a view the page does not have. */
+extern const FaceElement_t *Pages_Elements(uint8_t Page, uint8_t View, uint8_t *Count);
 
 /* True when a fault should take the whole face over regardless of what the
    driver selected. A driver must not be able to swipe away from a fault, so
