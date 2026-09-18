@@ -32,6 +32,7 @@ SOURCES = [
     os.path.join(HERE, "test_ui_gmeter.c"),
     os.path.join(HERE, "test_ui_graph.c"),
     os.path.join(HERE, "test_ui_clock.c"),
+    os.path.join(HERE, "test_warn.c"),
     os.path.join(SRC, "node_id.c"),
     os.path.join(SRC, "pages.c"),
     os.path.join(SRC, "signal_store.c"),
@@ -44,6 +45,8 @@ SOURCES = [
     os.path.join(SRC, "ui_graph.c"),
     os.path.join(SRC, "ui_clock.c"),
     os.path.join(SRC, "clock_link.c"),
+    os.path.join(SRC, "tone.c"),
+    os.path.join(SRC, "warn.c"),
     os.path.join(SRC, "dash_font_value_56.c"),
 ]
 

@@ -1,0 +1,116 @@
+;
+; audio_i2s.pio - the ES8311's master clock, and the data line into it.
+;
+; The codec is the I2S MASTER on this board: given a master clock it generates
+; its own bit clock and word clock and expects data to arrive in step with
+; them. So the RP2350's job is only two things - produce MCLK, and shift one
+; bit out per bit-clock edge - and neither is a peripheral this chip has. Both
+; are a couple of PIO instructions.
+;
+; The bit and word clocks are therefore INPUTS here, waited on rather than
+; driven, which is what makes the data program a slave with no clocking of its
+; own to get wrong. The GPIO numbers are the board's and are baked into the
+; wait instructions (PIO can only wait on an absolute pin), so they are
+; exported and checked against audio.c's copies at compile time.
+;
+; Adapted from Waveshare's own example for this board - see
+; vendor/README.md for how their examples are treated. Two changes: the
+; original pulled one extra word at startup and threw it away, and its master
+; clock loop was five cycles, giving a 40/60 duty rather than a square wave.
+;
+
+.define PUBLIC AUDIO_BCLK_GPIO 4
+.define PUBLIC AUDIO_LRCK_GPIO 5
+
+
+; --- the master clock ----------------------------------------------------
+;
+; A square wave at four PIO cycles per period, so the clock divider is
+; sysclk / (4 * MCLK). At 150 MHz and 6.144 MHz that is 6.104 - fractional,
+; so the divider dithers and MCLK carries about one system cycle of jitter.
+; The codec divides MCLK down rather than locking to it, so the jitter lands
+; on the sample clock: irrelevant for a warning beep, and worth knowing before
+; anyone uses this to play music.
+.program audio_mclk
+.wrap_target
+    set pins, 1
+    nop
+    set pins, 0
+    nop
+.wrap
+
+
+; --- the data line -------------------------------------------------------
+;
+; One 32-bit word per frame: sixteen bits of left, then sixteen of right,
+; most significant first. Both channels are shifted every frame whether or not
+; anything is on the right, because the codec's frame is a fixed length - it
+; is the word clock that says which half we are in, not us.
+;
+; The single bit of I2S subtlety is the one-clock delay: the first data bit
+; belongs to the bit-clock period AFTER the word clock moves. That is the
+; `wait 1` before each loop - it steps over the edge the word clock changed
+; on, so the first `out` lands on the next falling edge.
+.program audio_i2s
+    wait 1 gpio AUDIO_LRCK_GPIO	; start on a word boundary, not mid-frame
+start:
+    pull
+    wait 0 gpio AUDIO_LRCK_GPIO	; the left channel begins
+    wait 1 gpio AUDIO_BCLK_GPIO
+    set x, 15
+left_bit:
+    wait 0 gpio AUDIO_BCLK_GPIO
+    out pins, 1
+    wait 1 gpio AUDIO_BCLK_GPIO
+    jmp x-- left_bit
+    wait 1 gpio AUDIO_LRCK_GPIO	; and now the right
+    wait 1 gpio AUDIO_BCLK_GPIO
+    set x, 15
+right_bit:
+    wait 0 gpio AUDIO_BCLK_GPIO
+    out pins, 1
+    wait 1 gpio AUDIO_BCLK_GPIO
+    jmp x-- right_bit
+    jmp start
+
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void audio_mclk_program_init(PIO Pio, uint Sm, uint Offset, uint Pin,
+                                           uint32_t MclkHz)
+{
+	pio_sm_config C = audio_mclk_program_get_default_config(Offset);
+
+	sm_config_set_set_pins(&C, Pin, 1);
+	sm_config_set_out_pins(&C, Pin, 1);
+	sm_config_set_clkdiv(&C, ((float)clock_get_hz(clk_sys) / (float)MclkHz) / 4.0f);
+
+	pio_gpio_init(Pio, Pin);
+	pio_sm_set_pindirs_with_mask(Pio, Sm, 1u << Pin, 1u << Pin);
+	pio_sm_init(Pio, Sm, Offset, &C);
+}
+
+static inline void audio_i2s_program_init(PIO Pio, uint Sm, uint Offset, uint DataPin,
+                                          uint BclkPin, uint LrckPin)
+{
+	pio_sm_config C = audio_i2s_program_get_default_config(Offset);
+	uint32_t Mask = (1u << DataPin) | (1u << BclkPin) | (1u << LrckPin);
+
+	sm_config_set_out_pins(&C, DataPin, 1);
+	sm_config_set_out_shift(&C, false, false, 32);	/* MSB first, no autopull */
+
+	/* Full rate: every instruction is a wait on the codec's clocks, so the
+	   state machine must be able to see an edge as soon as it happens. */
+	sm_config_set_clkdiv(&C, 1.0f);
+
+	/* The clock pins are only ever read, but they are handed to PIO anyway:
+	   that guarantees the pad's input buffer is on, which is what `wait gpio`
+	   actually looks at. */
+	pio_gpio_init(Pio, DataPin);
+	pio_gpio_init(Pio, BclkPin);
+	pio_gpio_init(Pio, LrckPin);
+	pio_sm_set_pindirs_with_mask(Pio, Sm, 1u << DataPin, Mask);
+	pio_sm_init(Pio, Sm, Offset, &C);
+}
+%}

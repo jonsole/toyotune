@@ -567,14 +567,17 @@ by a hardware SPI or the QMI peripheral. Their source names the block:
 
 | Block | Claimed by |
 |---|---|
-| One | CO5300 QSPI panel (vendor driver) |
-| One | can2040 — it needs a whole block to itself |
-| One | Spare |
+| PIO0 | CO5300 QSPI panel (vendor driver) |
+| PIO1 | can2040 - it needs a whole block to itself |
+| PIO2 | ES8311 audio - the warning beeps, section 4.12 |
 
-It still fits, with one block in hand rather than two. Assign explicitly:
-leave the panel on the vendor's default block and pass can2040 a *different*
-`pio_num`. The vendor's ES8311 example also uses PIO (for I2S), but the codec
-is unused here so that block never gets claimed.
+**All three blocks are now claimed.** This table used to record the third as
+spare on the grounds that the codec was unused; it is used, for the warning
+sounds, and it needs two state machines of PIO2 (master clock, and the data
+line) out of that block's four. So there is no longer a free block, and
+anything else wanting PIO has to share PIO2 - which is fine, it has two state
+machines and ten instruction slots left, but it is no longer free real
+estate.
 
 **This raises the stakes on M4.** The panel driver DMAs colour data in large
 bursts while can2040 needs low interrupt latency on the other core. Bus
@@ -1104,6 +1107,128 @@ Read the Kconfig rather than the README.
 enter-bootloader command change the application build, so bringing them in
 while the board is still on a bench USB cable costs nothing, and leaves the
 cable as the fallback while the CAN path is proven.
+
+### 4.12 Warning sounds
+
+**Working on the board, 2026-09-18.** `src/tone.c`, `src/warn.c`,
+`src/audio.c` and `src/audio_i2s.pio`, with 872 host checks. All four patterns
+play through the fitted speaker, tell apart by ear, and are loud enough at the
+default level. The codec answers with its own chip ID (`0x8311`) and the
+stream has run with no late buffer.
+
+**Why sound at all.** Every warning this node can show is a warning the driver
+is not looking at, because they are looking at the road. The three that matter
+are the three where a second of delay costs an engine: the limiter, boost past
+what the engine is mapped for, and a lean mixture under load.
+
+**The hardware was already fitted and was written off in section 4.1.** The
+board carries an **ES8311** codec on GPIO0..5 with an **MX1.25 2-pin speaker
+connector**, which that section lists as "unused". It is used now. Neither
+Waveshare's wiki nor the product page publishes the I2S pin assignment or the
+codec's address, so both came from **their own `examples/C/02_ES8311`**:
+
+| | |
+|---|---|
+| I2C | 0x18, on the GPIO6/7 bus the touch panel, IMU and RTC already share |
+| GPIO1 | data, MCU to codec |
+| GPIO2 | data, codec to MCU - the microphone, unused here |
+| GPIO3 | master clock, MCU to codec, 6.144 MHz |
+| GPIO4, GPIO5 | bit clock and word clock, **codec to MCU** |
+| GPIO0 | **the speaker amplifier's enable** (`PA_CTRL`), high = on |
+
+**The codec is the I2S master, which is the fact the design turns on.** Given
+a master clock it generates its own bit and word clocks, so the RP2350 only
+has to produce MCLK and shift one bit per edge - both a few PIO instructions,
+and neither a peripheral this chip has. That is why the data program is a pure
+slave with no clocking of its own to get wrong. Sample rate is **24 kHz with
+a 6.144 MHz MCLK**, the one combination Waveshare run on this board and a row
+the ES8311's coefficient table has; `audio.c` writes that row out rather than
+carrying their hundred-row table and searching it.
+
+**The stream never stops.** Starting the DMA when a warning begins and
+stopping it after would stall the state machine on `pull` with the data line
+wherever the last bit left it, which the codec turns into a held DC level in
+the speaker. So it runs from boot to power-off and silence is a buffer of
+zeros: a fixed 96 KB/s of DMA, two 21 ms buffers chained to one another, each
+refilled in the interrupt the other one's completion raises.
+
+**All of it is on core 1**, twice over deliberately: the codec is on an I2C
+bus that has one owner, and core 0 is where can2040 wants its interrupt
+latency. The refill interrupt is at the **lowest** priority so the panel's
+tearing-effect interrupt always wins - a late frame is visible and a late beep
+is not.
+
+**Which node sounds what.** A node sounds a warning when the face it is
+showing displays the reading the warning is about: the limiter on whichever
+node shows the tachometer, boost and mixture on whichever shows boost or AFR
+(the needle page or the trace, either counts). Sound and sight stay together,
+and three speakers cannot announce one event three times a fraction apart. The
+exception is the fault takeover, which puts the same page on every node at
+once - there **node 0** sounds it and the others stay quiet. That is a guess
+about a car that has not been wired; if the speaker ends up elsewhere it is
+one constant.
+
+**The patterns are rhythms first and pitches second**, because what tells a
+driver which warning is sounding is the pattern of pips, not the note:
+
+| Warning | Sound | Condition |
+|---|---|---|
+| Fault | two-tone 880/1175 Hz, no gap | whatever raises the takeover page |
+| Rev limit | three 60 ms pips at 2600 Hz | 6800 rpm, off at 6500 |
+| Overboost | two 120 ms pips at 1800 Hz | 1.05 bar, off at 0.95 |
+| Lean | one 400 ms note at 700 Hz | leaner than 13.0:1 **above 0.3 bar** |
+
+Four things about those that are decisions rather than numbers:
+
+- **The lean warning is gated on load, and that gate is the whole reason it is
+  usable.** A cruise at 16:1 is the ECU doing its job, so an ungated mixture
+  window would beep down every motorway. Rich is deliberately not sounded at
+  all: it costs power, not pistons.
+- **Every threshold has hysteresis and a 400 ms minimum hold.** Without the
+  first a needle resting on a threshold chatters; without the second a spike
+  that crosses for one frame gives a click instead of a recognisable sound.
+  The hold is not an arbitrary number - it is longer than the sounding part of
+  every pattern, which a host test enforces, so a momentary spike is always
+  heard as the whole warning rather than as a fragment of one.
+- **A stale reading never warns.** If the link drops every condition goes
+  quiet, because a warning derived from a value that is no longer arriving is
+  a statement about the past presented as the present. It does finish the
+  current hold rather than cutting mid-pip.
+- **The thresholds are not the face's red band.** They are close on purpose
+  and must be able to move apart: a band starting at 1.0 bar looks right
+  painted on a dial, while the tone wants a little more so a needle resting on
+  the line does not chirp.
+
+**Proving it on a bench.** Nothing else here can prove a speaker works without
+an engine to make it go off, so the console sounds each pattern: `1` fault,
+`2` rev, `3` boost, `4` lean, `0` silence, each for three seconds, and `Vnn`
+sets the codec volume. A console sound outranks a real warning but only for
+those three seconds - a bench test that could mask a fault indefinitely would
+be the wrong trade. The status line reports the codec's chip ID, the volume,
+buffers sent, late refills, and how many times each warning has fired.
+
+**Two things the first flash got wrong, both silent in the same way** - chip
+ID correct, stream running, not a sound:
+
+- **GPIO0 enables the speaker amplifier.** The codec only drives a line-level
+  output; the amplifier behind it is off until `PA_CTRL` goes high. Waveshare
+  set it in `DEV_GPIO_Init()`, which a search of their example for the codec's
+  own pins does not turn up - that is how it was missed. If audio ever goes
+  quiet with everything else healthy, check this pin first.
+- **The volume register is logarithmic, not a percentage.** It is 0.5 dB a
+  step with 0 dB at 0xBF, which on Waveshare's 0-100 scale is 75. The first
+  default of 55 was about -26 dB, on top of a tone generated at a third of
+  full scale. Now the tone is generated just short of full scale and the codec
+  sits at exactly 0 dB, which is as loud as it goes cleanly: above 75 is
+  digital gain that clips the sine. `Vnn` on the console turns it down, about
+  1.3 dB a point.
+
+**Open:**
+
+- **The fault chime sounds on node 0 by assumption.** Once the cars wiring is
+  known, either move it or - if every node gets a speaker - give the nodes a
+  way to know which pages their neighbours are showing. The heartbeat's page
+  byte is reserved and sent as zero, which is exactly where that would go.
 
 ## 5. Milestones
 

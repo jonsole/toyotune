@@ -46,12 +46,14 @@
 #include "dash_faces.h"
 #include "imu.h"
 #include "panel.h"
+#include "audio.h"
 #include "clock_link.h"
 #include "rtc.h"
 #include "ui_draw.h"
 #include "ui_gauge.h"
 #include "ui_clockpage.h"
 #include "ui_gpage.h"
+#include "warn.h"
 #include "ui_graphpage.h"
 #include "ui_model.h"
 #include "ui_needle.h"
@@ -159,6 +161,13 @@ static volatile int8_t PageStepRequested;
    a half-written time. */
 static volatile uint8_t TimeRequest[3];
 static volatile bool TimeRequested;
+
+/* A sound asked for from the console, so the speaker can be proved on a bench
+   with no engine turning. 0xFF is "nothing asked for"; anything else overrides
+   the real warning for BEEP_TEST_MS. */
+static volatile uint8_t BeepRequest = 0xFFu;
+static volatile uint8_t VolumeRequest = 0xFFu;
+#define BEEP_TEST_MS		(3000u)
 
 #if DASH_HAVE_PANEL
 /* CORE 1'S STACK, AND WHY IT IS NOT THE SDK'S.
@@ -782,6 +791,9 @@ static void Core1Main(void)
 	Core1Page_t *In = &Views[1];
 	Core1Swipe_t Swipe;
 	Core1Counts_t Counts;
+	Warn_t Warn;
+	ToneId_t BeepId = TONE_NONE;
+	uint32_t BeepUntilMs = 0u;
 	uint32_t NextStatusMs = 0;
 	uint32_t LastFrameUs;
 	uint32_t NextValueMs = 0;
@@ -797,6 +809,13 @@ static void Core1Main(void)
 	Panel_Init();
 	(void)Imu_Init();
 	(void)Rtc_Init();
+
+	/* After Panel_Init, which brings up the I2C bus the codec shares with the
+	   touch panel, the IMU and the clock. On core 1 because that bus has one
+	   owner, and because the refill interrupt is better anywhere but the core
+	   can2040 is on - see audio.h. */
+	(void)Audio_Init();
+	Warn_Init(&Warn);
 	ClockLink_Init();
 	UiClockPage_Init();
 	UiGPage_Init();
@@ -826,6 +845,41 @@ static void Core1Main(void)
 		TextDue = (int32_t)(NowMs - NextValueMs) >= 0;
 		if (TextDue)
 			NextValueMs = NowMs + CORE1_VALUE_PERIOD_MS;
+
+		/* ---- the speaker --------------------------------------------- *
+		 *
+		 * Decided here rather than on core 0 because the decision needs the
+		 * page this node is actually showing: a node sounds a warning about a
+		 * reading its own face is displaying. See warn.h.
+		 */
+		{
+			WarnId_t Warned = Warn_Update(&Warn, NowMs, Page, DashNodeId);
+
+			if (BeepRequest != 0xFFu)
+			{
+				BeepId = (ToneId_t)BeepRequest;
+				BeepUntilMs = NowMs + BEEP_TEST_MS;
+				BeepRequest = 0xFFu;
+				printf("audio: %s\n", Tone_Name(BeepId));
+			}
+			if (VolumeRequest != 0xFFu)
+			{
+				Audio_SetVolume(VolumeRequest);
+				VolumeRequest = 0xFFu;
+				printf("audio: volume %lu%%\n", (unsigned long)Audio_Volume());
+			}
+
+			/* A console test sound outranks a real warning, but only for the
+			   few seconds it was asked for - a bench test that could mask a
+			   fault indefinitely would be the wrong trade. */
+			if (BeepId != TONE_NONE && (int32_t)(NowMs - BeepUntilMs) < 0)
+				Audio_Warn(BeepId);
+			else
+			{
+				BeepId = TONE_NONE;
+				Audio_Warn(Warn_Tone(Warned));
+			}
+		}
 
 		/* ---- the finger ---------------------------------------------- */
 
@@ -1207,6 +1261,20 @@ static void Core1Main(void)
 						       (unsigned long)ClockLink_Rejected(),
 						       (unsigned long)Rtc_Errors());
 				}
+				if (!Audio_Present())
+					printf("audio: no codec\n");
+				else
+					printf("audio: 0x%04x  %s  vol %lu%%  buffers %lu  late %lu"
+					       "  fired fault %lu rev %lu boost %lu lean %lu\n",
+					       (unsigned)Audio_ChipId(),
+					       Tone_Name(Audio_Sounding()),
+					       (unsigned long)Audio_Volume(),
+					       (unsigned long)Audio_Buffers(),
+					       (unsigned long)Audio_Underruns(),
+					       (unsigned long)Warn.Fired[WARN_FAULT],
+					       (unsigned long)Warn.Fired[WARN_REV],
+					       (unsigned long)Warn.Fired[WARN_BOOST],
+					       (unsigned long)Warn.Fired[WARN_MIXTURE]);
 				{
 					ImuMilliG_t A;
 
@@ -1439,33 +1507,45 @@ int main(void)
 
 #if DASH_HAVE_PANEL
 		/* Console commands: 'S' a screenshot, 'n' and 'p' the next and
-		   previous page, and "Thhmmss" to set the clock - enough to drive the
-		   display, and the clock, from the bench PC. */
+		   previous page, "Thhmmss" to set the clock, '1'..'4' to sound each
+		   warning and '0' to stop, "Vnn" for the volume - enough to drive the
+		   display, the clock and the speaker from the bench PC. The sounds
+		   matter most: nothing else here can prove a speaker works without an
+		   engine to make it go off. */
 		{
 			static uint8_t Digits[6];
 			static uint8_t Have;
-			static bool Collecting;
+			static uint8_t Want;		/* digits this command is collecting */
+			static char Collecting;
+
 			int Ch = getchar_timeout_us(0);
 
-			if (Collecting)
+			if (Collecting != 0)
 			{
 				if (Ch >= '0' && Ch <= '9')
 				{
 					Digits[Have++] = (uint8_t)(Ch - '0');
-					if (Have == sizeof(Digits))
+					if (Have == Want)
 					{
-						TimeRequest[0] = (uint8_t)((Digits[0] * 10u) + Digits[1]);
-						TimeRequest[1] = (uint8_t)((Digits[2] * 10u) + Digits[3]);
-						TimeRequest[2] = (uint8_t)((Digits[4] * 10u) + Digits[5]);
-						TimeRequested = true;
-						Collecting = false;
+						if (Collecting == 'T')
+						{
+							TimeRequest[0] = (uint8_t)((Digits[0] * 10u) + Digits[1]);
+							TimeRequest[1] = (uint8_t)((Digits[2] * 10u) + Digits[3]);
+							TimeRequest[2] = (uint8_t)((Digits[4] * 10u) + Digits[5]);
+							TimeRequested = true;
+						}
+						else
+						{
+							VolumeRequest = (uint8_t)((Digits[0] * 10u) + Digits[1]);
+						}
+						Collecting = 0;
 					}
 				}
 				else if (Ch != PICO_ERROR_TIMEOUT)
 				{
 					/* Anything else abandons it rather than waiting for
 					   digits that may never come. */
-					Collecting = false;
+					Collecting = 0;
 				}
 			}
 			else if (Ch == 'S')
@@ -1476,9 +1556,18 @@ int main(void)
 				PageStepRequested = -1;
 			else if (Ch == 'T')
 			{
-				Collecting = true;
+				Collecting = 'T';
+				Want = 6u;
 				Have = 0u;
 			}
+			else if (Ch == 'V')
+			{
+				Collecting = 'V';
+				Want = 2u;
+				Have = 0u;
+			}
+			else if (Ch >= '0' && Ch <= '0' + (int)TONE_COUNT - 1)
+				BeepRequest = (uint8_t)(Ch - '0');
 		}
 #endif
 

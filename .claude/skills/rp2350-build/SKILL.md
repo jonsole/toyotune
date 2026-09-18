@@ -213,6 +213,8 @@ Get-CimInstance Win32_PnPEntity |
 | `build_faces.py` cannot find LVGL, or `lvgl.h` is missing | §3a - the face renderer needs the checkout even though the firmware does not |
 | `region RAM overflowed` | The 212 KB back buffer leaves less headroom than before. Check what grew with `arm-none-eabi-size -A build/dash_node.elf` before making anything smaller by guesswork |
 | A `-Wconversion` warning in `src/` | Not noise - §1. Fix the narrowing rather than silencing it |
+| `No CMAKE_C_COMPILER could be found` while building **pioasm** | Same story as picotool: the audio I2S program needs pioasm, and the SDK builds it from source unless `pioasm_DIR` points at the prebuilt one under `~/.pico-sdk/tools/*/pioasm`. `CMakeLists.txt` finds it, **with `FORCE`** - a previous configure leaves `pioasm_DIR-NOTFOUND` in the cache and a plain `set()` will not replace an existing entry |
+| `syntax error, unexpected left` from pioasm | `left` and `right` are reserved words (shift directions). Label something else |
 | Host tests fail to compile with `__asm__` errors | Something added GCC inline asm to a file the host tests build. Guard it on `_MSC_VER`, as `signal_store.c` does for its memory barrier |
 
 ## 6. Two things about the code that are easy to undo by accident
@@ -224,6 +226,14 @@ Get-CimInstance Win32_PnPEntity |
   CAN interrupt corrupts a bit. `can_link.c` marks its handler
   `__not_in_flash_func`; keep that when editing it, and see PLAN.md §4.2a
   before adding anything else to that interrupt.
+- **All three PIO blocks are claimed now**: PIO0 the panel, PIO1 can2040, PIO2
+  the audio codec (two of its four state machines). PLAN.md §4.1's table used
+  to call the third spare; it is not. Anything new wanting PIO shares PIO2.
+- **The audio stream never stops, and that is deliberate.** Stopping the DMA
+  between beeps stalls the state machine with the data line held, which the
+  codec turns into DC in the speaker. Silence is a buffer of zeros - see
+  PLAN.md §4.12. Its refill interrupt is on core 1 at the lowest priority, so
+  the panel's TE interrupt still wins.
 
 ## 7. State of play
 

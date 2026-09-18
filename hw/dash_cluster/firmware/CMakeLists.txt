@@ -48,6 +48,26 @@ if(NOT picotool_DIR)
     endforeach()
 endif()
 
+# Same story for pioasm, which the audio I2S program needs: the SDK builds it
+# from source with the HOST compiler unless pointed at the prebuilt one the
+# VS Code extension ships.
+if(NOT pioasm_DIR)
+    foreach(_root "$ENV{USERPROFILE}/.pico-sdk" "$ENV{HOME}/.pico-sdk")
+        file(GLOB _pioasm_dirs "${_root}/tools/*/pioasm")
+        foreach(_d ${_pioasm_dirs})
+            if(EXISTS "${_d}/pioasmConfig.cmake")
+                # FORCE: a previous configure leaves pioasm_DIR-NOTFOUND in the
+                # cache, and a plain set() will not replace an existing entry -
+                # so without this the SDK falls back to building pioasm from
+                # source and the build dies looking for a host C++ compiler.
+                set(pioasm_DIR "${_d}" CACHE PATH "Prebuilt pioasm" FORCE)
+                message(STATUS "Using prebuilt pioasm: ${pioasm_DIR}")
+                break()
+            endif()
+        endforeach()
+    endforeach()
+endif()
+
 include(pico_sdk_import.cmake)
 
 project(dash_node C CXX ASM)
@@ -78,7 +98,9 @@ set(DASH_SOURCES
     src/signal_store.c
     src/signals.c
     src/telemetry.c
+    src/tone.c
     src/ui_model.c
+    src/warn.c
 )
 
 # ---------------------------------------------------------------------------
@@ -122,6 +144,7 @@ if(DASH_HAVE_PANEL)
                              src/ui_clock.c src/ui_clockpage.c src/dash_font_clock_36.c src/ui_draw.c src/ui_needle.c src/ui_text.c
                              src/ui_gmeter.c src/ui_gpage.c
                              src/ui_graph.c src/ui_graphpage.c
+                             src/audio.c
                              src/dash_faces.c src/dash_font_value_56.c)
     list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})
     set(DASH_HAVE_PANEL 1)
@@ -160,6 +183,13 @@ endif()
 set(DASH_BRIGHTNESS 20 CACHE STRING "Panel brightness at boot, percent (0-100)")
 
 add_executable(dash_node ${DASH_SOURCES} ${VENDOR_SOURCES})
+
+# The I2S clock and data programs for the ES8311. The codec is the I2S master
+# on this board, so both are tiny - see src/audio_i2s.pio. Generated rather
+# than checked in as a .pio.h, so the assembly is the source of truth.
+if(DASH_HAVE_PANEL)
+    pico_generate_pio_header(dash_node ${CMAKE_CURRENT_LIST_DIR}/src/audio_i2s.pio)
+endif()
 
 target_compile_definitions(dash_node PRIVATE
     DASH_HAVE_CAN2040=${DASH_HAVE_CAN2040}
