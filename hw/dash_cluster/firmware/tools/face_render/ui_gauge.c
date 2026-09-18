@@ -75,11 +75,11 @@ static double UiGauge_Angle(GaugeSweep_t Sweep, int32_t Position)
    so only the labels need to know. */
 static lv_obj_t *UiGauge_TickRing(lv_obj_t *Parent, GaugeSweep_t Sweep,
                                   int32_t X, int32_t Y, int32_t W, int32_t H,
-                                  uint32_t Total, uint32_t MajorEvery)
+                                  uint32_t Total, uint32_t MajorEvery, uint32_t Majors)
 {
 	lv_obj_t *Scale = lv_scale_create(Parent);
 	int32_t Start = UiGauge_SweepStart(Sweep);
-	int32_t Span = UiGauge_SweepSpan(Sweep);
+	int32_t Span = UiGauge_TickSpan(Sweep, Majors);
 
 	lv_obj_remove_style_all(Scale);
 	lv_obj_set_pos(Scale, X, Y);
@@ -374,7 +374,7 @@ lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
 	GaugeSweep_t Sweep = Element->Sweep;
 	uint32_t Majors = 0;
 	lv_obj_t *Scale;
-	lv_obj_t *Half;
+	lv_obj_t *Half = NULL;
 
 	if (Element->Ticks != NULL)
 		while (Element->Ticks[Majors] != NULL)
@@ -435,8 +435,8 @@ lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
 			lv_obj_t *Cut;
 
 			Cut = UiGauge_TickRing(Parent, Sweep, X, Y, W, H,
-			                       ((Majors - 1u) * UI_GAUGE_MINOR_PER_MAJOR) + 1u,
-			                       UI_GAUGE_MINOR_PER_MAJOR);
+			                       UiGauge_TickCount(Sweep, Majors),
+			                       UiGauge_MinorPerMajor(Sweep), Majors);
 			lv_obj_set_style_length(Cut, Reach, LV_PART_INDICATOR);
 			lv_obj_set_style_line_width(Cut, S(UI_GAUGE_MAJOR_WIDTH + 2 * UI_GAUGE_BAND_GAP),
 			                            LV_PART_INDICATOR);
@@ -449,7 +449,8 @@ lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
 			lv_obj_set_style_line_opa(Cut, LV_OPA_COVER, LV_PART_ITEMS);
 
 			/* The half-major ticks are a weight of their own. */
-			Cut = UiGauge_TickRing(Parent, Sweep, X, Y, W, H, ((Majors - 1u) * 2u) + 1u, 2u);
+			Cut = UiGauge_TickRing(Parent, Sweep, X, Y, W, H,
+			                       ((Majors - 1u) * 2u) + 1u, 2u, Majors);
 			lv_obj_set_style_line_width(Cut, 0, LV_PART_INDICATOR);
 			lv_obj_set_style_length(Cut, Reach, LV_PART_ITEMS);
 			lv_obj_set_style_line_width(Cut, S(UI_GAUGE_HALF_WIDTH + 2 * UI_GAUGE_BAND_GAP),
@@ -461,8 +462,8 @@ lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
 
 	/* Heavy ticks every major and small ones every minor, with the numerals. */
 	Scale = UiGauge_TickRing(Parent, Sweep, X, Y, W, H,
-	                         ((Majors - 1u) * UI_GAUGE_MINOR_PER_MAJOR) + 1u,
-	                         UI_GAUGE_MINOR_PER_MAJOR);
+	                         UiGauge_TickCount(Sweep, Majors),
+	                         UiGauge_MinorPerMajor(Sweep), Majors);
 
 	lv_obj_set_style_length(Scale, S(UI_GAUGE_MAJOR_LENGTH), LV_PART_INDICATOR);
 	lv_obj_set_style_line_width(Scale, S(UI_GAUGE_MAJOR_WIDTH), LV_PART_INDICATOR);
@@ -488,13 +489,19 @@ lv_obj_t *UiGauge_CreateScale(lv_obj_t *Parent, const FaceElement_t *Element,
 	}
 
 	/* Medium ticks halfway between majors: a second ring counting in halves,
-	   whose majors are invisible since the first ring already draws them. */
-	Half = UiGauge_TickRing(Parent, Sweep, X, Y, W, H, ((Majors - 1u) * 2u) + 1u, 2u);
-	lv_obj_set_style_line_width(Half, 0, LV_PART_INDICATOR);
-	lv_obj_set_style_length(Half, S(UI_GAUGE_HALF_LENGTH), LV_PART_ITEMS);
-	lv_obj_set_style_line_width(Half, S(UI_GAUGE_HALF_WIDTH), LV_PART_ITEMS);
-	lv_obj_set_style_line_color(Half, Mark, LV_PART_ITEMS);
-	lv_obj_set_style_line_opa(Half, LV_OPA_COVER, LV_PART_ITEMS);
+	   whose majors are invisible since the first ring already draws them. A
+	   clock has no use for them - its minor ticks are minutes, and half a
+	   minute is not a graduation. */
+	if (Sweep != GAUGE_SWEEP_CLOCK)
+	{
+		Half = UiGauge_TickRing(Parent, Sweep, X, Y, W, H, ((Majors - 1u) * 2u) + 1u,
+		                        2u, Majors);
+		lv_obj_set_style_line_width(Half, 0, LV_PART_INDICATOR);
+		lv_obj_set_style_length(Half, S(UI_GAUGE_HALF_LENGTH), LV_PART_ITEMS);
+		lv_obj_set_style_line_width(Half, S(UI_GAUGE_HALF_WIDTH), LV_PART_ITEMS);
+		lv_obj_set_style_line_color(Half, Mark, LV_PART_ITEMS);
+		lv_obj_set_style_line_opa(Half, LV_OPA_COVER, LV_PART_ITEMS);
+	}
 
 	/* The legend: under the centre on a full dial, where the MR2 prints
 	   "x1000r/min"; beyond its reading on a split one. A child of the scale

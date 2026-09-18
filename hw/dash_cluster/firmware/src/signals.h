@@ -83,6 +83,11 @@ typedef enum
 	SIGNAL_G_LAT,
 	SIGNAL_G_LON,
 
+	/* The time of day, seconds since midnight. Like the accelerometer's
+	   signals it is named so a page can refer to it and is NOT in the store:
+	   the clock is read over I2C on core 1 - see rtc.h. */
+	SIGNAL_CLOCK,
+
 	SIGNAL_COUNT
 } SignalId_t;
 

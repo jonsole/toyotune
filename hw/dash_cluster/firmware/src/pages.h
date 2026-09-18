@@ -31,7 +31,8 @@ typedef enum
 	WIDGET_NUMERIC,		/* plain value and unit */
 	WIDGET_BARGRAPH,	/* horizontal bar, for per-cylinder comparisons */
 	WIDGET_GRAPH,		/* rolling trace against time */
-	WIDGET_GFORCE		/* friction circle from the node's own accelerometer */
+	WIDGET_GFORCE,		/* friction circle from the node's own accelerometer */
+	WIDGET_CLOCK		/* hands, from the RTC and the time announced on the bus */
 } WidgetType_t;
 
 
@@ -42,7 +43,8 @@ typedef enum
 {
 	GAUGE_SWEEP_FULL = 0,	/* 270 degrees, lower left round to lower right */
 	GAUGE_SWEEP_TOP,	/* the upper half, left to right over the top */
-	GAUGE_SWEEP_BOTTOM	/* the lower half, left to right under the bottom */
+	GAUGE_SWEEP_BOTTOM,	/* the lower half, left to right under the bottom */
+	GAUGE_SWEEP_CLOCK	/* all the way round, twelve at the top - a clock */
 } GaugeSweep_t;
 
 

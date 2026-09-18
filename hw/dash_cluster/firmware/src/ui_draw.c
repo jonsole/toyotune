@@ -252,12 +252,22 @@ uint8_t UiDraw_Ink(UiInk_t Ink)
 /***************************************************************************************/
 uint32_t UiDraw_Stroke(uint8_t Surface, const UiNeedle_t *Shape, uint8_t Level)
 {
+	return UiDraw_StrokeIn(Surface, UI_TEXT_RED, Shape, Level);
+}
+
+
+/***************************************************************************************/
+uint32_t UiDraw_StrokeIn(uint8_t Surface, UiTextInk_t Ink, const UiNeedle_t *Shape,
+                         uint8_t Level)
+{
+	const uint8_t *Ramp = (Ink == UI_TEXT_RED) ? RedRamp : TextRamp;
+
 	if (Level == 0u)
 		return 0;
 	if (Level >= UI_TEXT_LEVELS)
 		Level = (uint8_t)(UI_TEXT_LEVELS - 1u);
 	return UiNeedle_Draw(Shape, BackBuf[Surface], (uint32_t)UI_DRAW_WIDTH,
-	                     UI_DRAW_WIDTH, UI_DRAW_HEIGHT, RedRamp[Level]);
+	                     UI_DRAW_WIDTH, UI_DRAW_HEIGHT, Ramp[Level]);
 }
 
 

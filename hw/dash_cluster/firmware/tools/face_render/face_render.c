@@ -96,6 +96,7 @@ int main(int argc, char **argv)
 		uint8_t FirstIndex = 0;
 		bool Split = false;
 		bool GMeter = false;
+		bool Clock = false;
 		const FaceElement_t *Graphs[2];
 		uint32_t GraphCount = 0;
 		int32_t X, Y, W, H, Row, Col;
@@ -110,8 +111,10 @@ int main(int argc, char **argv)
 			const FaceElement_t *El = &Pages[p].Elements[e];
 
 			if (El->Type != WIDGET_GAUGE && El->Type != WIDGET_GFORCE
-			    && El->Type != WIDGET_GRAPH)
+			    && El->Type != WIDGET_GRAPH && El->Type != WIDGET_CLOCK)
 				continue;
+			if (El->Type == WIDGET_CLOCK)
+				Clock = true;
 			if (El->Type == WIDGET_GFORCE)
 				GMeter = true;
 			if (El->Type == WIDGET_GRAPH && GraphCount < 2u)
@@ -128,7 +131,11 @@ int main(int argc, char **argv)
 				        p, FirstIndex, e);
 				return 1;
 			}
-			if (El->Sweep != GAUGE_SWEEP_FULL)
+			/* A split face is one with a top and a bottom half sharing it -
+			   which is about the HALF sweeps, not about any sweep that is not
+			   the full dial. A clock is a full circle and had been getting the
+			   divider drawn across it. */
+			if (El->Sweep == GAUGE_SWEEP_TOP || El->Sweep == GAUGE_SWEEP_BOTTOM)
 				Split = true;
 		}
 		if (First == NULL)
@@ -146,10 +153,11 @@ int main(int argc, char **argv)
 		UiGauge_CreateFace(Screen,
 		                   X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
 		                   W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE, Split,
-		                   !GMeter && GraphCount == 0u);
+		                   !GMeter && !Clock && GraphCount == 0u);
 		for (e = 0; e < Pages[p].ElementCount; e++)
 		{
-			if (Pages[p].Elements[e].Type == WIDGET_GAUGE)
+			if (Pages[p].Elements[e].Type == WIDGET_GAUGE
+			    || Pages[p].Elements[e].Type == WIDGET_CLOCK)
 				UiGauge_CreateScale(Screen, &Pages[p].Elements[e],
 				                    X * UI_GAUGE_RENDER_SCALE, Y * UI_GAUGE_RENDER_SCALE,
 				                    W * UI_GAUGE_RENDER_SCALE, H * UI_GAUGE_RENDER_SCALE);
@@ -201,7 +209,9 @@ int main(int argc, char **argv)
 		        UI_GAUGE_RENDER_SCALE);
 		printf("page %u: %dx%d at %d,%d, %s, rendered at %dx\n",
 		       p, (int)W, (int)H, (int)X, (int)Y,
-		       GMeter ? "g-force" : (GraphCount ? "trace" : (Split ? "split" : "one gauge")),
+		       GMeter ? "g-force"
+		              : (GraphCount ? "trace"
+		                            : (Clock ? "clock" : (Split ? "split" : "one gauge"))),
 		       UI_GAUGE_RENDER_SCALE);
 
 		lv_draw_buf_destroy(Snap);

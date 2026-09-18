@@ -143,6 +143,7 @@ static inline int32_t UiGauge_SweepStart(GaugeSweep_t Sweep)
 	{
 	case GAUGE_SWEEP_TOP:		return 180 + UI_GAUGE_HALF_MARGIN_DEG;
 	case GAUGE_SWEEP_BOTTOM:	return 180 - UI_GAUGE_HALF_MARGIN_DEG;
+	case GAUGE_SWEEP_CLOCK:		return -90;	/* twelve at the top */
 	default:			return UI_GAUGE_ROTATION;
 	}
 }
@@ -153,8 +154,43 @@ static inline int32_t UiGauge_SweepSpan(GaugeSweep_t Sweep)
 	{
 	case GAUGE_SWEEP_TOP:		return 180 - (2 * UI_GAUGE_HALF_MARGIN_DEG);
 	case GAUGE_SWEEP_BOTTOM:	return -(180 - (2 * UI_GAUGE_HALF_MARGIN_DEG));
+	case GAUGE_SWEEP_CLOCK:		return 360;
 	default:			return (int32_t)UI_GAUGE_ANGLE_RANGE;
 	}
+}
+
+/* Minor ticks between one numeral and the next: five on a clock, whose
+   numerals are hours and whose minor ticks are minutes. */
+static inline uint32_t UiGauge_MinorPerMajor(GaugeSweep_t Sweep)
+{
+	return (Sweep == GAUGE_SWEEP_CLOCK) ? 5u : UI_GAUGE_MINOR_PER_MAJOR;
+}
+
+/* HOW MANY TICKS, AND OVER WHAT ANGLE, the face's tick rings are drawn with.
+ *
+ * An open sweep has a tick at both ends - nine numerals on the rev counter
+ * means eight intervals - so its count is one more than its intervals, over
+ * its whole span. A clock closes on itself: its last tick must not land on
+ * its first, so it gets one tick per interval over a span one interval short
+ * of the full circle. The hands still use the full 360 from
+ * UiGauge_SweepSpan(), which is what puts the second hand exactly on the tick
+ * it is pointing at. */
+static inline uint32_t UiGauge_TickCount(GaugeSweep_t Sweep, uint32_t Majors)
+{
+	if (Sweep == GAUGE_SWEEP_CLOCK)
+		return Majors * UiGauge_MinorPerMajor(Sweep);
+	return ((Majors - 1u) * UiGauge_MinorPerMajor(Sweep)) + 1u;
+}
+
+static inline int32_t UiGauge_TickSpan(GaugeSweep_t Sweep, uint32_t Majors)
+{
+	if (Sweep == GAUGE_SWEEP_CLOCK)
+	{
+		uint32_t Ticks = UiGauge_TickCount(Sweep, Majors);
+
+		return 360 - (int32_t)(360u / Ticks);
+	}
+	return UiGauge_SweepSpan(Sweep);
 }
 
 /* A SPLIT FACE puts each half's reading inside the centre ring on its own side
@@ -220,6 +256,31 @@ static inline int32_t UiGauge_LegendDy(GaugeSweep_t Sweep, int32_t Radius)
 #define UI_GRAPH_TIME_DY		(121)
 #define UI_GRAPH_AXIS_GAP		(8)	/* plot edge to its scale's labels */
 #define UI_GRAPH_AXIS_W			(80)	/* the box a scale's labels align in */
+
+/* THE CLOCK'S HANDS, as percentages of the dial's radius and pixels of stroke.
+   Each reaches a little behind the pivot, as a real clock's hands do - it is
+   what stops them looking like needles. The hub is drawn over them. */
+#define UI_CLOCK_HOUR_PCT		(52)
+#define UI_CLOCK_MINUTE_PCT		(80)
+#define UI_CLOCK_SECOND_PCT		(86)
+#define UI_CLOCK_HOUR_WIDTH		(8)
+#define UI_CLOCK_MINUTE_WIDTH		(5)
+#define UI_CLOCK_SECOND_WIDTH		(2)
+#define UI_CLOCK_HOUR_TAIL		(16)
+#define UI_CLOCK_MINUTE_TAIL		(20)
+#define UI_CLOCK_SECOND_TAIL		(28)
+#define UI_CLOCK_HUB_R			(7)
+
+/* The digital time, in the space between the centre and the six - roughly
+   where a watch puts its date window.
+
+   This used to sit at 196, chosen to be outside the minute hand's 80% reach so
+   the hands could never cross it. That put it hard against the numerals and
+   the tick ring at the bottom of the dial, which is where it looked wrong. So
+   it moved inboard instead and the crossing is handled: UiClockPage_Update
+   redraws the reading whenever a hand has been over it, which keeps the text
+   on top and intact. */
+#define UI_CLOCK_DIGITAL_DY		(118)
 
 /* Element geometry is in percent of the panel. */
 static inline int32_t UiGauge_Pct(uint8_t Percent, int32_t Extent)

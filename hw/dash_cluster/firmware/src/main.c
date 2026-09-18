@@ -46,8 +46,11 @@
 #include "dash_faces.h"
 #include "imu.h"
 #include "panel.h"
+#include "clock_link.h"
+#include "rtc.h"
 #include "ui_draw.h"
 #include "ui_gauge.h"
+#include "ui_clockpage.h"
 #include "ui_gpage.h"
 #include "ui_graphpage.h"
 #include "ui_model.h"
@@ -149,6 +152,13 @@ static volatile bool ScreenshotRequested;
 /* A page change asked for over the console - 'n' next, 'p' previous - served
    by core 1, which owns the page selection. +1, -1, or 0 for none. */
 static volatile int8_t PageStepRequested;
+
+/* A clock setting asked for over the console - "Thhmmss" - served by core 1,
+   which owns the I2C bus the clock is on. Written by core 0 and read by
+   core 1: the flag is set last and cleared first, so core 1 can never act on
+   a half-written time. */
+static volatile uint8_t TimeRequest[3];
+static volatile bool TimeRequested;
 
 #if DASH_HAVE_PANEL
 /* CORE 1'S STACK, AND WHY IT IS NOT THE SDK'S.
@@ -262,6 +272,10 @@ typedef struct
 	/* Or a strip chart. */
 	bool HasGraph;
 	UiGraphPage_t Graph;
+
+	/* Or the clock. */
+	bool HasClock;
+	UiClockPage_t Clock;
 } Core1Page_t;
 
 
@@ -442,6 +456,9 @@ static void Core1UpdatePage(Core1Page_t *V, uint32_t NowMs, uint32_t FrameUs,
 
 	if (V->Valid && V->HasGraph)
 		UiGraphPage_Update(&V->Graph, NowMs, TextDue, Core1DirtySink, Dirty);
+
+	if (V->Valid && V->HasClock)
+		UiClockPage_Update(&V->Clock, TextDue, Core1DirtySink, Dirty);
 }
 
 
@@ -485,6 +502,12 @@ static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_
 			}
 			continue;
 		}
+		if (El->Type == WIDGET_CLOCK && !V->HasClock)
+		{
+			V->HasClock = true;
+			GElement = El;
+			continue;
+		}
 		if (El->Type != WIDGET_GAUGE)
 			continue;
 
@@ -497,7 +520,8 @@ static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_
 		G->SmoothQ = (uint32_t)UiModel_Widget(El, NowMs).Position << UI_NEEDLE_Q;
 	}
 
-	if (V->Face == NULL || (V->GaugeCount == 0u && !V->HasG && !V->HasGraph))
+	if (V->Face == NULL
+	    || (V->GaugeCount == 0u && !V->HasG && !V->HasGraph && !V->HasClock))
 	{
 		printf("page %u: no pre-rendered face - black\n", Page);
 		return;
@@ -536,6 +560,12 @@ static void Core1LoadPage(Core1Page_t *V, uint8_t Page, uint8_t Surface, uint32_
 		UiGraphPage_Load(&V->Graph, Surface, Page,
 		                 (float)FaceX + (float)V->Face->Width / 2.0f,
 		                 (float)FaceY + (float)V->Face->Height / 2.0f, NowMs);
+
+	if (V->HasClock)
+		UiClockPage_Load(&V->Clock, Surface,
+		                 (float)FaceX + (float)V->Face->Width / 2.0f,
+		                 (float)FaceY + (float)V->Face->Height / 2.0f,
+		                 UiGauge_Radius(V->Face->Width, V->Face->Height));
 
 	V->Valid = true;
 	memset(&Unused, 0, sizeof(Unused));
@@ -766,6 +796,9 @@ static void Core1Main(void)
 
 	Panel_Init();
 	(void)Imu_Init();
+	(void)Rtc_Init();
+	ClockLink_Init();
+	UiClockPage_Init();
 	UiGPage_Init();
 	UiGraphPage_Init();
 	UiDraw_Init();
@@ -788,6 +821,7 @@ static void Core1Main(void)
 		Panel_TouchService();
 		UiGPage_Sample(FrameUs);
 		UiGraphPage_Sample(NowMs, FrameUs);
+		UiClockPage_Sample(NowMs, FrameUs);
 		Page = Pages_Effective(NowMs);
 		TextDue = (int32_t)(NowMs - NextValueMs) >= 0;
 		if (TextDue)
@@ -1102,6 +1136,22 @@ static void Core1Main(void)
 			Core1Screenshot(Cur->Surface);
 		}
 
+		if (TimeRequested)
+		{
+			RtcTime_t T;
+
+			T.Hours = TimeRequest[0];
+			T.Minutes = TimeRequest[1];
+			T.Seconds = TimeRequest[2];
+			TimeRequested = false;
+
+			if (Rtc_Write(&T))
+				printf("rtc: set to %02u:%02u:%02u\n", T.Hours, T.Minutes, T.Seconds);
+			else
+				printf("rtc: refused %02u:%02u:%02u - not a time, or no clock\n",
+				       T.Hours, T.Minutes, T.Seconds);
+		}
+
 		/* A console page step changes page as the fault takeover does -
 		   instantly, without a slide - and only when no swipe is under way. */
 		if (PageStepRequested != 0 && Swipe.State == SWIPE_IDLE)
@@ -1139,6 +1189,24 @@ static void Core1Main(void)
 
 				Panel_TouchLifts(&LiftReports, &LiftTimeouts, &GapMaxMs,
 				                 &StatusSeen, &ReadErrors);
+				{
+					RtcTime_t T;
+
+					if (!Rtc_Present())
+						printf("rtc: not found\n");
+					else if (UiClockPage_Time(&T))
+						printf("rtc: %02u:%02u:%02u  from the bus %lu  rejected %lu"
+						       "  errors %lu\n", T.Hours, T.Minutes, T.Seconds,
+						       (unsigned long)ClockLink_Accepted(),
+						       (unsigned long)ClockLink_Rejected(),
+						       (unsigned long)Rtc_Errors());
+					else
+						printf("rtc: no trustworthy time - set it with Thhmmss, or "
+						       "announce it on 0x%03x  rejected %lu  errors %lu\n",
+						       (unsigned)CLOCK_LINK_TIME_ID,
+						       (unsigned long)ClockLink_Rejected(),
+						       (unsigned long)Rtc_Errors());
+				}
 				{
 					ImuMilliG_t A;
 
@@ -1371,16 +1439,46 @@ int main(void)
 
 #if DASH_HAVE_PANEL
 		/* Console commands: 'S' a screenshot, 'n' and 'p' the next and
-		   previous page - enough to drive the display from the bench PC. */
+		   previous page, and "Thhmmss" to set the clock - enough to drive the
+		   display, and the clock, from the bench PC. */
 		{
+			static uint8_t Digits[6];
+			static uint8_t Have;
+			static bool Collecting;
 			int Ch = getchar_timeout_us(0);
 
-			if (Ch == 'S')
+			if (Collecting)
+			{
+				if (Ch >= '0' && Ch <= '9')
+				{
+					Digits[Have++] = (uint8_t)(Ch - '0');
+					if (Have == sizeof(Digits))
+					{
+						TimeRequest[0] = (uint8_t)((Digits[0] * 10u) + Digits[1]);
+						TimeRequest[1] = (uint8_t)((Digits[2] * 10u) + Digits[3]);
+						TimeRequest[2] = (uint8_t)((Digits[4] * 10u) + Digits[5]);
+						TimeRequested = true;
+						Collecting = false;
+					}
+				}
+				else if (Ch != PICO_ERROR_TIMEOUT)
+				{
+					/* Anything else abandons it rather than waiting for
+					   digits that may never come. */
+					Collecting = false;
+				}
+			}
+			else if (Ch == 'S')
 				ScreenshotRequested = true;
 			else if (Ch == 'n')
 				PageStepRequested = 1;
 			else if (Ch == 'p')
 				PageStepRequested = -1;
+			else if (Ch == 'T')
+			{
+				Collecting = true;
+				Have = 0u;
+			}
 		}
 #endif
 

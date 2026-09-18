@@ -74,6 +74,14 @@ extern void UiDraw_Restore(uint8_t Surface, const UiRect_t *Area);
 /* Draw a needle, hard-edged, in the needle's colour. Returns the pixels set. */
 extern uint32_t UiDraw_Needle(uint8_t Surface, const UiNeedle_t *Needle);
 
+/* WHAT A THING IS DRAWN IN: the markings' warm white, or the needle's red -
+   for a reading that belongs to a red trace, or a clock's second hand. */
+typedef enum
+{
+	UI_TEXT_WHITE = 0,
+	UI_TEXT_RED
+} UiTextInk_t;
+
 /* THE PALETTE INDICES OF THE DESIGN COLOURS, for code that fills and draws
    lines itself rather than blending - the strip chart's background, grid and
    traces. */
@@ -96,19 +104,16 @@ extern uint8_t UiDraw_Ink(UiInk_t Ink);
 
 extern uint32_t UiDraw_Stroke(uint8_t Surface, const UiNeedle_t *Shape, uint8_t Level);
 
+/* The same in a chosen colour - white for a clock's hour and minute hands,
+   red for its second hand. */
+extern uint32_t UiDraw_StrokeIn(uint8_t Surface, UiTextInk_t Ink,
+                                const UiNeedle_t *Shape, uint8_t Level);
+
 /* Draw text in the markings' colour, pen at X on baseline Y. Anti-aliased by
    index, so correct over the plain face only - see ui_text.h. Returns the
    pixels set. */
 extern uint32_t UiDraw_Text(uint8_t Surface, const DashFont_t *Font, const char *Text,
                             int32_t X, int32_t Y);
-
-/* The same, in a chosen colour: the markings' white, or the needle's red for a
-   reading that belongs to a red trace. */
-typedef enum
-{
-	UI_TEXT_WHITE = 0,
-	UI_TEXT_RED
-} UiTextInk_t;
 
 extern uint32_t UiDraw_TextIn(uint8_t Surface, UiTextInk_t Ink, const DashFont_t *Font,
                               const char *Text, int32_t X, int32_t Y);

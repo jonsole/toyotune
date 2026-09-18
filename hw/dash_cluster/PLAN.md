@@ -1045,6 +1045,66 @@ choice rather than guessing at it.
   starts at the last level used or at night level - never at full - and fades
   from there.
 
+### 4.11 Updating over CAN - Katapult
+
+**Design item, not built.** Once the gauges are in the dashboard, flashing them
+means getting at a USB socket behind the dash - so the intent is to update them
+over the CAN bus they are already on, with
+[Katapult](https://github.com/Arksine/katapult), Kevin O'Connor's bootloader.
+It is a natural fit: its RP2040 port uses can2040, the same software CAN this
+firmware runs, by the same author.
+
+**Checked 2026-09-17: it supports the RP2350.** Its README still lists only
+"lpc176x, stm32 and rp2040", but `src/rp2040/Kconfig` offers a processor choice
+of rp2040 or rp2350 (150 MHz), with CAN and with RX and TX pins configurable
+anywhere in GPIO 0..29 - which covers this board's GPIO25/26 (section 4.1).
+Read the Kconfig rather than the README.
+
+**What has to be decided, and most of it before the dash is closed up**
+
+1. **Flash layout.** The bootloader takes the start of flash and the
+   application moves to an offset, which changes the linker script and the UF2.
+   There is room: the image is about 440 KB. On RP2350 the boot ROM wants an
+   image definition block in the binary it starts, so the hand-off from
+   bootloader to application is the part to prove on the bench before trusting
+   it in the car.
+2. **Identifiers.** Katapult has its own CAN identifiers, and they must land
+   clear of Toyotune's `0x400`-`0x404` and `0x420`-`0x424`, `0x40A`/`0x40B` and
+   `0x42A`/`0x42B`, the `0x440`-`0x442` dash heartbeats (section 4.7) and
+   whatever the 14Point7 turns out to use (section 4.9, still open). Read
+   `docs/protocol.md` for what it uses, then log the bench bus to confirm -
+   the same discipline section 4.9 asks for.
+3. **How the bootloader is entered.** Katapult offers three ways: a double
+   press of the reset button, a GPIO, or a CAN request from `flashtool.py -r`.
+   **In a dashboard only the CAN request is any use**, and it is the
+   APPLICATION that has to honour it: a command on a Toyotune-range identifier
+   that stores the bootloader's magic value and reboots. So:
+   **never flash a car node with firmware that cannot be asked to reboot into
+   the bootloader** - the only way back in would be the reset button or USB,
+   which means taking the gauge out.
+4. **Which node.** Katapult addresses a board by its own unique identifier, so
+   three identical nodes can be flashed one at a time without ambiguity. That
+   is separate from the resistor-divider node identity (section 4.5), which
+   decides what a node DISPLAYS; do not conflate them. Worth printing both in
+   the console status line so a flash can be aimed with confidence.
+5. **The failure that matters.** A flash interrupted half way must leave the
+   bootloader intact and the node still reachable over CAN - otherwise the
+   recovery is the thing this exists to avoid. Bench-test an interrupted flash
+   deliberately, with the power pulled mid-write, before relying on it.
+6. **Bus and display while flashing.** The application is not running, so the
+   panel holds whatever was last on it and the node sends no telemetry. A
+   flash should therefore be a stationary-car operation, and the other nodes on
+   the bus will see one node's heartbeat stop - which their own fault handling
+   must not turn into a warning takeover.
+7. **can2040 in both.** The bootloader and the application each run their own
+   copy on the same PIO block, never at the same time. No conflict, but the
+   bootloader's bit timing has to match the bus - 500 kbit/s (section 4.9).
+
+**Worth doing early rather than late:** the flash layout and the
+enter-bootloader command change the application build, so bringing them in
+while the board is still on a bench USB cable costs nothing, and leaves the
+cable as the fallback while the CAN path is proven.
+
 ## 5. Milestones
 
 Each has an explicit exit criterion. **M1 and M2 are independent and can run

@@ -39,6 +39,7 @@
 
 #include "can_link.h"
 #include "signal_store.h"
+#include "clock_link.h"
 #include "telemetry.h"
 
 static struct can2040 CanBus;
@@ -76,6 +77,10 @@ static void CanLink_Callback(struct can2040 *Bus, uint32_t NotifyType,
 		return;
 
 	/* dlc is a uint32_t in can2040's message struct but can only hold 0..8. */
+	/* The time announced on the bus, if that is what this is. */
+	if (ClockLink_Handle((uint16_t)(Msg->id & 0x7FFu), Msg->data, (uint8_t)Msg->dlc))
+		return;
+
 	if (Telemetry_Handle((uint16_t)(Msg->id & 0x7FFu), Msg->data,
 	                     (uint8_t)Msg->dlc,
 	                     to_ms_since_boot(get_absolute_time())))

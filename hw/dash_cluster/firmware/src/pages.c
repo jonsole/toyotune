@@ -126,7 +126,22 @@ static const FaceElement_t TraceElements[] =
 	  2, 2, 96, 96, AfrTicks, "AFR", 0, GAUGE_SWEEP_FULL, Pages_FormatAfr }
 };
 
-/* --- page 4: the warning takeover ----------------------------------------
+/* --- page 4: the clock -----------------------------------------------------
+ *
+ * Hands, from the RTC - which this board does not back up, so the time comes
+ * from the bus (clock_link.h) or the console and is lost at every power-off.
+ * A clock with no trustworthy time shows no hands and reads "--:--".
+ */
+static const char *const ClockTicks[] =
+	{ "12", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", NULL };
+
+static const FaceElement_t ClockElements[] =
+{
+	{ WIDGET_CLOCK, SIGNAL_CLOCK, 0, 86399, 2, 2, 96, 96, ClockTicks, NULL, 0,
+	  GAUGE_SWEEP_CLOCK, NULL }
+};
+
+/* --- page 5: the warning takeover ----------------------------------------
  *
  * Not reachable by swiping. Pages_Effective() substitutes it while a fault
  * stands, which is why it is here rather than in the list: a driver must not
@@ -149,18 +164,19 @@ const FacePage_t Pages[] =
 	PAGE("Boost / AFR",  BoostElements),
 	PAGE("G-force",      GForceElements),
 	PAGE("Boost trace",  TraceElements),
+	PAGE("Clock",        ClockElements),
 	PAGE("WARNING",      WarningElements)
 };
 
 const uint8_t PageCount = (uint8_t)(sizeof(Pages) / sizeof(Pages[0]));
 
 /* The warning page is the last entry and is excluded from swiping. */
-#define PAGE_WARNING		(4)
+#define PAGE_WARNING		(5)
 #define PAGE_SWIPEABLE_COUNT	(PAGE_WARNING)
 
-/* Four faces and a three-gauge cluster: each node opens on a different one -
-   rev counter, boost and mixture, g-force - and a fourth identity opens on the
-   trace. Each is still swipeable to the others, which is the whole
+/* Five faces and a three-gauge cluster: each node opens on a different one -
+   rev counter, boost and mixture, g-force - and a fourth identity on the
+   trace; the clock is a swipe away from any of them. Each is still swipeable to the others, which is the whole
    point of the shared list. */
 const uint8_t StartupPage[NODE_ID_COUNT] = { 0, 1, 2, 3 };
 

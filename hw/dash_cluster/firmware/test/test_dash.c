@@ -34,6 +34,7 @@ extern int NeedleTests_Run(int *Checks, int *Failures);
 extern int TextTests_Run(int *Checks, int *Failures);
 extern int GMeterTests_Run(int *Checks, int *Failures);
 extern int GraphTests_Run(int *Checks, int *Failures);
+extern int ClockTests_Run(int *Checks, int *Failures);
 
 static int Failures = 0;
 static int Checks = 0;
@@ -517,6 +518,7 @@ int main(void)
 	TextTests_Run(&Checks, &Failures);
 	GMeterTests_Run(&Checks, &Failures);
 	GraphTests_Run(&Checks, &Failures);
+	ClockTests_Run(&Checks, &Failures);
 
 	printf("---------------\n");
 	printf("%d checks, %d failures\n", Checks, Failures);

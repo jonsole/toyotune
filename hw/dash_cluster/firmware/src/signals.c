@@ -63,7 +63,8 @@ const SignalDescriptor_t SignalDescriptors[SIGNAL_COUNT] =
 
 	/* Local, never in the store - see signals.h. */
 	[SIGNAL_G_LAT]         = { "Lat g",   "g",    3, -1500,  1500, FAST_MS },
-	[SIGNAL_G_LON]         = { "Lon g",   "g",    3, -1500,  1500, FAST_MS }
+	[SIGNAL_G_LON]         = { "Lon g",   "g",    3, -1500,  1500, FAST_MS },
+	[SIGNAL_CLOCK]         = { "Clock",   "",     0,     0, 86399, SLOW_MS }
 };
 
 
