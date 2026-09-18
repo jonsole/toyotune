@@ -818,23 +818,80 @@ Adding a gauge is a row; adding a page is a table; adding a node is a startup
 index. **If you find yourself writing node-2-specific code, something has gone
 wrong.**
 
-**LVGL does most of this already.** Gesture detection is built in
-(`LV_EVENT_GESTURE` / `lv_indev_get_gesture_dir`), and a tileview or an
-animated screen load gives the horizontal page transition for free. This is
-configuration, not new machinery.
+**As built, not through LVGL.** This paragraph used to say LVGL's gesture
+detection and tileview would give the page transition for free. LVGL has since
+left the firmware entirely (`RENDERER_PLAN.md`), and the swipe is our own: the
+page follows the finger across two live surfaces, with momentum on release -
+see `THE SWIPE` in `main.c`.
 
-Starting page list (easy to change once it is data):
+#### Two views per page - the vertical swipe (built 2026-09-18)
 
-1. **RPM** — large dial, numeric centre, shift ring, limiter flags on the
-   outer arc.
-2. **Boost** — `Pim` dial with a 10 s rolling trace inset and peak-hold
-   numeric.
+Swiping **left and right moves between pages; swiping up and down flips a
+page between its two views**:
+
+| Page | View 0 | View 1 |
+|---|---|---|
+| Engine speed | tachometer | RPM trace |
+| Boost / AFR | boost over mixture, half dials | both, as a trace |
+| AFR / EGT | mixture over exhaust temperature | both, as a trace |
+| Air temps | intake over manifold air temperature | both, as a trace |
+| G-force | friction circle | lateral and longitudinal g, as a trace |
+| Clock | analogue, MR2 style | the time in large figures, seconds beneath |
+| Warning | the takeover - one view only | |
+
+The decisions behind it:
+
+- **The second view is part of the page, not a page of its own.**
+  `FacePage_t` carries `AltElements`, so a reading has one place in the list
+  however it is being shown. That is why the standalone Boost trace page went
+  away: it is the Boost / AFR page flipped, one swipe from the needles rather
+  than four pages along.
+- **A graph view shows exactly what its gauges show** - the same signals,
+  ranges, scale labels and formatting - so a reading cannot change meaning
+  across a swipe. The host tests enforce it.
+- **Each page remembers its own view**, so swiping away from a trace and back
+  finds the trace again. Every page opens on view 0 at power-on; the view is
+  not persisted, and should be once page persistence (below) is written.
+- **Only the view on the glass is drawn.** The other is built into the spare
+  surface when a vertical swipe starts, exactly as the neighbouring page is for
+  a sideways one. What runs all the time is the graph history's sampling -
+  one reading per trace every 33 ms, no drawing - so a trace already holds its
+  last ten seconds when it is flipped to.
+- **The g-force trace reads the accelerometer through the UI model's local
+  readings** (`UiModel_SetLocal`), because it is read on core 1 and the signal
+  store has a single writer on core 0.
+- **Faces are pre-rendered per view**: twelve at 195 KB each, about 2.4 MB of
+  the 16 MB flash. Flash is not the constraint; SRAM is, and views cost it
+  nothing.
+- The console's `f` flips the view, for the bench.
+
+The fault takeover still outranks everything: no swipe of either kind starts
+while it stands, and one arriving mid-swipe ends it.
+
+#### The page list
+
+As built, easy to change now it is data: **Engine speed, Boost / AFR,
+AFR / EGT, Air temps, G-force, Clock**, each with the second view above, and
+the warning takeover. Nodes start on Engine speed, Boost / AFR, G-force and
+AFR / EGT by identity.
+
+Split faces - two half dials sharing one centre - are the pattern for pairs
+that belong together: boost with mixture, mixture with exhaust temperature,
+intake air with the charge in the manifold. A scale that goes below zero must
+say `PAGES_NO_BAND` for no red band, because 0 is then a real place on the
+dial rather than "none".
+
+Still in the original plan and not built:
+
+1. **RPM** — shift ring and limiter flags on the outer arc. (The dial is
+   built.)
+2. **Boost** — peak-hold numeric. (The dial and the trace are built.)
 3. **Health** — ECT, battery, lambda, injector duty as a compact cluster.
 4. **Knock** — per-cylinder retard bars plus ignition timing.
 5. **Fuel** — injector duty, pulse width, **wideband lambda** (from the
    14Point7, §4.9) with the ECU's narrowband `AdcLambda` and `LambdaTrim`
    beside it, and the learned trims.
-6. **Lateral g** — from the on-board QMI8658 IMU, since it costs nothing.
+6. ~~**Lateral g**~~ — built, as the G-force page.
 
 #### Interaction details worth settling early
 
@@ -875,9 +932,18 @@ stays independent.
 
 ### 4.9 The 14Point7 wideband — a third transmitter on the bus
 
-A **14Point7 wideband lambda controller** will also sit on this bus. It is the
-first participant that is neither a Toyotune board nor a dash node, and that
-has three consequences.
+A **14Point7 wideband lambda controller** will also sit on this bus - a
+**Spartan 3**, which with a K-type thermocouple fitted also reports **exhaust
+gas temperature**. It is the first participant that is neither a Toyotune
+board nor a dash node, and that has three consequences.
+
+**Decoding it is still to do.** Both of its readings already have a place on
+the dash - `SIGNAL_AFR` and `SIGNAL_EGT` in `signals.h`, shown on the AFR / EGT
+page (§4.6) - but nothing writes them yet except the bench simulator. The
+decoder waits for the frames to be logged, below. `SIGNAL_EGT` is given the
+MEDIUM period rather than FAST on the guess that a thermocouple is reported
+slowly; confirm the real rate from the log, or the reading will be called
+stale between two good frames.
 
 **1. It is a strictly better lambda source than the ECU's, and the pages
 should use it.** `AdcLambda` in the ECU telemetry is a *narrowband* sensor
