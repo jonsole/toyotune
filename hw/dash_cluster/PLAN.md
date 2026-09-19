@@ -460,6 +460,39 @@ reference**, which is the architecture that fixed the earlier transceiver
 failure. It also removes the back-powering path where the MCU drives TXD into
 an unpowered transceiver.
 
+#### First light on the bench, 2026-09-19
+
+The transceiver works both ways: the node's heartbeat reaches a CANable Pro on
+`0x440` once a second, and a time announced from the CANable on `0x450` sets
+the dash clock. Three things that bring-up taught, in the order they cost
+time:
+
+- **An unterminated bus looks exactly like a broken transceiver.** With no
+  resistor across CANH and CANL, nothing pulls the bus back to recessive after
+  a dominant bit - it drifts back through the transceivers' input resistance
+  against the cable capacitance, microseconds against a 2 us bit - so every
+  recessive bit still reads dominant when can2040 reads it back. Every frame
+  fails its own readback and is retried at once, about 10,000 times a second,
+  and the CANable sees nothing but form and stuff errors. The meter across
+  CANH and CANL, power off, read **open**. Measure that first: about 60 R is
+  right, 120 R is one end only.
+- **The breakout's termination switch did not terminate.** Set to on, it put
+  nothing across the bus. Faulty, or labelled the wrong way round - either way
+  it cannot be trusted, and the car's bus wants a fitted 120 R at this end.
+- **A node with nobody to acknowledge it retries for ever.** That is ordinary
+  CAN, not a fault: with the CANable closed and no Toyotune board on the bus,
+  the heartbeat is re-sent continuously and each try counts as a failure. The
+  counters only mean something while another node is acknowledging.
+
+The console's `can:` line - received, decoded, sent against attempted, parse
+errors - is what separated these, and is what M4 will be judged on.
+
+**The breakout's AP3602A regulator is kept on the dash node**, by decision: one
+supply and short leads, so none of the ground offset between two 5 V domains
+that made it a failure point on the Toyotune board. If the display ever
+glitches under bus traffic, the extra load it puts on the 3.3 V rail is the
+first thing to look at.
+
 **The loom's ground wire is not incidental.** Dash nodes and the ECU-mounted
 Toyotune boards sit metres apart in the car and are grounded at different
 points. Carrying GND alongside CANH/CANL in the same 4-wire chain is what
@@ -504,12 +537,28 @@ GPIO25/26 are the cleanest pair: brought out to the UART connector and shared
 with no on-board chip. Both are far below 31, so the PIO window constraint is
 satisfied trivially.
 
-**They are also on a plug, which shapes the carrier.** The UART pins come out
-on the SH1.0 4-pin connector, so the CAN transceiver's TX/RX can *mate* rather
-than being soldered to a header. The ID divider on GPIO28 still needs the
-expansion header, so the carrier ends up with one plug and one header
-connection per node — worth confirming the SH1.0 pinout carries a usable
-ground before relying on it.
+**They are on the 8-pin 0.1" header, and that header is the whole
+connection.** Along the bottom edge of the board, left to right:
+
+| IO29 | IO28 | IO27 | RXD | TXD | 3V3 | GND | VBUS |
+|---|---|---|---|---|---|---|---|
+| avoid - `AXP_IRQ` | node ID divider | illumination sense (§4.10) | GPIO25, CAN RX | GPIO26, CAN TX | transceiver `VIO` | ground | 5 V, while on USB |
+
+This replaces the plan to mate the transceiver to the SH1.0 4-pin UART plug
+and run the ID divider to a separate header. One 8-pin connector carries CAN,
+the transceiver's logic supply, a ground, 5 V and the ID pin, so a node is one
+connector to the carrier. **Used on the bench 2026-09-19.**
+
+`RXD` is GPIO25 and `TXD` GPIO26 by the chip, not only by the silkscreen: in
+the RP2350's function table GPIO25 can only ever be UART1 *receive*, and GPIO26
+carries UART1 *transmit* only through its auxiliary function. The transceiver
+wires straight through - its `RXD` (pin 4, an output) to the header's `RXD`,
+its `TXD` (pin 1, an input) to `TXD`. Breakouts label these from either side,
+so check which breakout pin reaches chip pin 4 with a meter rather than
+reading the label.
+
+VBUS is USB's 5 V, live only while USB is connected; in the car the carrier
+supplies 5 V instead.
 
 **Note GPIO24 is free but not exposed.** With no GNSS fitted it has no
 function, but Waveshare's pinout leaves its "Other" column blank — it runs to
@@ -1303,7 +1352,7 @@ in either order.**
 
 | # | Milestone | Exit criterion |
 |---|---|---|
-| **M0** | **One** RP2350-Touch-AMOLED-1.75 ordered 2026-09-04 — deliberately one, not three, so node 1 proves the design before the other two are committed. Transceivers already on hand (spare TJA1051T/3 breakouts). Still to order: carrier parts | Board on the bench; module outline measured against the 180 x 50 mm aperture (§4.8); SH1.0 pinout checked for a usable ground; no GNSS populated (confirmed); vendor `05_LVGL` draw-buffer allocation read in source |
+| **M0** | **One** RP2350-Touch-AMOLED-1.75 ordered 2026-09-04 — deliberately one, not three, so node 1 proves the design before the other two are committed. Transceivers already on hand (spare TJA1051T/3 breakouts). Still to order: carrier parts | Board on the bench; module outline measured against the 180 x 50 mm aperture (§4.8); the 8-pin header found to carry CAN, power, ground and the ID pin together (§4.1); no GNSS populated (confirmed); vendor `05_LVGL` draw-buffer allocation read in source |
 | **M1** | SAMC21 scaling: `ecu_scale.c`, host tests, new frame layout, DBC + `can_monitor.py` updated | `can_monitor.py` shows correct engineering units for every signal against the running bench rig |
 | **M1a** | Implement the §3.6 temperature curve as a 256-entry build-time LUT; resolve the §3.6b ignition ambiguity | LUT reproduces the formula to <0.15 degC across X = 0..248; host test asserts the 84 measured points in `temp_sensor_calibration.xlsx` to within 1.3 degC; curve copied into `adc_system.md`; ignition scale settled against the disassembly. **No bench characterisation needed — the calibration data already exists.** |
 | **M2** | Bring-up on the stock dev board from the vendor `01_GUI`/`05_LVGL` examples: pico-sdk + CMake, CO5300 QSPI panel under LVGL 8.1, converted to **partial buffers** (§4.1a) | A test pattern rendering full-screen; free SRAM measured and recorded; PIO block assignment fixed with the panel and can2040 on different blocks |
@@ -1323,12 +1372,10 @@ in either order.**
    circle leaves only 2.8 mm of margin in a single-DIN aperture (§4.8).
    Measure the real board on arrival. If the answer is no, the fallback is the
    1.43" at the same 466 x 466 — no firmware changes.
-2. **Does the SH1.0 connector carry a usable ground alongside the UART pins?**
-   If it does, each node's CAN connection is a plug rather than a soldered
-   header joint, which materially simplifies the carrier and makes swapping a
-   node a cable pull. Minor, but it changes the connector design. *(The larger
-   pin question is closed: no GNSS module is fitted, so GPIO25/26 are free and
-   the §4.1 allocation is final.)*
+2. ~~**Does the SH1.0 connector carry a usable ground alongside the UART
+   pins?**~~ **Moot, 2026-09-19.** The 8-pin 0.1" header carries RXD, TXD,
+   3V3, GND, VBUS and the ID pin together, so the SH1.0 plug is not needed at
+   all - see §4.1.
 3. ~~Does the vendor's LVGL example under-allocate its draw buffer?~~
    **Answered 2026-09-12: yes, by a factor of two, a 212 KB heap overflow.**
    See section 4.1a. Its panel and touch drivers are still the ones to port;
