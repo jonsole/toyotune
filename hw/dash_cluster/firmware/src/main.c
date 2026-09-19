@@ -1385,6 +1385,20 @@ static void Core1Main(void)
 						       (unsigned long)ClockLink_Rejected(),
 						       (unsigned long)Rtc_Errors());
 				}
+#if DASH_HAVE_CAN2040
+				{
+					CanLinkStats_t C;
+
+					CanLink_Stats(&C);
+					printf("can: rx %lu  decoded %lu  tx %lu of %lu attempts"
+					       "  parse errors %lu  error notices %lu\n",
+					       (unsigned long)C.RxTotal, (unsigned long)C.Decoded,
+					       (unsigned long)C.TxTotal, (unsigned long)C.TxAttempts,
+					       (unsigned long)C.ParseErrors, (unsigned long)C.RxErrors);
+				}
+#else
+				printf("can: not built - can2040 was not found\n");
+#endif
 				if (!Audio_Present())
 					printf("audio: no codec\n");
 				else

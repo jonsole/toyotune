@@ -153,3 +153,18 @@ void CanLink_Poll(uint32_t NowMs)
 	   itself. */
 	(void)can2040_transmit(&CanBus, &Msg);
 }
+
+
+/***************************************************************************************/
+void CanLink_Stats(CanLinkStats_t *Out)
+{
+	struct can2040_stats S;
+
+	can2040_get_statistics(&CanBus, &S);
+	Out->RxTotal = S.rx_total;
+	Out->TxTotal = S.tx_total;
+	Out->TxAttempts = S.tx_attempt;
+	Out->ParseErrors = S.parse_error;
+	Out->Decoded = FramesDecoded;
+	Out->RxErrors = RxErrors;
+}

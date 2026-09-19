@@ -83,6 +83,25 @@ void SignalStore_Set(SignalId_t Id, int32_t Value, uint32_t NowMs)
 
 
 /***************************************************************************************/
+/* How old a reading stamped at StampMs is at NowMs.
+
+   Signed, then clamped at zero, because a reading can be stamped AFTER the
+   time it is being judged at: core 1 takes its time once at the top of a
+   frame, and core 0 goes on writing the store while that frame is drawn. The
+   plain unsigned subtraction this replaced turned "a few milliseconds in the
+   future" into 49 days old - so a fresh reading was called stale, at random,
+   on every frame that raced a CAN write, and "no telemetry for 4294967290ms"
+   appeared on the console. A difference of less than 2^31 ms either way is
+   still correct across the counter's wrap. */
+static uint32_t SignalStore_Age(uint32_t NowMs, uint32_t StampMs)
+{
+	int32_t Age = (int32_t)(NowMs - StampMs);
+
+	return (Age < 0) ? 0u : (uint32_t)Age;
+}
+
+
+/***************************************************************************************/
 SignalReading_t SignalStore_Get(SignalId_t Id, uint32_t NowMs)
 {
 	SignalReading_t Out = { 0, 0, false, false };
@@ -114,9 +133,7 @@ SignalReading_t SignalStore_Get(SignalId_t Id, uint32_t NowMs)
 	if (!Out.Valid)
 		return Out;
 
-	/* Unsigned subtraction, so this stays correct across the 49-day wrap of a
-	   millisecond counter rather than reporting a huge age once. */
-	AgeMs = NowMs - Out.UpdatedMs;
+	AgeMs = SignalStore_Age(NowMs, Out.UpdatedMs);
 	StaleMs = (uint32_t)SignalDescriptors[Id].PeriodMs * SIGNAL_STALE_PERIODS;
 	Out.Fresh = (AgeMs <= StaleMs);
 
@@ -130,7 +147,7 @@ uint32_t SignalStore_LinkAgeMs(uint32_t NowMs)
 	if (!AnyFrameSeen)
 		return UINT32_MAX;
 
-	return NowMs - LastFrameMs;
+	return SignalStore_Age(NowMs, LastFrameMs);
 }
 
 

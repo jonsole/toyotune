@@ -214,6 +214,31 @@ static void TestStaleness(void)
 }
 
 
+/* A reading stamped after the moment it is judged at - core 0 writing while
+   core 1 draws a frame whose time it took at the top - is fresh, not 49 days
+   old. It used to come out stale, and the link dead. */
+static void TestStampInTheFuture(void)
+{
+	SignalReading_t R;
+
+	printf("store - a reading stamped just after now is fresh\n");
+	SignalStore_Init();
+	SignalStore_Set(SIGNAL_RPM, 3000, 10005u);
+
+	R = SignalStore_Get(SIGNAL_RPM, 10000u);
+	CHECK(R.Valid && R.Fresh, "stamped 5 ms after the reader's time: fresh");
+	CHECK(SignalStore_LinkAlive(10000u), "and the link is alive");
+	CHECK(SignalStore_LinkAgeMs(10000u) == 0u, "with an age of zero, not %lu",
+	      (unsigned long)SignalStore_LinkAgeMs(10000u));
+
+	/* And a genuinely old one is still stale, across the counter's wrap. */
+	SignalStore_Init();
+	SignalStore_Set(SIGNAL_RPM, 3000, 0xFFFFFF00u);
+	R = SignalStore_Get(SIGNAL_RPM, 0x00001000u);
+	CHECK(R.Valid && !R.Fresh, "a reading from before the wrap is old");
+}
+
+
 static void TestLinkAlive(void)
 {
 	static const uint8_t Fast[8] = { 0x0B, 0xB8, 0, 0, 0, 0, 0, 0 };
@@ -597,6 +622,7 @@ int main(void)
 	TestDecodeShortFrame();
 	TestProtocolVersion();
 	TestStaleness();
+	TestStampInTheFuture();
 	TestLinkAlive();
 	TestNodeId();
 	TestPages();
