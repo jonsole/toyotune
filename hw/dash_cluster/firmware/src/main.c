@@ -30,13 +30,10 @@
 #include <string.h>
 
 #include "pico/stdlib.h"
-#include "pico/flash.h"
 #include "pico/multicore.h"
 
 #include "node_id.h"
 #include "pages.h"
-#include "settings.h"
-#include "settings_flash.h"
 #include "sdlog.h"
 #include "signal_store.h"
 #include "signals.h"
@@ -851,9 +848,6 @@ static void Core1Main(void)
 	Core1Page_t *In = &Views[1];
 	Core1Swipe_t Swipe;
 	Core1Counts_t Counts;
-	Settings_t Saved;		/* what flash holds, as far as this core knows */
-	uint32_t SaveDueMs = 0;
-	bool SavePending = false;
 	Warn_t Warn;
 	ToneId_t BeepId = TONE_NONE;
 	uint32_t BeepUntilMs = 0u;
@@ -868,8 +862,6 @@ static void Core1Main(void)
 	memset(&Counts, 0, sizeof(Counts));
 	Views[0].Surface = 0u;
 	Views[1].Surface = 1u;
-
-	Pages_Snapshot(&Saved.Page, Saved.Views);
 
 	Panel_Init();
 	(void)Imu_Init();
@@ -1351,29 +1343,6 @@ static void Core1Main(void)
 				Pages_Previous();
 			PageStepRequested = 0;
 		}
-		/* REMEMBERING THE PAGE. Written only once the driver has settled on
-		   one: a swipe through four pages must not be four writes, and a
-		   power cut during a write is survivable but pointless to risk. The
-		   write holds core 0 for a moment, so it waits for a still screen. */
-		{
-			Settings_t Now;
-
-			Pages_Snapshot(&Now.Page, Now.Views);
-			if (Settings_Differ(&Now, &Saved))
-			{
-				Saved = Now;
-				SaveDueMs = NowMs + SETTINGS_SAVE_DELAY_MS;
-				SavePending = true;
-			}
-			else if (SavePending && Swipe.State == SWIPE_IDLE
-			         && (int32_t)(NowMs - SaveDueMs) >= 0)
-			{
-				SavePending = false;
-				if (!SettingsFlash_Save(&Saved))
-					printf("settings: could not save page %u\n", Saved.Page);
-			}
-		}
-
 		if (FlipRequested && Swipe.State == SWIPE_IDLE)
 		{
 			Pages_Flip();
@@ -1444,11 +1413,6 @@ static void Core1Main(void)
 					printf("sdlog: not logging  errors %lu\n",
 					       (unsigned long)SdLog_Errors());
 #endif
-				printf("settings: saves %lu  erases %lu  failures %lu%s\n",
-				       (unsigned long)SettingsFlash_Saves(),
-				       (unsigned long)SettingsFlash_Erases(),
-				       (unsigned long)SettingsFlash_Failures(),
-				       SettingsFlash_Usable() ? "" : "  SECTOR UNUSABLE - the image reaches it");
 #if DASH_HAVE_CAN2040
 				{
 					CanLinkStats_t C;
@@ -1675,28 +1639,10 @@ int main(void)
 	DashNodeId = Id;
 	printf("dash node %u starting\n", Id);
 
-	/* The page and views this node was left on, if they were saved. An
-	   unwritten or unreadable sector falls back to the node's startup page. */
-	{
-		Settings_t S;
-
-		Pages_Init(Id, 0xFF);
-		if (SettingsFlash_Load(&S))
-		{
-			Pages_Restore(S.Page, S.Views);
-			printf("settings: restored page %u\n", S.Page);
-		}
-		else if (!SettingsFlash_Usable())
-			printf("settings: the image reaches the settings sector - not remembering\n");
-		else
-			printf("settings: nothing saved yet - starting on page %u\n", StartupPage[Id]);
-	}
-
-	/* Core 1 writes the settings, so core 0 is the core held still while the
-	   flash is busy - it cannot be read while it is written, and both cores
-	   run from it. Without this, that write would hang or corrupt. */
-	if (!flash_safe_execute_core_init())
-		printf("settings: core 0 cannot be held for a flash write - not saving\n");
+	/* 0xFF: nothing remembered. The page and views will be kept in the
+	   carrier's I2C EEPROM once that board exists - see PLAN.md 4.14a - so
+	   every boot starts on this node's startup page until then. */
+	Pages_Init(Id, 0xFF);
 
 	Telemetry_Init(TELEMETRY_BASE_CPU1);
 

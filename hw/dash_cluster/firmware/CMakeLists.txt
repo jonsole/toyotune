@@ -97,8 +97,6 @@ set(DASH_SOURCES
     src/pages.c
     src/signal_store.c
     src/logfmt.c
-    src/settings.c
-    src/settings_flash.c
     src/signals.c
     src/splash_seq.c
     src/telemetry.c
@@ -276,8 +274,6 @@ endif()
 target_link_libraries(dash_node
     pico_stdlib
     pico_multicore
-    pico_flash
-    hardware_flash
     hardware_adc
     hardware_pio
     hardware_dma

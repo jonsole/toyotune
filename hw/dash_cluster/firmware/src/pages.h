@@ -147,7 +147,9 @@ extern bool Pages_HasAlt(uint8_t Page);
 extern uint8_t Pages_ViewOf(uint8_t Page);
 extern void Pages_Flip(void);		/* the selected page's other view */
 
-/* The selection, for remembering it across a power cycle - see settings.h.
+/* The selection, for remembering it across a power cycle. Nothing calls these
+   yet: the store they were written for was the RP2350's own flash, and that
+   is being replaced by an I2C EEPROM on the carrier - see PLAN.md 4.14a.
    Restore ignores anything it cannot make sense of, because a record from
    another build must never leave a node unable to start. */
 extern void Pages_Restore(uint8_t Page, const uint8_t *Views);

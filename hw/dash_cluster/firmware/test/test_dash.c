@@ -38,7 +38,6 @@ extern int GraphTests_Run(int *Checks, int *Failures);
 extern int ClockTests_Run(int *Checks, int *Failures);
 extern int WarnTests_Run(int *Checks, int *Failures);
 extern int SplashTests_Run(int *Checks, int *Failures);
-extern int SettingsTests_Run(int *Checks, int *Failures);
 extern int LogFmtTests_Run(int *Checks, int *Failures);
 
 static int Failures = 0;
@@ -644,7 +643,6 @@ int main(void)
 	ClockTests_Run(&Checks, &Failures);
 	WarnTests_Run(&Checks, &Failures);
 	SplashTests_Run(&Checks, &Failures);
-	SettingsTests_Run(&Checks, &Failures);
 	LogFmtTests_Run(&Checks, &Failures);
 
 	printf("---------------\n");
