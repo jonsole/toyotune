@@ -2,19 +2,27 @@ DASH NODE CARRIER ("piggyback") - schematic sketch
 ==================================================
 
 A small board that plugs into the display module's 8-pin 0.1" header and
-gives it a car supply and a CAN transceiver. One design, built three times;
-the node's identity is set by which resistor is fitted (R10..R13 below).
+gives it a car supply, a CAN transceiver and a config EEPROM. One design,
+built three times; which node it is comes out of the EEPROM, so the three
+boards are identical.
 
 Drawn 2026-09-20 from the decisions in PLAN.md sections 4.1, 4.9 and 4.13.
-This is a sketch to lay out from, not a netlist: values are starting points,
-and anything marked (opt) can be left unpopulated.
+
+THE NETLIST OF RECORD IS gen_schematic.py, which writes carrier.kicad_sch -
+open that in KiCad. This file is the reasoning behind it: why each part is
+there, and what must not be changed without knowing why. Values here are
+starting points; anything marked (opt) can be left unpopulated.
+
+KiCad's ERC passes on the generated file with no errors and no warnings, and
+the netlist was read back and checked connection by connection - which is how
+the Schottky and the gate Zener were caught in backwards.
 
 THE CONNECTOR, as the display module presents it
 ------------------------------------------------
 
     J1  1  IO29   - leave unconnected. The AXP2101 PMIC asserts this.
-        2  IO28   - node identity divider          (R10..R13, R14)
-        3  IO27   - illumination sense (opt)       (R15, R16, D4, C8)
+        2  IO28   - I2C SDA, to the config EEPROM  (U3, R5)
+        3  IO27   - I2C SCL, to the config EEPROM  (U3, R6)
         4  RXD    - GPIO25, CAN receive            <- U2 pin 4
         5  TXD    - GPIO26, CAN transmit           -> R1 -> U2 pin 1
         6  3V3    - the module's 3.3 V, an OUTPUT  -> U2 pin 5 (VIO)
@@ -101,50 +109,47 @@ CAN TRANSCEIVER
     is to read - every frame failed its own readback and it looked like a
     broken transceiver (PLAN 4.1).
 
-NODE IDENTITY  (J1-2, IO28)
----------------------------
+CONFIG EEPROM  (J1-2 SDA, J1-3 SCL)
+-----------------------------------
 
-    Fit ONE of R10..R13. The firmware reads the divider as a fraction of
-    3.3 V and wants 12.5 / 37.5 / 62.5 / 87.5 %, with anything more than
-    9 % away from a level reported as "unknown" rather than guessed.
+    U3  24LC256 (or 24AA02 - anything in the 24xx family at 0x50)
 
-      3V3 --+--[R10 33k]--+          node 0   4.7/(33+4.7)  = 12.5 %
-            +--[R11 8k2]--+          node 1   4.7/(8.2+4.7) = 36.4 %
-            +--[R12 2k7]--+          node 2   4.7/(2.7+4.7) = 63.5 %
-            +--[R13 680R]-+          node 3   4.7/(0.68+4.7)= 87.4 %
-                          |
-                          +---- J1-2  IO28
-                          |
-                        [R14] 4k7
-                          |
-                         GND
+                     .-----------.
+               GND---| 1 A0   VCC 8|---- J1-6 3V3
+               GND---| 2 A1    WP 7|---- GND      WP low: the firmware writes it
+               GND---| 3 A2   SCL 6|---- J1-3 IO27
+               GND---| 4 GND  SDA 5|---- J1-2 IO28
+                     '-----------'
 
-    Keep this divider stiff - the parallel impedance peaks near 2.2 k, which
-    the ADC is happy with. Do not scale it up to save microamps.
+      R5 4k7 from SDA to 3V3, R6 4k7 from SCL to 3V3, C9 100n at the part.
 
-ILLUMINATION SENSE (opt)  (J1-3, IO27)
---------------------------------------
+    WHAT IT HOLDS, and why it is here rather than in the module's own flash:
+    everything that belongs to THIS POSITION IN THE LOOM rather than to the
+    display module plugged into it - the node identity, the g-meter's
+    mounting angle, whether this board is one of the two with termination
+    fitted, a serial number, and the page the driver left it on. Swap a
+    display module and the car keeps all of it.
 
-    For night dimming (PLAN 4.10). The dash lighting feed is usually PWM
-    dimmed, so the firmware averages it.
+    It is also why IO27 and IO28 are an I2C pair and not the identity divider
+    and the illumination sense they were in an earlier draft: the module has
+    only three spare pins, the PMIC owns IO29, and the illumination sense is
+    moving to another CAN node.
 
-      illum 12 V --[R15 47k]--+--[D4]--- 3V3     D4: BAT54, clamps the
-                              |                  divider if the feed rises
-                              +---- J1-3 IO27    above 3.3 V
-                              |
-                            [R16] 10k  --+-- [C8] 1u --+
-                              |          |             |
-                             GND        GND           GND
+    Bit-banged, driven from a timer rather than a busy wait - see PLAN.md
+    4.14a. There is no hardware I2C pair on these two pins.
 
-LOOM
-----
+LOOM  (J2 in, J3 out - the chain passes straight through this board)
+-------------------------------------------------------------------
 
     Four wires, daisy chained between the ECU boards and the three nodes:
 
-        1  12 V (switched ignition)
-        2  GND
-        3  CANH
-        4  CANL
+        1  12 V (switched ignition)      J2-1 --- J3-1, and to F1
+        2  GND                           J2-2 --- J3-2
+        3  CANH                          J2-3 --- J3-3, and to U2
+        4  CANL                          J2-4 --- J3-4, and to U2
+
+    The node at the end of the chain is the one with nothing in J3, and is
+    therefore where the termination above gets fitted.
 
     The ground wire is not optional: the nodes and the ECU sit metres apart
     and are grounded at different points, and carrying GND alongside the pair
