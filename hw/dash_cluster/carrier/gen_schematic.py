@@ -23,6 +23,7 @@ its own definitions and opens on a machine with a different library setup.
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -304,8 +305,14 @@ STUB = 2 * GRID
 ENDPOINTS = set()
 
 
-def uid():
-    return str(uuid.uuid4())
+# UUIDs are derived from what they identify, not random, so regenerating the
+# schematic produces the same file byte for byte and a diff shows what really
+# changed rather than every line of it.
+NAMESPACE = uuid.UUID("6f1d4b3a-0000-4000-8000-746f796f7475")
+
+
+def uid(key):
+    return str(uuid.uuid5(NAMESPACE, key))
 
 
 def place(parts):
@@ -337,7 +344,7 @@ def build():
     for ref, lib_id, value, nets, footprint in PARTS:
         sym = lib_symbols[lib_id]
         px, py = positions[ref]
-        sym_uuid = uid()
+        sym_uuid = uid("symbol:" + ref)
 
         body.append("""	(symbol
 		(lib_id "%s")
@@ -390,21 +397,21 @@ def build():
 
             body.append("""	(wire (pts (xy %.2f %.2f) (xy %.2f %.2f))
 		(stroke (width 0) (type default)) (uuid "%s")
-	)""" % (ax, ay, ex, ey, uid()))
+	)""" % (ax, ay, ex, ey, uid("wire:%s:%s" % (ref, key))))
 
             just = "left" if dx >= 0 else "right"
             rot = 0 if dx else 90
             body.append("""	(label "%s" (at %.2f %.2f %d)
 		(effects (font (size 1.27 1.27)) (justify %s bottom))
 		(uuid "%s")
-	)""" % (net, ex, ey, rot, just, uid()))
+	)""" % (net, ex, ey, rot, just, uid("label:%s:%s" % (ref, key))))
 
         for nc_ref, nc_pin in NO_CONNECT:
             if nc_ref != ref:
                 continue
             sx, sy, _ = pins[nc_pin]
             body.append("""	(no_connect (at %.2f %.2f) (uuid "%s"))"""
-                        % (px + sx, py - sy, uid()))
+                        % (px + sx, py - sy, uid("nc:%s:%s" % (ref, nc_pin))))
 
     libs = "\n".join("\t\t" + dump(sym, 3) for sym in lib_symbols.values())
 
@@ -432,7 +439,45 @@ def build():
 """ % (SHEET_UUID, libs, "\n".join(body))
 
 
-SHEET_UUID = uid()
+SHEET_UUID = uid("sheet:root")
+
+
+PROJECT = os.path.join(HERE, "carrier.kicad_pro")
+
+
+def write_project():
+    """The .kicad_pro, so this opens as a project rather than a loose sheet -
+    which is what Pcbnew, the netlist and the footprint assignments hang off.
+
+    Deliberately minimal: KiCad fills in every setting it does not find, and a
+    file full of defaults copied from a demo would only bury the few lines
+    here that are ours. The root sheet's uuid has to match the schematic's,
+    which is why both come from the same generator."""
+    project = {
+        "meta": {"filename": "carrier.kicad_pro", "version": 3},
+        "sheets": [[SHEET_UUID, "Root"]],
+        "libraries": {"pinned_footprint_libs": [], "pinned_symbol_libs": []},
+        "text_variables": {},
+        "board": {},
+        "boards": [],
+        "cvpcb": {"equivalence_files": []},
+        "erc": {},
+        "net_settings": {
+            "classes": [{
+                "name": "Default",
+                "clearance": 0.2,
+                "track_width": 0.25,
+                "via_diameter": 0.8,
+                "via_drill": 0.4,
+            }],
+        },
+        "pcbnew": {"page_layout_descr_file": ""},
+        "schematic": {"legacy_lib_dir": "", "legacy_lib_list": []},
+    }
+    with open(PROJECT, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(project, f, indent=2)
+        f.write("\n")
+    print("wrote %s" % os.path.relpath(PROJECT, HERE))
 
 
 def main():
@@ -442,6 +487,8 @@ def main():
 
     open(OUT, "w", encoding="utf-8", newline="\n").write(build())
     print("wrote %s: %d parts" % (os.path.relpath(OUT, HERE), len(PARTS)))
+
+    write_project()
 
     if args.erc:
         report = os.path.join(HERE, "build", "erc.rpt")

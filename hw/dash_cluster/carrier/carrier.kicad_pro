@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "filename": "carrier.kicad_pro",
+    "version": 3
+  },
+  "sheets": [
+    [
+      "66344325-e58f-5246-bffe-56fdca17e96b",
+      "Root"
+    ]
+  ],
+  "libraries": {
+    "pinned_footprint_libs": [],
+    "pinned_symbol_libs": []
+  },
+  "text_variables": {},
+  "board": {},
+  "boards": [],
+  "cvpcb": {
+    "equivalence_files": []
+  },
+  "erc": {},
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "clearance": 0.2,
+        "track_width": 0.25,
+        "via_diameter": 0.8,
+        "via_drill": 0.4
+      }
+    ]
+  },
+  "pcbnew": {
+    "page_layout_descr_file": ""
+  },
+  "schematic": {
+    "legacy_lib_dir": "",
+    "legacy_lib_list": []
+  }
+}
