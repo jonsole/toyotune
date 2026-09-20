@@ -367,6 +367,30 @@ void Pages_Previous(void)
 
 
 /***************************************************************************************/
+void Pages_Restore(uint8_t Page, const uint8_t *Views)
+{
+	uint8_t p;
+
+	if (Page < PAGE_SWIPEABLE_COUNT)
+		Current = Page;
+
+	for (p = 0; p < PAGES_MAX; p++)
+		View[p] = (Views[p] == 1u) ? 1u : 0u;
+}
+
+
+/***************************************************************************************/
+void Pages_Snapshot(uint8_t *Page, uint8_t *Views)
+{
+	uint8_t p;
+
+	*Page = Current;
+	for (p = 0; p < PAGES_MAX; p++)
+		Views[p] = View[p];
+}
+
+
+/***************************************************************************************/
 bool Pages_HasAlt(uint8_t Page)
 {
 	return Page < PageCount && Page < PAGES_MAX && Pages[Page].AltElements != NULL

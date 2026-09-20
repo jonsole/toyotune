@@ -96,7 +96,11 @@ set(DASH_SOURCES
     src/node_id.c
     src/pages.c
     src/signal_store.c
+    src/logfmt.c
+    src/settings.c
+    src/settings_flash.c
     src/signals.c
+    src/splash_seq.c
     src/telemetry.c
     src/tone.c
     src/ui_model.c
@@ -145,6 +149,7 @@ if(DASH_HAVE_PANEL)
                              src/ui_gmeter.c src/ui_gpage.c
                              src/ui_graph.c src/ui_graphpage.c
                              src/audio.c
+                             src/ui_splash.c src/dash_splash.c
                              src/dash_faces.c src/dash_font_value_56.c)
     list(APPEND VENDOR_SOURCES ${PANEL_VENDOR_SOURCES})
     set(DASH_HAVE_PANEL 1)
@@ -165,6 +170,32 @@ else()
         "Clone https://github.com/KevinOConnor/can2040 there, or pass "
         "-DCAN2040_PATH=<path>.")
     set(DASH_HAVE_CAN2040 0)
+endif()
+
+# ---------------------------------------------------------------------------
+# The microSD card - ECU logging
+# ---------------------------------------------------------------------------
+#
+# carlk3's FatFs library: ChaN's FatFs and an SD driver, the same one
+# Waveshare's own example for this board uses. Not vendored, for the reasons
+# can2040 is not - clone it beside this tree:
+#
+#   git clone https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
+#
+# SPI, not the library's faster SDIO driver: SDIO needs a PIO block and the
+# only one left is can2040's. See src/sd_hw_config.c.
+set(SDFAT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../external/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico"
+    CACHE PATH "Path to a no-OS-FatFS-SD-SDIO-SPI-RPi-Pico checkout")
+
+if(EXISTS "${SDFAT_PATH}/src/CMakeLists.txt")
+    message(STATUS "microSD FatFs: ${SDFAT_PATH}")
+    add_subdirectory("${SDFAT_PATH}/src" ${CMAKE_BINARY_DIR}/sdfat)
+    list(APPEND DASH_SOURCES src/sdlog.c src/sd_hw_config.c)
+    set(DASH_HAVE_SDLOG 1)
+else()
+    message(STATUS "no-OS-FatFS-SD-SDIO-SPI-RPi-Pico not found at ${SDFAT_PATH} - "
+                   "building WITHOUT SD logging.")
+    set(DASH_HAVE_SDLOG 0)
 endif()
 
 # Synthetic RPM and boost for the bench - see Simulate() in src/main.c. Off by
@@ -194,11 +225,17 @@ endif()
 target_compile_definitions(dash_node PRIVATE
     DASH_HAVE_CAN2040=${DASH_HAVE_CAN2040}
     DASH_HAVE_PANEL=${DASH_HAVE_PANEL}
+    DASH_HAVE_SDLOG=${DASH_HAVE_SDLOG}
     DASH_SIMULATE=$<BOOL:${DASH_SIMULATE}>
     DASH_BRIGHTNESS=${DASH_BRIGHTNESS}
 )
 
 target_include_directories(dash_node PRIVATE src)
+
+# can2040 in SRAM, not flash - see memmap_dash.ld for why. It has to generate
+# the ACK bit for every frame it receives within a few bit-times of the CRC, in
+# its interrupt, and from XIP flash it could not.
+pico_set_linker_script(dash_node ${CMAKE_CURRENT_LIST_DIR}/memmap_dash.ld)
 if(DASH_HAVE_CAN2040)
     target_include_directories(dash_node PRIVATE "${CAN2040_PATH}/src")
 endif()
@@ -228,9 +265,19 @@ endif()
 set_source_files_properties(${DASH_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-Wall;-Wextra;-Wconversion")
 
+# The two SD files are ours, but they include the FatFs library's headers,
+# which are full of narrowing nobody here is going to fix - and a warning
+# nobody will fix hides the ones that matter. Everything else still applies.
+if(DASH_HAVE_SDLOG)
+    set_source_files_properties(src/sdlog.c src/sd_hw_config.c PROPERTIES
+        COMPILE_OPTIONS "-Wall;-Wextra")
+endif()
+
 target_link_libraries(dash_node
     pico_stdlib
     pico_multicore
+    pico_flash
+    hardware_flash
     hardware_adc
     hardware_pio
     hardware_dma
@@ -240,6 +287,10 @@ target_link_libraries(dash_node
 # USB serial for bring-up; the board's UART pins are wanted for CAN.
 pico_enable_stdio_usb(dash_node 1)
 pico_enable_stdio_uart(dash_node 0)
+
+if(DASH_HAVE_SDLOG)
+    target_link_libraries(dash_node no-OS-FatFS-SD-SDIO-SPI-RPi-Pico)
+endif()
 
 pico_add_extra_outputs(dash_node)
 

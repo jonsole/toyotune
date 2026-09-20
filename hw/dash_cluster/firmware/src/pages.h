@@ -147,6 +147,12 @@ extern bool Pages_HasAlt(uint8_t Page);
 extern uint8_t Pages_ViewOf(uint8_t Page);
 extern void Pages_Flip(void);		/* the selected page's other view */
 
+/* The selection, for remembering it across a power cycle - see settings.h.
+   Restore ignores anything it cannot make sense of, because a record from
+   another build must never leave a node unable to start. */
+extern void Pages_Restore(uint8_t Page, const uint8_t *Views);
+extern void Pages_Snapshot(uint8_t *Page, uint8_t *Views);
+
 /* A view's elements: 0 is the page's own, 1 its alternative. NULL, with
    Count 0, for a view the page does not have. */
 extern const FaceElement_t *Pages_Elements(uint8_t Page, uint8_t View, uint8_t *Count);

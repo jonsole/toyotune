@@ -1,0 +1,163 @@
+DASH NODE CARRIER ("piggyback") - schematic sketch
+==================================================
+
+A small board that plugs into the display module's 8-pin 0.1" header and
+gives it a car supply and a CAN transceiver. One design, built three times;
+the node's identity is set by which resistor is fitted (R10..R13 below).
+
+Drawn 2026-09-20 from the decisions in PLAN.md sections 4.1, 4.9 and 4.13.
+This is a sketch to lay out from, not a netlist: values are starting points,
+and anything marked (opt) can be left unpopulated.
+
+THE CONNECTOR, as the display module presents it
+------------------------------------------------
+
+    J1  1  IO29   - leave unconnected. The AXP2101 PMIC asserts this.
+        2  IO28   - node identity divider          (R10..R13, R14)
+        3  IO27   - illumination sense (opt)       (R15, R16, D4, C8)
+        4  RXD    - GPIO25, CAN receive            <- U2 pin 4
+        5  TXD    - GPIO26, CAN transmit           -> R1 -> U2 pin 1
+        6  3V3    - the module's 3.3 V, an OUTPUT  -> U2 pin 5 (VIO)
+        7  GND    - the one ground
+        8  VBUS   - 5 V IN, the node's supply      <- D2
+
+POWER
+-----
+
+  12 V ignition
+   (loom pin 1)
+        |
+       [F1] 1 A                      Reverse polarity: a P-FET, not a diode.
+        |                            No drop to lose when cranking.
+        +--------+
+        |        |          Q1  IRLML6402 or similar P-ch, -20 V
+        |      [D1]         ,-----------------------.
+        |      TVS          |  S                  D |
+        |    SMBJ26A        +---. .-----------------+---------+------> VIN
+        |       |           |   | |                           |
+       GND     GND          |  [R2] 100k                    [C1] 10u
+                            |   | |                           |       25 V
+                            |   +-+--[ZD1] 12 V (opt)         |
+                            |   |                            GND
+                            |  GND   (gate pulled to source
+                            |         through R2; ZD1 caps
+                            |         Vgs on a 24 V jump start)
+                            |
+                        (body diode conducts on reverse,
+                         so the FET's source is the 12 V side)
+
+    VIN ---> U1  TSR 1-2450  (5 V, 1 A, 6.5-36 V in, 78xx pinout)
+             .-------------.
+     VIN ----| IN      OUT |---- +5V ----+--------+
+             |             |             |        |
+             |     GND     |           [C2]     [C3]
+             '------+------'            10u      100n
+                    |                    |        |
+                   GND                  GND      GND
+
+      +5V --+--[D2]--+-----------------------------> J1-8  VBUS
+            |  SS34  |                               (the node's supply)
+            |        |
+            |      [C4] 470u  <- HOLD-UP. This is what buys the firmware
+            |        |           time to close the log and save the page
+            |       GND          when the ignition goes (PLAN 4.13).
+            |
+            +---> U2 pin 3 (transceiver VCC)
+
+    D2 matters twice: it stops C4 draining back into the regulator when the
+    ignition goes, and it stops a bench USB lead and this regulator fighting
+    over VBUS - they are one net on the module (PLAN 4.1).
+
+CAN TRANSCEIVER
+---------------
+
+    U2  TJA1051T/3   (the /3 suffix is essential: it has VIO, and the
+                      RP2350's pins are NOT 5 V tolerant)
+
+                     .-----------.
+      J1-5 TXD --[R1]| 1 TXD   S 8|---- GND     S low = normal mode.
+              1k     |            |             NEVER leave it floating:
+               GND---| 2 GND CANH 7|---> CANH    it silently stops transmitting.
+               +5V---| 3 VCC CANL 6|---> CANL
+      J1-4 RXD ------| 4 RXD  VIO 5|---- J1-6 3V3
+                     '-----------'
+
+        C5 100n across VCC/GND, C6 100n across VIO/GND, both at the pins.
+
+    Termination - FIT ONLY ON THE TWO BOARDS AT THE ENDS OF THE BUS:
+
+      CANH ---+--[R3 60R]--+--[R4 60R]--+--- CANL
+              |            |            |
+              |          [C7] 4n7       |
+              |            |            |
+              |           GND           |     Split termination: the two
+            [D3 PESD2CAN or PESD1CAN]         halves with a capacitor to
+              |                               ground damp common-mode noise
+             GND                              better than a single 120 R.
+                                              A single 120 R is acceptable.
+
+    Make it a solder link or a pad pair, not a fixed part. Five nodes on this
+    bus and exactly two ends: the bench proved how hard a termination fault
+    is to read - every frame failed its own readback and it looked like a
+    broken transceiver (PLAN 4.1).
+
+NODE IDENTITY  (J1-2, IO28)
+---------------------------
+
+    Fit ONE of R10..R13. The firmware reads the divider as a fraction of
+    3.3 V and wants 12.5 / 37.5 / 62.5 / 87.5 %, with anything more than
+    9 % away from a level reported as "unknown" rather than guessed.
+
+      3V3 --+--[R10 33k]--+          node 0   4.7/(33+4.7)  = 12.5 %
+            +--[R11 8k2]--+          node 1   4.7/(8.2+4.7) = 36.4 %
+            +--[R12 2k7]--+          node 2   4.7/(2.7+4.7) = 63.5 %
+            +--[R13 680R]-+          node 3   4.7/(0.68+4.7)= 87.4 %
+                          |
+                          +---- J1-2  IO28
+                          |
+                        [R14] 4k7
+                          |
+                         GND
+
+    Keep this divider stiff - the parallel impedance peaks near 2.2 k, which
+    the ADC is happy with. Do not scale it up to save microamps.
+
+ILLUMINATION SENSE (opt)  (J1-3, IO27)
+--------------------------------------
+
+    For night dimming (PLAN 4.10). The dash lighting feed is usually PWM
+    dimmed, so the firmware averages it.
+
+      illum 12 V --[R15 47k]--+--[D4]--- 3V3     D4: BAT54, clamps the
+                              |                  divider if the feed rises
+                              +---- J1-3 IO27    above 3.3 V
+                              |
+                            [R16] 10k  --+-- [C8] 1u --+
+                              |          |             |
+                             GND        GND           GND
+
+LOOM
+----
+
+    Four wires, daisy chained between the ECU boards and the three nodes:
+
+        1  12 V (switched ignition)
+        2  GND
+        3  CANH
+        4  CANL
+
+    The ground wire is not optional: the nodes and the ECU sit metres apart
+    and are grounded at different points, and carrying GND alongside the pair
+    is what keeps the common-mode offset inside the transceiver's range.
+
+LAYOUT NOTES
+------------
+
+  * One ground pour, tied to J1-7. Every ground above is that ground.
+  * Keep U1's input loop (VIN, C1, its ground return) tight and away from
+    CANH/CANL. It is a switcher a few centimetres from a differential pair.
+  * Route CANH/CANL as a pair, same length, no stubs; the termination pads
+    at the very end of the pair, not part way along.
+  * C4 sits on the J1 side of D2. On the regulator's side it would hold up
+    the regulator, which is not the thing that needs holding up.
+  * Nothing on IO29.

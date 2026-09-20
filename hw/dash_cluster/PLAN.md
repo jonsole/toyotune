@@ -542,7 +542,7 @@ connection.** Along the bottom edge of the board, left to right:
 
 | IO29 | IO28 | IO27 | RXD | TXD | 3V3 | GND | VBUS |
 |---|---|---|---|---|---|---|---|
-| avoid - `AXP_IRQ` | node ID divider | illumination sense (§4.10) | GPIO25, CAN RX | GPIO26, CAN TX | transceiver `VIO` | ground | 5 V, while on USB |
+| avoid - `AXP_IRQ` | node ID divider | illumination sense (§4.10) | GPIO25, CAN RX | GPIO26, CAN TX | transceiver `VIO` | ground | **5 V IN** - the carrier feeds this from the ignition; USB feeds it otherwise |
 
 This replaces the plan to mate the transceiver to the SH1.0 4-pin UART plug
 and run the ID divider to a separate header. One 8-pin connector carries CAN,
@@ -557,8 +557,19 @@ its `TXD` (pin 1, an input) to `TXD`. Breakouts label these from either side,
 so check which breakout pin reaches chip pin 4 with a meter rather than
 reading the label.
 
-VBUS is USB's 5 V, live only while USB is connected; in the car the carrier
-supplies 5 V instead.
+**VBUS is how the node is powered in the car**: the carrier's buck feeds 5 V
+into this pin off the switched ignition, onto the same net the USB connector
+drives. The AXP2101 treats it as input power exactly as it would a USB lead,
+so a fitted battery charges whenever the ignition is on with nothing else
+wired - and losing it is how the node learns the ignition has gone
+(section 4.13).
+
+**Never feed it from the car and plug in USB at the same time.** They are one
+net: the bench PC's 5 V and the carrier's would fight, and the PC can end up
+back-feeding the car's rail. Either pull the ignition feed while debugging, or
+put an OR-ing diode on the carrier so the higher supply wins. This is easy to
+do by accident with the car powered, and is worth a diode rather than a
+habit.
 
 **Note GPIO24 is free but not exposed.** With no GNSS fitted it has no
 function, but Waveshare's pinout leaves its "Other" column blank — it runs to
@@ -1344,6 +1355,187 @@ ID correct, stream running, not a sound:
   known, either move it or - if every node gets a speaker - give the nodes a
   way to know which pages their neighbours are showing. The heartbeat's page
   byte is reserved and sent as zero, which is exactly where that would go.
+
+### 4.13 Ignition off - closing down cleanly
+
+**Not built. The firmware currently assumes power can vanish between any two
+instructions**, and everything written so far is arranged around that: the log
+is flushed every two seconds (4.14), the settings are a sector of slots where
+a half-written record is detected and ignored (4.14a), and the gauges show a
+reading as stale rather than trusting the last one. That is the right default
+and it stays whatever is decided here.
+
+What it costs is the last two seconds of every drive, and the clock: the
+PCF85063 has a single supply pin, so at power-off it forgets the time and
+waits for the next announcement on the bus.
+
+**The board can already do better**, and has the parts fitted: an **AXP2101
+PMIC** with a lithium charger and a battery connector, and its interrupt on
+**GPIO29** - which section 4.1 marks "avoid" as a GPIO precisely because the
+PMIC asserts it on charger and power events. Here that is the wanted signal.
+
+#### How the supply arrives, and how its going is seen
+
+**5 V comes in on the header's VBUS pin** from the carrier's buck, off the
+switched ignition (section 4.1). So "the ignition is off" is "VBUS has gone",
+and there are two ways to see it:
+
+- **Ask the AXP2101 over I2C.** It reports input power present, and core 1
+  already owns that bus. No GPIO29 interrupt, so none of the trouble section
+  4.1 records with that pin. Polling at the frame rate sees it within
+  milliseconds, which is soon enough for everything below.
+- **The PMIC's interrupt on GPIO29**, only if a reaction inside a millisecond
+  is ever needed. It is not: what follows takes tens of milliseconds and the
+  reserve has to cover all of it anyway.
+
+**Without a battery, VBUS going away IS the power going away** - there is no
+reserve to run the shutdown from. So the hold-up capacitance of option A has
+to sit on the board's side of that feed, behind a diode so it cannot drain
+back into the carrier, and must carry the node with the panel still lit until
+the firmware can switch it off. Measure the real time it buys by pulling the
+feed with a scope on the 3.3 V rail; do not calculate it and hope.
+
+#### What the firmware would do, either way
+
+The hardware choice below only decides how long there is. The sequence is the
+same:
+
+1. Notice the input supply going away - the PMIC's interrupt, or the
+   illumination/ignition sense of section 4.10 read as a supply.
+2. Stop logging: flush the buffer, `f_sync`, `f_close`. This is the part that
+   matters - a file closed properly cannot lose its directory entry.
+3. Save the page and views if they have changed (4.14a), which is one flash
+   page unless the sector needs erasing.
+4. Panel off, then sleep or stop.
+
+None of that is long: the log flush is a few KB, the settings write about a
+millisecond. **Tens of milliseconds is enough**, which is what makes the
+capacitor option below realistic.
+
+#### Option A - a hold-up capacitor, no battery
+
+A few thousand microfarads on the 5 V rail, with the panel already off,
+carries the node for tens to hundreds of milliseconds after the ignition
+drops. Enough for the whole sequence above.
+
+- **Gets:** the log closed properly, the settings written, no corruption.
+- **Does not get:** the clock. It still comes from the bus at each start.
+- **Cost:** a capacitor and a diode on the carrier. No chemistry in the cabin,
+  nothing that ages, nothing that cares about temperature.
+
+#### Option B - a battery
+
+A lithium cell on the board's own connector, charged by the AXP2101 whenever
+the ignition is on.
+
+- **Gets:** all of the above, and **the clock keeps time** - so the analogue
+  and digital clock faces are right the moment the car starts, rather than
+  waiting for an announcement.
+- **Also allows** a deliberate low-power state rather than simply dying:
+  the node could stay asleep and wake instantly.
+- **Temperature is the real objection.** Lithium pouch cells want charging
+  between about 0 and 45 C and storing below roughly 60 C. A dashboard in
+  summer sun is outside that. A cell would have to live behind the dash
+  rather than on it, and ideally use the PMIC's temperature-sense input.
+- **Standing drain has to be measured, not assumed.** Left for a fortnight,
+  the node must be drawing tens of microamps, not milliamps, or the battery
+  is flat when the car is next used - and a flat lithium cell is a damaged
+  one. Measure the sleep current before trusting it.
+
+#### Recommendation
+
+**Do the firmware first and the hardware second.** Detecting the supply going
+and shutting down cleanly is worth having on its own, works with either
+option, and can be tested on the bench by pulling the USB lead with a scope on
+the rail to see how long there really is. Fit the capacitor with the carrier;
+decide about a cell once there is somewhere cool to put one.
+
+**Whatever is decided, do not let it weaken what is already there.** A clean
+shutdown is an optimisation, never a guarantee: the node must still come up
+correctly from a battery pulled off its terminals mid-drive.
+
+### 4.14 Logging a drive to the microSD card
+
+**Built 2026-09-20, not yet run on hardware.** `src/sdlog.c` and
+`src/logfmt.c`, with `src/sd_hw_config.c` for the socket.
+
+A file per drive, in CSV, readable on any PC with no tool of this project in
+the way - which is the whole reason for FAT rather than a raw partition.
+
+- **A row every 50 ms**: the time in milliseconds, then every signal the bus
+  carries, in engineering units. The fastest tier arrives every 20 ms, so this
+  is not every value; it is enough to see a gearchange, and it keeps a long
+  drive to a few hundred MB.
+- **The columns come from the signal table**, not from a list in the logger,
+  so a signal added to `signals.h` appears in the log by itself. The header
+  names each column with its unit, so an old file stays readable after the
+  columns change.
+- **A missing or stale reading is an empty cell, never the last value held
+  over.** A spreadsheet draws that as a gap. A repeated value would be read as
+  a measurement - the same rule the gauges follow, and what most of the host
+  tests are about.
+- **A file is opened when telemetry starts arriving and closed when it stops**
+  for five seconds or the card is pulled. A node on a bench with no ECU writes
+  nothing. Files are `LOG0001.CSV` upwards - numbered, not dated, because the
+  clock comes from the bus and may not have arrived; a wrong date would be
+  worse than an honest number.
+- **Flushed every two seconds**, which is the most an ignition-off can lose
+  until section 4.13 is built.
+
+**The hardware, from Waveshare's own FatFs example rather than the pinout
+image:** SPI0, SCK 18, MOSI 19, MISO 20, CS 21, card detect 24 (active low).
+The library is **carlk3's `no-OS-FatFS-SD-SDIO-SPI-RPi-Pico`** - ChaN's FatFs
+plus an SD driver, the same one Waveshare ship - cloned beside the repo like
+can2040, not vendored. The build says so and carries on without it.
+
+**SPI, not the library's faster SDIO driver.** SDIO needs a whole PIO block
+and the only one left is can2040's; and its SDIO path installs a DMA
+interrupt handler, where the SPI path polls its two DMA channels and touches
+neither DMA_IRQ_0 nor DMA_IRQ_1 - DMA_IRQ_1 being the audio's, on core 1.
+Losing CAN or the beeps to make a 6 KB/s log faster would be a poor trade.
+
+**On core 0**, where the CAN traffic already lands. A card can stall for tens
+of milliseconds doing its own housekeeping; on core 0 that delays the
+heartbeat and the console but not reception, which is interrupt driven. On
+core 1 the same stall would freeze the gauges.
+
+**Costs:** 52 KB of flash and about 6 KB of RAM, which leaves **roughly 20 KB
+of SRAM free**. That is now the budget to watch - the two screen surfaces hold
+424 KB of the 512 KB.
+
+**Still open:** file timestamps. FatFs asks the system for the time and the
+node's clock arrives over CAN, so dates may read as 1980 until the clock is
+wired into it. Contents are unaffected.
+
+### 4.14a Remembering the page
+
+**Built 2026-09-20, not yet run on hardware.** `src/settings.c` and
+`src/settings_flash.c`. This is the persistence section 4.6 asks for.
+
+The selected page and each page's view are written to the **last sector of the
+flash the linker knows about**, well past the image, and restored at power-on.
+The firmware refuses to write if the image ever grows into that sector and
+says so on the console.
+
+- **A record is 32 bytes, appended** to the next free slot: 128 saves before
+  the sector must be erased. Rewriting one record would mean an erase every
+  time.
+- **The last record with a good checksum wins**, so a power cut mid-write
+  leaves the previous one in force. The one window where the memory is lost
+  rather than corrupted is a power cut between the erase and the write that
+  follows it, once every 128 saves - and the cost is starting on the wrong
+  page once.
+- **Written only after the page has been unchanged for four seconds**, and
+  never mid-swipe, so swiping through the list is one write rather than four.
+- **Core 1 writes it, so core 0 is the core held still** - flash cannot be
+  read while it is written and both cores run from it. That costs a few CAN
+  frames, well inside the half second before a reading is called stale;
+  holding core 1 would freeze the gauges instead.
+
+The SDK has no NV storage API - `hardware_flash` erases and programs, and
+`pico_flash` parks the other core. Everything above is ours. If a filesystem
+is ever wanted in flash as well, littlefs is the usual choice, but tens of KB
+of code to store nine bytes is not a trade worth making here.
 
 ## 5. Milestones
 

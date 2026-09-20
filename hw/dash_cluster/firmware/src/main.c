@@ -30,10 +30,14 @@
 #include <string.h>
 
 #include "pico/stdlib.h"
+#include "pico/flash.h"
 #include "pico/multicore.h"
 
 #include "node_id.h"
 #include "pages.h"
+#include "settings.h"
+#include "settings_flash.h"
+#include "sdlog.h"
 #include "signal_store.h"
 #include "signals.h"
 #include "telemetry.h"
@@ -53,6 +57,7 @@
 #include "ui_gauge.h"
 #include "ui_clockpage.h"
 #include "ui_gpage.h"
+#include "ui_splash.h"
 #include "warn.h"
 #include "ui_graphpage.h"
 #include "ui_model.h"
@@ -165,7 +170,8 @@ static volatile bool ScreenshotRequested;
 /* A page change asked for over the console - 'n' next, 'p' previous - served
    by core 1, which owns the page selection. +1, -1, or 0 for none. */
 static volatile int8_t PageStepRequested;
-static volatile bool FlipRequested;		/* 'f': the page's other view */
+static volatile bool FlipRequested;
+static volatile bool SplashRequested;	/* 'L': the power-on splash again */		/* 'f': the page's other view */
 
 /* A clock setting asked for over the console - "Thhmmss" - served by core 1,
    which owns the I2C bus the clock is on. Written by core 0 and read by
@@ -845,6 +851,9 @@ static void Core1Main(void)
 	Core1Page_t *In = &Views[1];
 	Core1Swipe_t Swipe;
 	Core1Counts_t Counts;
+	Settings_t Saved;		/* what flash holds, as far as this core knows */
+	uint32_t SaveDueMs = 0;
+	bool SavePending = false;
 	Warn_t Warn;
 	ToneId_t BeepId = TONE_NONE;
 	uint32_t BeepUntilMs = 0u;
@@ -859,6 +868,8 @@ static void Core1Main(void)
 	memset(&Counts, 0, sizeof(Counts));
 	Views[0].Surface = 0u;
 	Views[1].Surface = 1u;
+
+	Pages_Snapshot(&Saved.Page, Saved.Views);
 
 	Panel_Init();
 	(void)Imu_Init();
@@ -875,6 +886,11 @@ static void Core1Main(void)
 	UiGPage_Init();
 	UiGraphPage_Init();
 	UiDraw_Init();
+
+	/* The power-on splash, before the first gauge frame. CAN is already
+	   running on core 0, so by the time this ends the gauges have live
+	   values to come up on. */
+	(void)UiSplash_Run(Cur->Surface, DashNodeId);
 	LastFrameUs = time_us_32();
 
 	for (;;)
@@ -1335,10 +1351,43 @@ static void Core1Main(void)
 				Pages_Previous();
 			PageStepRequested = 0;
 		}
+		/* REMEMBERING THE PAGE. Written only once the driver has settled on
+		   one: a swipe through four pages must not be four writes, and a
+		   power cut during a write is survivable but pointless to risk. The
+		   write holds core 0 for a moment, so it waits for a still screen. */
+		{
+			Settings_t Now;
+
+			Pages_Snapshot(&Now.Page, Now.Views);
+			if (Settings_Differ(&Now, &Saved))
+			{
+				Saved = Now;
+				SaveDueMs = NowMs + SETTINGS_SAVE_DELAY_MS;
+				SavePending = true;
+			}
+			else if (SavePending && Swipe.State == SWIPE_IDLE
+			         && (int32_t)(NowMs - SaveDueMs) >= 0)
+			{
+				SavePending = false;
+				if (!SettingsFlash_Save(&Saved))
+					printf("settings: could not save page %u\n", Saved.Page);
+			}
+		}
+
 		if (FlipRequested && Swipe.State == SWIPE_IDLE)
 		{
 			Pages_Flip();
 			FlipRequested = false;
+		}
+
+		/* The splash again, for the bench - it draws over the page, so the
+		   page is rebuilt from scratch afterwards. */
+		if (SplashRequested && Swipe.State == SWIPE_IDLE)
+		{
+			SplashRequested = false;
+			(void)UiSplash_Run(Cur->Surface, DashNodeId);
+			Started = false;
+			LastFrameUs = time_us_32();
 		}
 
 		if ((int32_t)(NowMs - NextStatusMs) >= 0)
@@ -1385,6 +1434,21 @@ static void Core1Main(void)
 						       (unsigned long)ClockLink_Rejected(),
 						       (unsigned long)Rtc_Errors());
 				}
+#if DASH_HAVE_SDLOG
+				if (SdLog_Active())
+					printf("sdlog: %s  %lu rows  %lu KB  errors %lu\n",
+					       SdLog_FileName(), (unsigned long)SdLog_Rows(),
+					       (unsigned long)(SdLog_Bytes() / 1024u),
+					       (unsigned long)SdLog_Errors());
+				else
+					printf("sdlog: not logging  errors %lu\n",
+					       (unsigned long)SdLog_Errors());
+#endif
+				printf("settings: saves %lu  erases %lu  failures %lu%s\n",
+				       (unsigned long)SettingsFlash_Saves(),
+				       (unsigned long)SettingsFlash_Erases(),
+				       (unsigned long)SettingsFlash_Failures(),
+				       SettingsFlash_Usable() ? "" : "  SECTOR UNUSABLE - the image reaches it");
 #if DASH_HAVE_CAN2040
 				{
 					CanLinkStats_t C;
@@ -1611,11 +1675,34 @@ int main(void)
 	DashNodeId = Id;
 	printf("dash node %u starting\n", Id);
 
-	/* 0xFF: no stored selection yet. Flash-backed persistence is still to be
-	   written; until then every boot starts on the node's startup page. */
-	Pages_Init(Id, 0xFF);
+	/* The page and views this node was left on, if they were saved. An
+	   unwritten or unreadable sector falls back to the node's startup page. */
+	{
+		Settings_t S;
+
+		Pages_Init(Id, 0xFF);
+		if (SettingsFlash_Load(&S))
+		{
+			Pages_Restore(S.Page, S.Views);
+			printf("settings: restored page %u\n", S.Page);
+		}
+		else if (!SettingsFlash_Usable())
+			printf("settings: the image reaches the settings sector - not remembering\n");
+		else
+			printf("settings: nothing saved yet - starting on page %u\n", StartupPage[Id]);
+	}
+
+	/* Core 1 writes the settings, so core 0 is the core held still while the
+	   flash is busy - it cannot be read while it is written, and both cores
+	   run from it. Without this, that write would hang or corrupt. */
+	if (!flash_safe_execute_core_init())
+		printf("settings: core 0 cannot be held for a flash write - not saving\n");
 
 	Telemetry_Init(TELEMETRY_BASE_CPU1);
+
+#if DASH_HAVE_SDLOG
+	SdLog_Init();
+#endif
 
 #if DASH_SIMULATE
 	printf("SIMULATED TELEMETRY BUILD - RPM and boost are synthetic, not from "
@@ -1641,12 +1728,18 @@ int main(void)
 
 #if DASH_HAVE_CAN2040
 		CanLink_Poll(NowMs);
+#if DASH_HAVE_SDLOG
+		/* The log lives on this core: a card can stall for tens of
+		   milliseconds, which here delays the heartbeat but not reception,
+		   and on core 1 would freeze the gauges. */
+		SdLog_Poll(NowMs);
+#endif
 #endif
 
 #if DASH_HAVE_PANEL
 		/* Console commands: 'S' a screenshot, 'n' and 'p' the next and
-		   previous page, 'f' to flip the page to its other view, "Thhmmss"
-		   to set the clock, '1'..'4' to sound each
+		   previous page, 'f' to flip the page to its other view, 'L' to play
+		   the power-on splash again, "Thhmmss" to set the clock, '1'..'4' to sound each
 		   warning and '0' to stop, "Vnn" for the volume - enough to drive the
 		   display, the clock and the speaker from the bench PC. The sounds
 		   matter most: nothing else here can prove a speaker works without an
@@ -1695,6 +1788,8 @@ int main(void)
 				PageStepRequested = -1;
 			else if (Ch == 'f')
 				FlipRequested = true;
+			else if (Ch == 'L')
+				SplashRequested = true;
 			else if (Ch == 'T')
 			{
 				Collecting = 'T';

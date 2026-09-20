@@ -222,10 +222,15 @@ Get-CimInstance Win32_PnPEntity |
 - **`ui_model.c` must not gain a display dependency.** The split exists so the
   decisions a gauge makes - staleness, off-scale needles, what shows before
   any data arrives - are testable on a host. Put drawing in `ui_draw.c`.
-- **can2040 wants its code in SRAM**, not XIP flash: a cache miss inside the
-  CAN interrupt corrupts a bit. `can_link.c` marks its handler
-  `__not_in_flash_func`; keep that when editing it, and see PLAN.md §4.2a
-  before adding anything else to that interrupt.
+- **can2040 must run from SRAM, and `__not_in_flash_func` on our handler is
+  NOT enough.** `memmap_dash.ld` - the SDK's linker script with can2040 added
+  to its two `EXCLUDE_FILE` lists - is what puts the library itself there.
+  Without it the node transmitted perfectly and received 44 frames before
+  stopping dead, ACKing nothing: it cannot check a frame's CRC and drive the
+  ACK bit in time from flash while core 1 streams faces through the same
+  cache. Keep the script when updating the SDK (re-copy `memmap_default.ld`,
+  make the same two edits), and see PLAN.md §4.2a before adding anything to
+  that interrupt.
 - **All three PIO blocks are claimed now**: PIO0 the panel, PIO1 can2040, PIO2
   the audio codec (two of its four state machines). PLAN.md §4.1's table used
   to call the third spare; it is not. Anything new wanting PIO shares PIO2.
