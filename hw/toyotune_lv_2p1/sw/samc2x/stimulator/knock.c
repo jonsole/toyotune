@@ -6,17 +6,26 @@
  */
 
 #include <sam.h>
+#include <stdbool.h>
 
 #include "debug.h"
 #include "dmac.h"
 #include "clk.h"
 #include "pio.h"
 #include "knock.h"
+#include "vrg.h"
 
 static uint8_t Knock_DmaChannel;
 
 uint8_t Knock_Severity = 64;
 uint8_t Knock_Noise = 16;
+uint8_t Knock_DelayDeg = 25;
+uint16_t Knock_RingSamples = 160;
+uint8_t Knock_Decay = 252;
+uint8_t Knock_Count = 4;
+uint8_t Knock_Every = 20;
+
+static uint8_t Knock_Ignition;	/* Position in the Knock_Every cycle */
 
 
 
@@ -41,9 +50,16 @@ uint8_t Knock_Noise = 16;
    The waveform. TC0 raises an event every 48000000/53600 ticks of GCLK0, so
    samples leave at 53.6 kHz, and eight samples per cycle puts the tone at
    53600/8 = 6700 Hz - a plausible knock frequency for this bore, and the
-   6.7 kHz the original knock_6p7khz.raw was named for. The knock itself is
-   64 samples, 1.19 ms, eight cycles decaying geometrically at 15/16 per
-   sample: a damped resonance, which is what knock actually is.
+   6.7 kHz the original knock_6p7khz.raw was named for. The knock itself is a
+   damped resonance, which is what knock actually is: Knock_RingSamples of it
+   (default 160, 3 ms), decaying at 63/64 per sample.
+
+   WHEN IT LANDS. Not at the spark: real knock comes after TDC, when cylinder
+   pressure peaks, and the knock chip listens in a window there. The ring
+   starts Knock_DelayDeg of crank after the IGT edge (default 25, about 15
+   degrees ATDC), converted to time at VRG_Rpm on every ignition so it tracks
+   engine speed. It used to fire at the spark and be gone in a quarter of a
+   millisecond - too early and too short for the chip to see.
 
    THE BACKGROUND. A real knock sensor is never silent: the engine vibrates
    all the time, and the knock chip judges the sensor on that background
@@ -51,11 +67,13 @@ uint8_t Knock_Noise = 16;
    ignition and hold dead flat between them, and once the coolant was warm
    enough for the ECU to monitor knock at all, it concluded the sensor was
    disconnected - code 52, and its fail-safe maximum retard - at ANY burst
-   severity, 64 included. So each ignition now starts a chain of two DMA
-   descriptors: the knock burst with the background already mixed under it,
-   then straight on into KNOCK_NOISE_SAMPLES of background alone - long enough
+   severity, 64 included. So each ignition now starts a chain of three DMA
+   descriptors: background for the delay, the ring with the background mixed
+   under it, then the rest of KNOCK_NOISE_SAMPLES of background - long enough
    to outlast the gap to the next ignition anywhere in the ECU's knock window.
-   The output is never flat while the engine turns.
+   With Knock_Noise above zero the output is never flat while the engine
+   turns. (A background of 16 did not clear code 52 either, so the bench runs
+   it at 0 while that is chased.)
 
    The background is the same 6.7 kHz carrier with a random amplitude each
    cycle, between half and all of Knock_Noise: roughly what engine vibration
@@ -88,25 +106,48 @@ uint8_t Knock_Noise = 16;
    rate that puts the tone at 53600/8 = 6700 Hz. */
 static const int8_t KnockSine[8] = { 0, 90, 127, 90, 0, -90, -127, -90 };
 
-/* 64 samples is 1.19 ms and eight cycles of ring-down. Kept short deliberately:
-   at 7200 rpm - the top of the ECU's knock detection window - a four cylinder
-   fires every 4.2 ms, so a longer burst would start running into the next
-   ignition event. */
-#define KNOCK_SAMPLES (64)
+/* Samples per second, and so per ms: 53.6. */
+#define KNOCK_SAMPLE_RATE (53600u)
+
+/* The longest ring Knock_RingSamples may ask for: 9.6 ms, far past the gap
+   between ignitions at any speed worth testing. */
+#define KNOCK_RING_MAX (512)
 
 /* 44.8 ms. At 700 rpm - the bottom of the knock window - a four cylinder fires
    every 42.9 ms, so the background outlasts the gap everywhere the ECU is
    listening. A whole number of carrier cycles, so it ends on a zero crossing. */
 #define KNOCK_NOISE_SAMPLES (2400)
 
-uint16_t KnockWaveform[KNOCK_SAMPLES];
+/* Where the delay link's background ends: one carrier cycle short of the end
+   of KnockNoise, so the delay always finishes on a whole cycle and joins the
+   ring - which starts at phase zero - without a step. It also caps the delay
+   at 44.6 ms, far beyond Knock_DelayDeg at any speed in the knock window. */
+#define KNOCK_DELAY_END (KNOCK_NOISE_SAMPLES - 8)
+
+uint16_t KnockWaveform[KNOCK_RING_MAX];
 
 static uint16_t KnockNoise[KNOCK_NOISE_SAMPLES];
 static uint8_t KnockNoiseLevel;		/* Knock_Noise the buffer was built for */
 
-/* The second link of the chain. Never written by the DMAC - its writeback goes
-   to the channel's own entry - so it is set up once and reused. */
-static DMAC_Descriptor_t KnockNoiseDesc __attribute__((aligned(16)));
+/* The settings KnockWaveform was built for. It is rebuilt only when one of
+   them changes, never per ignition - see Knock_BuildRing. */
+static uint8_t KnockRingSeverity;
+static uint8_t KnockRingDecay;
+static uint16_t KnockRingLength;
+static uint8_t KnockRingNoiseLevel;
+static bool KnockRingValid;
+
+/* The chain, three links: background for the delay (the channel's base
+   descriptor), then the ring, then background to the end. Nothing is computed
+   per ignition beyond the delay and the three descriptors, which matters
+   because this runs in the IGT interrupt: building the ring there took about
+   a millisecond, long enough to hold off the crank pattern's interrupt for
+   two or three slots - the ECU saw the rpm wander - and to push every burst
+   about 18 degrees later than Knock_DelayDeg asked for at 3000 rpm. The DMAC
+   never writes these two (its writeback goes to the channel's own entry), and
+   the channel is reset before they are changed. */
+static DMAC_Descriptor_t KnockRingDesc __attribute__((aligned(16)));
+static DMAC_Descriptor_t KnockTailDesc __attribute__((aligned(16)));
 
 
 /* xorshift32: plenty for a vibration envelope, and no divider needed. */
@@ -146,21 +187,21 @@ static void Knock_BuildNoise(uint8_t Level)
 }
 
 
-void Knock_Trigger(uint8_t Severity)
+/* The ring: the knock over the first Ring samples of the background, so the
+   chain runs on into the rest of it (the tail link) with no seam. Built over
+   a fixed stretch of background rather than wherever the delay happens to
+   end, which is what lets it be built once instead of per ignition. The
+   delay link plays a different stretch, ending at KNOCK_DELAY_END; the
+   background is random from cycle to cycle anyway, so the join cannot be
+   told apart from any other cycle boundary. */
+static void Knock_BuildRing(uint8_t Severity, uint32_t Ring, uint8_t Decay)
 {
-	/* Picks up a Knock_Noise written over SWD. A one-off rebuild of the
-	   buffer, which is also the only time the background can glitch. */
-	if (Knock_Noise != KnockNoiseLevel)
-		Knock_BuildNoise(Knock_Noise);
-
 	/* Peak deviation from mid-scale in DAC counts. Severity 255 is very nearly
 	   full scale, 64 about a quarter of it. */
 	int32_t Amplitude = (int32_t)Severity * 128;
 
-	for (uint32_t Index = 0; Index < KNOCK_SAMPLES; Index++)
+	for (uint32_t Index = 0; Index < Ring; Index++)
 	{
-		/* The knock on top of the background, which the chain then carries
-		   on with from sample KNOCK_SAMPLES - so there is no seam. */
 		int32_t Sample = ((int32_t)KnockNoise[Index] - 32768)
 		               + (KnockSine[Index & 7] * Amplitude) / 127;
 
@@ -171,25 +212,96 @@ void Knock_Trigger(uint8_t Severity)
 
 		KnockWaveform[Index] = (uint16_t)(32768 + Sample);
 
-		/* Geometric decay, 15/16 per sample - a time constant of about 15
-		   samples, so the ring is down to a few percent by the end of the
-		   burst. Knock is a damped resonance and decays exponentially. */
-		Amplitude = (Amplitude * 15) / 16;
+		/* Geometric decay, Knock_Decay/256 per sample. The default 252 is a
+		   time constant of about 64 samples, 1.2 ms, so 160 samples (3 ms)
+		   ring down to under a tenth; 254 doubles it, 255 quadruples it.
+		   Knock is a damped resonance and decays exponentially; the old
+		   15/16 was gone in a quarter of a millisecond. */
+		Amplitude = (Amplitude * (int32_t)Decay) / 256;
 	}
 
-	/* Select channel and reset it */
+	KnockRingSeverity = Severity;
+	KnockRingDecay = Decay;
+	KnockRingLength = (uint16_t)Ring;
+	KnockRingNoiseLevel = KnockNoiseLevel;
+	KnockRingValid = true;
+}
+
+
+void Knock_Trigger(uint8_t Severity)
+{
+	/* Stop the previous chain before touching anything it reads. The DAC holds
+	   its last sample until the new chain starts - microseconds. */
 	DMAC->CHID.reg = Knock_DmaChannel;
 	DMAC->CHCTRLA.reg &= ~DMAC_CHCTRLA_ENABLE;
 	DMAC->CHCTRLA.reg = DMAC_CHCTRLA_SWRST;
 
-	/* The burst, then on into the background */
+	/* Picks up a Knock_Noise written over SWD. A one-off rebuild of the
+	   buffer, which is also the only time the background can glitch. */
+	if (Knock_Noise != KnockNoiseLevel)
+		Knock_BuildNoise(Knock_Noise);
+
+	uint32_t Ring = Knock_RingSamples;
+	if (Ring < 1)
+		Ring = 1;
+	else if (Ring > KNOCK_RING_MAX)
+		Ring = KNOCK_RING_MAX;
+
+	/* Knock_DelayDeg of crank at the current speed, in samples: degrees over
+	   (rpm * 6 degrees per second), times the sample rate. At least one
+	   sample, since a DMA block cannot be empty, and no longer than the
+	   stretch of background the delay link plays. One software divide - the
+	   only arithmetic left in here that scales with nothing. */
+	const uint32_t Rpm = VRG_GetRpm();
+	uint32_t Delay = (Rpm > 0)
+	               ? ((uint32_t)Knock_DelayDeg * KNOCK_SAMPLE_RATE) / (6u * Rpm)
+	               : 1u;
+	if (Delay < 1)
+		Delay = 1;
+	else if (Delay > KNOCK_DELAY_END)
+		Delay = KNOCK_DELAY_END;
+
+	/* Picks up any setting written over SWD. A one-off rebuild, which is the
+	   only time this interrupt runs long - so poke settings between tests,
+	   not while measuring. */
+	if (!KnockRingValid || Severity != KnockRingSeverity || Knock_Decay != KnockRingDecay ||
+	    Ring != KnockRingLength || KnockNoiseLevel != KnockRingNoiseLevel)
+		Knock_BuildRing(Severity, Ring, Knock_Decay);
+
+	/* Knock on the first Knock_Count of every Knock_Every ignitions, and play
+	   the background alone on the rest. A knock chip judges knock against a
+	   background level it keeps learning, so the same burst on every ignition
+	   just becomes the background, however big: severity 255 on every spark
+	   gave a knock level of 0. The quiet ignitions play the same stretch of
+	   background the ring was built over, with no knock added. */
+	bool Knocks = true;
+	if (Knock_Every > 1)
+	{
+		if (++Knock_Ignition >= Knock_Every)
+			Knock_Ignition = 0;
+		if (Knock_Ignition >= Knock_Count)
+			Knocks = false;
+	}
+
+	/* The ring, then the rest of the background */
+	KnockRingDesc.BTCTRL.reg = DMAC_BTCTRL_STEPSIZE_X1 | DMAC_BTCTRL_STEPSEL_SRC | DMAC_BTCTRL_SRCINC | DMAC_BTCTRL_BEATSIZE_HWORD |
+	                           DMAC_BTCTRL_BLOCKACT_NOACT | DMAC_BTCTRL_VALID;
+	KnockRingDesc.BTCNT.reg = (uint16_t)Ring;
+	KnockRingDesc.SRCADDR.reg = Knocks ? (uint32_t)&KnockWaveform[Ring] : (uint32_t)&KnockNoise[Ring];
+	KnockRingDesc.DSTADDR.reg = (uint32_t)&DAC->DATA;
+	KnockRingDesc.DESCADDR.reg = (uint32_t)&KnockTailDesc;
+
+	KnockTailDesc.BTCNT.reg = (uint16_t)(KNOCK_NOISE_SAMPLES - Ring);
+
+	/* The delay: background ending on a whole cycle at KNOCK_DELAY_END, then
+	   on into the ring. (DMAC source addresses are the END of the block.) */
 	DMAC_Descriptor_t *DmaDesc = DMAC_ChannelGetBaseDescriptor(Knock_DmaChannel);
 	DmaDesc->BTCTRL.reg = DMAC_BTCTRL_STEPSIZE_X1 | DMAC_BTCTRL_STEPSEL_SRC | DMAC_BTCTRL_SRCINC | DMAC_BTCTRL_BEATSIZE_HWORD |
 						  DMAC_BTCTRL_BLOCKACT_NOACT | DMAC_BTCTRL_VALID;
-	DmaDesc->BTCNT.reg = KNOCK_SAMPLES;
-	DmaDesc->SRCADDR.reg = (uint32_t)&KnockWaveform[KNOCK_SAMPLES];
+	DmaDesc->BTCNT.reg = (uint16_t)Delay;
+	DmaDesc->SRCADDR.reg = (uint32_t)&KnockNoise[KNOCK_DELAY_END];
 	DmaDesc->DSTADDR.reg = (uint32_t)&DAC->DATA;
-	DmaDesc->DESCADDR.reg = (uint32_t)&KnockNoiseDesc;
+	DmaDesc->DESCADDR.reg = (uint32_t)&KnockRingDesc;
 
 	/* Enable DMA complete interrupt */
 	DMAC->CHINTENSET.reg = DMAC_CHINTENSET_MASK;
@@ -219,17 +331,17 @@ void Knock_Init(void)
 	/* Allocate DMA channels for DAC output */
 	Knock_DmaChannel = DMAC_ChannelAllocate(Knock_Interrupt, NULL);
 
-	/* The background, and the descriptor that plays it: everything after the
-	   first KNOCK_SAMPLES, which the burst has already played with the knock
-	   mixed in. */
+	/* The background, and the tail link that plays out the rest of it after
+	   the ring. Only its length changes per ignition, set in Knock_Trigger;
+	   its end address is always the end of the buffer. */
 	Knock_BuildNoise(Knock_Noise);
 
-	KnockNoiseDesc.BTCTRL.reg = DMAC_BTCTRL_STEPSIZE_X1 | DMAC_BTCTRL_STEPSEL_SRC | DMAC_BTCTRL_SRCINC | DMAC_BTCTRL_BEATSIZE_HWORD |
-	                            DMAC_BTCTRL_BLOCKACT_INT | DMAC_BTCTRL_VALID;
-	KnockNoiseDesc.BTCNT.reg = KNOCK_NOISE_SAMPLES - KNOCK_SAMPLES;
-	KnockNoiseDesc.SRCADDR.reg = (uint32_t)&KnockNoise[KNOCK_NOISE_SAMPLES];
-	KnockNoiseDesc.DSTADDR.reg = (uint32_t)&DAC->DATA;
-	KnockNoiseDesc.DESCADDR.reg = 0;
+	KnockTailDesc.BTCTRL.reg = DMAC_BTCTRL_STEPSIZE_X1 | DMAC_BTCTRL_STEPSEL_SRC | DMAC_BTCTRL_SRCINC | DMAC_BTCTRL_BEATSIZE_HWORD |
+	                           DMAC_BTCTRL_BLOCKACT_INT | DMAC_BTCTRL_VALID;
+	KnockTailDesc.BTCNT.reg = 1;
+	KnockTailDesc.SRCADDR.reg = (uint32_t)&KnockNoise[KNOCK_NOISE_SAMPLES];
+	KnockTailDesc.DSTADDR.reg = (uint32_t)&DAC->DATA;
+	KnockTailDesc.DESCADDR.reg = 0;
 
 	/* Enable TC0 Bus clock */
 	MCLK->APBCMASK.reg |= MCLK_APBCMASK_TC0;

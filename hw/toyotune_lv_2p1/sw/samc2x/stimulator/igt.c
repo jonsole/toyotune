@@ -126,7 +126,7 @@ void IGT_Init(void)
 
 	/* Enable TCC1 capture interrupts */
 	TCC1->INTENSET.reg = TCC_INTENSET_MC0 | TCC_INTENSET_MC1;
-	NVIC_SetPriority(TCC1_IRQn, 1);
+	NVIC_SetPriority(TCC1_IRQn, 2);	/* Below TCC0: the crank pattern must never wait for knock */
 	NVIC_EnableIRQ(TCC1_IRQn);
 
 	/* Enable TCC1 */
