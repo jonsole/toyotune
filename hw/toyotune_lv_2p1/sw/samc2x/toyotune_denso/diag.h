@@ -85,7 +85,11 @@ typedef void (*Diag_WriteComplete_t)(bool Ok);
 extern void Diag_SetWriteCompleteHandler(Diag_WriteComplete_t Handler);
 
 /* Used by the CAN command layer to queue reads of its own. */
-extern uint16_t Diag_Time(void);
+/* Milliseconds since boot. 32-bit: it used to be returned as uint16_t,
+   which wrapped every 65.5 s - and rtime.h's comparisons are not
+   wrap-safe at 16 bits, so after the first wrap every periodic read
+   looked permanently in the future and never ran again. */
+extern uint32_t Diag_Time(void);
 extern void Diag_ReadEntryInsert(Diag_t *Diag, Diag_ReadEntry_t *EntryNew);
 
 extern void Diag_Init(void);

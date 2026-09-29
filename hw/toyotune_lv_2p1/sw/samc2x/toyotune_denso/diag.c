@@ -76,7 +76,7 @@ void Diag_SetWriteCompleteHandler(Diag_WriteComplete_t Handler)
 
 
 /***************************************************************************************/
-uint16_t Diag_Time(void)
+uint32_t Diag_Time(void)
 {
 	return Diag_TimeMs;
 }
@@ -105,11 +105,29 @@ void Diag_TimerTick(Diag_t *Diag)
 }
 
 /***************************************************************************************/
+/* Entries that were already in the list when someone tried to insert them.
+   Should stay zero; a non-zero value means some path has double-completed a
+   read, which the guard in Diag_Task is there to prevent. */
+uint32_t Diag_DoubleInserts;
+
 void Diag_ReadEntryInsert(Diag_t * Diag, Diag_ReadEntry_t *EntryNew)
 {
 	Diag_ReadEntry_t **EntryRef, *Entry;
 	const time_t Time = EntryNew->Time;
-	
+
+	/* An entry inserted twice ends up pointing at itself, and the next walk of
+	   the list never finishes - the whole board hangs, the Denso with it.
+	   Refuse rather than corrupt: the list is a handful of entries, so the
+	   extra walk is nothing next to what it prevents. */
+	for (Entry = Diag->ReadList; Entry != NULL; Entry = Entry->Next)
+	{
+		if (Entry == EntryNew)
+		{
+			Diag_DoubleInserts++;
+			return;
+		}
+	}
+
 	for (EntryRef = &Diag->ReadList; (Entry = *EntryRef) != NULL; EntryRef = &Entry->Next)
 		if (Time_Lt(Time, Entry->Time))
 			break;
@@ -586,8 +604,18 @@ void Diag_Task(void *Context)
 		}
 #endif
 	
-		/* Check if read data is available from interrupt */
-		if (Signals & DIAG_SIGNAL_READ)
+		/* Check if read data is available from interrupt.
+
+		   ONLY in AVAILABLE. Diag_TimerTick re-raises this signal on every tick
+		   while a read sits in AVAILABLE, in case the first wakeup was missed -
+		   so a re-raise that lands after this branch has consumed the signal
+		   but before it has moved the state on arrives as a stale signal on
+		   the next pass. Unguarded, that ran the completion twice and
+		   re-inserted an entry already in the list, which makes it point at
+		   itself: the board then spun for ever in Diag_ReadEntryInsert, the
+		   Denso and CAN both dead. Found 2026-09-29, the first time a periodic
+		   read ran continuously (diag_can.c's standing knock read). */
+		if ((Signals & DIAG_SIGNAL_READ) && Diag->ReadState == DIAG_READ_AVAILABLE)
 		{
 			const uint8_t ReadSize = Diag->ReadSize > 2 ? 2 : Diag->ReadSize;
 
