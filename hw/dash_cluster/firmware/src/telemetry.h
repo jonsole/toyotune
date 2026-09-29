@@ -36,6 +36,9 @@
 #define TELEMETRY_OFFSET_RAW		(4u)
 #define TELEMETRY_OFFSET_MEDIUM3	(5u)
 #define TELEMETRY_OFFSET_INFO		(6u)
+/* Read out of the ECU's RAM by the board, not sniffed off the inter-CPU link.
+   Goes silent rather than repeat itself when those reads stop. */
+#define TELEMETRY_OFFSET_LIVE		(7u)
 
 
 /* Select which board this node decodes. Call before Telemetry_Handle(). */

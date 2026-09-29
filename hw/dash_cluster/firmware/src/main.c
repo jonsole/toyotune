@@ -1024,7 +1024,7 @@ static void Core1Main(void)
 		}
 
 		/* A fault ends any swipe where it stands. */
-		if (Swipe.State != SWIPE_IDLE && Pages_WarningActive(NowMs))
+		if (Swipe.State != SWIPE_IDLE && Pages_TakeoverActive(NowMs))
 			Swipe.State = SWIPE_IDLE;
 
 		switch (Swipe.State)
@@ -1036,7 +1036,7 @@ static void Core1Main(void)
 			int32_t Ax = (Dx < 0) ? -Dx : Dx;
 			int32_t Ay = (Dy < 0) ? -Dy : Dy;
 
-			if (Down && Swipe.Down && Cur->Valid && !Pages_WarningActive(NowMs)
+			if (Down && Swipe.Down && Cur->Valid && !Pages_TakeoverActive(NowMs)
 			    && Ax >= CORE1_DRAG_START_PX && Ax > 2 * Ay)
 			{
 				Swipe.Axis = 0u;
@@ -1055,7 +1055,7 @@ static void Core1Main(void)
 			/* Up or down flips the page to its other view, which comes in from
 			   the side the finger is moving away from - up brings it from
 			   below, as on a phone. Same thresholds, same momentum. */
-			else if (Down && Swipe.Down && Cur->Valid && !Pages_WarningActive(NowMs)
+			else if (Down && Swipe.Down && Cur->Valid && !Pages_TakeoverActive(NowMs)
 			         && Pages_HasAlt(Cur->Page)
 			         && Ay >= CORE1_DRAG_START_PX && Ay > 2 * Ax)
 			{
@@ -1602,7 +1602,7 @@ static void Core1Main(void)
 		if (Page != LastPage)
 		{
 			printf("\n-- page %u: %s%s --\n", Page, Pages[Page].Name,
-			       Pages_WarningActive(NowMs) ? "  (FAULT TAKEOVER)" : "");
+			       Pages_TakeoverActive(NowMs) ? "  (FAULT TAKEOVER)" : "");
 			LastPage = Page;
 		}
 

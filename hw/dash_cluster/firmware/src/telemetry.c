@@ -39,7 +39,9 @@ static const TelemetrySignal_t TelemetrySignals[] =
 	{ TELEMETRY_OFFSET_MEDIUM1, 6, 2, false, SIGNAL_BATTERY },
 
 	{ TELEMETRY_OFFSET_MEDIUM2, 0, 2, false, SIGNAL_INJ_DUTY },
-	{ TELEMETRY_OFFSET_MEDIUM2, 2, 2, true,  SIGNAL_KNOCK_RETARD },
+	/* Not knock: the sum CPU1 subtracts from its spark ceiling, of which knock
+	   is one term. Knock itself comes in LIVE, below. */
+	{ TELEMETRY_OFFSET_MEDIUM2, 2, 2, true,  SIGNAL_IGN_RETARD_SUM },
 	{ TELEMETRY_OFFSET_MEDIUM2, 4, 1, false, SIGNAL_IGN_TIMING_RAW },
 	{ TELEMETRY_OFFSET_MEDIUM2, 5, 1, false, SIGNAL_ISCV_DUTY_RAW },
 	{ TELEMETRY_OFFSET_MEDIUM2, 6, 1, false, SIGNAL_LAMBDA_RAW },
@@ -64,7 +66,10 @@ static const TelemetrySignal_t TelemetrySignals[] =
 	{ TELEMETRY_OFFSET_INFO, 1, 1, false, SIGNAL_ECU_FAMILY },
 	{ TELEMETRY_OFFSET_INFO, 2, 1, false, SIGNAL_CPU_INDEX },
 	{ TELEMETRY_OFFSET_INFO, 4, 2, false, SIGNAL_TX_DROPPED },
-	{ TELEMETRY_OFFSET_INFO, 6, 2, false, SIGNAL_BUS_OFF_RECOVERIES }
+	{ TELEMETRY_OFFSET_INFO, 6, 2, false, SIGNAL_BUS_OFF_RECOVERIES },
+
+	/* CPU1's knock integrator, read from its RAM by the board. */
+	{ TELEMETRY_OFFSET_LIVE, 0, 2, true,  SIGNAL_KNOCK_RETARD }
 };
 
 #define TELEMETRY_SIGNAL_COUNT \
@@ -118,7 +123,7 @@ bool Telemetry_Handle(uint16_t Id, const uint8_t *Data, uint8_t Length,
 
 	/* The diagnostic pair sits at +10/+11 in the same block, and the RAW tier
 	   is not decoded, so anything outside the frames below is not ours. */
-	if (Offset > TELEMETRY_OFFSET_INFO || Offset == TELEMETRY_OFFSET_RAW)
+	if (Offset > TELEMETRY_OFFSET_LIVE || Offset == TELEMETRY_OFFSET_RAW)
 		return false;
 
 	for (i = 0; i < TELEMETRY_SIGNAL_COUNT; i++)

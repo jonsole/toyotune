@@ -17,6 +17,7 @@
 #define MEDIUM_MS	(100)
 #define SLOW_MS		(500)
 #define INFO_MS		(1000)
+#define LIVE_MS		(50)
 
 const SignalDescriptor_t SignalDescriptors[SIGNAL_COUNT] =
 {
@@ -31,7 +32,7 @@ const SignalDescriptor_t SignalDescriptors[SIGNAL_COUNT] =
 	[SIGNAL_BATTERY]       = { "Battery", "V",    2,     0,  1800, MEDIUM_MS },
 
 	[SIGNAL_INJ_DUTY]      = { "Duty",    "%",    2,     0, 10000, MEDIUM_MS },
-	[SIGNAL_KNOCK_RETARD]  = { "Knock",   "deg",  2,     0,  2000, MEDIUM_MS },
+	[SIGNAL_IGN_RETARD_SUM]= { "RetSum",  "deg",  2,     0, 13000, MEDIUM_MS },
 	[SIGNAL_IGN_TIMING_RAW]= { "IgnRaw",  "",     0,     0,   255, MEDIUM_MS },
 	[SIGNAL_ISCV_DUTY_RAW] = { "ISCV",    "",     0,     0,   255, MEDIUM_MS },
 	[SIGNAL_LAMBDA_RAW]    = { "O2raw",   "",     0,     0,   255, MEDIUM_MS },
@@ -57,6 +58,8 @@ const SignalDescriptor_t SignalDescriptors[SIGNAL_COUNT] =
 	[SIGNAL_CPU_INDEX]         = { "CPU",    "", 0, 0,   255, INFO_MS },
 	[SIGNAL_TX_DROPPED]        = { "TxDrop", "", 0, 0, 65535, INFO_MS },
 	[SIGNAL_BUS_OFF_RECOVERIES]= { "BusOff", "", 0, 0, 65535, INFO_MS },
+
+	[SIGNAL_KNOCK_RETARD]  = { "Knock",   "deg",  2,     0,  2000, LIVE_MS },
 
 	/* The wideband. Its period is a guess until the device is logged. */
 	[SIGNAL_AFR]           = { "AFR",     "",     2,   700,  2200, FAST_MS },

@@ -175,6 +175,12 @@ extern const FaceElement_t *Pages_Elements(uint8_t Page, uint8_t View, uint8_t *
    this outranks the selection rather than being another page in the list. */
 extern bool Pages_WarningActive(uint32_t NowMs);
 
+/* Whether the warning is actually TAKING THE SCREEN OVER: the warning, and
+   DASH_WARNING_TAKEOVER on. Everything that exists because of the takeover -
+   the page substitution, refusing swipes, cutting the splash short - asks
+   this. Only detection itself (the chime) asks Pages_WarningActive(). */
+extern bool Pages_TakeoverActive(uint32_t NowMs);
+
 
 /* What tripped the takeover first, latched: on a ramp the warning can come
    and go between two status lines, and "it went blank somewhere around 2400"

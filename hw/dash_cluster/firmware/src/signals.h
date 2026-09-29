@@ -41,7 +41,7 @@ typedef enum
 
 	/* MEDIUM2, 100 ms - fuelling and ignition trim */
 	SIGNAL_INJ_DUTY,
-	SIGNAL_KNOCK_RETARD,
+	SIGNAL_IGN_RETARD_SUM,	/* NOT knock - see telemetry.c */
 	SIGNAL_IGN_TIMING_RAW,
 	SIGNAL_ISCV_DUTY_RAW,
 	SIGNAL_LAMBDA_RAW,
@@ -70,6 +70,12 @@ typedef enum
 	SIGNAL_CPU_INDEX,
 	SIGNAL_TX_DROPPED,
 	SIGNAL_BUS_OFF_RECOVERIES,
+
+	/* LIVE, 50 ms - read out of the ECU's RAM by the board. Knock retard is
+	   CPU1's integrator var_knock_retard, hundredths of a degree: what knock
+	   alone is costing the spark. Absent, not stale-repeated, when the board
+	   cannot read it. */
+	SIGNAL_KNOCK_RETARD,
 
 	/* Other devices on the bus: the 14Point7 Spartan 3 wideband (PLAN.md 4.9),
 	   which reports both the mixture and, from its thermocouple input, the

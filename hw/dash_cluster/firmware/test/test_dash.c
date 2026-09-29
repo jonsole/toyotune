@@ -535,6 +535,7 @@ static void TestWarningTakeover(void)
 
 static void TestKnockThreshold(void)
 {
+	uint8_t Live[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 	uint8_t Med2[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
 	printf("pages - knock threshold\n");
@@ -542,16 +543,30 @@ static void TestKnockThreshold(void)
 	Telemetry_Init(TELEMETRY_BASE_CPU1);
 	Pages_Init(0, 0);
 
-	/* Just under threshold: normal running, no takeover. */
-	Med2[2] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 - 100) >> 8);
-	Med2[3] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 - 100) & 0xFF);
-	Telemetry_Handle(0x402, Med2, 8, 1000);
+	/* Knock comes from the LIVE frame, read out of CPU1's RAM. Just under
+	   threshold: normal running, no takeover. */
+	Live[0] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 - 100) >> 8);
+	Live[1] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 - 100) & 0xFF);
+	Telemetry_Handle(0x407, Live, 8, 1000);
 	CHECK(!Pages_WarningActive(1000), "knock below threshold does not warn");
 
-	Med2[2] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 + 100) >> 8);
-	Med2[3] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 + 100) & 0xFF);
-	Telemetry_Handle(0x402, Med2, 8, 1100);
-	CHECK(Pages_WarningActive(1100), "knock above threshold warns");
+	Live[0] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 + 100) >> 8);
+	Live[1] = (uint8_t)((PAGES_KNOCK_WARN_DEG100 + 100) & 0xFF);
+	Telemetry_Handle(0x407, Live, 8, 1020);
+	CHECK(Pages_WarningActive(1020), "knock above threshold warns");
+
+	/* MEDIUM2's retard sum is NOT knock. Outside test mode it carries a fixed
+	   13 degrees, so reading it as knock would hold the warning on
+	   permanently. With knock itself back to zero, a large sum must not warn. */
+	SignalStore_Init();
+	Live[0] = 0;
+	Live[1] = 0;
+	Telemetry_Handle(0x407, Live, 8, 2000);
+	Med2[2] = (uint8_t)(1300 >> 8);		/* 13.00 deg */
+	Med2[3] = (uint8_t)(1300 & 0xFF);
+	Telemetry_Handle(0x402, Med2, 8, 2000);
+	CHECK(!Pages_WarningActive(2000),
+	      "the retard sum on MEDIUM2 does not raise a knock warning");
 }
 
 

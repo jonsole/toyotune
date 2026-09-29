@@ -105,7 +105,7 @@ bool UiSplash_Run(uint8_t Surface, uint8_t NodeId)
 		/* A fault takes the screen now, and a touch means the driver wants
 		   the gauges now. Either way the splash stops where it is. */
 		Panel_TouchService();
-		if (Pages_WarningActive(NowMs) || Panel_TouchDown(&Tx, &Ty))
+		if (Pages_TakeoverActive(NowMs) || Panel_TouchDown(&Tx, &Ty))
 		{
 			UiSplash_Black(Surface);
 			return false;

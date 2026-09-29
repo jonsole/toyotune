@@ -538,16 +538,25 @@ bool Pages_WarningActive(uint32_t NowMs)
 
 
 /***************************************************************************************/
-uint8_t Pages_Effective(uint32_t NowMs)
+bool Pages_TakeoverActive(uint32_t NowMs)
 {
 #if DASH_WARNING_TAKEOVER
-	return Pages_WarningActive(NowMs) ? (uint8_t)PAGE_WARNING : Current;
+	return Pages_WarningActive(NowMs);
 #else
-	/* The takeover is off, so the selected page stays on the glass. The
-	   condition is still evaluated - by the chime, and by the trip latch in
-	   the status line - so nothing stops being DETECTED, it just stops
-	   covering the gauges with a page that has not been drawn yet. */
+	/* The takeover is off. The warning is still DETECTED - the chime and the
+	   status line's trip latch ask Pages_WarningActive() directly - but
+	   nothing that follows from a takeover happens: the selected page stays
+	   on the glass, swipes work, the splash plays. Switching off only the
+	   page substitution left the rest behind, and a standing code 52 then
+	   cut the splash short at every power-up and froze the dash on its
+	   startup page with swiping dead. */
 	(void)NowMs;
-	return Current;
+	return false;
 #endif
+}
+
+
+uint8_t Pages_Effective(uint32_t NowMs)
+{
+	return Pages_TakeoverActive(NowMs) ? (uint8_t)PAGE_WARNING : Current;
 }
