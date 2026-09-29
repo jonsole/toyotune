@@ -51,6 +51,7 @@
 #include "config.h"
 #include "can_telemetry.h"
 #include "can.h"
+#include "diag_can.h"
 #include "ecu.h"
 #include "ecu_scale.h"
 #include "os.h"
@@ -68,13 +69,23 @@
 #define CAN_PERIOD_SLOW				(500)
 #define CAN_PERIOD_RAW				(50)
 #define CAN_PERIOD_INFO				(1000)
+/* As often as diag_can.c reads the values it carries - faster would only
+   repeat them. */
+#define CAN_PERIOD_LIVE				(50)
+
+/* LIVE goes quiet rather than repeat itself once its reads stop: a value that
+   froze on the bus while the link looked alive sent a whole bench session
+   after the wrong fault. Several read periods, so one slow read is not a gap. */
+#define CAN_LIVE_STALE_MS			(500)
 
 
-/* Which DMA block a signal is sourced from. */
+/* Where a signal is sourced from: one of the two DMA blocks sniffed off the
+   inter-CPU link, or the values the board reads out of the ECU's RAM itself. */
 typedef enum
 {
 	CAN_SRC_CPU1_TO_CPU2,
-	CAN_SRC_CPU2_TO_CPU1
+	CAN_SRC_CPU2_TO_CPU1,
+	CAN_SRC_LIVE
 } CanTelemetry_Source_t;
 
 
@@ -147,6 +158,7 @@ enum
 	CAN_FRAME_SLOW,
 	CAN_FRAME_RAW,
 	CAN_FRAME_INFO,
+	CAN_FRAME_LIVE,
 	CAN_FRAME_COUNT
 };
 
@@ -178,7 +190,10 @@ static const CanTelemetry_Frame_t CanTelemetry_Frames[CAN_FRAME_COUNT] =
 	   firmware/DBC mismatch and say so, rather than displaying plausible
 	   nonsense, and it puts the drop counters on the bus where they are
 	   actually visible. */
-	[CAN_FRAME_INFO]    = { TOYOTUNE_CAN_ID_INFO,    CAN_PERIOD_INFO,   8 }
+	[CAN_FRAME_INFO]    = { TOYOTUNE_CAN_ID_INFO,    CAN_PERIOD_INFO,   8 },
+	/* Read straight out of the ECU's RAM over the diagnostic link - see
+	   diag_can.c. Eight bytes for the room: one signal so far. */
+	[CAN_FRAME_LIVE]    = { TOYOTUNE_CAN_ID_LIVE,    CAN_PERIOD_LIVE,   8 }
 };
 
 
@@ -212,15 +227,14 @@ static const CanTelemetry_Signal_t CanTelemetry_Signals[] =
 	   injector duty, filled in by CanTelemetry_SendFrame() rather than by a
 	   row here. The four single-byte signals are still raw: none of their
 	   transfer functions is established. */
-	{ CAN_FRAME_MEDIUM2, 2, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, KnockRetard), CAN_XFORM_RETARD },
+	{ CAN_FRAME_MEDIUM2, 2, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, IgnRetardSum), CAN_XFORM_RETARD },
 	{ CAN_FRAME_MEDIUM2, 4, CAN_SRC_CPU2_TO_CPU1, offsetof(ECU_DmaData2_t, IgnTiming),   CAN_XFORM_COPY8 },
 	{ CAN_FRAME_MEDIUM2, 5, CAN_SRC_CPU2_TO_CPU1, offsetof(ECU_DmaData2_t, IscvDuty),    CAN_XFORM_COPY8 },
 	{ CAN_FRAME_MEDIUM2, 6, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, AdcLambda),   CAN_XFORM_COPY8 },
 	{ CAN_FRAME_MEDIUM2, 7, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, PwLoopMode),  CAN_XFORM_COPY8 },
 
 	/* Medium 3 - per-cylinder knock retard, scaled to degrees.
-	   KnockRetardCpu2 has no seat here: it is CPU2's copy of a value already
-	   carried as KnockRetard, and the RAW frame still has it. */
+	   KnockRetardCpu2 has no seat here; the RAW frame still has it. */
 	{ CAN_FRAME_MEDIUM3, 0, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, KnockRetardInfo) + 0, CAN_XFORM_RETARD },
 	{ CAN_FRAME_MEDIUM3, 2, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, KnockRetardInfo) + 1, CAN_XFORM_RETARD },
 	{ CAN_FRAME_MEDIUM3, 4, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, KnockRetardInfo) + 2, CAN_XFORM_RETARD },
@@ -236,7 +250,13 @@ static const CanTelemetry_Signal_t CanTelemetry_Signals[] =
 	{ CAN_FRAME_SLOW, 4, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, ErrorFlags2), CAN_XFORM_COPY8 },
 	{ CAN_FRAME_SLOW, 5, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, Flags46),     CAN_XFORM_COPY8 },
 	{ CAN_FRAME_SLOW, 6, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, Flags1),      CAN_XFORM_COPY8 },
-	{ CAN_FRAME_SLOW, 7, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, LimiterFlags), CAN_XFORM_COPY8 }
+	{ CAN_FRAME_SLOW, 7, CAN_SRC_CPU1_TO_CPU2, offsetof(ECU_DmaData1_t, LimiterFlags), CAN_XFORM_COPY8 },
+
+	/* Live - read out of the ECU's RAM, not off the link. The knock
+	   integrator, which is what "knock retard" actually means; MEDIUM2's
+	   IgnRetardSum is the sum CPU1 subtracts from its spark ceiling, of which
+	   knock is one term of four. */
+	{ CAN_FRAME_LIVE, 0, CAN_SRC_LIVE, offsetof(DiagCan_LiveBlock_t, KnockRetard), CAN_XFORM_RETARD }
 };
 
 #else
@@ -253,7 +273,8 @@ typedef char CanTelemetry_PeriodCheck[
 	 && (CAN_PERIOD_MEDIUM % CAN_TELEMETRY_TICK_MS) == 0
 	 && (CAN_PERIOD_SLOW   % CAN_TELEMETRY_TICK_MS) == 0
 	 && (CAN_PERIOD_RAW    % CAN_TELEMETRY_TICK_MS) == 0
-	 && (CAN_PERIOD_INFO   % CAN_TELEMETRY_TICK_MS) == 0) ? 1 : -1];
+	 && (CAN_PERIOD_INFO   % CAN_TELEMETRY_TICK_MS) == 0
+	 && (CAN_PERIOD_LIVE   % CAN_TELEMETRY_TICK_MS) == 0) ? 1 : -1];
 
 /* A row whose offset plus its transform's destination width runs past the
    payload would write over the next signal or off the end of the buffer, and
@@ -280,6 +301,8 @@ static struct
 {
 	uint16_t Elapsed[CAN_FRAME_COUNT];	/* ms since each frame last went out */
 	uint8_t RawSlice;
+	uint32_t LiveReads;			/* DiagCan_Live.Reads when last seen to move */
+	uint16_t LiveQuietMs;			/* ms since it last moved */
 	uint32_t Stack[256];
 } CanTelemetry;
 
@@ -375,7 +398,8 @@ static uint32_t CanTelemetry_Apply(uint8_t Xform, uint32_t Raw)
 /***************************************************************************************/
 static void CanTelemetry_SendFrame(uint8_t FrameIndex,
                                    const ECU_DmaData1_t *Cpu1ToCpu2,
-                                   const ECU_DmaData2_t *Cpu2ToCpu1)
+                                   const ECU_DmaData2_t *Cpu2ToCpu1,
+                                   const DiagCan_LiveBlock_t *Live)
 {
 	const CanTelemetry_Frame_t *Frame = &CanTelemetry_Frames[FrameIndex];
 	uint8_t Payload[8];
@@ -388,9 +412,14 @@ static void CanTelemetry_SendFrame(uint8_t FrameIndex,
 		if (Signal->Frame != FrameIndex)
 			continue;
 
-		const uint8_t *Block = (Signal->Source == CAN_SRC_CPU1_TO_CPU2)
-		                     ? (const uint8_t *)Cpu1ToCpu2
-		                     : (const uint8_t *)Cpu2ToCpu1;
+		const uint8_t *Block;
+		switch ((CanTelemetry_Source_t)Signal->Source)
+		{
+		case CAN_SRC_CPU1_TO_CPU2: Block = (const uint8_t *)Cpu1ToCpu2; break;
+		case CAN_SRC_CPU2_TO_CPU1: Block = (const uint8_t *)Cpu2ToCpu1; break;
+		case CAN_SRC_LIVE:
+		default:                   Block = (const uint8_t *)Live;       break;
+		}
 		const CanTelemetry_XformInfo_t *Info = &CanTelemetry_XformInfo[Signal->Xform];
 
 		/* See the note by CanTelemetry_PeriodCheck: drop a row that would
@@ -525,6 +554,22 @@ static void CanTelemetry_Task(void *Context)
 		   error counters say. */
 		bool HaveData = ECU_GetDmaSnapshot(&Cpu1ToCpu2, &Cpu2ToCpu1);
 
+		/* The live values are fresh while their read counter keeps moving. */
+		const uint32_t Reads = DiagCan_Live.Reads;
+		if (Reads != CanTelemetry.LiveReads)
+		{
+			CanTelemetry.LiveReads = Reads;
+			CanTelemetry.LiveQuietMs = 0;
+		}
+		else if (CanTelemetry.LiveQuietMs < CAN_LIVE_STALE_MS)
+		{
+			CanTelemetry.LiveQuietMs += CAN_TELEMETRY_TICK_MS;
+		}
+
+		const bool LiveFresh = DiagCan_LiveEnabled()
+		                    && (CanTelemetry.LiveQuietMs < CAN_LIVE_STALE_MS);
+		const DiagCan_LiveBlock_t Live = { DiagCan_Live.KnockRetard };
+
 		for (uint8_t i = 0; i < CAN_FRAME_COUNT; i++)
 		{
 			CanTelemetry.Elapsed[i] += CAN_TELEMETRY_TICK_MS;
@@ -535,12 +580,20 @@ static void CanTelemetry_Task(void *Context)
 
 			if (i == CAN_FRAME_INFO)
 				CanTelemetry_SendInfo();
+			else if (i == CAN_FRAME_LIVE)
+			{
+				/* Independent of the DMA snapshot: these are read over the
+				   diagnostic link, not sniffed. Held back, not repeated, once
+				   the reads stop - see CAN_LIVE_STALE_MS. */
+				if (LiveFresh)
+					CanTelemetry_SendFrame(i, &Cpu1ToCpu2, &Cpu2ToCpu1, &Live);
+			}
 			else if (!HaveData)
 				continue;
 			else if (i == CAN_FRAME_RAW)
 				CanTelemetry_SendRaw(&Cpu1ToCpu2, &Cpu2ToCpu1);
 			else
-				CanTelemetry_SendFrame(i, &Cpu1ToCpu2, &Cpu2ToCpu1);
+				CanTelemetry_SendFrame(i, &Cpu1ToCpu2, &Cpu2ToCpu1, &Live);
 		}
 	}
 }
@@ -555,6 +608,10 @@ void CanTelemetry_Init(void)
 	   which would burst several frames back to back. */
 	for (uint8_t i = 0; i < CAN_FRAME_COUNT; i++)
 		CanTelemetry.Elapsed[i] = (uint16_t)(i * CAN_TELEMETRY_TICK_MS);
+
+	/* Stale until the first read lands, so nothing goes out as a reading
+	   before anything has actually been read. */
+	CanTelemetry.LiveQuietMs = CAN_LIVE_STALE_MS;
 
 	OS_TaskInit(CAN_TELEMETRY_TASK_ID, CanTelemetry_Task, &CanTelemetry,
 	            CanTelemetry.Stack, sizeof(CanTelemetry.Stack));

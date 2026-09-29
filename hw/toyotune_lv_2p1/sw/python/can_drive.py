@@ -86,7 +86,8 @@ def sweep(t, cycle_s, fault):
         "Tham": 25.0 + boost * 30.0,
         "Battery": 13.9,
         "InjDuty": x * 85.0,
-        "KnockRetard": 0.0,
+        "IgnRetardSum": 0.0,    # Medium2: the retard sum, not knock alone
+        "KnockRetard": 0.0,     # Live: the knock integrator itself
         "ErrorFlags1": 0x04 if fault else 0,
     }
 

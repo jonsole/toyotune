@@ -68,7 +68,14 @@ typedef struct
 	uint8_t ObdIscv;			/* 0x219 */
 	uint8_t ObdO2Sensor;		/* 0x21A  the ST205 disassembly used to call this
 							   fuel trim; that annotation was wrong */
-	uint8_t KnockRetard;		/* 0x21B  current retard, decays 2 per 4ms */
+	uint8_t IgnRetardSum;		/* 0x21B  NOT knock retard, though it used to be
+							   named so: the sum CPU1 subtracts from its spark
+							   ceiling in iv6_ne_process - overrun advance, the
+							   knock command, +26 counts outside test mode, and
+							   the limiter ramp (calc_4ms_corrections EEBD-EEDB).
+							   Knock alone is var_knock_retard at CPU1 0x01B3,
+							   which never crosses this link - diag_can.c reads
+							   it directly. ~0.5 deg per count. */
 	uint8_t PwLoopMode;			/* 0x21C  0 open loop, 0xC8 closed loop */
 	uint8_t TpsDelta;			/* 0x21D */
 	uint8_t ErrorFlags1;		/* 0x21E */

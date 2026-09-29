@@ -48,7 +48,7 @@ FRAMES = [
     ]),
     (2, "Medium2", 8, 100, [
         ("InjDuty",    0, 16, U, 0.01, 0, 200, "%", "Injector duty, derived from InjPw and Rpm"),
-        ("KnockRetard", 2, 16, S, 0.01, 0, 30, "deg", "Current knock retard, positive magnitude"),
+        ("IgnRetardSum", 2, 16, S, 0.01, 0, 130, "deg", "NOT knock alone: the sum CPU1 subtracts from its spark ceiling - overrun advance + knock command + 13 deg outside test mode + limiter ramp. Knock is Live.KnockRetard"),
         ("IgnTimingRaw", 4, 8, U,   1, 0, 255, "", "Ignition timing, RAW - scaling ambiguous, see PLAN.md 3.6b"),
         ("IscvDutyRaw", 5, 8, U,    1, 0, 255, "", "Idle valve duty, RAW - transfer function not established"),
         ("LambdaRaw",  6, 8, U,     1, 0, 255, "", "Narrowband O2 ADC, RAW - not a wideband reading"),
@@ -88,6 +88,12 @@ FRAMES = [
         ("Reserved",        3, 8, U, 1, 0, 255, "", ""),
         ("TxDropped",       4, 16, U, 1, 0, 65535, "", "Frames dropped, saturating. Non-zero means the bus is unhappy"),
         ("BusOffRecoveries", 6, 16, U, 1, 0, 65535, "", "Bus-off recoveries, saturating"),
+    ]),
+    # Read out of the ECU's RAM over the diagnostic link rather than sniffed off
+    # the inter-CPU link. Not sent at all once the reads stop, so silence here
+    # means stale, never a repeated old value. CPU1 MR2 builds only.
+    (7, "Live", 8, 50, [
+        ("KnockRetard", 0, 16, S, 0.01, 0, 30, "deg", "Knock retard: CPU1's integrator var_knock_retard, read live from RAM 0x01B3"),
     ]),
 ]
 

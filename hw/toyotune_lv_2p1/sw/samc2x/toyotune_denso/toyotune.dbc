@@ -20,7 +20,7 @@ BO_ 1025 TT_Cpu1_Medium1: 8 TT_CPU1
 
 BO_ 1026 TT_Cpu1_Medium2: 8 TT_CPU1
  SG_ InjDuty : 7|16@0+ (0.01,0) [0|200] "%" Vector__XXX
- SG_ KnockRetard : 23|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ IgnRetardSum : 23|16@0- (0.01,0) [0|130] "deg" Vector__XXX
  SG_ IgnTimingRaw : 39|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ IscvDutyRaw : 47|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ LambdaRaw : 55|8@0+ (1,0) [0|255] "" Vector__XXX
@@ -61,6 +61,9 @@ BO_ 1030 TT_Cpu1_Info: 8 TT_CPU1
  SG_ TxDropped : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
  SG_ BusOffRecoveries : 55|16@0+ (1,0) [0|65535] "" Vector__XXX
 
+BO_ 1031 TT_Cpu1_Live: 8 TT_CPU1
+ SG_ KnockRetard : 7|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+
 BO_ 1056 TT_Cpu2_Fast: 8 TT_CPU2
  SG_ Rpm : 7|16@0+ (1,0) [0|65535] "rpm" Vector__XXX
  SG_ TpsRaw : 23|16@0+ (1,0) [0|65535] "" Vector__XXX
@@ -75,7 +78,7 @@ BO_ 1057 TT_Cpu2_Medium1: 8 TT_CPU2
 
 BO_ 1058 TT_Cpu2_Medium2: 8 TT_CPU2
  SG_ InjDuty : 7|16@0+ (0.01,0) [0|200] "%" Vector__XXX
- SG_ KnockRetard : 23|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+ SG_ IgnRetardSum : 23|16@0- (0.01,0) [0|130] "deg" Vector__XXX
  SG_ IgnTimingRaw : 39|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ IscvDutyRaw : 47|8@0+ (1,0) [0|255] "" Vector__XXX
  SG_ LambdaRaw : 55|8@0+ (1,0) [0|255] "" Vector__XXX
@@ -116,6 +119,9 @@ BO_ 1062 TT_Cpu2_Info: 8 TT_CPU2
  SG_ TxDropped : 39|16@0+ (1,0) [0|65535] "" Vector__XXX
  SG_ BusOffRecoveries : 55|16@0+ (1,0) [0|65535] "" Vector__XXX
 
+BO_ 1063 TT_Cpu2_Live: 8 TT_CPU2
+ SG_ KnockRetard : 7|16@0- (0.01,0) [0|30] "deg" Vector__XXX
+
 
 CM_ BO_ 1024 "Period 20 ms.";
 CM_ SG_ 1024 Rpm "Engine speed";
@@ -129,7 +135,7 @@ CM_ SG_ 1025 Tham "Manifold air temperature";
 CM_ SG_ 1025 Battery "Battery voltage";
 CM_ BO_ 1026 "Period 100 ms.";
 CM_ SG_ 1026 InjDuty "Injector duty, derived from InjPw and Rpm";
-CM_ SG_ 1026 KnockRetard "Current knock retard, positive magnitude";
+CM_ SG_ 1026 IgnRetardSum "NOT knock alone: the sum CPU1 subtracts from its spark ceiling - overrun advance + knock command + 13 deg outside test mode + limiter ramp. Knock is Live.KnockRetard";
 CM_ SG_ 1026 IgnTimingRaw "Ignition timing, RAW - scaling ambiguous, see PLAN.md 3.6b";
 CM_ SG_ 1026 IscvDutyRaw "Idle valve duty, RAW - transfer function not established";
 CM_ SG_ 1026 LambdaRaw "Narrowband O2 ADC, RAW - not a wideband reading";
@@ -157,6 +163,8 @@ CM_ SG_ 1030 EcuFamily "0 MR2, 1 ST205";
 CM_ SG_ 1030 CpuIndex "Which Denso CPU this board is attached to";
 CM_ SG_ 1030 TxDropped "Frames dropped, saturating. Non-zero means the bus is unhappy";
 CM_ SG_ 1030 BusOffRecoveries "Bus-off recoveries, saturating";
+CM_ BO_ 1031 "Period 50 ms.";
+CM_ SG_ 1031 KnockRetard "Knock retard: CPU1's integrator var_knock_retard, read live from RAM 0x01B3";
 CM_ BO_ 1056 "Period 20 ms.";
 CM_ SG_ 1056 Rpm "Engine speed";
 CM_ SG_ 1056 TpsRaw "Throttle position, RAW ADC - transfer function not established";
@@ -169,7 +177,7 @@ CM_ SG_ 1057 Tham "Manifold air temperature";
 CM_ SG_ 1057 Battery "Battery voltage";
 CM_ BO_ 1058 "Period 100 ms.";
 CM_ SG_ 1058 InjDuty "Injector duty, derived from InjPw and Rpm";
-CM_ SG_ 1058 KnockRetard "Current knock retard, positive magnitude";
+CM_ SG_ 1058 IgnRetardSum "NOT knock alone: the sum CPU1 subtracts from its spark ceiling - overrun advance + knock command + 13 deg outside test mode + limiter ramp. Knock is Live.KnockRetard";
 CM_ SG_ 1058 IgnTimingRaw "Ignition timing, RAW - scaling ambiguous, see PLAN.md 3.6b";
 CM_ SG_ 1058 IscvDutyRaw "Idle valve duty, RAW - transfer function not established";
 CM_ SG_ 1058 LambdaRaw "Narrowband O2 ADC, RAW - not a wideband reading";
@@ -197,6 +205,8 @@ CM_ SG_ 1062 EcuFamily "0 MR2, 1 ST205";
 CM_ SG_ 1062 CpuIndex "Which Denso CPU this board is attached to";
 CM_ SG_ 1062 TxDropped "Frames dropped, saturating. Non-zero means the bus is unhappy";
 CM_ SG_ 1062 BusOffRecoveries "Bus-off recoveries, saturating";
+CM_ BO_ 1063 "Period 50 ms.";
+CM_ SG_ 1063 KnockRetard "Knock retard: CPU1's integrator var_knock_retard, read live from RAM 0x01B3";
 
 VAL_ 1026 PwLoopMode 0 "OpenLoop" 200 "ClosedLoop" ;
 VAL_ 1058 PwLoopMode 0 "OpenLoop" 200 "ClosedLoop" ;

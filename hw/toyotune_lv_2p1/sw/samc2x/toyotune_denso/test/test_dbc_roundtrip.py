@@ -35,13 +35,16 @@ EXPECTED = {
             ("Map", 101.3, 0.6), ("InjPw", 4000, 0)],
     0x401: [("Ect", 81.79, 0.1), ("Tha", 20.70, 0.1),
             ("Tham", 20.70, 0.1), ("Battery", 14.61, 0.05)],
-    0x402: [("InjDuty", 10.0, 0.05), ("KnockRetard", 10.0, 0.01),
+    0x402: [("InjDuty", 10.0, 0.05), ("IgnRetardSum", 10.0, 0.01),
             ("IgnTimingRaw", 0x5A, 0), ("IscvDutyRaw", 0x40, 0),
             ("LambdaRaw", 0x77, 0), ("PwLoopMode", 0xC8, 0)],
     0x405: [("KnockRetardCyl1", 1.0, 0.01), ("KnockRetardCyl2", 2.0, 0.01),
             ("KnockRetardCyl3", 3.0, 0.01),
             ("LambdaTrimRaw", 0x33, 0), ("MaxRetardRaw", 0x44, 0)],
     0x403: [("ErrorFlags1", 0xA5, 0), ("LimiterFlags", 0x5A, 0)],
+    # Distinct from 0x402's sum on purpose, so a decoder that picked up the
+    # wrong one would fail here rather than read plausibly.
+    0x407: [("KnockRetard", 6.5, 0.01)],
     0x406: [("ProtocolVersion", None, 0), ("CpuIndex", 1, 0),
             ("TxDropped", 7, 0), ("BusOffRecoveries", 3, 0)],
 }

@@ -128,6 +128,10 @@
    +10/+11 below. */
 #define TOYOTUNE_CAN_ID_MEDIUM3  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 5)
 #define TOYOTUNE_CAN_ID_INFO     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 6)
+/* Values the board reads out of the ECU's RAM itself over the diagnostic link,
+   rather than sniffing off the inter-CPU link - things that never cross it,
+   such as the knock retard integrator. See diag_can.c. */
+#define TOYOTUNE_CAN_ID_LIVE     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 7)
 /* Diagnostic access to the running Denso MCU: a command frame in, a
    response frame out.  In the same per-board block as the telemetry so
    one range covers a board, and so the receive filter is a single
@@ -153,6 +157,8 @@
    +10/+11 below. */
 #define TOYOTUNE_CAN_ID_MEDIUM3  (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 5)
 #define TOYOTUNE_CAN_ID_INFO     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 6)
+/* See CPU1's. */
+#define TOYOTUNE_CAN_ID_LIVE     (TOYOTUNE_CAN_ID_TELEMETRY_BASE + 7)
 /* Diagnostic access to the running Denso MCU: a command frame in, a
    response frame out.  In the same per-board block as the telemetry so
    one range covers a board, and so the receive filter is a single

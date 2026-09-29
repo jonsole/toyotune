@@ -93,7 +93,8 @@ extern uint16_t ECU_ScaleBatteryV100(uint8_t BatteryRaw);
    there. */
 extern int16_t ECU_ScalePimKpa10(uint16_t PimRaw);
 
-/* Knock retard, from KnockRetard, KnockRetardInfo[] or KnockRetardCpu2.
+/* Knock retard, from the live knock read, KnockRetardInfo[] or KnockRetardCpu2
+   - and the retard sum IgnRetardSum, which shares the units.
    Returns hundredths of a degree as a POSITIVE magnitude of retard - "4.50"
    means 4.5 degrees pulled out, not added. */
 extern int16_t ECU_ScaleRetardDeg100(uint8_t RetardRaw);

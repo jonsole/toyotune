@@ -80,6 +80,46 @@ static bool DiagCan_EntryUsed[DIAG_CAN_ENTRIES];
 static uint16_t DiagCan_WriteAddress;
 static uint16_t DiagCan_WriteValue;
 
+
+/* --- Standing reads, for telemetry ------------------------------------------
+ *
+ * The knock retard on the inter-CPU link (dmatx_knock_retard, 0x21B) is not
+ * knock retard. It is the SUM CPU1 subtracts from its spark ceiling: overrun
+ * advance, plus the knock command, plus a fixed 26 counts outside test mode,
+ * plus the rev/speed limiter ramp - see calc_4ms_corrections at EEBD-EEDB. The
+ * knock integrator itself, var_knock_retard, never crosses the link, so it is
+ * read directly.
+ *
+ * 0x01B3 is var_knock_retard in D151803-9651 - and in the DIAG16 image this
+ * board serves, where it is var_knock_unk_1B3, read by the identical
+ * instruction FA 01 B3 at F56D in both. Any other ROM, or CPU2, has something
+ * else there, hence DiagCan_LiveEnabled().
+ *
+ * Every diag read is 16 bits, so the byte asked for arrives in the high half
+ * with its neighbour in the low half. */
+#define DIAG_CAN_LIVE_KNOCK_ADDRESS	(0x01B3)
+#define DIAG_CAN_LIVE_PERIOD_MS		(50)
+
+static Diag_ReadEntry_t DiagCan_LiveKnock;
+
+DiagCan_Live_t DiagCan_Live;
+
+
+bool DiagCan_LiveEnabled(void)
+{
+#if defined(TOYOTUNE_ECU_MR2) && defined(TOYOTUNE_CPU1)
+	return true;
+#else
+	return false;
+#endif
+}
+
+
+static bool DiagCan_IsStanding(const Diag_ReadEntry_t *Entry)
+{
+	return Entry == &DiagCan_LiveKnock;
+}
+
 uint32_t DiagCan_Commands;
 uint32_t DiagCan_Rejected;
 
@@ -146,6 +186,14 @@ static bool DiagCan_Cancel(uint16_t Address, bool All)
 	{
 		Diag_ReadEntry_t *Entry = *Link;
 
+		/* A host's cancel-all must not take the telemetry's own read with it:
+		   it would stop the gauge updating with nothing on the bus to say so. */
+		if (DiagCan_IsStanding(Entry))
+		{
+			Link = &Entry->Next;
+			continue;
+		}
+
 		if (All || Entry->Address == Address)
 		{
 			*Link = Entry->Next;
@@ -162,6 +210,7 @@ static bool DiagCan_Cancel(uint16_t Address, bool All)
 	   ReadCurrent, so the walk above cannot see it and completion would
 	   re-queue it.  Marking it one-shot makes it report once and stop. */
 	if (Diag.ReadCurrent && Diag.ReadCurrent->Period != 0 &&
+	    !DiagCan_IsStanding(Diag.ReadCurrent) &&
 	    (All || Diag.ReadCurrent->Address == Address))
 	{
 		Diag.ReadCurrent->Period = 0;
@@ -191,6 +240,16 @@ static void DiagCan_WriteComplete(bool Ok)
    file. */
 static void DiagCan_ReadComplete(Diag_ReadEntry_t *Entry, uint16_t Value)
 {
+	/* The telemetry's own reads are not answers to anybody, so they go to the
+	   live block and nowhere else - no response frame, which would be
+	   unsolicited traffic on the diagnostic ID. */
+	if (DiagCan_IsStanding(Entry))
+	{
+		DiagCan_Live.KnockRetard = (uint8_t)(Value >> 8);
+		DiagCan_Live.Reads += 1;
+		return;
+	}
+
 	const bool OneShot = (Entry->Period == 0);
 
 	DiagCan_Respond(OneShot ? DIAG_CAN_OP_READ : DIAG_CAN_OP_ADD_PERIODIC,
@@ -319,4 +378,16 @@ void DiagCan_Init(void)
 	Diag_SetReadCompleteHandler(DiagCan_ReadComplete);
 	Diag_SetWriteCompleteHandler(DiagCan_WriteComplete);
 	CAN_RxSetHandler(DiagCan_Command);
+
+	if (DiagCan_LiveEnabled())
+	{
+		DiagCan_LiveKnock.Address = DIAG_CAN_LIVE_KNOCK_ADDRESS;
+		DiagCan_LiveKnock.Size = 2;
+		DiagCan_LiveKnock.Period = DIAG_CAN_LIVE_PERIOD_MS;
+		DiagCan_LiveKnock.Time = Diag_Time() + DIAG_CAN_LIVE_PERIOD_MS;
+
+		OS_InterruptDisable();
+		Diag_ReadEntryInsert(&Diag, &DiagCan_LiveKnock);
+		OS_InterruptEnable();
+	}
 }

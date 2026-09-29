@@ -98,6 +98,15 @@ bool ECU_GetDmaSnapshot(ECU_DmaData1_t *Cpu1ToCpu2, ECU_DmaData2_t *Cpu2ToCpu1)
 	return false;
 }
 
+/* diag_can.c's side of the live values, which the task loop reads. The tests
+   drive SendFrame() with a LIVE block of their own, so these only link. */
+DiagCan_Live_t DiagCan_Live;
+
+bool DiagCan_LiveEnabled(void)
+{
+	return true;
+}
+
 
 /***************************************************************************************/
 static int Failures = 0;
@@ -157,13 +166,18 @@ static int16_t GetBe16Signed(const uint8_t *Payload, size_t Offset)
 
 static ECU_DmaData1_t Cpu1;
 static ECU_DmaData2_t Cpu2;
+static DiagCan_LiveBlock_t Live;
 
 /* A plausible running engine: 3000 rpm, atmospheric manifold pressure, 4ms
-   of injector, 82 C coolant, 14.6 V, 10 degrees of knock retard. */
+   of injector, 82 C coolant, 14.6 V, a 10 degree retard sum of which the
+   live-read knock integrator is 6.5. */
 static void BuildSnapshot(void)
 {
 	memset(&Cpu1, 0, sizeof(Cpu1));
 	memset(&Cpu2, 0, sizeof(Cpu2));
+	memset(&Live, 0, sizeof(Live));
+
+	Live.KnockRetard = 13;                                      /* 6.50 deg */
 
 	SetBe16(&Cpu2, offsetof(ECU_DmaData2_t, RpmX5p12), 15360);  /* 3000 rpm */
 	SetBe16(&Cpu1, offsetof(ECU_DmaData1_t, Tps), 0x1234);      /* raw */
@@ -175,7 +189,7 @@ static void BuildSnapshot(void)
 	SetU8(&Cpu1, offsetof(ECU_DmaData1_t, Tham), 134);
 	SetU8(&Cpu1, offsetof(ECU_DmaData1_t, Battery), 188);       /* ~14.6 V */
 
-	SetU8(&Cpu1, offsetof(ECU_DmaData1_t, KnockRetard), 20);    /* 10.00 deg */
+	SetU8(&Cpu1, offsetof(ECU_DmaData1_t, IgnRetardSum), 20);   /* 10.00 deg */
 	SetU8(&Cpu2, offsetof(ECU_DmaData2_t, IgnTiming), 0x5A);    /* raw */
 	SetU8(&Cpu2, offsetof(ECU_DmaData2_t, IscvDuty), 0x40);     /* raw */
 	SetU8(&Cpu1, offsetof(ECU_DmaData1_t, AdcLambda), 0x77);    /* raw */
@@ -196,7 +210,7 @@ static void BuildSnapshot(void)
 static void TestFastFrame(void)
 {
 	printf("FAST frame\n");
-	CanTelemetry_SendFrame(CAN_FRAME_FAST, &Cpu1, &Cpu2);
+	CanTelemetry_SendFrame(CAN_FRAME_FAST, &Cpu1, &Cpu2, &Live);
 
 	CHECK(SentId == TOYOTUNE_CAN_ID_FAST, "identifier should be 0x%03X, got 0x%03X",
 	      TOYOTUNE_CAN_ID_FAST, SentId);
@@ -222,7 +236,7 @@ static void TestFastFrame(void)
 static void TestMedium1Frame(void)
 {
 	printf("MEDIUM1 frame - temperatures and supply\n");
-	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM1, &Cpu1, &Cpu2);
+	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM1, &Cpu1, &Cpu2, &Live);
 
 	CHECK(SentId == TOYOTUNE_CAN_ID_MEDIUM1, "identifier");
 
@@ -235,7 +249,7 @@ static void TestMedium1Frame(void)
 	   byte carries two real bits of ADC resolution.  0xE480 is a quarter of
 	   a count hotter than 0xE400 and must decode differently. */
 	SetBe16(&Cpu1, offsetof(ECU_DmaData1_t, Ect), 0xE480);
-	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM1, &Cpu1, &Cpu2);
+	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM1, &Cpu1, &Cpu2, &Live);
 	CHECK(GetBe16Signed(SentData, 0) != 8179,
 	      "ECT's low byte must affect the result, or resolution is being lost");
 	SetBe16(&Cpu1, offsetof(ECU_DmaData1_t, Ect), 0xE400);
@@ -245,7 +259,7 @@ static void TestMedium1Frame(void)
 static void TestMedium2Frame(void)
 {
 	printf("MEDIUM2 frame - fuelling, and the derived duty\n");
-	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM2, &Cpu1, &Cpu2);
+	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM2, &Cpu1, &Cpu2, &Live);
 
 	CHECK(SentId == TOYOTUNE_CAN_ID_MEDIUM2, "identifier");
 
@@ -253,7 +267,7 @@ static void TestMedium2Frame(void)
 	CHECK_NEAR(GetBe16(SentData, 0), 1000, 2,
 	           "derived InjDuty: 4ms at 3000 rpm is 10%%");
 
-	CHECK(GetBe16Signed(SentData, 2) == 1000, "KnockRetard 20 counts is 10.00 deg");
+	CHECK(GetBe16Signed(SentData, 2) == 1000, "IgnRetardSum 20 counts is 10.00 deg");
 	CHECK(SentData[4] == 0x5A, "IgnTiming passes through raw");
 	CHECK(SentData[5] == 0x40, "IscvDuty passes through raw");
 	CHECK(SentData[6] == 0x77, "AdcLambda passes through raw");
@@ -264,7 +278,7 @@ static void TestMedium2Frame(void)
 static void TestMedium3Frame(void)
 {
 	printf("MEDIUM3 frame - per-cylinder knock\n");
-	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM3, &Cpu1, &Cpu2);
+	CanTelemetry_SendFrame(CAN_FRAME_MEDIUM3, &Cpu1, &Cpu2, &Live);
 
 	CHECK(SentId == TOYOTUNE_CAN_ID_MEDIUM3, "identifier should be base+5");
 
@@ -279,11 +293,27 @@ static void TestMedium3Frame(void)
 static void TestSlowFrame(void)
 {
 	printf("SLOW frame - trims and flags\n");
-	CanTelemetry_SendFrame(CAN_FRAME_SLOW, &Cpu1, &Cpu2);
+	CanTelemetry_SendFrame(CAN_FRAME_SLOW, &Cpu1, &Cpu2, &Live);
 
 	CHECK(SentId == TOYOTUNE_CAN_ID_SLOW, "identifier");
 	CHECK(SentData[3] == 0xA5, "ErrorFlags1 must pass through bit-exact");
 	CHECK(SentData[7] == 0x5A, "LimiterFlags must pass through bit-exact");
+}
+
+
+static void TestLiveFrame(void)
+{
+	printf("LIVE frame - the knock integrator read from CPU1's RAM\n");
+
+	BuildSnapshot();
+	CanTelemetry_SendFrame(CAN_FRAME_LIVE, &Cpu1, &Cpu2, &Live);
+
+	CHECK(SentId == TOYOTUNE_CAN_ID_LIVE, "identifier should be base+7");
+	CHECK(GetBe16Signed(SentData, 0) == 650, "13 counts of knock is 6.50 deg");
+
+	/* The point of the separate frame: it must not be the retard sum. */
+	CHECK(GetBe16Signed(SentData, 0) != 1000,
+	      "LIVE carries the knock integrator, not MEDIUM2's retard sum");
 }
 
 
@@ -426,13 +456,13 @@ static void DumpFrames(void)
 {
 	static const uint8_t Frames[] = {
 		CAN_FRAME_FAST, CAN_FRAME_MEDIUM1, CAN_FRAME_MEDIUM2,
-		CAN_FRAME_MEDIUM3, CAN_FRAME_SLOW
+		CAN_FRAME_MEDIUM3, CAN_FRAME_SLOW, CAN_FRAME_LIVE
 	};
 	uint32_t f, b;
 
 	for (f = 0; f < sizeof(Frames); f++)
 	{
-		CanTelemetry_SendFrame(Frames[f], &Cpu1, &Cpu2);
+		CanTelemetry_SendFrame(Frames[f], &Cpu1, &Cpu2, &Live);
 		printf("FRAME %u", SentId);
 		for (b = 0; b < SentLength; b++)
 			printf(" %02X", SentData[b]);
@@ -473,6 +503,7 @@ int main(int argc, char **argv)
 	TestMedium2Frame();
 	TestMedium3Frame();
 	TestSlowFrame();
+	TestLiveFrame();
 	TestInfoFrame();
 
 	printf("---------------------------\n");
