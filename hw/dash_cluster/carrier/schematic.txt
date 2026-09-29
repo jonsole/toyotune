@@ -17,6 +17,25 @@ KiCad's ERC passes on the generated file with no errors and no warnings, and
 the netlist was read back and checked connection by connection - which is how
 the Schottky and the gate Zener were caught in backwards.
 
+The sheet is drawn as three blocks wired pin to pin - the loom and the supply
+across the top, CAN in the middle, the EEPROM below it, and the module's
+connector on the right - with power symbols for GND, +12V, +5V, +3V3 and
+VBUS, and named labels only where a net is worth naming. An earlier version
+gave every pin a net label and drew no connections at all, which passed the
+same checks and was unreadable.
+
+TWO THINGS KICAD DOES THAT COST AN AFTERNOON, both now handled by the
+generator and both silent if they are not:
+
+  * A wire that ENDS part way along another wire connects only ONCE per
+    wire, however many junction dots are drawn. One rail with four stubs on
+    it reads back with three of them unconnected. Every wire is therefore
+    split into one segment per span, so all of it meets end to end.
+  * A pin lying part way along a wire does NOT connect, even though it looks
+    connected - and a wire whose corner happens to land on a pin DOES. That
+    combination is what shorted SDA, SCL and TXD onto 3V3 at J1 in a draft:
+    the corners before three pins had been put at their neighbours' y.
+
 THE CONNECTOR, as the display module presents it
 ------------------------------------------------
 

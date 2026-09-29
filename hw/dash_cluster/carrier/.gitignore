@@ -1,1 +1,3 @@
 build/
+carrier-backups/
+*.kicad_prl
