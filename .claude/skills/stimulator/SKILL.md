@@ -40,6 +40,26 @@ cd hw/toyotune_lv_2p1/sw/python
 `--probe` is only needed while both probes are attached, but the script refuses
 to guess rather than risk writing into the wrong target.
 
+**For sweeps, use `sweep_rpm.py`, not `set_rpm.py --sweep`.** It attaches once
+and stays, where each `set_rpm.py` run re-attaches (a couple of seconds each),
+and it reads back `TCC0.PER` - the crank timer's actual period - so a step that
+did not reach the hardware says so rather than only proving a word of RAM
+changed:
+
+```
+.venv/Scripts/python.exe sweep_rpm.py                          # 900..3000..900, forever
+.venv/Scripts/python.exe sweep_rpm.py --cycles 1 --step 10 --dwell 0.05 --quick
+.venv/Scripts/python.exe sweep_rpm.py --hold 2500              # one value, checked
+```
+
+`--quick` skips the per-step check for fine steps and **must flush after every
+write** - it does. pyOCD queues writes into CMSIS-DAP packets and only sends
+them when a packet fills or something reads back, so without `target.flush()`
+about 50 writes land at once: a 10 rpm sweep reached the crank as 500 rpm
+jumps on 2026-09-29, and it looked exactly like the ECU or the dash quantising
+rpm. The endpoints checked correct throughout, because a readback forces the
+flush.
+
 - Range is **50 to 10000**. **Never write 0** - `VRG_CalcPerBufValue()` divides
   by it and the Cortex-M0+ has no hardware divider, so it yields a nonsense
   period rather than faulting.
@@ -69,10 +89,21 @@ Three things gate whether the ECU reacts at all:
   zero confirms that case.
 - **The ECU only looks for knock between 700 and 7200 RPM.** Outside that
   window the signal is ignored.
-- **Diagnostic mode suppresses it.** With TE1-E1 jumpered the ECU forces fixed
-  timing (`ignition_system.md`: "-10 deg BTDC, Test mode"), so knock retard has
-  nothing to act on. **Remove the jumper before concluding anything about
-  knock.**
+- **Diagnostic mode does NOT stop the ECU computing retard.** With TE1-E1
+  jumpered the ECU forces fixed timing (`ignition_system.md`: "-10 deg BTDC,
+  Test mode"), and this note used to conclude that knock retard therefore had
+  nothing to act on. Wrong: on 2026-09-29, jumper in, the ECU pulled 13 counts
+  (6.5 deg) at 2400 rpm and reported it in telemetry. Whether that retard
+  reaches the actual spark in test mode is unverified - but the value is live,
+  and anything reading it (the dash's knock warning) will react.
+
+**At the default severity the bench knocks permanently.** `Knock_Severity`
+boots at 64 - a hard knock on every ignition event. Retard decays 2 counts per
+4 ms between events, so below about 2400 rpm the decay wins and retard stays
+near zero; above it the bursts outpace the decay and it climbs to around
+6.5 deg, dropping back out at about the same speed on the way down. That was
+enough to trip the dash's 3 deg knock warning continuously. Write 0 to stop the
+ECU retarding at all, or 8-16 for occasional, more realistic knock.
 
 `PB09` also wants the `PA20` TDC marker looped back for `IGT_TimingPeriod` to
 work - both are on EXT1, so it is a short jumper.
