@@ -121,7 +121,18 @@ typedef struct
 /* An upper bound on the page list, for anything that keeps state per page -
    the strip chart's history. Checked against PageCount by the host tests, so
    adding pages past it cannot go unnoticed. */
-#define PAGES_MAX		(8u)
+#define PAGES_MAX		(9u)
+
+
+/* Whether a warning takes the whole screen over. OFF until the warning page
+   is actually drawn: as it stands the takeover replaces a working gauge with
+   a page that renders nothing, so a knock event on the bench reads as the
+   display having died. The DETECTION stays on either way - the chime still
+   sounds and the status line still reports what tripped - so turning this
+   back on is one definition once there is a page worth showing. */
+#ifndef DASH_WARNING_TAKEOVER
+#define DASH_WARNING_TAKEOVER	(0)
+#endif
 
 extern const FacePage_t Pages[];
 extern const uint8_t PageCount;
@@ -163,6 +174,21 @@ extern const FaceElement_t *Pages_Elements(uint8_t Page, uint8_t View, uint8_t *
    driver selected. A driver must not be able to swipe away from a fault, so
    this outranks the selection rather than being another page in the list. */
 extern bool Pages_WarningActive(uint32_t NowMs);
+
+
+/* What tripped the takeover first, latched: on a ramp the warning can come
+   and go between two status lines, and "it went blank somewhere around 2400"
+   is not something you can act on. NULL in What means it has not tripped. */
+typedef struct
+{
+	const char *What;	/* the signal's name, or NULL */
+	int32_t Value;		/* what it read when it tripped */
+	int32_t Rpm;		/* engine speed then, -1 if unknown */
+	uint32_t AtMs;
+	uint32_t Count;		/* how many times anything has tripped since boot */
+} PagesTrip_t;
+
+extern const PagesTrip_t *Pages_LastTrip(void);
 
 /* The page to actually draw: the warning page while a fault stands, the
    selected one otherwise. */

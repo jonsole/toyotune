@@ -1513,6 +1513,20 @@ static void Core1Main(void)
 				WorkMaxUs = 0;
 				SlideWorkMaxUs = 0;
 			}
+			{
+				/* What took the screen over, and when. The takeover itself is
+				   often shorter than the gap between two of these lines, so
+				   this is latched rather than sampled. */
+				const PagesTrip_t *Trip = Pages_LastTrip();
+
+				if (Trip->What != NULL)
+					printf("warning: %s = 0x%02lX at %ld rpm, %lu s ago"
+					       "  (%lu takeovers since boot)\n",
+					       Trip->What, (unsigned long)Trip->Value,
+					       (long)Trip->Rpm,
+					       (unsigned long)((NowMs - Trip->AtMs) / 1000u),
+					       (unsigned long)Trip->Count);
+			}
 			printf("node %u  page %u view %u  %s  flush %lu  "
 			       "touch %s rep %lu press %lu @%u,%u",
 			       DashNodeId, Page, (unsigned)Pages_ViewOf(Page), LinkText,

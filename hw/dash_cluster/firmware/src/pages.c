@@ -264,7 +264,53 @@ static const FaceElement_t ClockDigital[] =
 	  GAUGE_SWEEP_FULL, NULL }
 };
 
-/* --- page 6: the warning takeover ----------------------------------------
+/* --- page 6: revs over knock retard ---------------------------------------
+ *
+ * Engine speed across the top, how much timing the ECU is pulling across the
+ * bottom. Together they answer the question a single knock light cannot:
+ * whether the retard follows load and speed, or sits there at idle because
+ * something is wrong with the sensor or the bench.
+ *
+ * The retard scale runs to 12 degrees. The ECU can report far more - the byte
+ * is about half a degree per count, so 255 counts is 127 degrees - but
+ * anything past about twelve means the reading is wrong rather than the
+ * engine is in trouble, and a scale sized for it would leave real retard
+ * unreadable at the bottom of the dial.
+ */
+static const char *const RetardTicks[] =
+	{ "0", "2", "4", "6", "8", "10", "12", NULL };
+
+/* One decimal: the ECU moves in half degrees, so whole degrees would hide
+   every other step and hundredths would never settle. */
+static const char *Pages_FormatRetard(int32_t Value, char *Out, uint32_t OutSize)
+{
+	(void)snprintf(Out, OutSize, "%ld.%ld",
+	               (long)(Value / 100), (long)((Value < 0 ? -Value : Value) % 100) / 10);
+	return Out;
+}
+
+static const FaceElement_t RpmKnockElements[] =
+{
+	{ WIDGET_GAUGE, SIGNAL_RPM, 0, 8000,
+	  2, 2, 96, 96, RpmTicks, "x1000r/min", 7000,
+	  GAUGE_SWEEP_TOP, NULL },
+	/* Red from exactly where the takeover triggers, so the face explains the
+	   warning rather than disagreeing with it. */
+	{ WIDGET_GAUGE, SIGNAL_KNOCK_RETARD, 0, 1200,
+	  2, 2, 96, 96, RetardTicks, "Retard \xC2\xB0", PAGES_KNOCK_WARN_DEG100,
+	  GAUGE_SWEEP_BOTTOM, Pages_FormatRetard }
+};
+
+static const FaceElement_t RpmKnockGraph[] =
+{
+	{ WIDGET_GRAPH, SIGNAL_RPM, 0, 8000,
+	  2, 2, 96, 96, RpmTicks, "x1000r/min", 0, GAUGE_SWEEP_FULL, NULL },
+	{ WIDGET_GRAPH, SIGNAL_KNOCK_RETARD, 0, 1200,
+	  2, 2, 96, 96, RetardTicks, "Retard \xC2\xB0", 0,
+	  GAUGE_SWEEP_FULL, Pages_FormatRetard }
+};
+
+/* --- page 7: the warning takeover ----------------------------------------
  *
  * Not reachable by swiping. Pages_Effective() substitutes it while a fault
  * stands, which is why it is here rather than in the list: a driver must not
@@ -291,13 +337,14 @@ const FacePage_t Pages[] =
 	PAGE2("Air temps",    AirTempElements, AirTempGraph),
 	PAGE2("G-force",      GForceElements,  GForceGraph),
 	PAGE2("Clock",        ClockElements,   ClockDigital),
+	PAGE2("Revs / Knock", RpmKnockElements, RpmKnockGraph),
 	PAGE("WARNING",       WarningElements)
 };
 
 const uint8_t PageCount = (uint8_t)(sizeof(Pages) / sizeof(Pages[0]));
 
 /* The warning page is the last entry and is excluded from swiping. */
-#define PAGE_WARNING		(6)
+#define PAGE_WARNING		(7)
 #define PAGE_SWIPEABLE_COUNT	(PAGE_WARNING)
 
 /* Six pages and a three-gauge cluster: each node opens on a different one -
@@ -438,11 +485,38 @@ const FaceElement_t *Pages_Elements(uint8_t Page, uint8_t ViewIndex, uint8_t *Co
 /* A fault only counts if the signal carrying it is fresh. Raising a warning
    from a stale flag byte would leave the node stuck on the warning face after
    the link dropped, which tells the driver nothing about the engine. */
-static bool FlagSetAndFresh(SignalId_t Id, uint32_t NowMs)
+/* The takeover can be over in well under a second, which is long enough to
+   blank the screen and short enough to miss between two status lines. So the
+   first thing that trips is latched with the engine speed at that moment, and
+   printed until the node is reset - a warning that appears once on a ramp is
+   otherwise almost impossible to attribute. */
+static PagesTrip_t Trip;
+
+
+const PagesTrip_t *Pages_LastTrip(void)
+{
+	return &Trip;
+}
+
+
+static bool Tripped(SignalId_t Id, const char *Name, uint32_t NowMs)
 {
 	SignalReading_t R = SignalStore_Get(Id, NowMs);
 
-	return R.Valid && R.Fresh && (R.Value != 0);
+	if (!R.Valid || !R.Fresh || R.Value == 0)
+		return false;
+
+	Trip.Count++;
+	if (Trip.What == NULL)
+	{
+		SignalReading_t Rpm = SignalStore_Get(SIGNAL_RPM, NowMs);
+
+		Trip.What = Name;
+		Trip.Value = R.Value;
+		Trip.Rpm = Rpm.Valid ? Rpm.Value : -1;
+		Trip.AtMs = NowMs;
+	}
+	return true;
 }
 
 
@@ -450,14 +524,14 @@ bool Pages_WarningActive(uint32_t NowMs)
 {
 	SignalReading_t Knock;
 
-	if (FlagSetAndFresh(SIGNAL_ERROR_FLAGS1, NowMs) ||
-	    FlagSetAndFresh(SIGNAL_ERROR_FLAGS2, NowMs) ||
-	    FlagSetAndFresh(SIGNAL_LIMITER_FLAGS, NowMs))
+	if (Tripped(SIGNAL_ERROR_FLAGS1, "ErrorFlags1", NowMs) ||
+	    Tripped(SIGNAL_ERROR_FLAGS2, "ErrorFlags2", NowMs) ||
+	    Tripped(SIGNAL_LIMITER_FLAGS, "LimiterFlags", NowMs))
 		return true;
 
 	Knock = SignalStore_Get(SIGNAL_KNOCK_RETARD, NowMs);
 	if (Knock.Valid && Knock.Fresh && Knock.Value >= PAGES_KNOCK_WARN_DEG100)
-		return true;
+		return Tripped(SIGNAL_KNOCK_RETARD, "KnockRetard", NowMs);
 
 	return false;
 }
@@ -466,5 +540,14 @@ bool Pages_WarningActive(uint32_t NowMs)
 /***************************************************************************************/
 uint8_t Pages_Effective(uint32_t NowMs)
 {
+#if DASH_WARNING_TAKEOVER
 	return Pages_WarningActive(NowMs) ? (uint8_t)PAGE_WARNING : Current;
+#else
+	/* The takeover is off, so the selected page stays on the glass. The
+	   condition is still evaluated - by the chime, and by the trip latch in
+	   the status line - so nothing stops being DETECTED, it just stops
+	   covering the gauges with a page that has not been drawn yet. */
+	(void)NowMs;
+	return Current;
+#endif
 }

@@ -497,6 +497,8 @@ static void TestWarningTakeover(void)
 	Slow[3] = 0x04;		/* ErrorFlags1 */
 	Telemetry_Handle(0x403, Slow, 8, 2000);
 	CHECK(Pages_WarningActive(2000), "a fault flag raises the warning");
+
+#if DASH_WARNING_TAKEOVER
 	CHECK(strcmp(Pages[Pages_Effective(2000)].Name, "WARNING") == 0,
 	      "and the warning page is what gets drawn");
 
@@ -504,6 +506,18 @@ static void TestWarningTakeover(void)
 	Pages_Next();
 	CHECK(strcmp(Pages[Pages_Effective(2000)].Name, "WARNING") == 0,
 	      "swiping must not dismiss a fault");
+#else
+	/* The takeover is switched off until the warning page is drawn. Detection
+	   is what must survive that: the chime and the status line both hang off
+	   Pages_WarningActive(), checked above, while the glass keeps showing the
+	   gauge the driver chose. */
+	CHECK(Pages_Effective(2000) == Pages_Current(),
+	      "with the takeover off, the selected page stays on the glass");
+
+	Pages_Next();
+	CHECK(Pages_Effective(2000) == Pages_Current(),
+	      "and swiping still works while a fault stands");
+#endif
 
 	Slow[3] = 0;
 	Telemetry_Handle(0x403, Slow, 8, 3000);
