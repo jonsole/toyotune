@@ -16,6 +16,14 @@
    same trick applied to VRG_Rpm. */
 extern uint8_t Knock_Severity;
 
+/* The engine's background vibration, on the same scale as Knock_Severity,
+   present all the time the engine turns rather than once per ignition. A
+   real knock sensor never outputs silence, and the ECU treats a silent one as
+   dead: with the engine warm enough for knock control it sets code 52 and
+   holds its fail-safe maximum retard. Also pokeable over SWD; a change takes
+   effect at the next ignition. */
+extern uint8_t Knock_Noise;
+
 void Knock_Init(void);
 void Knock_Trigger(uint8_t Severity);
 
