@@ -4758,7 +4758,7 @@ loc_CD3F:							; CODE XREF: async_throttle_inject+2j
 				cmp	#0Eh, var_tps		; Check	if TPS is not open enough
 				bcs	locret_CD62		; Jump is so, not worth	injecting fuel
 
-				tbbs	bit0, var_flags_46, locret_CD62	; Test and set async throttle flag
+				tbbs	bit0, var_flags_46, locret_CD62 ; Test and set async throttle flag
 
 				tbs	bit3, unk_40		; Jump if flag already set
 				bne	locret_CD62

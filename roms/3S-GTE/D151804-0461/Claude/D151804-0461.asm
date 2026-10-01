@@ -195,7 +195,7 @@ CPR7L:				.block 1			; Timer	comparison #3 LSB
 ; Segment type:	Pure data
 				;.segment RAM
 				.org 40h
-var_flags_40:				.block 1			; DATA XREF: divide_d_by_x+CD↓o
+var_flags_40:			.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								; divide_d_by_x+207↓r ...
 								; 40.0 -
 								; 40.1 - Startup injection pulse done
@@ -205,7 +205,7 @@ var_flags_40:				.block 1			; DATA XREF: divide_d_by_x+CD↓o
 								; 40.5 - Set when RPM <	300, cleared when RPM >	500rpm
 								; 40.6 -
 								; 40.7 -
-var_schedule_flag_41:				.block 1			; DATA XREF: divide_d_by_x+F5↓r
+var_schedule_flag_41:		.block 1			; DATA XREF: divide_d_by_x+F5↓r
 								; divide_d_by_x+2D6↓r ...
 var_flags_42:			.block 1			; DATA XREF: divide_d_by_x:loc_C6F8↓r
 								; divide_d_by_x+61E↓r ...
@@ -225,7 +225,7 @@ var_limiter_flags:		.block 1			; DATA XREF: divide_d_by_x+487↓r
 								; 43.5 - Set if	throttle shut
 								; 43.6 - Set if	rev limit active
 								; 43.7 - Set if	boost limit exceeded
-var_flags_44:				.block 1			; DATA XREF: divide_d_by_x+3C0↓r
+var_flags_44:			.block 1			; DATA XREF: divide_d_by_x+3C0↓r
 								; divide_d_by_x+4AF↓r ...
 var_ignition_flags:		.block 1			; DATA XREF: iv6_ne_process+51↓r
 								; iv6_ne_process+7E↓r ...
@@ -240,7 +240,7 @@ var_flags_46:			.block 1			; DATA XREF: divide_d_by_x+204↓r
 								; 46.6 -
 								; 46.7 - Set on	sub-CPU	error
 								;
-var_flags_47:				.block 1			; DATA XREF: update_tps_closed_ref+3↓r
+var_flags_47:			.block 1			; DATA XREF: update_tps_closed_ref+3↓r
 								; calc_dmatx_pim+1B↓r	...
 var_diag_errors_5:		.block 1			; DATA XREF: negate_rD_if_marked↓r
 								; calc_rpm_delta+12↓r	...
@@ -345,7 +345,7 @@ var_rpm_x_5p12:			.block 1			; DATA XREF: table_rA_pair_interpolate:table_rpm_pa
 				.block 1
 var_rpm_div_25:			.block 1			; DATA XREF: divide_d_by_x+31C↓w
 								; divide_d_by_x:loc_C917↓r ...
-var_rpm_delta:				.block 1			; DATA XREF: calc_rpm_delta+18↓w
+var_rpm_delta:			.block 1			; DATA XREF: calc_rpm_delta+18↓w
 								; divide_d_by_x+508↓r ...
 var_speed_kph:			.block 1			; DATA XREF: divide_d_by_x+4A2↓r
 								; divide_d_by_x+4BA↓r ...
@@ -353,32 +353,32 @@ var_tps_delta:			.block 1			; DATA XREF: async_throttle_inject↓r
 								; update_tps_delta_rate↓r ...
 var_adc_lambda:			.block 1			; DATA XREF: divide_d_by_x+92C↓r
 								; divide_d_by_x+98B↓r ...
-var_lambda_state:				.block 1			; DATA XREF: divide_d_by_x+109↓r
+var_lambda_state:		.block 1			; DATA XREF: divide_d_by_x+109↓r
 								; divide_d_by_x+359↓r ...
-var_lambda_byte:				.block 1			; DATA XREF: divide_d_by_x+BAD↓w
+var_lambda_byte:		.block 1			; DATA XREF: divide_d_by_x+BAD↓w
 								; update_lambda_avg↓r ...
-var_lambda_integrator:				.block 1			; DATA XREF: divide_d_by_x:loc_CFD2↓r
+var_lambda_integrator:		.block 1			; DATA XREF: divide_d_by_x:loc_CFD2↓r
 								; divide_d_by_x+A7D↓w ...
 				.block 1
-var_lambda_avg:				.block 1			; DATA XREF: divide_d_by_x+B40↓r
+var_lambda_avg:			.block 1			; DATA XREF: divide_d_by_x+B40↓r
 								; divide_d_by_x+B46↓r ...
 				.block 1
 				.block 1
 var_unk_trim_67:		.block 1			; DATA XREF: divide_d_by_x+AF2↓r
 								; divide_d_by_x:loc_D119↓r
-var_rev_limit_ramp:				.block 1			; DATA XREF: divide_d_by_x+622↓w
+var_rev_limit_ramp:		.block 1			; DATA XREF: divide_d_by_x+622↓w
 								; divide_d_by_x+62B↓r ...
-var_trim_stable_cnt:				.block 1			; DATA XREF: divide_d_by_x+AF6↓w
+var_trim_stable_cnt:		.block 1			; DATA XREF: divide_d_by_x+AF6↓w
 								; divide_d_by_x:loc_D0B4↓r ...
-var_cnt_6A:				.block 1			; DATA XREF: divide_d_by_x:loc_D8E2↓w
+var_cnt_6A:			.block 1			; DATA XREF: divide_d_by_x:loc_D8E2↓w
 								; ROM:DAD6↓r
-var_o2_vote_cnt:				.block 1			; DATA XREF: divide_d_by_x+107↓w
+var_o2_vote_cnt:		.block 1			; DATA XREF: divide_d_by_x+107↓w
 								; divide_d_by_x:loc_D1D6↓r ...
-var_o2_vote_accum:				.block 1			; DATA XREF: divide_d_by_x:loc_D23B↓r
+var_o2_vote_accum:		.block 1			; DATA XREF: divide_d_by_x:loc_D23B↓r
 								; divide_d_by_x+CC3↓w ...
-var_error_flags_6D:				.block 1			; DATA XREF: ROM:DEDB↓r
+var_error_flags_6D:		.block 1			; DATA XREF: ROM:DEDB↓r
 								; ROM:DEDF↓w ...
-var_speed_limiter_cnt:				.block 1			; DATA XREF: check_set_speed_limiter+6↓r
+var_speed_limiter_cnt:		.block 1			; DATA XREF: check_set_speed_limiter+6↓r
 								; check_set_speed_limiter:loc_CC6F↓w
 var_kph_table:			.block 1			; DATA XREF: int_vector_4_kph+20↓r
 								; int_vector_4_kph+25↓w	...
@@ -387,26 +387,26 @@ var_kph_71:			.block 1			; DATA XREF: int_vector_4_kph+14↓r
 								; int_vector_4_kph+1B↓r	...
 				.block 1
 var_speed_kph_2:		.block 1			; DATA XREF: calc_speed_kph+15↓w
-var_rpm_unk_74:				.block 1			; DATA XREF: divide_d_by_x+2EB↓w
+var_rpm_unk_74:			.block 1			; DATA XREF: divide_d_by_x+2EB↓w
 								; divide_d_by_x+365↓r ...
 				.block 1
-var_cnt_unk_76:				.block 1			; DATA XREF: start_dma:loc_F825↓r
+var_cnt_unk_76:			.block 1			; DATA XREF: start_dma:loc_F825↓r
 								; IV0+4↓r ...
-var_cnt_unk_77:				.block 1			; DATA XREF: start_dma+65↓r
+var_cnt_unk_77:			.block 1			; DATA XREF: start_dma+65↓r
 								; start_dma:loc_F861↓w ...
 var_temp_w:			.block 1			; DATA XREF: map_rD_rX_interpolate+3↓w
 								; map_rD_rX_interpolate+1A↓r ...
-var_temp_b:				.block 1			; DATA XREF: divide_d_by_x+63D↓r
+var_temp_b:			.block 1			; DATA XREF: divide_d_by_x+63D↓r
 								; divide_d_by_x:loc_CC14↓r ...
 var_temp_7A:			.block 1			; DATA XREF: map_rD_rX_interpolate+14↓w
 								; map_rD_rX_interpolate+16↓r ...
 var_temp_7B:			.block 1			; DATA XREF: map_rD_rX_interpolate+27↓w
 								; divide_d_by_x:loc_CF75↓w ...
-var_temp_7C:				.block 1			; DATA XREF: update_ign_timing_blend+178↓w
+var_temp_7C:			.block 1			; DATA XREF: update_ign_timing_blend+178↓w
 								; calc_4ms_corrections+248↓w
 				.block 1
 				.block 1
-clear_vars_end:				.block 1			; DATA XREF: divide_d_by_x+D1↓o
+clear_vars_end:			.block 1			; DATA XREF: divide_d_by_x+D1↓o
 				; The last byte clear_variables zeroes: the loop walks Y from var_flags_40
 				; doing st a, [y] while y <= this address, so the cleared region is
 				; var_flags_40..007Fh inclusive. An ADDRESS used as a bound - the byte
@@ -463,7 +463,7 @@ nv_unk_trim_86:			.block 2			; DATA XREF: clear_nv_ram+22↓o
 nv_unk_trim_94:			.block 1			; DATA XREF: clear_nv_ram+26↓o
 								; divide_d_by_x+B6B↓o
 nv_unk_trim_95:			.block 1			; DATA XREF: divide_d_by_x+AA6↓o
-var_nv_trim_unk_96:			.block 1			; DATA XREF: clear_nv_ram+2E↓w
+var_nv_trim_unk_96:		.block 1			; DATA XREF: clear_nv_ram+2E↓w
 								; divide_d_by_x+CCD↓r ...
 nv_unk_trim_97:			.block 1
 nv_unk_trim_98:			.block 2			; DATA XREF: clear_nv_ram:loc_C821↓w
@@ -472,200 +472,200 @@ var_nv_idle_trim:		.block 2			; DATA XREF: divide_d_by_x+166↓r
 								; clear_nv_ram+3E↓w ...
 var_nv_valid:			.block 2			; DATA XREF: divide_d_by_x+238↓r
 								; clear_nv_ram↓w ...
-var_idle_trim_flags:				.block 1			; DATA XREF: divide_d_by_x:loc_C7C9↓o
+var_idle_trim_flags:		.block 1			; DATA XREF: divide_d_by_x:loc_C7C9↓o
 								; clear_nv_ram+43↓r ...
-var_crank_cnt:				.block 1			; DATA XREF: clear_nv_ram+4A↓w
+var_crank_cnt:			.block 1			; DATA XREF: clear_nv_ram+4A↓w
 								; divide_d_by_x+1DCB↓r ...
 var_diag_errors_4:		.block 1			; DATA XREF: divide_d_by_x+D6↓o
 								; divide_d_by_x+1A2↓r ...
-var_ne_count:				.block 1			; DATA XREF: calc_4ms_corrections+37E↓r
+var_ne_count:			.block 1			; DATA XREF: calc_4ms_corrections+37E↓r
 								; ROM:EF2A↓r ...
-va_ne_count_2:				.block 1			; DATA XREF: clear_ne_sync_errors:loc_DCB1↓r
+va_ne_count_2:			.block 1			; DATA XREF: clear_ne_sync_errors:loc_DCB1↓r
 								; ROM:ED47↓r ...
-var_overrun_advance:				.block 1			; DATA XREF: calc_4ms_corrections+4A↓w
+var_overrun_advance:		.block 1			; DATA XREF: calc_4ms_corrections+4A↓w
 								; calc_4ms_corrections+6F↓w	...
-var_ign_temp:				.block 1			; DATA XREF: iv6_ne_process+61↓w
+var_ign_temp:			.block 1			; DATA XREF: iv6_ne_process+61↓w
 								; iv6_ne_process+68↓r ...
 				.block 1
-var_limiter_ign_ramp:				.block 1			; DATA XREF: divide_d_by_x+13C↓w
+var_limiter_ign_ramp:		.block 1			; DATA XREF: divide_d_by_x+13C↓w
 								; calc_4ms_corrections+444↓r ...
-var_cnt_knock_signal:				.block 1			; DATA XREF: knock_mcu_update+4F↓r
+var_cnt_knock_signal:		.block 1			; DATA XREF: knock_mcu_update+4F↓r
 								; knock_mcu_update+54↓w	...
-diag_code_digit:				.block 1			; DATA XREF: ROM:DF61↓r
+diag_code_digit:		.block 1			; DATA XREF: ROM:DF61↓r
 								; ROM:loc_DF74↓w ...
-diag_code_index:				.block 1			; DATA XREF: divide_d_by_x+14E↓w
+diag_code_index:		.block 1			; DATA XREF: divide_d_by_x+14E↓w
 								; ROM:loc_DF56↓r ...
-var_fuelcut_recovery_cnt:				.block 1			; DATA XREF: divide_d_by_x+10C↓r
+var_fuelcut_recovery_cnt:	.block 1			; DATA XREF: divide_d_by_x+10C↓r
 								; update_ign_timing_blend+25↓r	...
-var_iscv_relay_cnt:				.block 1			; DATA XREF: iv6_4ms_process+9↓r
+var_iscv_relay_cnt:		.block 1			; DATA XREF: iv6_4ms_process+9↓r
 								; iv6_4ms_process:loc_F795↓w
-var_iscv_error_cnt:				.block 1			; DATA XREF: iv6_4ms_process:loc_F763↓w
+var_iscv_error_cnt:		.block 1			; DATA XREF: iv6_4ms_process:loc_F763↓w
 								; iv6_4ms_process:loc_F777↓w ...
-var_4m_cnt_AD:				.block 1			; DATA XREF: divide_d_by_x:loc_C729↓w
+var_4m_cnt_AD:			.block 1			; DATA XREF: divide_d_by_x:loc_C729↓w
 								; ROM:loc_F9B1↓r
-var_4ms_cnt_sta:				.block 1			; DATA XREF: init_ne_on_start+7↓r
+var_4ms_cnt_sta:		.block 1			; DATA XREF: init_ne_on_start+7↓r
 								; init_ne_on_start+19↓w
-var_4ms_cnt_AF:				.block 1			; DATA XREF: divide_d_by_x+446↓w
+var_4ms_cnt_AF:			.block 1			; DATA XREF: divide_d_by_x+446↓w
 								; divide_d_by_x+457↓r ...
 				.block 1
 var_4ms_cnt_B1:			.block 1			; DATA XREF: divide_d_by_x+E6↓r
 								; divide_d_by_x:loc_C966↓r ...
-var_4ms_cnt_speed_update:				.block 1			; DATA XREF: iv6_4ms_process+6D↓r
+var_4ms_cnt_speed_update:	.block 1			; DATA XREF: iv6_4ms_process+6D↓r
 								; iv6_4ms_process+72↓w
 var_4ms_cnt_B3:			.block 1			; DATA XREF: divide_d_by_x+FC↓r
 								; int_vector_4_kph+F↓r ...
-var_4ms_cnt_B4:				.block 1			; DATA XREF: divide_d_by_x+13B2↓r
+var_4ms_cnt_B4:			.block 1			; DATA XREF: divide_d_by_x+13B2↓r
 								; divide_d_by_x:loc_D934↓w
-var_4ms_cnt_B5:				.block 1			; DATA XREF: divide_d_by_x:loc_D9AC↓r
+var_4ms_cnt_B5:			.block 1			; DATA XREF: divide_d_by_x:loc_D9AC↓r
 								; divide_d_by_x:loc_D9B3↓w
 var_4ms_cnt_starter:		.block 1			; DATA XREF: divide_d_by_x+745↓w
 								; divide_d_by_x+757↓r ...
-var_4ms_cnt_lambda:				.block 1			; DATA XREF: divide_d_by_x+930↓w
+var_4ms_cnt_lambda:		.block 1			; DATA XREF: divide_d_by_x+930↓w
 								; divide_d_by_x+93B↓r
 var_4ms_boost_cnt:		.block 1			; DATA XREF: check_boost_limit+11↓w
 								; check_boost_limit+1B↓r
-var_4ms_cnt_B9:				.block 1			; DATA XREF: calc_4ms_corrections+E5↓w
+var_4ms_cnt_B9:			.block 1			; DATA XREF: calc_4ms_corrections+E5↓w
 								; calc_4ms_corrections+F1↓r
-var_4ms_cnt_BA:				.block 1			; DATA XREF: divide_d_by_x+227↓w
+var_4ms_cnt_BA:			.block 1			; DATA XREF: divide_d_by_x+227↓w
 								; ROM:DEC7↓r ...
-var_4ms_cnt_BB:				.block 1			; DATA XREF: divide_d_by_x+219↓w
+var_4ms_cnt_BB:			.block 1			; DATA XREF: divide_d_by_x+219↓w
 								; ROM:DEB7↓r
-var_4ms_starter_cnt_BC:				.block 1			; DATA XREF: divide_d_by_x+22C↓w
+var_4ms_starter_cnt_BC:		.block 1			; DATA XREF: divide_d_by_x+22C↓w
 								; ROM:DECF↓r ...
-var_4ms_cnt_igf_timer:				.block 1			; DATA XREF: int_vector_9_ignition+4B↓w
+var_4ms_cnt_igf_timer:		.block 1			; DATA XREF: int_vector_9_ignition+4B↓w
 								; int_vector_9_ignition+55↓r
-var_4ms_cnt_ne_BE:				.block 1			; DATA XREF: divide_d_by_x+1769↓w
+var_4ms_cnt_ne_BE:		.block 1			; DATA XREF: divide_d_by_x+1769↓w
 								; ROM:EF2E↓r ...
 var_4ms_boost_cut_cnt:		.block 1			; DATA XREF: divide_d_by_x+730↓r
 								; divide_d_by_x:loc_CCB3↓w
-var_4ms_cnt_C0:				.block 1			; DATA XREF: divide_d_by_x+128↓r
+var_4ms_cnt_C0:			.block 1			; DATA XREF: divide_d_by_x+128↓r
 								; start_dma+4A↓r ...
-var_4ms_cnt_C1:				.block 1			; DATA XREF: divide_d_by_x+12B↓r
+var_4ms_cnt_C1:			.block 1			; DATA XREF: divide_d_by_x+12B↓r
 								; start_dma↓r ...
-var_cnt_C2:				.block 1			; DATA XREF: iv6_4ms_process+5F↓w
+var_cnt_C2:			.block 1			; DATA XREF: iv6_4ms_process+5F↓w
 								; iv6_4ms_process+63↓r
-var_cnt_C3:				.block 1			; DATA XREF: divide_d_by_x+F0↓r
+var_cnt_C3:			.block 1			; DATA XREF: divide_d_by_x+F0↓r
 								; divide_d_by_x+2E4↓r ...
-var_cnt_C4:				.block 1			; DATA XREF: divide_d_by_x:loc_D1A9↓r
+var_cnt_C4:			.block 1			; DATA XREF: divide_d_by_x:loc_D1A9↓r
 								; divide_d_by_x+C34↓w
-var_cnt_knock_decay:				.block 1			; DATA XREF: ROM:F5BE↓r
+var_cnt_knock_decay:		.block 1			; DATA XREF: ROM:F5BE↓r
 								; ROM:loc_F5C6↓w
-var_cnt_C6:				.block 1			; DATA XREF: knock_retard_decay:loc_F65F↓w
+var_cnt_C6:			.block 1			; DATA XREF: knock_retard_decay:loc_F65F↓w
 								; knock_retard_decay:loc_F661↓r
-var_cnt_C7:				.block 1			; DATA XREF: divide_d_by_x+647↓w
+var_cnt_C7:			.block 1			; DATA XREF: divide_d_by_x+647↓w
 								; divide_d_by_x+676↓r ...
-var_cnt_C8:				.block 1			; DATA XREF: divide_d_by_x+513↓w
-var_cnt_C9:				.block 1			; DATA XREF: divide_d_by_x:loc_CB69↓w
+var_cnt_C8:			.block 1			; DATA XREF: divide_d_by_x+513↓w
+var_cnt_C9:			.block 1			; DATA XREF: divide_d_by_x:loc_CB69↓w
 								; divide_d_by_x:loc_CB6D↓r
 var_cnt_startup:		.block 1			; DATA XREF: divide_d_by_x:loc_C941↓w
 								; divide_d_by_x:loc_C9C4↓r ...
-var_cnt_CB:				.block 1			; DATA XREF: divide_d_by_x+3BA↓w
-var_cnt_CC:				.block 1			; DATA XREF: divide_d_by_x+94D↓w
+var_cnt_CB:			.block 1			; DATA XREF: divide_d_by_x+3BA↓w
+var_cnt_CC:			.block 1			; DATA XREF: divide_d_by_x+94D↓w
 								; calc_4ms_corrections+283↓r
 var_cnt_CD:			.block 1			; DATA XREF: divide_d_by_x:check_open_or_closed_loop↓w
 								; divide_d_by_x+95F↓r ...
-var_cnt_CE:				.block 1			; DATA XREF: divide_d_by_x+82F↓r
+var_cnt_CE:			.block 1			; DATA XREF: divide_d_by_x+82F↓r
 								; divide_d_by_x+857↓w ...
-var_cnt_trim_settle:				.block 1			; DATA XREF: divide_d_by_x:loc_D1D4↓w
+var_cnt_trim_settle:		.block 1			; DATA XREF: divide_d_by_x:loc_D1D4↓w
 								; divide_d_by_x+C9E↓r
-var_cnt_D0:				.block 1			; DATA XREF: divide_d_by_x+565↓w
+var_cnt_D0:			.block 1			; DATA XREF: divide_d_by_x+565↓w
 								; divide_d_by_x+5A9↓r
-var_cnt_D1:				.block 1			; DATA XREF: divide_d_by_x+E9↓r
+var_cnt_D1:			.block 1			; DATA XREF: divide_d_by_x+E9↓r
 								; divide_d_by_x+8B0↓w ...
-var_cnt_cyl_rough_dwell:				.block 1			; DATA XREF: calc_4ms_corrections:loc_EC7D↓w
+var_cnt_cyl_rough_dwell:	.block 1			; DATA XREF: calc_4ms_corrections:loc_EC7D↓w
 								; calc_4ms_corrections:loc_ECE2↓r ...
-var_cnt_D3:				.block 1			; DATA XREF: calc_4ms_corrections+C9↓w
+var_cnt_D3:			.block 1			; DATA XREF: calc_4ms_corrections+C9↓w
 								; calc_4ms_corrections+105↓r ...
-var_cnt_D4:				.block 1			; DATA XREF: calc_4ms_corrections+128↓w
+var_cnt_D4:			.block 1			; DATA XREF: calc_4ms_corrections+128↓w
 								; calc_ign_timing_min+5A↓w	...
 var_cnt_D5:			.block 1			; DATA XREF: divide_d_by_x:loc_D2F1↓w
 								; calc_iscv+14C↓r ...
-var_cnt_D6:				.block 1			; DATA XREF: divide_d_by_x+D41↓w
+var_cnt_D6:			.block 1			; DATA XREF: divide_d_by_x+D41↓w
 								; calc_iscv:loc_D88E↓r
-var_cnt_idle_trim_dwell:				.block 1			; DATA XREF: divide_d_by_x+D7C↓w
+var_cnt_idle_trim_dwell:	.block 1			; DATA XREF: divide_d_by_x+D7C↓w
 								; calc_iscv+16D↓w ...
-var_cnt_D8:				.block 1			; DATA XREF: calc_iscv+12B↓w
+var_cnt_D8:			.block 1			; DATA XREF: calc_iscv+12B↓w
 								; calc_iscv:loc_D5CE↓w ...
 var_cnt_sensor_error:		.block 1			; DATA XREF: ROM:FB23↓w
 								; ROM:loc_FB27↓r ...
 				.block 1
-var_cnt_DB:				.block 1			; DATA XREF: divide_d_by_x+6D9↓r
+var_cnt_DB:			.block 1			; DATA XREF: divide_d_by_x+6D9↓r
 								; divide_d_by_x:loc_CC5F↓w
-var_cnt_idle_dwell:				.block 1			; DATA XREF: calc_iscv:loc_D715↓w
+var_cnt_idle_dwell:		.block 1			; DATA XREF: calc_iscv:loc_D715↓w
 								; calc_iscv:loc_D722↓r
-var_cnt_DD:				.block 1			; DATA XREF: ROM:loc_F4F1↓w
-var_stft_dwell_cnt:				.block 1			; DATA XREF: ROM:loc_DA0C↓w
+var_cnt_DD:			.block 1			; DATA XREF: ROM:loc_F4F1↓w
+var_stft_dwell_cnt:		.block 1			; DATA XREF: ROM:loc_DA0C↓w
 								; ROM:DA11↓r
-var_cnt_sta_active:				.block 1			; DATA XREF: divide_d_by_x+1724↓w
+var_cnt_sta_active:		.block 1			; DATA XREF: divide_d_by_x+1724↓w
 								; divide_d_by_x:loc_DCA0↓r ...
-var_spd_cnt:				.block 1			; DATA XREF: ROM:loc_DE2F↓w
+var_spd_cnt:			.block 1			; DATA XREF: ROM:loc_DE2F↓w
 								; ROM:loc_DE31↓r
-var_igt_timer:				.block 1			; DATA XREF: check_IGF_error+3↓w
+var_igt_timer:			.block 1			; DATA XREF: check_IGF_error+3↓w
 								; check_IGF_error+7↓r
-var_64ms_prescale:				.block 1			; DATA XREF: divide_d_by_x+1D6A↓r
+var_64ms_prescale:		.block 1			; DATA XREF: divide_d_by_x+1D6A↓r
 								; divide_d_by_x+1D6D↓w
-var_cnt_E3:				.block 1			; DATA XREF: divide_d_by_x:loc_D357↓w
+var_cnt_E3:			.block 1			; DATA XREF: divide_d_by_x:loc_D357↓w
 								; divide_d_by_x+E06↓r ...
 var_cnt_E4:			.block 1			; DATA XREF: divide_d_by_x+3C9↓w
 								; calc_iscv:loc_D4F8↓r ...
-var_cnt_E5:				.block 1			; DATA XREF: divide_d_by_x:loc_CAFB↓w
+var_cnt_E5:			.block 1			; DATA XREF: divide_d_by_x:loc_CAFB↓w
 								; divide_d_by_x:loc_CB19↓w ...
-var_o2_heater_current_error_cnt:				.block 1			; DATA XREF: ROM:loc_DD8A↓w
+var_o2_heater_current_error_cnt:	.block 1		; DATA XREF: ROM:loc_DD8A↓w
 								; ROM:loc_DD8C↓r
-var_cnt_o2_heater_dwell:				.block 1			; DATA XREF: ROM:DDA4↓r
+var_cnt_o2_heater_dwell:	.block 1			; DATA XREF: ROM:DDA4↓r
 								; ROM:DDD8↓w
-var_cnt_lambda_stuck:				.block 1			; DATA XREF: ROM:loc_DE65↓w
+var_cnt_lambda_stuck:		.block 1			; DATA XREF: ROM:loc_DE65↓w
 								; ROM:loc_DE67↓r
-var_tps_closed_cnt:				.block 1			; DATA XREF: divide_d_by_x+C3C↓w
+var_tps_closed_cnt:		.block 1			; DATA XREF: divide_d_by_x+C3C↓w
 								; ROM:FC70↓w ...
-var_ne_0:				.block 1			; DATA XREF: init_ne_counters+3↓o
+var_ne_0:			.block 1			; DATA XREF: init_ne_counters+3↓o
 								; iv6_ne_process+20↓o ...
 				.block 1
-var_ne_1:				.block 1			; DATA XREF: iv6_ne_process+39↓r
+var_ne_1:			.block 1			; DATA XREF: iv6_ne_process+39↓r
 				.block 1
-var_ne_2:				.block 1			; DATA XREF: iv6_ne_process+3B↓r
+var_ne_2:			.block 1			; DATA XREF: iv6_ne_process+3B↓r
 								; iv6_ne_process+63↓r ...
 				.block 1
 var_ne_sum3:			.block 1			; DATA XREF: calc_rpm↓r
 								; ROM:ED55↓r ...
-var_ign_ne_frac:				.block 1			; DATA XREF: ignition_timing_to_cpr+5↓r
+var_ign_ne_frac:		.block 1			; DATA XREF: ignition_timing_to_cpr+5↓r
 var_rpm_avg:			.block 1			; DATA XREF: divide_d_by_x+2ED↓w
 								; calc_rpm_delta+2↓r ...
 				.block 1
-var_pim_baseline:				.block 1			; DATA XREF: ROM:FB6C↓w
+var_pim_baseline:		.block 1			; DATA XREF: ROM:FB6C↓w
 								; ROM:FB82↓r ...
-var_gearing:				.block 1			; DATA XREF: divide_d_by_x+3DD↓r
+var_gearing:			.block 1			; DATA XREF: divide_d_by_x+3DD↓r
 								; calc_4ms_corrections+9C↓r	...
 unk_F6:				.block 1			; DATA XREF: divide_d_by_x+206C↓w
 								; = 9651's unk_FC. Write-only: one writer, no named reader. NOT consumed by
 								; CPU2 - outside both DMA windows. See 9651's declaration for the full note,
 								; including that clear_variables' second indexed loop writes it without
 								; naming it, which is why "no write site" searches mislead here.
-var_adc_cmd:				.block 1			; DATA XREF: divide_d_by_x+176↓w
+var_adc_cmd:			.block 1			; DATA XREF: divide_d_by_x+176↓w
 								; int_4ms_watchdog+12↓w	...
 var_adc_idx:			.block 1			; DATA XREF: int_4ms_watchdog+4↓r
 								; int_4ms_watchdog:loc_F72E↓w ...
 var_tps_2:			.block 1			; DATA XREF: ROM:loc_FD14↓r
 								; ROM:FD71↓w
 				.block 1
-var_tps_closed_ref:				.block 1			; DATA XREF: divide_d_by_x+FA↓w
+var_tps_closed_ref:		.block 1			; DATA XREF: divide_d_by_x+FA↓w
 								; update_tps_closed_ref+10↓r	...
-var_adc_o2_sensor:				.block 1			; DATA XREF: factory_self_test+227↓r
+var_adc_o2_sensor:		.block 1			; DATA XREF: factory_self_test+227↓r
 								; ROM:FBF1↓r ...
-var_io_input1_tmp:				.block 1			; DATA XREF: check_io_inputs+2C↓o
-var_io_input2_tmp:				.block 1			; DATA XREF: check_io_inputs+5D↓o
-var_asr2_time:				.block 1			; DATA XREF: iv6_ne_process+8↓w
+var_io_input1_tmp:		.block 1			; DATA XREF: check_io_inputs+2C↓o
+var_io_input2_tmp:		.block 1			; DATA XREF: check_io_inputs+5D↓o
+var_asr2_time:			.block 1			; DATA XREF: iv6_ne_process+8↓w
 								; iv6_ne_process+186↓r ...
 				.block 1
-var_prev_asr2_time:			.block 1			; DATA XREF: iv6_ne_process+29↓r
+var_prev_asr2_time:		.block 1			; DATA XREF: iv6_ne_process+29↓r
 								; iv6_ne_process:bg_ne_process_F002↓w ...
 				.block 1
-var_inj_pw_trim:			.block 1			; DATA XREF: calc_dmatx_pim+31↓r
+var_inj_pw_trim:		.block 1			; DATA XREF: calc_dmatx_pim+31↓r
 								; calc_inj_phase_lead+26↓w
 var_inj_pw_inj1:		.block 1			; DATA XREF: divide_d_by_x+55D↓r
 								; divide_d_by_x+579↓r ...
 				.block 1
-var_inj_pw_inj2:			.block 1			; DATA XREF: divide_d_by_x+1E21↓w
+var_inj_pw_inj2:		.block 1			; DATA XREF: divide_d_by_x+1E21↓w
 								; divide_d_by_x+2136↓w
 				.block 1
 								; 0107h. Had an unk_107 label because IDA read `ld d, #0107h` - the value
@@ -673,13 +673,13 @@ var_inj_pw_inj2:			.block 1			; DATA XREF: divide_d_by_x+1E21↓w
 								; address. 9651 writes the same constant, once even as a binary literal.
 								; Same artifact as the unk_100 case there. The byte itself is the low half
 								; of var_inj_pw_inj2 above.
-var_inj_pw_inj3:			.block 1			; DATA XREF: divide_d_by_x+1E24↓w
+var_inj_pw_inj3:		.block 1			; DATA XREF: divide_d_by_x+1E24↓w
 								; divide_d_by_x+2139↓w
 				.block 1
-var_inj_pw_inj4:			.block 1			; DATA XREF: divide_d_by_x+1E27↓w
+var_inj_pw_inj4:		.block 1			; DATA XREF: divide_d_by_x+1E27↓w
 								; divide_d_by_x+213C↓w
 				.block 1
-var_inj_pw_array:			.block 1			; DATA XREF: divide_d_by_x:loc_E66A↓o
+var_inj_pw_array:		.block 1			; DATA XREF: divide_d_by_x:loc_E66A↓o
 								; divide_d_by_x+2147↓o
 				.block 1
 				.block 1
@@ -691,88 +691,88 @@ var_inj_pw_array:			.block 1			; DATA XREF: divide_d_by_x:loc_E66A↓o
 var_inj_battery_adjust:		.block 1			; DATA XREF: ROM:DD28↓r
 								; injector_drive+13↓r ...
 				.block 1
-var_fuel_enrich_rpm:			.block 1			; DATA XREF: divide_d_by_x+111↓w
+var_fuel_enrich_rpm:		.block 1			; DATA XREF: divide_d_by_x+111↓w
 								; divide_d_by_x+808↓w ...
-var_tps_delta_prev:			.block 1			; DATA XREF: update_tps_delta_rate+10↓r
+var_tps_delta_prev:		.block 1			; DATA XREF: update_tps_delta_rate+10↓r
 								; update_tps_delta_rate+1F↓w
-var_tps_delta_rate:			.block 1			; DATA XREF: update_tps_delta_rate:loc_CE04↓w
-var_overrun_fuel_mult:			.block 1			; DATA XREF: divide_d_by_x:loc_CE76↓w
+var_tps_delta_rate:		.block 1			; DATA XREF: update_tps_delta_rate:loc_CE04↓w
+var_overrun_fuel_mult:		.block 1			; DATA XREF: divide_d_by_x:loc_CE76↓w
 								; divide_d_by_x+907↓r ...
-var_accel_enrich:			.block 1			; DATA XREF: divide_d_by_x+90A↓w
+var_accel_enrich:		.block 1			; DATA XREF: divide_d_by_x+90A↓w
 								; divide_d_by_x+1ED3↓r
-var_lambda_step:			.block 1			; DATA XREF: divide_d_by_x+9B5↓o
+var_lambda_step:		.block 1			; DATA XREF: divide_d_by_x+9B5↓o
 								; divide_d_by_x+9BB↓w ...
 				.block 1
-var_lambda_step_lo:			.block 1			; DATA XREF: divide_d_by_x+9DB↓w
+var_lambda_step_lo:		.block 1			; DATA XREF: divide_d_by_x+9DB↓w
 								; divide_d_by_x:loc_CF69↓o ...
-var_lambda_step_hi:			.block 1			; DATA XREF: divide_d_by_x+9E7↓w
+var_lambda_step_hi:		.block 1			; DATA XREF: divide_d_by_x+9E7↓w
 unk_11F:			.block 1			; DATA XREF: ROM:FB4F↓w
 								; Holds a partial product across a two-step multiply: `mul a, #49h /
 								; st d, <this>` then later `add d, <this>`. A scratch temporary; 9651's
 								; equivalent (word_125) is unnamed too, so nothing to port.
 								; ROM:FB57↓r
 				.block 1
-var_ign_blend_out:			.block 1			; DATA XREF: divide_d_by_x+C4B↓r
+var_ign_blend_out:		.block 1			; DATA XREF: divide_d_by_x+C4B↓r
 								; divide_d_by_x+20B4↓r ...
 				.block 1
-var_ign_blend_accum:			.block 1			; DATA XREF: divide_d_by_x+21CA↓r
+var_ign_blend_accum:		.block 1			; DATA XREF: divide_d_by_x+21CA↓r
 								; update_ign_timing_blend+1F↓w	...
 				.block 1
-var_ign_blend_hist0:			.block 1			; DATA XREF: update_ign_timing_blend+14↓w
+var_ign_blend_hist0:		.block 1			; DATA XREF: update_ign_timing_blend+14↓w
 								; update_ign_timing_blend+3F↓r	...
 				.block 1
-var_ign_blend_hist1:			.block 1			; DATA XREF: update_ign_timing_blend+17↓w
+var_ign_blend_hist1:		.block 1			; DATA XREF: update_ign_timing_blend+17↓w
 								; update_ign_timing_blend+85↓r	...
 				.block 1
-var_ign_blend_hist2:			.block 1			; DATA XREF: update_ign_timing_blend+1A↓w
+var_ign_blend_hist2:		.block 1			; DATA XREF: update_ign_timing_blend+1A↓w
 								; update_ign_timing_blend+2C↓r	...
 				.block 1
-var_pim_tps_est:			.block 1			; DATA XREF: calc_dmatx_pim+10↓w
+var_pim_tps_est:		.block 1			; DATA XREF: calc_dmatx_pim+10↓w
 								; divide_d_by_x+2024↓r ...
 				.block 1
-var_pim_est_fast:			.block 1			; DATA XREF: divide_d_by_x+1FD9↓r
+var_pim_est_fast:		.block 1			; DATA XREF: divide_d_by_x+1FD9↓r
 								; divide_d_by_x+2039↓r ...
 				.block 1
-var_pim_est_slow:			.block 1			; DATA XREF: divide_d_by_x+1FEE↓r
+var_pim_est_slow:		.block 1			; DATA XREF: divide_d_by_x+1FEE↓r
 								; divide_d_by_x+2027↓r ...
 				.block 1
-var_unk_tps_inj_131:			.block 1			; DATA XREF: calc_dmatx_pim+3↓w
+var_unk_tps_inj_131:		.block 1			; DATA XREF: calc_dmatx_pim+3↓w
 								; update_pim_est_fast+C↓r
-var_enrich_unk_132:			.block 1			; DATA XREF: apply_enrich_and_trims+61↓w
+var_enrich_unk_132:		.block 1			; DATA XREF: apply_enrich_and_trims+61↓w
 								; divide_d_by_x+20A6↓r
 				.block 1
-var_scaled_ve_tham:			.block 1			; DATA XREF: apply_enrich_and_trims↓r
+var_scaled_ve_tham:		.block 1			; DATA XREF: apply_enrich_and_trims↓r
 								; divide_d_by_x+1EFA↓w
 				.block 1
-var_ign_rpm_term:			.block 1			; DATA XREF: divide_d_by_x+21D7↓w
+var_ign_rpm_term:		.block 1			; DATA XREF: divide_d_by_x+21D7↓w
 								; update_ign_timing_blend+115↓r
-var_ign_ect_term:			.block 1			; DATA XREF: divide_d_by_x:loc_E76E↓w
+var_ign_ect_term:		.block 1			; DATA XREF: divide_d_by_x:loc_E76E↓w
 								; divide_d_by_x+2207↓r ...
 				.block 1
-var_ign_blend_pos:			.block 1			; DATA XREF: divide_d_by_x+2211↓w
+var_ign_blend_pos:		.block 1			; DATA XREF: divide_d_by_x+2211↓w
 								; update_ign_timing_blend+175↓r ...
 				.block 1
-var_ign_blend_neg:			.block 1			; DATA XREF: divide_d_by_x+2226↓w
+var_ign_blend_neg:		.block 1			; DATA XREF: divide_d_by_x+2226↓w
 								; update_ign_timing_blend+170↓r ...
 				.block 1
-var_unk_tps_13D:			.block 1			; DATA XREF: divide_d_by_x:loc_E4A8↓w
+var_unk_tps_13D:		.block 1			; DATA XREF: divide_d_by_x:loc_E4A8↓w
 								; get_tps_unk+8↓r
-var_pim_trim_scale:			.block 1			; DATA XREF: divide_d_by_x+E4A↓r
+var_pim_trim_scale:		.block 1			; DATA XREF: divide_d_by_x+E4A↓r
 								; calc_dmatx_pim+A↓r ...
 unk_13F:			.block 1			; DATA XREF: calc_dmatx_pim+7↓w
 								; = 9651's unk_145. Write-only, single site. See 9651 for the detail - and
 								; note the trap recorded there: the two adjacent `st a` stores in
 								; calc_dmatx_pim do NOT store the same value, because the `mov` between
 								; them is D <- X.
-var_pim_trans_est:			.block 1			; DATA XREF: divide_d_by_x:loc_D1E3↓r
+var_pim_trans_est:		.block 1			; DATA XREF: divide_d_by_x:loc_D1E3↓r
 								; Transient indicator, the 9651 variable of the same name (there at 0146h).
 								; Confirmed from context, not from layout arithmetic alone: both ROMs do
 								; `st a, <this>` immediately followed by `ld d, var_pim_est_fast`, and both
 								; read it back with `ld b, <this>` / `bpz`.
 								; divide_d_by_x+C92↓r ...
-var_pim_trans_fast:			.block 1			; DATA XREF: divide_d_by_x:loc_E5C5↓w
+var_pim_trans_fast:		.block 1			; DATA XREF: divide_d_by_x:loc_E5C5↓w
 								; calc_4ms_corrections+5B↓r	...
-var_ect_unk_142:			.block 1			; DATA XREF: divide_d_by_x+101↓w
+var_ect_unk_142:		.block 1			; DATA XREF: divide_d_by_x+101↓w
 								; divide_d_by_x:loc_CA2E↓r ...
 var_rpm_limit:			.block 1			; DATA XREF: divide_d_by_x:loc_CBC7↓r
 								; divide_d_by_x:loc_CBD6↓w ...
@@ -783,11 +783,11 @@ unk_144:			.block 1			; DATA XREF: divide_d_by_x+662↓r
 								; zeroing it. Deliberately unnamed; see 9651.
 var_inj_active:			.block 1			; DATA XREF: iv6_ne_process+26C↓w
 								; iv6_ne_process+288↓r ...
-var_inj_pw_next:			.block 1			; DATA XREF: iv6_ne_process+2A4↓r
+var_inj_pw_next:		.block 1			; DATA XREF: iv6_ne_process+2A4↓r
 								; calc_inj_phase_lead+36↓w
-var_inj_next_ne:			.block 1			; DATA XREF: iv6_ne_process+271↓w
+var_inj_next_ne:		.block 1			; DATA XREF: iv6_ne_process+271↓w
 								; iv6_ne_process+2C7↓w ...
-var_inj_sched_ne:			.block 1			; DATA XREF: iv6_ne_process:bg_ne_process_F244↓r
+var_inj_sched_ne:		.block 1			; DATA XREF: iv6_ne_process:bg_ne_process_F244↓r
 								; iv6_ne_process+2E6↓w ...
 var_tps_raw:			.block 1			; DATA XREF: factory_self_test+9↓r
 								; factory_self_test+20D↓r ...
@@ -796,82 +796,82 @@ var_tps_unk_14A:		.block 1			; DATA XREF: update_tps_closed_ref+9↓r
 				.block 1
 var_adc_unk_14C:		.block 1			; DATA XREF: factory_self_test+233↓r
 								; ROM:adc_handler_unk_fd7f↓w
-var_lambda_ign_corr:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EDD4↓w
+var_lambda_ign_corr:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EDD4↓w
 								; calc_4ms_corrections+52D↓r
-var_open_loop_ign_corr:			.block 1			; DATA XREF: divide_d_by_x+14B↓w
+var_open_loop_ign_corr:		.block 1			; DATA XREF: divide_d_by_x+14B↓w
 								; calc_4ms_corrections:loc_EBC1↓r ...
-var_ign_knock_retard_base:			.block 1			; DATA XREF: calc_ign_timing_min+3↓r
+var_ign_knock_retard_base:	.block 1			; DATA XREF: calc_ign_timing_min+3↓r
 								; calc_ign_timing_min+79↓r	...
-var_ign_advance_trim:			.block 1			; DATA XREF: calc_4ms_corrections+3A4↓w
+var_ign_advance_trim:		.block 1			; DATA XREF: calc_4ms_corrections+3A4↓w
 								; calc_4ms_corrections+407↓r ...
-var_ign_cold_advance:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EF04↓w
+var_ign_cold_advance:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EF04↓w
 								; calc_4ms_corrections:loc_EF0A↓r ...
-var_ign_advance_max:			.block 1			; DATA XREF: divide_d_by_x+137↓w
+var_ign_advance_max:		.block 1			; DATA XREF: divide_d_by_x+137↓w
 								; calc_4ms_corrections:loc_EE73↓r ...
 				.block 1
-var_ign_corr_combined:			.block 1			; DATA XREF: calc_4ms_corrections+441↓r
+var_ign_corr_combined:		.block 1			; DATA XREF: calc_4ms_corrections+441↓r
 								; calc_4ms_corrections:loc_EE03↓w ...
-var_ign_timing_min:			.block 1			; DATA XREF: divide_d_by_x+140↓w
+var_ign_timing_min:		.block 1			; DATA XREF: divide_d_by_x+140↓w
 								; calc_ign_timing_min:loc_EB63↓w ...
-var_idle_timing_ramp:			.block 1			; DATA XREF: divide_d_by_x+143↓w
+var_idle_timing_ramp:		.block 1			; DATA XREF: divide_d_by_x+143↓w
 								; calc_4ms_corrections+112↓w ...
-var_ign_min_cand:			.block 1			; DATA XREF: divide_d_by_x+146↓w
+var_ign_min_cand:		.block 1			; DATA XREF: divide_d_by_x+146↓w
 								; calc_ign_timing_min+80↓w
-var_ect_unk_158:			.block 1			; DATA XREF: calc_ign_timing_min:loc_EB56↓r
+var_ect_unk_158:		.block 1			; DATA XREF: calc_ign_timing_min:loc_EB56↓r
 								; calc_ect_unk_158+6↓w
-var_cyl_rpm_delta:			.block 1			; DATA XREF: calc_ign_timing_min:loc_EAF8↓w
+var_cyl_rpm_delta:		.block 1			; DATA XREF: calc_ign_timing_min:loc_EAF8↓w
 								; calc_ign_timing_min:loc_EB27↓r
-var_cyl_rpm_filtered:			.block 1			; DATA XREF: calc_4ms_corrections+12A↓w
+var_cyl_rpm_filtered:		.block 1			; DATA XREF: calc_4ms_corrections+12A↓w
 								; calc_ign_timing_min+57↓w	...
-var_rpm_ne_sum3:			.block 1			; DATA XREF: calc_ign_timing_min:loc_EAE4↓w
+var_rpm_ne_sum3:		.block 1			; DATA XREF: calc_ign_timing_min:loc_EAE4↓w
 				.block 1
-var_rpm_ne_sum3_prev:			.block 1			; DATA XREF: calc_ign_timing_min+1D↓r
+var_rpm_ne_sum3_prev:		.block 1			; DATA XREF: calc_ign_timing_min+1D↓r
 								; calc_ign_timing_min+30↓w
 				.block 1
-var_rpm_div25_prev:			.block 1			; DATA XREF: calc_4ms_corrections+12F↓w
+var_rpm_div25_prev:		.block 1			; DATA XREF: calc_4ms_corrections+12F↓w
 								; calc_ign_timing_min+2A↓w	...
-var_knock_gate_160:			.block 1			; DATA XREF: divide_d_by_x+30F↓w
+var_knock_gate_160:		.block 1			; DATA XREF: divide_d_by_x+30F↓w
 								; divide_d_by_x+1710↓w ...
-var_ign_next_cpr:			.block 1			; DATA XREF: ignition_schedule_off↓w
+var_ign_next_cpr:		.block 1			; DATA XREF: ignition_schedule_off↓w
 								; ignition_schedule_on↓w ...
 				.block 1
-var_ign_nr_pulses:			.block 1			; DATA XREF: iv6_ne_process+16A↓w
+var_ign_nr_pulses:		.block 1			; DATA XREF: iv6_ne_process+16A↓w
 								; iv6_ne_process:loc_F15A↓r ...
 				.block 1
 				.block 1
 				.block 1
-var_ign_timing_div_2:			.block 1			; DATA XREF: iv6_ne_process+94↓w
+var_ign_timing_div_2:		.block 1			; DATA XREF: iv6_ne_process+94↓w
 								; iv6_ne_process:loc_F092↓r ...
-var_ign_coil_on_time:			.block 1			; DATA XREF: ignition_update_off_time+9↓r
+var_ign_coil_on_time:		.block 1			; DATA XREF: ignition_update_off_time+9↓r
 								; ignition_update_off_time+1C↓r	...
 				.block 1
-var_ign_dwell_min:			.block 1			; DATA XREF: calc_4ms_corrections+2A↓w
+var_ign_dwell_min:		.block 1			; DATA XREF: calc_4ms_corrections+2A↓w
 								; ignition_update_off_time+12↓r	...
-var_ign_dwell_offset:			.block 1			; DATA XREF: calc_4ms_corrections+21↓w
+var_ign_dwell_offset:		.block 1			; DATA XREF: calc_4ms_corrections+21↓w
 								; iv6_ne_process+75↓r ...
 				.block 1
-var_ign_advance_raw:			.block 1			; DATA XREF: iv6_ne_process+5D↓r
+var_ign_advance_raw:		.block 1			; DATA XREF: iv6_ne_process+5D↓r
 								; iv6_ne_process:loc_F115↓w ...
 				.block 1
 				.block 1
-var_cyl_proc_idx:			.block 1			; DATA XREF: reset_cyl_proc_idx+2↓w
+var_cyl_proc_idx:		.block 1			; DATA XREF: reset_cyl_proc_idx+2↓w
 								; calc_4ms_corrections:loc_EC97↓r ...
-var_ne_sum3_prev:			.block 1			; DATA XREF: ROM:ED57↓r
+var_ne_sum3_prev:		.block 1			; DATA XREF: ROM:ED57↓r
 								; ROM:ED86↓w
 				.block 1
-var_cyl_rpm_dev:			.block 1			; DATA XREF: reset_cyl_rpm_dev+3↓w
+var_cyl_rpm_dev:		.block 1			; DATA XREF: reset_cyl_rpm_dev+3↓w
 								; calc_4ms_corrections+30A↓o ...
 				.block 1
-var_cyl_rpm_dev_hi:			.block 1			; DATA XREF: reset_cyl_rpm_dev+6↓w
+var_cyl_rpm_dev_hi:		.block 1			; DATA XREF: reset_cyl_rpm_dev+6↓w
 				.block 1
-var_cyl_rough_cnt:			.block 1			; DATA XREF: calc_4ms_corrections+2E1↓w
+var_cyl_rough_cnt:		.block 1			; DATA XREF: calc_4ms_corrections+2E1↓w
 								; calc_4ms_corrections+310↓o ...
 				.block 1
-var_cyl_rough_cnt_hi:			.block 1			; DATA XREF: calc_4ms_corrections+2E4↓w
+var_cyl_rough_cnt_hi:		.block 1			; DATA XREF: calc_4ms_corrections+2E4↓w
 				.block 1
-diag_code_delay:			.block 1			; DATA XREF: ROM:DF5B↓r
+diag_code_delay:		.block 1			; DATA XREF: ROM:DF5B↓r
 								; ROM:DF98↓w ...
-var_cnt_tps_closed_check:			.block 1			; DATA XREF: ROM:FC42↓w
+var_cnt_tps_closed_check:	.block 1			; DATA XREF: ROM:FC42↓w
 								; Debounce counter for the closed-throttle TPS range check. Under
 								; `tbbc bit1, var_io_input1` (idle contact closed) the reading is checked
 								; against tps_closed_limits; in range clears this counter and clears
@@ -879,16 +879,16 @@ var_cnt_tps_closed_check:			.block 1			; DATA XREF: ROM:FC42↓w
 								; loc_FC45 leaving that flag set. var_flags_46.3 is recorded as "some TPS
 								; flag" in the var_flags_46 declaration - this is what drives it.
 								; ROM:FC5D↓r ...
-var_o2_heater_unk_17D:			.block 1			; DATA XREF: ROM:DDA1↓r
+var_o2_heater_unk_17D:		.block 1			; DATA XREF: ROM:DDA1↓r
 								; ROM:loc_DDBD↓w ...
 var_adc_o2_heater:		.block 1			; DATA XREF: ROM:DD7F↓r
 								; ROM:DDA9↓r ...
 var_cnt_17F:			.block 1			; DATA XREF: divide_d_by_x+152↓w
 								; ROM:DD77↓r ...
 				.block 1
-var_g1g2_err_cnt:			.block 1			; DATA XREF: ROM:EF33↓r
+var_g1g2_err_cnt:		.block 1			; DATA XREF: ROM:EF33↓r
 								; ROM:int_vector_e_ne_EF4E↓w
-var_igf_miss_count:			.block 1			; DATA XREF: int_vector_9_ignition+28↓r
+var_igf_miss_count:		.block 1			; DATA XREF: int_vector_9_ignition+28↓r
 								; int_vector_9_ignition:igf_store_counter↓w
 				.block 1
 var_flags_184:			.block 1			; DATA XREF: ROM:FB0E↓r
@@ -900,49 +900,49 @@ var_idle_trim:			.block 1			; DATA XREF: divide_d_by_x+168↓w
 var_iscv_startup_flare:		.block 1			; DATA XREF: calc_iscv:loc_D484↓r
 								; calc_iscv:loc_D48E↓w ...
 				.block 1
-var_iscv_ect_unk_189:			.block 1			; DATA XREF: calc_ect_iscv+6↓w
+var_iscv_ect_unk_189:		.block 1			; DATA XREF: calc_ect_iscv+6↓w
 								; calc_iscv+407↓r
-var_iscv_pim_flare:			.block 1			; DATA XREF: calc_iscv+54↓w
+var_iscv_pim_flare:		.block 1			; DATA XREF: calc_iscv+54↓w
 								; calc_iscv+5E↓r	...
 				.block 1
-var_ect_unk_18C:			.block 1			; DATA XREF: divide_d_by_x+157↓w
+var_ect_unk_18C:		.block 1			; DATA XREF: divide_d_by_x+157↓w
 								; clamp_min_ect_18C+A↓r ...
-var_iscv_target_rpm:			.block 1			; DATA XREF: calc_iscv+126↓r
+var_iscv_target_rpm:		.block 1			; DATA XREF: calc_iscv+126↓r
 								; calc_iscv:loc_D590↓w ...
 				.block 1
-var_iscv_rpm_cmp_18F:			.block 1			; DATA XREF: calc_iscv+13C↓w
+var_iscv_rpm_cmp_18F:		.block 1			; DATA XREF: calc_iscv+13C↓w
 								; calc_iscv+154↓r ...
-var_iscv_pwm:		.block 1			; DATA XREF: drive_dout1_iscv+3↓r
+var_iscv_pwm:			.block 1			; DATA XREF: drive_dout1_iscv+3↓r
 								; divide_d_by_x:loc_D41D↓w ...
 				.block 1
-var_iscv_idle_upd_cnt:			.block 1			; DATA XREF: calc_iscv+226↓r
+var_iscv_idle_upd_cnt:		.block 1			; DATA XREF: calc_iscv+226↓r
 								; calc_iscv+22A↓w ...
-var_iscv_target_base:			.block 1			; DATA XREF: divide_d_by_x+D8A↓w
+var_iscv_target_base:		.block 1			; DATA XREF: divide_d_by_x+D8A↓w
 								; calc_iscv+15F↓r ...
 				.block 1
 var_iscv_195:			.block 1			; DATA XREF: divide_d_by_x+E67↓r
 								; divide_d_by_x+E81↓r ...
 				.block 1
-var_iscv_unk_197:			.block 1			; DATA XREF: calc_iscv:loc_D822↓w
+var_iscv_unk_197:		.block 1			; DATA XREF: calc_iscv:loc_D822↓w
 								; calc_iscv+416↓r
-var_iscv_ect_term:			.block 1			; DATA XREF: calc_iscv:loc_D636↓w
+var_iscv_ect_term:		.block 1			; DATA XREF: calc_iscv:loc_D636↓w
 								; calc_iscv+200↓r ...
-var_iscv_idle_base:			.block 1			; DATA XREF: divide_d_by_x+15D↓w
+var_iscv_idle_base:		.block 1			; DATA XREF: divide_d_by_x+15D↓w
 								; divide_d_by_x+D9D↓w ...
 				.block 1
-var_iscv_rpm_droop:			.block 1			; DATA XREF: calc_iscv+381↓r
+var_iscv_rpm_droop:		.block 1			; DATA XREF: calc_iscv+381↓r
 								; calc_iscv:loc_D7F4↓w
 				.block 1
 var_rpm_idle_unk_19D:		.block 1			; DATA XREF: divide_d_by_x+2EF↓w
 								; calc_iscv+345↓r ...
 				.block 1
-var_iscv_diag_term:			.block 1			; DATA XREF: calc_iscv:loc_D563↓w
+var_iscv_diag_term:		.block 1			; DATA XREF: calc_iscv:loc_D563↓w
 								; calc_iscv+1C0↓r
 				.block 1
-var_iscv_unk_1A1:			.block 1			; DATA XREF: calc_iscv:loc_D4DA↓r
+var_iscv_unk_1A1:		.block 1			; DATA XREF: calc_iscv:loc_D4DA↓r
 								; calc_iscv:loc_D4E4↓w ...
 				.block 1
-var_iscv_unk_1A3:			.block 1			; DATA XREF: calc_iscv:loc_D4FF↓w
+var_iscv_unk_1A3:		.block 1			; DATA XREF: calc_iscv:loc_D4FF↓w
 								; calc_iscv+10D↓r ...
 				.block 1
 var_iscv_unk_1A5:		.block 1			; DATA XREF: calc_iscv+B0↓r
@@ -955,27 +955,27 @@ unk_1A7:			.block 1			; DATA XREF: divide_d_by_x+163↓w
 				.block 1
 				.block 1
 				.block 1
-var_knock_retard:			.block 1			; DATA XREF: ROM:F4E7↓r
+var_knock_retard:		.block 1			; DATA XREF: ROM:F4E7↓r
 								; ROM:loc_F517↓r ...
 				.block 1
-var_knock_retard_latch:			.block 1			; DATA XREF: ROM:F4EA↓w
+var_knock_retard_latch:		.block 1			; DATA XREF: ROM:F4EA↓w
 								; ROM:F5A3↓r
 				.block 1
 var_knock_info:			.block 1			; DATA XREF: knock_mcu_update+2↓r
 								; knock_mcu_update:loc_F4A0↓w ...
-var_knock_event_cnt:			.block 1			; DATA XREF: ROM:loc_F4B8↓r
+var_knock_event_cnt:		.block 1			; DATA XREF: ROM:loc_F4B8↓r
 								; ROM:F4BE↓w ...
-var_knock_retard_prev:			.block 1			; DATA XREF: ROM:F4DF↓r
+var_knock_retard_prev:		.block 1			; DATA XREF: ROM:F4DF↓r
 								; ROM:loc_F537↓r ...
-var_knock_retard_max:			.block 1			; DATA XREF: ROM:F525↓r
+var_knock_retard_max:		.block 1			; DATA XREF: ROM:F525↓r
 								; ROM:F52D↓r ...
-var_knock_retard_prev2:			.block 1			; DATA XREF: ROM:F53B↓r
+var_knock_retard_prev2:		.block 1			; DATA XREF: ROM:F53B↓r
 								; ROM:F585↓w
-var_knock_cyl_idx:			.block 1			; DATA XREF: ROM:F5F4↓r
+var_knock_cyl_idx:		.block 1			; DATA XREF: ROM:F5F4↓r
 								; ROM:F617↓r ...
-var_pw_loop_mode:			.block 1			; DATA XREF: divide_d_by_x+141D↓w
+var_pw_loop_mode:		.block 1			; DATA XREF: divide_d_by_x+141D↓w
 								; divide_d_by_x+144E↓r ...
-var_inj_pw_base:			.block 1			; DATA XREF: divide_d_by_x+13C6↓r
+var_inj_pw_base:		.block 1			; DATA XREF: divide_d_by_x+13C6↓r
 								; divide_d_by_x+1400↓r ...
 				.block 1
 unk_1B8:			.block 1			; DATA XREF: divide_d_by_x+13CF↓r
@@ -986,10 +986,10 @@ unk_1B8:			.block 1			; DATA XREF: divide_d_by_x+13CF↓r
 								; Deliberately unnamed; see docs/fuel_calculation_system.md.
 								; divide_d_by_x:loc_D992↓w ...
 				.block 1
-var_pw_ramp_ratio:			.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
+var_pw_ramp_ratio:		.block 1			; DATA XREF: reset_pw_ramp_limiter+3↓w
 								; ROM:loc_DB51↓r ...
 				.block 1
-var_fuel_trim_slow:			.block 1			; DATA XREF: divide_d_by_x+142F↓w
+var_fuel_trim_slow:		.block 1			; DATA XREF: divide_d_by_x+142F↓w
 								; A SLOW fuel trim, distinct from the STFT. Same variable as 9651's
 								; var_fuel_trim_slow (there at 0x1C4) - every constant below was checked
 								; against this ROM, not assumed from the sibling.
@@ -1037,14 +1037,14 @@ unk_1C2:			.block 1			; DATA XREF: divide_d_by_x+11F↓w
 								; this group - and elsewhere set to 0FFh or compared with `cmpb a, #02h`.
 								; Looks ST205-specific rather than a counterpart of anything in 9651.
 								; ROM:DBE5↓r ...
-var_pw_ramp_ceiling:			.block 1			; DATA XREF: divide_d_by_x+125↓w
+var_pw_ramp_ceiling:		.block 1			; DATA XREF: divide_d_by_x+125↓w
 								; ROM:loc_DB7D↓r ...
 				.block 1
-var_inj_pw_unk_1C5:			.block 1			; DATA XREF: apply_enrich_and_trims+3E↓w
+var_inj_pw_unk_1C5:		.block 1			; DATA XREF: apply_enrich_and_trims+3E↓w
 								; divide_d_by_x+2089↓r
-var_adc_iscv_pos:			.block 1			; DATA XREF: factory_self_test+1FA↓r
+var_adc_iscv_pos:		.block 1			; DATA XREF: factory_self_test+1FA↓r
 								; ROM:adc_handler_iscv_pos↓w
-var_adc_iscv_fb:			.block 1			; DATA XREF: factory_self_test+1F4↓r
+var_adc_iscv_fb:		.block 1			; DATA XREF: factory_self_test+1F4↓r
 								; ROM:adc_handler_iscv_fb↓w
 var_adc_iscv_3:			.block 1			; DATA XREF: factory_self_test+1EE↓r
 								; ROM:adc_handler_iscv_3↓w
@@ -1055,7 +1055,7 @@ unk_1CA:			.block 1			; DATA XREF: divide_d_by_x+1713↓r
 								; two separate windows; it never represents one coherent variable long
 								; enough to name. Deliberately unnamed; see 9651.
 								; divide_d_by_x+1742↓w ...
-var_flags_4E_copy_1CB:			.block 1			; DATA XREF: divide_d_by_x:main_CD76↓r
+var_flags_4E_copy_1CB:		.block 1			; DATA XREF: divide_d_by_x:main_CD76↓r
 								; A save/restore slot for var_flags_4E. 9651 calls its equivalent
 								; var_flags_4E_copy_D0 after its own address (01D0h); this one lives at
 								; 01CBh, so the name is adapted rather than copied - the stamped form is
@@ -1066,21 +1066,21 @@ var_flags_4E_copy_1CB:			.block 1			; DATA XREF: divide_d_by_x:main_CD76↓r
 								; divide_d_by_x+C11↓w
 var_trim_state:			.block 1			; DATA XREF: divide_d_by_x+B1F↓r
 								; divide_d_by_x+CA6↓r ...
-var_flags_4E_saved:			.block 1			; DATA XREF: calc_4ms_corrections+2D↓r
+var_flags_4E_saved:		.block 1			; DATA XREF: calc_4ms_corrections+2D↓r
 								; calc_4ms_corrections+8C↓w
-var_flags_4E_copy_1CE:			.block 1			; DATA XREF: calc_4ms_corrections+8F↓r
+var_flags_4E_copy_1CE:		.block 1			; DATA XREF: calc_4ms_corrections+8F↓r
 								; update_idle_timing_ramp↓r ...
-var_flags_4E_temp:			.block 1			; DATA XREF: calc_4ms_corrections+274↓r
+var_flags_4E_temp:		.block 1			; DATA XREF: calc_4ms_corrections+274↓r
 								; calc_4ms_corrections+3FD↓w
 var_flags_4E_copy_2:		.block 1			; DATA XREF: divide_d_by_x+482↓r
 								; divide_d_by_x+73F↓w ...
-var_flags_4E_copy:			.block 1			; DATA XREF: divide_d_by_x+2054↓r
+var_flags_4E_copy:		.block 1			; DATA XREF: divide_d_by_x+2054↓r
 								; divide_d_by_x+215A↓w
-var_flags_4E_copy2:			.block 1			; DATA XREF: divide_d_by_x:loc_C9B8↓r
+var_flags_4E_copy2:		.block 1			; DATA XREF: divide_d_by_x:loc_C9B8↓r
 								; divide_d_by_x+473↓w ...
-var_flags_4F_copy2:			.block 1			; DATA XREF: divide_d_by_x+D0F↓r
+var_flags_4F_copy2:		.block 1			; DATA XREF: divide_d_by_x+D0F↓r
 								; divide_d_by_x+1350↓w
-var_flags_4F_saved:			.block 1			; DATA XREF: divide_d_by_x:loc_CEA1↓r
+var_flags_4F_saved:		.block 1			; DATA XREF: divide_d_by_x:loc_CEA1↓r
 								; divide_d_by_x+C16↓w ...
 unk_1D5:			.block 1			; DATA XREF: divide_d_by_x+90E↓r
 								; NOT SAFELY NAMEABLE, and the reason is structural rather than a gap in
@@ -1102,7 +1102,7 @@ unk_1D6:			.block 1			; DATA XREF: divide_d_by_x:loc_C84D↓r
 								; var_schedule_flag_41 bit 0 and compared with `cmpb a, #02h` (9651's
 								; equivalent site uses #01h, so even the constant differs).
 								; divide_d_by_x:loc_C85A↓w ...
-var_asr0n_shadow_1D7:			.block 1			; DATA XREF: divide_d_by_x+130↓w
+var_asr0n_shadow_1D7:		.block 1			; DATA XREF: divide_d_by_x+130↓w
 								; divide_d_by_x+1D6↓r ...
 var_dma_rx_buffer:		.block 1			; DATA XREF: ROM:C5F5↓t
 								; divide_d_by_x+1FA↓t ...
@@ -1147,7 +1147,7 @@ dmatx_tps:			.block 1			; DATA XREF: ROM:FC77↓w
 				.block 1
 dmatx_ect:			.block 1			; DATA XREF: ROM:FE4D↓w
 				.block 1
-dmatx_inj_pw_inj1:			.block 1			; DATA XREF: copy_dma_tx+26↓w
+dmatx_inj_pw_inj1:		.block 1			; DATA XREF: copy_dma_tx+26↓w
 				.block 1
 dmatx_pim:			.block 1			; DATA XREF: divide_d_by_x+8EA↓r
 								; divide_d_by_x:loc_E59B↓w ...
@@ -1155,13 +1155,13 @@ dmatx_pim:			.block 1			; DATA XREF: divide_d_by_x+8EA↓r
 dmatx_tha:			.block 1			; DATA XREF: ROM:FDB6↓w
 dmatx_tham:			.block 1			; DATA XREF: ROM:FDED↓w
 dmatx_battery:			.block 1			; DATA XREF: ROM:FDF5↓w
-dmatx_nv_trim_pim:			.block 1			; DATA XREF: copy_dma_tx:loc_F8A3↓w
-dmatx_cnt_startup:			.block 1			; DATA XREF: copy_dma_tx+16↓w
-dmatx_cnt_unk_209:			.block 1			; DATA XREF: copy_dma_tx+1B↓w
-dmatx_nv_trim_o2:			.block 1			; DATA XREF: copy_dma_tx:loc_F8AD↓w
-dmatx_lambda_state:			.block 1			; DATA XREF: copy_dma_tx+20↓w
+dmatx_nv_trim_pim:		.block 1			; DATA XREF: copy_dma_tx:loc_F8A3↓w
+dmatx_cnt_startup:		.block 1			; DATA XREF: copy_dma_tx+16↓w
+dmatx_cnt_unk_209:		.block 1			; DATA XREF: copy_dma_tx+1B↓w
+dmatx_nv_trim_o2:		.block 1			; DATA XREF: copy_dma_tx:loc_F8AD↓w
+dmatx_lambda_state:		.block 1			; DATA XREF: copy_dma_tx+20↓w
 dmatx_adc_lambda:		.block 1			; DATA XREF: ROM:FC13↓w
-dmatx_knock_retard_info:			.block 3			; DATA XREF: copy_dma_tx+2C↓w
+dmatx_knock_retard_info:	.block 3			; DATA XREF: copy_dma_tx+2C↓w
 								; Three bytes, declared as one symbol to match 9651. It was split here into
 								; a 1-byte symbol, an anonymous byte and a separate unk_20F for the third,
 								; so the third byte read as an unrelated variable. 9651 writes the same
@@ -1170,25 +1170,25 @@ dmatx_knock_retard_info:			.block 3			; DATA XREF: copy_dma_tx+2C↓w
 								; starts at dmatx_knock_retard_info - it is
 								; written separately (nv_table_knock_info+2)
 								; and so kept as its own declaration here.
-dmatx_ign_corr_cpu2:			.block 1			; DATA XREF: calc_4ms_corrections+49F↓r
+dmatx_ign_corr_cpu2:		.block 1			; DATA XREF: calc_4ms_corrections+49F↓r
 								; ROM:F510↓r ...
 dmatx_obd_inj:			.block 1			; DATA XREF: ROM:DD2E↓w
 dmatx_ign_obd:			.block 1			; DATA XREF: iv6_ne_process+99↓w
 								; iv6_ne_process+13C↓w
 dmatx_obd_iscv:			.block 1			; DATA XREF: ROM:DD37↓w
-dmatx_obd_o2_sensor:			.block 1			; DATA XREF: divide_d_by_x:loc_D12B↓w
-dmatx_knock_retard:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EE50↓w
+dmatx_obd_o2_sensor:		.block 1			; DATA XREF: divide_d_by_x:loc_D12B↓w
+dmatx_knock_retard:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EE50↓w
 								; iv6_ne_process+F9↓r
-dmatx_pw_loop_mode:			.block 1			; DATA XREF: copy_dma_tx+38↓w
-dmatx_tps_delta:			.block 1			; DATA XREF: copy_dma_tx+3D↓w
-dmatx_error_flags1:			.block 1			; DATA XREF: copy_dma_tx+42↓w
+dmatx_pw_loop_mode:		.block 1			; DATA XREF: copy_dma_tx+38↓w
+dmatx_tps_delta:		.block 1			; DATA XREF: copy_dma_tx+3D↓w
+dmatx_error_flags1:		.block 1			; DATA XREF: copy_dma_tx+42↓w
 				.block 1
 dmatx_flags_46:			.block 1			; DATA XREF: copy_dma_tx+47↓w
 dmatx_flags_1:			.block 1			; DATA XREF: copy_dma_tx:loc_F911↓w
 dmatx_limiter_flags:		.block 1			; DATA XREF: copy_dma_tx+7A↓w
-dmatx_selftest_code1:			.block 1			; DATA XREF: factory_self_test+35↓w
+dmatx_selftest_code1:		.block 1			; DATA XREF: factory_self_test+35↓w
 								; factory_self_test:loc_E0E7↓w
-dmatx_selftest_code2:			.block 1			; DATA XREF: factory_self_test+3C↓w
+dmatx_selftest_code2:		.block 1			; DATA XREF: factory_self_test+3C↓w
 								; factory_self_test:loc_E0F8↓w ...
 				.block 1
 								; ===========================================================================
@@ -1247,45 +1247,45 @@ dmatx_selftest_code2:			.block 1			; DATA XREF: factory_self_test+3C↓w
 								;   0240h dmarx_ign_retard_hi              <- 0170h unk_170
 								;   0241h dmarx_ign_retard_lo               <- 0171h (no symbol)
 								; ===========================================================================
-dmarx_ve_corr_map:			.block 1			; DATA XREF: divide_d_by_x+13BC↓r
+dmarx_ve_corr_map:		.block 1			; DATA XREF: divide_d_by_x+13BC↓r
 								; copy_dma_rx↓o
 				.block 1
-dmarx_ve_corr_map_tps:			.block 1			; DATA XREF: divide_d_by_x+13C1↓r
+dmarx_ve_corr_map_tps:		.block 1			; DATA XREF: divide_d_by_x+13C1↓r
 				.block 1
-dmarx_ve_x_pim_x_rpm:			.block 1			; DATA XREF: divide_d_by_x+13D8↓r
+dmarx_ve_x_pim_x_rpm:		.block 1			; DATA XREF: divide_d_by_x+13D8↓r
 								; divide_d_by_x+140A↓r
 				.block 1
-dmarx_scaled_ve:			.block 1			; DATA XREF: divide_d_by_x:loc_E45F↓r
+dmarx_scaled_ve:		.block 1			; DATA XREF: divide_d_by_x:loc_E45F↓r
 				.block 1
-dmarx_rpm_x_5p12:			.block 1			; DATA XREF: factory_self_test+206↓r
+dmarx_rpm_x_5p12:		.block 1			; DATA XREF: factory_self_test+206↓r
 				.block 1
-dmarx_warmup_enrichment_22A:			.block 1			; DATA XREF: divide_d_by_x+B0F↓r
+dmarx_warmup_enrichment_22A:	.block 1			; DATA XREF: divide_d_by_x+B0F↓r
 								; divide_d_by_x+138E↓r ...
-dmarx_enrichment_unk_22B:			.block 1			; DATA XREF: divide_d_by_x+B06↓r
+dmarx_enrichment_unk_22B:	.block 1			; DATA XREF: divide_d_by_x+B06↓r
 								; divide_d_by_x+C82↓r ...
-dmarx_enrichment_unk_22C:			.block 1			; DATA XREF: divide_d_by_x+B09↓r
-dmarx_enrichment_unk_22D:			.block 1			; DATA XREF: divide_d_by_x+B0C↓r
+dmarx_enrichment_unk_22C:	.block 1			; DATA XREF: divide_d_by_x+B09↓r
+dmarx_enrichment_unk_22D:	.block 1			; DATA XREF: divide_d_by_x+B0C↓r
 								; divide_d_by_x+1EC9↓r
-dmarx_unk_enrich:			.block 1			; DATA XREF: divide_d_by_x+1EBF↓r
-dmarx_tham_enrich:			.block 1			; DATA XREF: divide_d_by_x:loc_E46E↓r
-dmarx_enrichment_unk_230:			.block 1			; DATA XREF: divide_d_by_x+B12↓r
+dmarx_unk_enrich:		.block 1			; DATA XREF: divide_d_by_x+1EBF↓r
+dmarx_tham_enrich:		.block 1			; DATA XREF: divide_d_by_x:loc_E46E↓r
+dmarx_enrichment_unk_230:	.block 1			; DATA XREF: divide_d_by_x+B12↓r
 								; divide_d_by_x+C85↓r ...
-dmarx_fuel_enrichment:			.block 1			; DATA XREF: divide_d_by_x+833↓r
+dmarx_fuel_enrichment:		.block 1			; DATA XREF: divide_d_by_x+833↓r
 								; apply_enrich_and_trims+3↓r
 				.block 1
-dmarx_knock_unk_233:			.block 1			; DATA XREF: calc_4ms_corrections+534↓r
-dmarx_max_retard_234:			.block 1			; DATA XREF: ROM:F4CE↓r
+dmarx_knock_unk_233:		.block 1			; DATA XREF: calc_4ms_corrections+534↓r
+dmarx_max_retard_234:		.block 1			; DATA XREF: ROM:F4CE↓r
 								; ROM:F557↓r ...
-dmarx_lambda_trim_235:			.block 1			; DATA XREF: divide_d_by_x+1EDA↓r
-dmarx_ign_timing:			.block 1			; DATA XREF: calc_4ms_corrections+400↓r
-dmarx_ign_timing_fallback1:			.block 1			; DATA XREF: update_ign_timing_blend+BD↓r
-dmarx_ign_timing_fallback2:			.block 1			; DATA XREF: update_ign_timing_blend+C3↓r
-dmarx_ign_timing_unk_239:			.block 1			; DATA XREF: update_ign_timing_blend+5C↓r
+dmarx_lambda_trim_235:		.block 1			; DATA XREF: divide_d_by_x+1EDA↓r
+dmarx_ign_timing:		.block 1			; DATA XREF: calc_4ms_corrections+400↓r
+dmarx_ign_timing_fallback1:	.block 1			; DATA XREF: update_ign_timing_blend+BD↓r
+dmarx_ign_timing_fallback2:	.block 1			; DATA XREF: update_ign_timing_blend+C3↓r
+dmarx_ign_timing_unk_239:	.block 1			; DATA XREF: update_ign_timing_blend+5C↓r
 								; update_ign_timing_blend+D3↓r
 dmarx_unk_23A:			.block 1			; DATA XREF: update_ign_timing_blend+56↓r
 								; update_ign_timing_blend+D9↓r
 dmarx_unk_23B:			.block 1			; DATA XREF: scale_by_dmarx_23B+8↓r
-dmarx_status1_23C:			.block 1			; DATA XREF: divide_d_by_x+958↓r
+dmarx_status1_23C:		.block 1			; DATA XREF: divide_d_by_x+958↓r
 								; Purpose unconfirmed. CPU2 writes it once, from an RPM-indexed
 								;   lookup (table_C3EE on 0471, table_C376_rpm on 9661), and CPU1
 								;   reads it at eight sites - in update_diag_obd it BIT-TESTS bits
@@ -1311,11 +1311,11 @@ dmarx_status1_23C:			.block 1			; DATA XREF: divide_d_by_x+958↓r
 								;   inter-CPU DMA (CPU1 does no frame-integrity check on the
 								;   received block), or a setter not yet found.
 								; divide_d_by_x+C53↓r ...
-dmarx_diag_mode_23D:			.block 1			; DATA XREF: calc_4ms_corrections:loc_EE3C↓r
-dmarx_status2_23E:			.block 1			; DATA XREF: factory_self_test+1E1↓r
-dmarx_ign_advance_hi_23F:			.block 1			; DATA XREF: factory_self_test+1DA↓r
-dmarx_ign_retard_hi:			.block 1			; DATA XREF: iv6_ne_process+122↓r
-dmarx_ign_retard_lo:			.block 1			; DATA XREF: divide_d_by_x+DA↓o
+dmarx_diag_mode_23D:		.block 1			; DATA XREF: calc_4ms_corrections:loc_EE3C↓r
+dmarx_status2_23E:		.block 1			; DATA XREF: factory_self_test+1E1↓r
+dmarx_ign_advance_hi_23F:	.block 1			; DATA XREF: factory_self_test+1DA↓r
+dmarx_ign_retard_hi:		.block 1			; DATA XREF: iv6_ne_process+122↓r
+dmarx_ign_retard_lo:		.block 1			; DATA XREF: divide_d_by_x+DA↓o
 								; iv6_ne_process+12A↓r
 dmarx_end:			.block 0BDh			; DATA XREF: copy_dma_rx+B↓o
 								; One past the last byte copy_dma_rx writes, and used as exactly that: the
@@ -1619,7 +1619,7 @@ IVf:								; CODE XREF: IVf↓j
 				.db 00h
 
 
-map_transient_mag:			.dw 0200h			; DATA XREF: calc_transient_terms:loc_E6FB↓o
+map_transient_mag:		.dw 0200h			; DATA XREF: calc_transient_terms:loc_E6FB↓o
 				.db 0Bh
 				.dw 0000h
 				.db 0Ah
@@ -1636,7 +1636,7 @@ map_transient_mag:			.dw 0200h			; DATA XREF: calc_transient_terms:loc_E6FB↓o
 				.db 097, 097, 097, 097,	097, 097, 097, 097, 097, 097, 097, 097
 
 
-map_transient_gain:			.dw 0080h			; DATA XREF: calc_transient_terms+27↓o
+map_transient_gain:		.dw 0080h			; DATA XREF: calc_transient_terms+27↓o
 				.db 02h
 				.dw 0225h
 				.db 0Ah
@@ -1741,14 +1741,14 @@ table_pim_blend_seed:		.dw 0113h			; DATA XREF: update_ign_timing_blend+A↓o
 				.db 80h
 
 
-table_ign_blend_weight:			.db  01h			; DATA XREF: update_ign_timing_blend+CB↓o
+table_ign_blend_weight:		.db  01h			; DATA XREF: update_ign_timing_blend+CB↓o
 				.db  00h
 				.db  01h
 				.db  1Ah
 				.db  80h ; Ç
 
 
-table_ign_rpm_pos:			.db  00h			; DATA XREF: divide_d_by_x:loc_E741↓o
+table_ign_rpm_pos:		.db  00h			; DATA XREF: divide_d_by_x:loc_E741↓o
 				.db  80h ; Ç
 				.db  06h
 				.db  47h ; G
@@ -1760,7 +1760,7 @@ table_ign_rpm_pos:			.db  00h			; DATA XREF: divide_d_by_x:loc_E741↓o
 				.db  30h ; 0
 
 
-table_ign_rpm_neg:			.db  00h			; DATA XREF: divide_d_by_x+21CF↓o
+table_ign_rpm_neg:		.db  00h			; DATA XREF: divide_d_by_x+21CF↓o
 				.db  80h ; Ç
 				.db  06h
 				.db  42h ; B
@@ -1870,7 +1870,7 @@ table_ect_C18A:			.db  0Eh			; DATA XREF: divide_d_by_x+221C↓o
 				.db  00h
 
 
-table_rpm_unk_C19B:			.db 38h				; DATA XREF: injector_warmup+C↓o
+table_rpm_unk_C19B:		.db 38h				; DATA XREF: injector_warmup+C↓o
 				.db  60h ; `
 				.db  7Dh ; }
 				.db  7Dh ; }
@@ -1878,7 +1878,7 @@ table_rpm_unk_C19B:			.db 38h				; DATA XREF: injector_warmup+C↓o
 				.db  00h
 
 
-table_ect_unk_C1A1:			.db  06h			; DATA XREF: injector_warmup:loc_CD2A↓o
+table_ect_unk_C1A1:		.db  06h			; DATA XREF: injector_warmup:loc_CD2A↓o
 				.db  26h ; &
 				.db  00h
 				.db  51h ; Q
@@ -1889,7 +1889,7 @@ table_ect_unk_C1A1:			.db  06h			; DATA XREF: injector_warmup:loc_CD2A↓o
 				.db  00h
 
 
-table_rpm_unk_C1AA:			.db  18h			; DATA XREF: divide_d_by_x+5E5↓o
+table_rpm_unk_C1AA:		.db  18h			; DATA XREF: divide_d_by_x+5E5↓o
 				.db  60h ; `
 				.db  66h ; f
 				.db  2Ah ; *
@@ -1897,7 +1897,7 @@ table_rpm_unk_C1AA:			.db  18h			; DATA XREF: divide_d_by_x+5E5↓o
 				.db  33h ; 3
 
 
-table_rpm_unk_C1B0:			.db  38h ; 8			; DATA XREF: divide_d_by_x:loc_CC21↓o
+table_rpm_unk_C1B0:		.db  38h ; 8			; DATA XREF: divide_d_by_x:loc_CC21↓o
 				.db  50h ; P
 				.db  02h
 				.db  03h
@@ -1922,7 +1922,7 @@ table_ect_inj_throttle_pump:	.db 002				; DATA XREF: async_throttle_inject+1B↓
 				.db 228, 038			; 82c
 
 
-table_tps_unk_C1C9:			.db  06h			; DATA XREF: divide_d_by_x+827↓o
+table_tps_unk_C1C9:		.db  06h			; DATA XREF: divide_d_by_x+827↓o
 				.db  29h ; )
 				.db  7Ah ; z
 				.db  52h ; R
@@ -1933,7 +1933,7 @@ table_tps_unk_C1C9:			.db  06h			; DATA XREF: divide_d_by_x+827↓o
 				.db  3Dh ; =
 
 
-table_overrun_fuel_mult:			.db  08h			; DATA XREF: divide_d_by_x+8F5↓o
+table_overrun_fuel_mult:	.db  08h			; DATA XREF: divide_d_by_x+8F5↓o
 				.db  28h ; (
 				.db  40h ; @
 				.db  3Ch ; <
@@ -1946,7 +1946,7 @@ table_overrun_fuel_mult:			.db  08h			; DATA XREF: divide_d_by_x+8F5↓o
 				.db  7Fh ; 
 
 
-table_accel_enrich_tps:			.db  12h			; DATA XREF: divide_d_by_x+901↓o
+table_accel_enrich_tps:		.db  12h			; DATA XREF: divide_d_by_x+901↓o
 				.db  0Ah
 				.db 0FDh ; ²
 				.db  14h
@@ -1969,7 +1969,7 @@ table_accel_enrich_tps:			.db  12h			; DATA XREF: divide_d_by_x+901↓o
 				.db  00h
 
 
-table_lambda_step:			.db  0Ah			; DATA XREF: divide_d_by_x:loc_CF24↓o
+table_lambda_step:		.db  0Ah			; DATA XREF: divide_d_by_x:loc_CF24↓o
 								; divide_d_by_x+A18↓o
 				.db  05h
 				.db  0Ah
@@ -1982,7 +1982,7 @@ table_unk_C1F6:			.db  1Ah			; DATA XREF: divide_d_by_x+999↓o
 				.db  1Ah
 
 
-table_rpm_unk_C1FA:			.db  2Bh ; +			; DATA XREF: divide_d_by_x+9C5↓o
+table_rpm_unk_C1FA:		.db  2Bh ; +			; DATA XREF: divide_d_by_x+9C5↓o
 								; divide_d_by_x+A34↓o
 				.db  16h
 				.db  10h
@@ -1997,7 +1997,7 @@ table_rpm_unk_C1FA:			.db  2Bh ; +			; DATA XREF: divide_d_by_x+9C5↓o
 				.db  6Ch ; l
 
 
-table_rpm_unk_C206:			.db  2Bh ; +			; DATA XREF: divide_d_by_x+9CD↓o
+table_rpm_unk_C206:		.db  2Bh ; +			; DATA XREF: divide_d_by_x+9CD↓o
 				.db  16h
 				.db  10h
 				.db  40h ; @
@@ -2023,7 +2023,7 @@ table_adc_lambda_C212:		.db  09h			; DATA XREF: ROM:FBEA↓o
 				.db 0FEh ; ■
 
 
-table_rpm_unk_C21C:			.dw 0300h			; DATA XREF: divide_d_by_x+3E6↓o
+table_rpm_unk_C21C:		.dw 0300h			; DATA XREF: divide_d_by_x+3E6↓o
 				.db 05h
 				.dw 01CDh
 				.db 03h
@@ -2033,19 +2033,19 @@ table_rpm_unk_C21C:			.dw 0300h			; DATA XREF: divide_d_by_x+3E6↓o
 				.db 7Ah, 7Ah, 7Ah, 7Ah,	31h, 31h
 
 
-table_inj_pw_adj_C23A:			.db  00h			; DATA XREF: divide_d_by_x+20F3↓o
+table_inj_pw_adj_C23A:		.db  00h			; DATA XREF: divide_d_by_x+20F3↓o
 				.db  00h
 				.db  00h
 				.db  00h
-table_inj_pw_adj_C23E:			.db  08h			; DATA XREF: divide_d_by_x+20F9↓o
+table_inj_pw_adj_C23E:		.db  08h			; DATA XREF: divide_d_by_x+20F9↓o
 				.db  00h
 				.db  00h
 				.db  00h
-table_inj_phase_trim:			.db  0Dh			; DATA XREF: calc_inj_phase_lead+16↓o
+table_inj_phase_trim:		.db  0Dh			; DATA XREF: calc_inj_phase_lead+16↓o
 				.db  0Dh
 				.db  0Dh
 				.db  0Dh
-table_dwell_battery:			.db  08h			; DATA XREF: calc_4ms_corrections:loc_E9A1↓o
+table_dwell_battery:		.db  08h			; DATA XREF: calc_4ms_corrections:loc_E9A1↓o
 				.db  80h ; Ç
 				.db 0FFh
 				.db  9Ah ; Ü
@@ -2056,7 +2056,7 @@ table_dwell_battery:			.db  08h			; DATA XREF: calc_4ms_corrections:loc_E9A1↓o
 				.db 0AAh ; ¬
 				.db 0E6h ; µ
 				.db  8Fh ; Å
-table_dwell_rpm:			.db  08h			; DATA XREF: calc_4ms_corrections+16↓o
+table_dwell_rpm:		.db  08h			; DATA XREF: calc_4ms_corrections+16↓o
 				.db  0Ah
 				.db 0FFh
 				.db  20h
@@ -2067,7 +2067,7 @@ table_dwell_rpm:			.db  08h			; DATA XREF: calc_4ms_corrections+16↓o
 				.db 0A1h ; í
 				.db 0A0h ; á
 				.db  7Eh ; ~
-table_dwell_min_rpm:			.db  04h			; DATA XREF: calc_4ms_corrections+24↓o
+table_dwell_min_rpm:		.db  04h			; DATA XREF: calc_4ms_corrections+24↓o
 				.db  28h ; (
 				.db 0FAh ; ·
 				.db  50h ; P
@@ -2134,7 +2134,7 @@ table_unk_C296:			.db  00h			; DATA XREF: calc_4ms_corrections+296↓o
 				.db  73h ; s
 				.db  7Bh ; {
 				.db  88h ; ê
-table_rpm_unk_C29F:			.db  08h			; DATA XREF: calc_4ms_corrections+41B↓o
+table_rpm_unk_C29F:		.db  08h			; DATA XREF: calc_4ms_corrections+41B↓o
 				.db  60h ; `
 				.db  05h
 				.db  56h ; V
@@ -2147,14 +2147,14 @@ table_unk_C2A8:			.db  05h			; DATA XREF: calc_4ms_corrections+423↓o
 				.db  11h
 				.db  05h
 				.db  11h
-table_gearing_unk_C2AC:			.db  1Ah			; DATA XREF: calc_4ms_corrections+9E↓o
+table_gearing_unk_C2AC:		.db  1Ah			; DATA XREF: calc_4ms_corrections+9E↓o
 				.db  80h ; Ç
 				.db 0C8h ; ╚
 				.db 0C8h ; ╚
 				.db 0C8h ; ╚
 				.db 0C8h ; ╚
 				.db 0C8h ; ╚
-table_idle_ramp_from_knock:			.db  56h ; V			; DATA XREF: calc_ign_timing_min+6↓o
+table_idle_ramp_from_knock:	.db  56h ; V			; DATA XREF: calc_ign_timing_min+6↓o
 				.db  80h ; Ç
 				.db  00h
 				.db  0Ch
@@ -2168,12 +2168,12 @@ table_unk_C2BA:			.db  00h			; DATA XREF: calc_ign_timing_min:loc_EB30↓o
 				.db  33h ; 3
 				.db  40h ; @
 				.db  40h ; @
-table_ect_corr_158:			.db  02h			; DATA XREF: calc_ect_unk_158↓o
+table_ect_corr_158:		.db  02h			; DATA XREF: calc_ect_unk_158↓o
 				.db 0D2h ; ╥
 				.db  40h ; @
 				.db 0E4h ; Σ
 				.db  00h
-table_gear_correction:			.db  1Ah			; DATA XREF: calc_4ms_corrections:loc_EA7F↓o
+table_gear_correction:		.db  1Ah			; DATA XREF: calc_4ms_corrections:loc_EA7F↓o
 				.db  80h ; Ç
 				.db  06h
 				.db  0Ah
@@ -2184,12 +2184,12 @@ table_unk_C2CD:			.db  4Fh ; O			; DATA XREF: calc_ign_timing_min+6C↓o
 				.db  40h ; @
 				.db  80h ; Ç
 				.db  00h
-table_ign_corr_rpm:			.db  20h			; DATA XREF: calc_4ms_corrections+32↓o
+table_ign_corr_rpm:		.db  20h			; DATA XREF: calc_4ms_corrections+32↓o
 				.db  40h ; @
 				.db  29h ; )
 				.db  3Ah ; :
 				.db  4Dh ; M
-table_overrun_advance:			.db  04h			; DATA XREF: calc_4ms_corrections+69↓o
+table_overrun_advance:		.db  04h			; DATA XREF: calc_4ms_corrections+69↓o
 				.db  28h ; (
 				.db  44h ; D
 				.db  50h ; P
@@ -2253,13 +2253,13 @@ table_idle_pim:			.db  21h ; !			; DATA XREF: calc_iscv+4B↓o
 				.db  26h ; &
 
 
-table_iscv_diag_pair_C331:			.db  0Dh			; DATA XREF: calc_iscv+1B2↓o
+table_iscv_diag_pair_C331:	.db  0Dh			; DATA XREF: calc_iscv+1B2↓o
 				.db  1Ah
 				.db  13h
 				.db  20h
 
 
-table_ect_unk_C335:			.db  92h ; Æ			; DATA XREF: calc_iscv+1AA↓o
+table_ect_unk_C335:		.db  92h ; Æ			; DATA XREF: calc_iscv+1AA↓o
 				.db  40h ; @
 				.db  00h
 
@@ -2276,11 +2276,11 @@ table_iscv_rpm_c342:		.db 7Dh, 6Ah, 7Ah, 85h,	95h	; DATA XREF: calc_iscv+1E1↓o
 idle_trim:			.db 60h, 70h			; DATA XREF: calc_iscv+D5↓o
 idle_trim_els:			.db 0A0h, 0B0h			; DATA XREF: calc_iscv+E1↓o
 idle_trim_eco:			.db 60h, 70h			; DATA XREF: calc_iscv+E7↓o
-iscv_override_trim:			.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
-iscv_override_trim_eco:			.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
+iscv_override_trim:		.db 10h, 00h			; DATA XREF: calc_iscv+A4↓o
+iscv_override_trim_eco:		.db 00h, 00h			; DATA XREF: calc_iscv+AA↓o
 
 
-table_ect_corr_18C:			.db 0Ch				; DATA XREF: calc_ect_unk_18C↓o
+table_ect_corr_18C:		.db 0Ch				; DATA XREF: calc_ect_unk_18C↓o
 				.db 26h, 0F3h
 				.db 51h, 0F1h
 				.db 6Bh, 0E8h
@@ -2290,7 +2290,7 @@ table_ect_corr_18C:			.db 0Ch				; DATA XREF: calc_ect_unk_18C↓o
 				.db 0E4h, 8Dh
 
 
-table_iscv_adc_1:			.db  73h ; s			; DATA XREF: calc_idle_batt1+2↓o
+table_iscv_adc_1:		.db  73h ; s			; DATA XREF: calc_idle_batt1+2↓o
 				.db  60h ; `
 				.db  19h
 				.db  27h ; '
@@ -2298,7 +2298,7 @@ table_iscv_adc_1:			.db  73h ; s			; DATA XREF: calc_idle_batt1+2↓o
 				.db  3Bh ; ;
 
 
-table_iscv_adc_2:			.db 73h				; DATA XREF: calc_idle_batt2+2↓o
+table_iscv_adc_2:		.db 73h				; DATA XREF: calc_idle_batt2+2↓o
 				.db  60h ; `
 				.db  36h ; 6
 				.db  33h ; 3
@@ -2306,7 +2306,7 @@ table_iscv_adc_2:			.db 73h				; DATA XREF: calc_idle_batt2+2↓o
 				.db  2Ch ; ,
 
 
-table_iscv_C372:			.db  00h			; DATA XREF: calc_iscv+112↓o
+table_iscv_C372:		.db  00h			; DATA XREF: calc_iscv+112↓o
 				.db  08h
 				.db  10h
 
@@ -2320,7 +2320,7 @@ table_unk_C375:			.db  20h			; DATA XREF: ROM:F4FD↓o
 				.db  06h
 
 
-table_knock_retard_inc:			.db  01h			; DATA XREF: ROM:F5F7↓o
+table_knock_retard_inc:		.db  01h			; DATA XREF: ROM:F5F7↓o
 				.db  01h
 				.db  02h
 
@@ -2355,10 +2355,10 @@ nv_98_limits:			.db 64h, 37h			; DATA XREF: ROM:FBA1↓o
 								; validate_nv_trim_pim+2↓o
 
 
-ign_advance_trim_limits:			.db 88h, 2Ah			; DATA XREF: calc_4ms_corrections:loc_ED35↓o
+ign_advance_trim_limits:	.db 88h, 2Ah			; DATA XREF: calc_4ms_corrections:loc_ED35↓o
 
 
-inj_pw_base_limits:			.dw 0500h, 0000h		; DATA XREF: divide_d_by_x:loc_D9E1↓o
+inj_pw_base_limits:		.dw 0500h, 0000h		; DATA XREF: divide_d_by_x:loc_D9E1↓o
 								; The [0, 0500h] clamp applied to var_inj_pw_base. Named for WHAT IT CLAMPS
 								; rather than for an address: 9651 called this ram_1BE_limits after
 								; var_inj_pw_base's address there (01BEh), but the same variable sits at
@@ -2378,7 +2378,7 @@ tha_adc_limits:			.db 0FCh, 07h			; DATA XREF: ROM:adc_handler_tha↓o
 tham_adc_limits:		.db 0FCh, 07h			; DATA XREF: ROM:adc_handler_tham↓o
 ect_adc_limits:			.db 0FCh, 07h			; DATA XREF: ROM:adc_handler_ect↓o
 tps_adc_limits:			.db 0FBh, 05h			; DATA XREF: ROM:FC1C↓o
-tps_closed_limits:			.db 31h, 05h			; DATA XREF: ROM:FC56↓o
+tps_closed_limits:		.db 31h, 05h			; DATA XREF: ROM:FC56↓o
 								; Limit pair for the closed-throttle TPS check, reached by the usual
 								; ld y, #<label> / jsr y + <clamp offset> idiom with `bcs` taken when the
 								; value is out of range. It was the only unnamed entry in a run of limit
@@ -2458,7 +2458,7 @@ table_rpm_pair_interpolate:					; CODE XREF: divide_d_by_x+8F8↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_pair_interpolate:							; CODE XREF: divide_d_by_x+82C↓p
+table_pair_interpolate:						; CODE XREF: divide_d_by_x+82C↓p
 								; update_ign_timing_blend+186↓p ...
 				mov	d, x
 				ld	a, [y]
@@ -2641,7 +2641,7 @@ loc_C433:							; CODE XREF: table_rB_fixed4_interpolate+12↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_advance_y_to_entry:							; CODE XREF: table_rD_fixed2_interpolate+3↑j
+table_advance_y_to_entry:					; CODE XREF: table_rD_fixed2_interpolate+3↑j
 								; map_rD_rX_interpolate+1C↓p ...
 				add	a, #02h
 				add	y, a
@@ -2961,7 +2961,7 @@ locret_C4C5:							; CODE XREF: clamp_rD_FF+1↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-negate_rD_mark:					; CODE XREF: ROM:DB59↓p
+negate_rD_mark:							; CODE XREF: ROM:DB59↓p
 								; ROM:DC24↓p ...
 				setb	bit0, var_diag_errors_5
 ; End of function negate_rD_mark
@@ -2970,7 +2970,7 @@ negate_rD_mark:					; CODE XREF: ROM:DB59↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-negate_rD_if_marked:					; CODE XREF: calc_iscv+F6↓p
+negate_rD_if_marked:						; CODE XREF: calc_iscv+F6↓p
 								; divide_d_by_x+1F1A↓p ...
 				tbbc	bit0, var_diag_errors_5, locret_C4CF
 
@@ -2995,7 +2995,7 @@ locret_C4CF:							; CODE XREF: negate_rD_if_marked↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-add_d_base_offset:							; CODE XREF: divide_d_by_x+1EE1↓p
+add_d_base_offset:						; CODE XREF: divide_d_by_x+1EE1↓p
 								; divide_d_by_x+1EF7↓p
 				clr	a
 				add	d, #0180h
@@ -3005,7 +3005,7 @@ add_d_base_offset:							; CODE XREF: divide_d_by_x+1EE1↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-mult_rDrX_saturate:							; CODE XREF: apply_enrich_and_trims+38↓p
+mult_rDrX_saturate:						; CODE XREF: apply_enrich_and_trims+38↓p
 								; apply_enrich_and_trims+5E↓p
 				bsr	mult_rDrX
 
@@ -3076,7 +3076,7 @@ loc_C513:							; CODE XREF: mult_rDrX+27↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-scale_d_by_a_frac:							; CODE XREF: update_ign_timing_blend+19A↓p
+scale_d_by_a_frac:						; CODE XREF: update_ign_timing_blend+19A↓p
 				mov	x, d
 				cmpb	a, #0F8h
 				beq	loc_C521
@@ -3158,7 +3158,7 @@ mult_rArX:							; CODE XREF: signed_proportional_update+E↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-signed_proportional_update:							; CODE XREF: divide_d_by_x+1FE4↓p
+signed_proportional_update:					; CODE XREF: divide_d_by_x+1FE4↓p
 								; update_pim_est_fast+F↓p
 				push	b
 				mov	x, d
@@ -4033,7 +4033,7 @@ loc_C975:							; CODE XREF: divide_d_by_x+3F5↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_tps_closed_ref:							; CODE XREF: ROM:FD73↓p
+update_tps_closed_ref:						; CODE XREF: ROM:FD73↓p
 				tbbc	bit1, var_io_input1, loc_C99C
 
 				tbbs	bit4, var_flags_47, loc_C99E
@@ -4329,7 +4329,7 @@ loc_CAB4:							; CODE XREF: divide_d_by_x+532↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_lambda_state:							; CODE XREF: divide_d_by_x+C26↓p
+decay_lambda_state:						; CODE XREF: divide_d_by_x+C26↓p
 				ld	a, var_lambda_state
 				add	a, #02h
 				bpz	loc_CABE
@@ -4346,7 +4346,7 @@ loc_CABE:							; CODE XREF: decay_lambda_state+4↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_ect_unk_142:							; CODE XREF: divide_d_by_x+1D7C↓p
+calc_ect_unk_142:						; CODE XREF: divide_d_by_x+1D7C↓p
 				ld	y, #table_ect_unk_C110
 				jsr	table_ect_fixed4_interpolate
 
@@ -4929,7 +4929,7 @@ main_CD12:							; CODE XREF: divide_d_by_x:loc_CCDF↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-injector_warmup:							; CODE XREF: divide_d_by_x:loc_CA8A↑p
+injector_warmup:						; CODE XREF: divide_d_by_x:loc_CA8A↑p
 				tbbs	bit0, var_flags_46, locret_CD36
 
 				tbbc	bit0, var_flags_44, locret_CD36
@@ -4978,7 +4978,7 @@ async_throttle_inject:						; CODE XREF: ROM:FD79↓p
 				ld	a, var_tps_delta	; Get TPS delta
 				bpz	loc_CD3F		; Jump if positive or 0
 
-				clrb	bit3, var_flags_40		; Clear	async throttle flag
+				clrb	bit3, var_flags_40	; Clear	async throttle flag
 
 loc_CD3F:							; CODE XREF: async_throttle_inject+2↑j
 				cmp	a, #0Eh			; Check	if delta is less than 14
@@ -4990,9 +4990,9 @@ loc_CD3F:							; CODE XREF: async_throttle_inject+2↑j
 				cmp	#0Eh, var_tps		; Check	if TPS is not open enough
 				bcs	locret_CD62		; Jump is so, not worth	injecting fuel
 
-				tbbs	bit0, var_flags_46, locret_CD62	; Test and set async throttle flag
+				tbbs	bit0, var_flags_46, locret_CD62 ; Test and set async throttle flag
 
-				tbs	bit3, var_flags_40		; Jump if flag already set
+				tbs	bit3, var_flags_40	; Jump if flag already set
 				bne	locret_CD62
 
 				ld	y, #table_ect_inj_throttle_pump
@@ -5023,7 +5023,7 @@ main_CD63:							; CODE XREF: divide_d_by_x:main_CD37↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-inj_overrun_end_2:					; CODE XREF: divide_d_by_x+50D↑p
+inj_overrun_end_2:						; CODE XREF: divide_d_by_x+50D↑p
 				ld	d, #00FAh
 				bra	loc_CD72
 
@@ -5126,7 +5126,7 @@ loc_CDD3:							; CODE XREF: divide_d_by_x+851↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ramp_fuel_enrich_rpm:							; CODE XREF: iv6_ne_process+36D↓p
+ramp_fuel_enrich_rpm:						; CODE XREF: iv6_ne_process+36D↓p
 				ld	a, var_fuel_enrich_rpm
 				bmi	locret_CDE7
 
@@ -5149,7 +5149,7 @@ locret_CDE7:							; CODE XREF: ramp_fuel_enrich_rpm+3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_tps_delta_rate:							; CODE XREF: ROM:FD76↓p
+update_tps_delta_rate:						; CODE XREF: ROM:FD76↓p
 				ld	a, var_tps_delta
 				cmp	a, #0F0h
 				blta	loc_CDF5
@@ -5388,7 +5388,7 @@ open_loop_CEFD:							; CODE XREF: divide_d_by_x+952↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; If we	get here, the ECU is running in	closed loop mode
 
-closed_loop_CF02:							; CODE XREF: divide_d_by_x+980↑j
+closed_loop_CF02:						; CODE XREF: divide_d_by_x+980↑j
 				setb	bit1, var_flags_46
 				di
 				ld	a, var_adc_lambda
@@ -5617,7 +5617,7 @@ check_nv_trims:							; CODE XREF: divide_d_by_x:loc_CFF9↑j
 				ld	y, #nv_unk_trim_86-1
 				ld	x, #nv_86_limits
 
-check_nv_trims_loop:							; CODE XREF: divide_d_by_x+AA9↓j
+check_nv_trims_loop:						; CODE XREF: divide_d_by_x+AA9↓j
 				ld	d, [y]
 				inc	x
 				inc	x
@@ -5634,7 +5634,7 @@ check_nv_trims_loop:							; CODE XREF: divide_d_by_x+AA9↓j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-nv_trims_invalid:							; CODE XREF: divide_d_by_x+AA4↑j
+nv_trims_invalid:						; CODE XREF: divide_d_by_x+AA4↑j
 				jsr	clear_nv_ram
 
 
@@ -5671,13 +5671,13 @@ loc_D041:							; CODE XREF: divide_d_by_x+AB2↑j
 				bcc	loc_D05B
 
 
-open_loop_mode_D055:							; CODE XREF: divide_d_by_x+AB8↑j
+open_loop_mode_D055:						; CODE XREF: divide_d_by_x+AB8↑j
 								; divide_d_by_x+ABD↑j ...
 				jmp	loc_D119
 
 ; END OF FUNCTION CHUNK	FOR divide_d_by_x
 ; ───────────────────────────────────────────────────────────────────────────
-afr_trim_pim_axis:			.dw 031Fh			; DATA XREF: divide_d_by_x:loc_D05B↓o
+afr_trim_pim_axis:		.dw 031Fh			; DATA XREF: divide_d_by_x:loc_D05B↓o
 								; read_nv_afr_trim:loc_D159↓o
 				.db 06h
 ; ───────────────────────────────────────────────────────────────────────────
@@ -5848,7 +5848,7 @@ loc_D12B:							; CODE XREF: divide_d_by_x:loc_D120↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_lambda_avg:							; CODE XREF: divide_d_by_x+A08↑p
+update_lambda_avg:						; CODE XREF: divide_d_by_x+A08↑p
 				ld	d, var_lambda_byte
 				st	b, var_lambda_byte
 				add	a, b
@@ -5881,7 +5881,7 @@ write_rB_nv_ram:						; CODE XREF: divide_d_by_x+B57↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-read_nv_afr_trim:							; CODE XREF: apply_enrich_and_trims+28↓p
+read_nv_afr_trim:						; CODE XREF: apply_enrich_and_trims+28↓p
 				ld	b, #80h
 				tbbc	bit0, var_flags_42, locret_D188
 
@@ -6019,7 +6019,7 @@ loc_D1EA:							; CODE XREF: divide_d_by_x+C6C↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-closed_loop_control:							; CODE XREF: divide_d_by_x:loc_D1EA↑j
+closed_loop_control:						; CODE XREF: divide_d_by_x:loc_D1EA↑j
 				ld	d, var_ect
 				cmp	d, #0E4C0h
 				bcs	loc_D268
@@ -6120,7 +6120,7 @@ loc_D268:							; CODE XREF: divide_d_by_x+C73↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-validate_nv_trim_o2:							; CODE XREF: divide_d_by_x+47F↑p
+validate_nv_trim_o2:						; CODE XREF: divide_d_by_x+47F↑p
 				ld	b, var_nv_trim_unk_96
 				ld	y, #nv_96_limits
 				jsr	y + 1Eh
@@ -6306,7 +6306,7 @@ loc_D326:							; CODE XREF: divide_d_by_x:loc_D31A↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-drive_dout1_iscv:							; CODE XREF: int_4ms_watchdog+1C↓p
+drive_dout1_iscv:						; CODE XREF: int_4ms_watchdog+1C↓p
 				di
 				clrb	bit1, DOM
 				ld	d, var_iscv_pwm
@@ -6543,7 +6543,7 @@ loc_D41D:							; CODE XREF: divide_d_by_x+E9B↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_idle_batt1:							; CODE XREF: divide_d_by_x+E20↑p
+calc_idle_batt1:						; CODE XREF: divide_d_by_x+E20↑p
 								; divide_d_by_x+E62↑p
 				ld	b, var_adc_battery
 				ld	y, #table_iscv_adc_1
@@ -6559,7 +6559,7 @@ calc_idle_batt1:							; CODE XREF: divide_d_by_x+E20↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_idle_batt2:							; CODE XREF: divide_d_by_x+E2B↑p
+calc_idle_batt2:						; CODE XREF: divide_d_by_x+E2B↑p
 								; divide_d_by_x+E65↑p
 				ld	b, var_adc_battery
 				ld	y, #table_iscv_adc_2
@@ -6575,7 +6575,7 @@ calc_idle_batt2:							; CODE XREF: divide_d_by_x+E2B↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clamp_min_ect_18C:							; CODE XREF: divide_d_by_x+E92↑p
+clamp_min_ect_18C:						; CODE XREF: divide_d_by_x+E92↑p
 								; divide_d_by_x:loc_D417↑p
 				cmp	d, x + 00h
 				bcs	loc_D453
@@ -6615,7 +6615,7 @@ loc_D453:							; CODE XREF: clamp_min_ect_18C+2↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_ect_unk_18C:							; CODE XREF: divide_d_by_x+1D8A↓p
+calc_ect_unk_18C:						; CODE XREF: divide_d_by_x+1D8A↓p
 				ld	y, #table_ect_corr_18C
 				jsr	table_ect_pair_interpolate
 
@@ -7545,7 +7545,7 @@ loc_D8BB:							; CODE XREF: calc_iscv+452↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
-calc_inj_pw_base:							; CODE XREF: divide_d_by_x:loc_D460↑j
+calc_inj_pw_base:						; CODE XREF: divide_d_by_x:loc_D460↑j
 				clrb	bit1, var_flags_4E
 				clrb	bit7, var_flags_4E
 				ld	a, var_flags_4E
@@ -7796,7 +7796,7 @@ loc_D9FC:							; CODE XREF: divide_d_by_x+1437↑j
 ; END OF FUNCTION CHUNK	FOR divide_d_by_x
 ; ───────────────────────────────────────────────────────────────────────────
 
-update_lambda_stft:							; CODE XREF: divide_d_by_x+1D92↓p
+update_lambda_stft:						; CODE XREF: divide_d_by_x+1D92↓p
 				cmp	#14h, var_rpm_x_5p12
 				bcc	loc_DA0C
 
@@ -8039,7 +8039,7 @@ locret_DB10:							; CODE XREF: ROM:DA58↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clear_trim_state_bit2:							; CODE XREF: ROM:DAD3↑p
+clear_trim_state_bit2:						; CODE XREF: ROM:DAD3↑p
 				clrb	bit2, var_flags_4E
 ; End of function clear_trim_state_bit2
 
@@ -8047,7 +8047,7 @@ clear_trim_state_bit2:							; CODE XREF: ROM:DAD3↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clear_trim_state_bit0:							; CODE XREF: ROM:DA53↑p
+clear_trim_state_bit0:						; CODE XREF: ROM:DA53↑p
 								; ROM:DACA↑p
 				clrb	bit0, var_flags_4E
 ; End of function clear_trim_state_bit0
@@ -8056,7 +8056,7 @@ clear_trim_state_bit0:							; CODE XREF: ROM:DA53↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DA44↑p
+reset_pw_ramp_limiter:						; CODE XREF: ROM:loc_DA44↑p
 				ld	d, #0CCCDh
 				st	d, var_pw_ramp_ratio
 				clrb	bit5, var_flags_4E
@@ -8071,7 +8071,7 @@ reset_pw_ramp_limiter:							; CODE XREF: ROM:loc_DA44↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-init_pw_open_loop:							; CODE XREF: divide_d_by_x:loc_D922↑p
+init_pw_open_loop:						; CODE XREF: divide_d_by_x:loc_D922↑p
 				clr	a
 				st	a, var_pw_loop_mode
 				bra	loc_DB33
@@ -8082,7 +8082,7 @@ init_pw_open_loop:							; CODE XREF: divide_d_by_x:loc_D922↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-init_pw_closed_loop:							; CODE XREF: divide_d_by_x+13A3↑p
+init_pw_closed_loop:						; CODE XREF: divide_d_by_x+13A3↑p
 				ld	a, #0C8h
 				st	a, var_pw_loop_mode
 
@@ -8098,7 +8098,7 @@ loc_DB33:							; CODE XREF: init_pw_open_loop+4↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-ramp_limit_inj_pw:							; CODE XREF: divide_d_by_x+142C↑p
+ramp_limit_inj_pw:						; CODE XREF: divide_d_by_x+142C↑p
 								; apply_enrich_and_trims+46↓p
 				clrb	bit0, var_diag_errors_5
 				ld	x, unk_1B8
@@ -8331,7 +8331,7 @@ loc_DC47:							; CODE XREF: ROM:DB7A↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ramp_limit_inj_pw_simple:							; CODE XREF: divide_d_by_x+147F↑p
+ramp_limit_inj_pw_simple:					; CODE XREF: divide_d_by_x+147F↑p
 								; ROM:DA4B↑p ...
 				clrb	bit0, var_diag_errors_5
 				ld	d, var_fuel_trim_slow
@@ -8424,7 +8424,7 @@ loc_DCAA:							; CODE XREF: divide_d_by_x+1729↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clear_ne_sync_errors:							; CODE XREF: iv6_ne_process+3↓p
+clear_ne_sync_errors:						; CODE XREF: iv6_ne_process+3↓p
 				tbbs	bit2, var_flags_40, loc_DCB1
 
 				clrb	bit1, var_error_flags1
@@ -8471,7 +8471,7 @@ loc_DCD3:							; CODE XREF: divide_d_by_x+174D↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_starter_and_set_flag:							; CODE XREF: int_vector_9_ignition+22↓p
+check_starter_and_set_flag:					; CODE XREF: int_vector_9_ignition+22↓p
 				tbbs	bit0, var_io_input1, locret_DCDA
 
 				setb	bit7, var_flags_4D
@@ -8504,7 +8504,7 @@ loc_DCE8:							; CODE XREF: divide_d_by_x+1764↑j
 ; END OF FUNCTION CHUNK	FOR divide_d_by_x
 ; ───────────────────────────────────────────────────────────────────────────
 
-update_diag_obd:							; CODE XREF: divide_d_by_x+1D9A↓p
+update_diag_obd:						; CODE XREF: divide_d_by_x+1D9A↓p
 				ld	a, dmarx_status1_23C
 				cmpb	a, #08h
 				beq	loc_DCF5
@@ -8688,7 +8688,7 @@ loc_DDDA:							; CODE XREF: ROM:DDB4↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_cnt_17F_window:							; CODE XREF: divide_d_by_x+A05↑p
+check_cnt_17F_window:						; CODE XREF: divide_d_by_x+A05↑p
 				clrb	bit7, var_flags_4F
 				ld	x, var_cnt_17F
 				cmp	x, #0003h
@@ -8974,7 +8974,7 @@ copy_diag_errors_3_to_4:					; CODE XREF: divide_d_by_x+197↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clear_diag_error_bits:							; CODE XREF: ROM:DDCD↑p
+clear_diag_error_bits:						; CODE XREF: ROM:DDCD↑p
 								; ROM:DE84↑p
 				mov	a, b
 				and	a, var_diag_errors_4
@@ -9230,7 +9230,7 @@ loc_E023:							; CODE XREF: ROM:E01E↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_diag_flags:							; CODE XREF: ROM:DF40↑p
+check_diag_flags:						; CODE XREF: ROM:DF40↑p
 								; ROM:DF78↑p ...
 				ld	y, #table_diag-3
 				add	a, #03h
@@ -9353,7 +9353,7 @@ loc_E091:							; CODE XREF: divide_d_by_x:loc_DCE8↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-factory_self_test:							; CODE XREF: divide_d_by_x+1D9D↓p
+factory_self_test:						; CODE XREF: divide_d_by_x+1D9D↓p
 
 ; FUNCTION CHUNK AT E22A SIZE 000000AD BYTES
 
@@ -9634,7 +9634,7 @@ loc_E1BA:							; CODE XREF: factory_self_test+127↓j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-selftest_io_cycle:							; CODE XREF: factory_self_test+73↑p
+selftest_io_cycle:						; CODE XREF: factory_self_test+73↑p
 								; factory_self_test+8E↑p
 				push	d
 				tbs	bit0, PORTA		; Port A Data Register
@@ -9875,7 +9875,7 @@ locret_E2D6:							; CODE XREF: factory_self_test+199↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR divide_d_by_x
 
-bg_64ms_dispatch:							; CODE XREF: divide_d_by_x:loc_E091↑j
+bg_64ms_dispatch:						; CODE XREF: divide_d_by_x:loc_E091↑j
 				tbs	bit7, var_schedule_flag_41
 				beq	loc_E2DE
 
@@ -10031,7 +10031,7 @@ loc_E397:							; CODE XREF: divide_d_by_x+1DF1↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_crank_cnt:							; CODE XREF: divide_d_by_x:loc_E2F3↑p
+update_crank_cnt:						; CODE XREF: divide_d_by_x:loc_E2F3↑p
 				ld	a, var_crank_cnt
 				tbbc	bit0, var_flags_46, loc_E3B4
 
@@ -10075,7 +10075,7 @@ loc_E3C6:							; CODE XREF: divide_d_by_x+1DA9↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-apply_enrich_and_trims:							; CODE XREF: divide_d_by_x+476↑p
+apply_enrich_and_trims:						; CODE XREF: divide_d_by_x+476↑p
 								; divide_d_by_x:loc_E31A↑p
 				ld	x, var_scaled_ve_tham
 				ld	a, dmarx_fuel_enrichment
@@ -10702,7 +10702,7 @@ loc_E6AC:							; CODE XREF: divide_d_by_x+212C↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-update_injector_pw:							; CODE XREF: divide_d_by_x+2126↑j
+update_injector_pw:						; CODE XREF: divide_d_by_x+2126↑j
 				ld	x, #var_inj_pw_inj1
 				ld	y, #var_inj_pw_array
 				di
@@ -10731,7 +10731,7 @@ loc_E6D2:							; CODE XREF: divide_d_by_x+205C↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-get_tps_load_div8:							; CODE XREF: calc_dmatx_pim↑p
+get_tps_load_div8:						; CODE XREF: calc_dmatx_pim↑p
 				jsr	get_tps_unk
 
 				shr	d
@@ -10743,7 +10743,7 @@ get_tps_load_div8:							; CODE XREF: calc_dmatx_pim↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_transient_terms:							; CODE XREF: divide_d_by_x+1FCD↑p
+calc_transient_terms:						; CODE XREF: divide_d_by_x+1FCD↑p
 				cmp	a, #05h
 				bcs	loc_E6EF
 
@@ -10789,7 +10789,7 @@ loc_E6FB:							; CODE XREF: calc_transient_terms+15↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_pim_est_fast:							; CODE XREF: iv6_4ms_process+67↓p
+update_pim_est_fast:						; CODE XREF: iv6_4ms_process+67↓p
 				ld	x, var_pim_tps_est
 				tbbc	bit0, var_flags_46, loc_E71B
 
@@ -10808,7 +10808,7 @@ loc_E71B:							; CODE XREF: update_pim_est_fast+3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_pim_est_slow:							; CODE XREF: iv6_4ms_process:loc_F7AB↓p
+update_pim_est_slow:						; CODE XREF: iv6_4ms_process:loc_F7AB↓p
 				ld	d, var_pim_est_fast
 				tbbs	bit0, var_flags_46, loc_E73D
 
@@ -10907,7 +10907,7 @@ loc_E789:							; CODE XREF: divide_d_by_x+220A↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_ign_ect_term:							; CODE XREF: update_ign_timing_blend+1A3↓p
+decay_ign_ect_term:						; CODE XREF: update_ign_timing_blend+1A3↓p
 				tbbc	bit5, var_flags_44, locret_E7B6
 
 				ld	d, var_ign_ect_term
@@ -10929,7 +10929,7 @@ locret_E7B6:							; CODE XREF: decay_ign_ect_term↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-scale_by_nv_trim_o2:							; CODE XREF: divide_d_by_x+21E3↑p
+scale_by_nv_trim_o2:						; CODE XREF: divide_d_by_x+21E3↑p
 								; divide_d_by_x+2205↑p ...
 				mov	d, x
 				ld	a, var_nv_trim_unk_96
@@ -10948,7 +10948,7 @@ loc_E7BF:							; CODE XREF: scale_by_nv_trim_o2+3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-scale_by_dmarx_23B:							; CODE XREF: divide_d_by_x:loc_E789↑p
+scale_by_dmarx_23B:						; CODE XREF: divide_d_by_x:loc_E789↑p
 								; divide_d_by_x+2224↑p
 				add	d, var_temp_w
 				bcc	loc_E7CA
@@ -10974,7 +10974,7 @@ locret_E7D8:							; CODE XREF: scale_by_dmarx_23B+10↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_ign_timing_blend:							; CODE XREF: divide_d_by_x+D07↑p
+update_ign_timing_blend:					; CODE XREF: divide_d_by_x+D07↑p
 								; divide_d_by_x+2051↑p ...
 				tbs	bit3, var_schedule_flag_41
 				beq	loc_E7E0
@@ -11288,7 +11288,7 @@ locret_E97F:							; CODE XREF: update_ign_timing_blend+4↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clamp_neg_early_startup:							; CODE XREF: update_ign_timing_blend:loc_E914↑p
+clamp_neg_early_startup:					; CODE XREF: update_ign_timing_blend:loc_E914↑p
 								; update_ign_timing_blend:loc_E930↑p
 				cmpz	a
 				bpz	locret_E98A
@@ -11323,7 +11323,7 @@ loc_E98B:							; CODE XREF: divide_d_by_x+2229↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_4ms_corrections:							; CODE XREF: divide_d_by_x:loc_D27E↑p
+calc_4ms_corrections:						; CODE XREF: divide_d_by_x:loc_D27E↑p
 								; divide_d_by_x+204E↑p ...
 
 ; FUNCTION CHUNK AT EA20 SIZE 000000AB BYTES
@@ -11415,7 +11415,7 @@ loc_EA09:							; CODE XREF: calc_4ms_corrections:loc_E9EE↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_overrun_advance:							; CODE XREF: calc_4ms_corrections:loc_EBA7↓p
+decay_overrun_advance:						; CODE XREF: calc_4ms_corrections:loc_EBA7↓p
 				ld	a, var_overrun_advance
 				beq	locret_EA16
 
@@ -11436,7 +11436,7 @@ locret_EA16:							; CODE XREF: decay_overrun_advance+2↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-clamp_overrun_advance:							; CODE XREF: calc_4ms_corrections:loc_EE32↓p
+clamp_overrun_advance:						; CODE XREF: calc_4ms_corrections:loc_EE32↓p
 				ld	a, var_overrun_advance
 				cmp	a, #2Bh
 				ble	locret_EA1F
@@ -11585,7 +11585,7 @@ loc_EAC8:							; CODE XREF: calc_4ms_corrections+121↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_ign_timing_min:							; CODE XREF: calc_4ms_corrections+553↓p
+calc_ign_timing_min:						; CODE XREF: calc_4ms_corrections+553↓p
 				tbbc	bit3, var_flags_4E, loc_EADA
 
 				ld	b, var_ign_knock_retard_base
@@ -11708,7 +11708,7 @@ loc_EB63:							; CODE XREF: calc_ign_timing_min+94↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_idle_timing_ramp:							; CODE XREF: iv6_4ms_process+5C↓p
+update_idle_timing_ramp:					; CODE XREF: iv6_4ms_process+5C↓p
 				ld	b, var_flags_4E_copy_1CE
 				cmpb	b, #08h
 				bne	locret_EB7A
@@ -11731,7 +11731,7 @@ locret_EB7A:							; CODE XREF: update_idle_timing_ramp+5↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ramp_misfire_correction:							; CODE XREF: divide_d_by_x+C29↑p
+ramp_misfire_correction:					; CODE XREF: divide_d_by_x+C29↑p
 				clr	a
 				cmp	#14h, var_cnt_D4
 				bcs	loc_EB8A
@@ -11753,7 +11753,7 @@ loc_EB8A:							; CODE XREF: ramp_misfire_correction+4↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_ect_unk_158:							; CODE XREF: divide_d_by_x+1D7F↑p
+calc_ect_unk_158:						; CODE XREF: divide_d_by_x+1D7F↑p
 				ld	y, #table_ect_corr_158
 				jsr	table_ect_pair_interpolate
 
@@ -11970,7 +11970,7 @@ loc_EC7D:							; CODE XREF: calc_4ms_corrections+2C3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-reset_cyl_proc_idx:							; CODE XREF: calc_4ms_corrections+2EB↑p
+reset_cyl_proc_idx:						; CODE XREF: calc_4ms_corrections+2EB↑p
 								; calc_4ms_corrections+308↓p ...
 				di
 				clr	a
@@ -11984,7 +11984,7 @@ reset_cyl_proc_idx:							; CODE XREF: calc_4ms_corrections+2EB↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-reset_cyl_rpm_dev:							; CODE XREF: calc_4ms_corrections+2E9↑p
+reset_cyl_rpm_dev:						; CODE XREF: calc_4ms_corrections+2E9↑p
 								; calc_4ms_corrections+32F↓p ...
 				ld	d, #8080h
 				st	d, var_cyl_rpm_dev
@@ -12143,7 +12143,7 @@ loc_ED35:							; CODE XREF: calc_4ms_corrections+368↑j
 ; END OF FUNCTION CHUNK	FOR calc_4ms_corrections
 ; ───────────────────────────────────────────────────────────────────────────
 
-update_cyl_rpm_dev:							; CODE XREF: iv6_ne_process+36A↓p
+update_cyl_rpm_dev:						; CODE XREF: iv6_ne_process+36A↓p
 				cmp	#5Ch, var_cnt_cyl_rough_dwell
 				bcs	loc_ED77
 
@@ -12323,7 +12323,7 @@ loc_EE03:							; CODE XREF: calc_4ms_corrections+44F↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_clear_speed_limiter_tps:							; CODE XREF: divide_d_by_x:loc_CC7D↑p
+check_clear_speed_limiter_tps:					; CODE XREF: divide_d_by_x:loc_CC7D↑p
 				tbbc	bit3, var_limiter_flags, locret_EE1C
 
 				cmp	#0Ah, var_speed_kph
@@ -12351,7 +12351,7 @@ locret_EE1C:							; CODE XREF: check_clear_speed_limiter_tps↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_clear_speed_limiter_rev:							; CODE XREF: divide_d_by_x:check_clear_speed_limiter↑p
+check_clear_speed_limiter_rev:					; CODE XREF: divide_d_by_x:check_clear_speed_limiter↑p
 				tbbc	bit2, var_limiter_flags, locret_EE31
 
 				cmp	#0Ah, var_speed_kph
@@ -12481,7 +12481,7 @@ loc_EE9C:							; CODE XREF: calc_4ms_corrections+4DB↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_set_overrun_flag:							; CODE XREF: divide_d_by_x:loc_CAD4↑p
+check_set_overrun_flag:						; CODE XREF: divide_d_by_x:loc_CAD4↑p
 				tbbs	bit6, var_flags_40, locret_EEBC
 
 				tbbs	bit0, var_limiter_flags, locret_EEBC
@@ -12613,16 +12613,16 @@ int_vector_e_ne:						; DATA XREF: ROM:FFFA↓o
 				bcs	int_vector_e_ne_EF4D
 
 				ld	a, var_g1g2_err_cnt
-				tbbc	bit6, IRQL, int_vector_e_ne_EF3D	; Interrupt Request Flag MSB
+				tbbc	bit6, IRQL, int_vector_e_ne_EF3D ; Interrupt Request Flag MSB
 
 				inc	a
 				bne	int_vector_e_ne_EF3D
 
 				dec	a
 
-int_vector_e_ne_EF3D:							; CODE XREF: ROM:EF36↑j
+int_vector_e_ne_EF3D:						; CODE XREF: ROM:EF36↑j
 								; ROM:EF3A↑j
-				tbbs	bit6, PORTA, int_vector_e_ne_EF4E	; Port A Data Register
+				tbbs	bit6, PORTA, int_vector_e_ne_EF4E ; Port A Data Register
 
 				cmp	a, #02h
 				beq	int_vector_e_ne_EF4B
@@ -12635,20 +12635,20 @@ int_vector_e_ne_EF3D:							; CODE XREF: ROM:EF36↑j
 				.db 8Ch
 ; ───────────────────────────────────────────────────────────────────────────
 
-int_vector_e_ne_EF4B:							; CODE XREF: ROM:EF42↑j
+int_vector_e_ne_EF4B:						; CODE XREF: ROM:EF42↑j
 				clrb	bit7, var_error_flags1
 
-int_vector_e_ne_EF4D:							; CODE XREF: ROM:EF2C↑j
+int_vector_e_ne_EF4D:						; CODE XREF: ROM:EF2C↑j
 								; ROM:EF31↑j ...
 				clr	a
 
-int_vector_e_ne_EF4E:							; CODE XREF: ROM:int_vector_e_ne_EF3D↑j
+int_vector_e_ne_EF4E:						; CODE XREF: ROM:int_vector_e_ne_EF3D↑j
 				st	a, var_g1g2_err_cnt
 				clrb	bit6, IRQL
 				ld	b, var_ne_count
-				tbbc	bit7, PORTA, int_vector_e_ne_EF76	; Port A Data Register
+				tbbc	bit7, PORTA, int_vector_e_ne_EF76 ; Port A Data Register
 
-				tbbc	bit6, PORTA, int_vector_e_ne_EF7D	; Port A Data Register
+				tbbc	bit6, PORTA, int_vector_e_ne_EF7D ; Port A Data Register
 
 				cmpz	b
 				bmi	int_vector_e_ne_EF91
@@ -12673,7 +12673,7 @@ int_vector_e_ne_EF4E:							; CODE XREF: ROM:int_vector_e_ne_EF3D↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-int_vector_e_ne_EF76:							; CODE XREF: ROM:EF55↑j
+int_vector_e_ne_EF76:						; CODE XREF: ROM:EF55↑j
 				clr	a
 				cmp	b, #35h
 				beq	int_vector_e_ne_EF90
@@ -12682,18 +12682,18 @@ int_vector_e_ne_EF76:							; CODE XREF: ROM:EF55↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-int_vector_e_ne_EF7D:							; CODE XREF: ROM:EF58↑j
+int_vector_e_ne_EF7D:						; CODE XREF: ROM:EF58↑j
 				ld	a, #20h
 				cmp	b, #15h
 				beq	int_vector_e_ne_EF90
 
 
-int_vector_e_ne_EF83:							; CODE XREF: ROM:EF7B↑j
+int_vector_e_ne_EF83:						; CODE XREF: ROM:EF7B↑j
 				cmpz	b
 				bmi	int_vector_e_ne_EF90
 
 
-int_vector_e_ne_EF86:							; CODE XREF: ROM:EF6D↑j
+int_vector_e_ne_EF86:						; CODE XREF: ROM:EF6D↑j
 								; ROM:EF74↑j
 				tbbc	bit2, var_flags_40, int_vector_e_ne_EF90
 
@@ -12702,11 +12702,11 @@ int_vector_e_ne_EF86:							; CODE XREF: ROM:EF6D↑j
 				setb	bit3, var_diag_errors_5
 				setb	bit1, var_error_flags1
 
-int_vector_e_ne_EF90:							; CODE XREF: ROM:EF79↑j
+int_vector_e_ne_EF90:						; CODE XREF: ROM:EF79↑j
 								; ROM:EF81↑j ...
 				mov	a, b
 
-int_vector_e_ne_EF91:							; CODE XREF: ROM:EF5C↑j
+int_vector_e_ne_EF91:						; CODE XREF: ROM:EF5C↑j
 								; ROM:EF64↑j ...
 				st	b, var_ne_count
 				bra	int_vector_e_ne_EFC4
@@ -12734,7 +12734,7 @@ init_ne_counters:						; CODE XREF: divide_d_by_x:loc_C659↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-init_ne_on_start:							; CODE XREF: iv6_4ms_process+59↓p
+init_ne_on_start:						; CODE XREF: iv6_4ms_process+59↓p
 				tbbc	bit0, var_io_input1, loc_EFBC
 
 				tbs	bit7, var_flags_44
@@ -12764,7 +12764,7 @@ locret_EFC3:							; CODE XREF: init_ne_on_start+5↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-int_vector_e_ne_EFC4:							; CODE XREF: ROM:EF93↑j
+int_vector_e_ne_EFC4:						; CODE XREF: ROM:EF93↑j
 				jsr	knock_mcu_update
 
 				clrb	bit3, var_flags_42
@@ -12794,7 +12794,7 @@ iv6_ne_process:							; CODE XREF: int_vector_6_sw_int+8↓p
 
 				ld	a, #08h
 
-bg_ne_process_EFDF:							; CODE XREF: iv6_ne_process+D↑j
+bg_ne_process_EFDF:						; CODE XREF: iv6_ne_process+D↑j
 				xch	a, var_cnt_C3
 				xch	b, va_ne_count_2
 				cmpz	b
@@ -12816,20 +12816,20 @@ bg_ne_process_EFDF:							; CODE XREF: iv6_ne_process+D↑j
 				bcs	bg_ne_process_F001
 
 
-bg_ne_process_EFFE:							; CODE XREF: iv6_ne_process+26↑j
+bg_ne_process_EFFE:						; CODE XREF: iv6_ne_process+26↑j
 				ld	d, #5500h
 
-bg_ne_process_F001:							; CODE XREF: iv6_ne_process+2E↑j
+bg_ne_process_F001:						; CODE XREF: iv6_ne_process+2E↑j
 				st	d, [y]
 
-bg_ne_process_F002:							; CODE XREF: iv6_ne_process+16↑j
+bg_ne_process_F002:						; CODE XREF: iv6_ne_process+16↑j
 				st	x, var_prev_asr2_time
 				ld	d, var_ne_0
 				add	d, var_ne_1
 				add	d, var_ne_2
 				st	d, var_ne_sum3
 
-bg_ne_process_F00D:							; CODE XREF: iv6_ne_process+1E↑j
+bg_ne_process_F00D:						; CODE XREF: iv6_ne_process+1E↑j
 				ld	b, va_ne_count_2
 				bpz	bg_ne_process_F014
 
@@ -12837,14 +12837,14 @@ bg_ne_process_F00D:							; CODE XREF: iv6_ne_process+1E↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-bg_ne_process_F014:							; CODE XREF: iv6_ne_process+41↑j
+bg_ne_process_F014:						; CODE XREF: iv6_ne_process+41↑j
 				and	b, #07h
 				push	b
 				bne	bg_ne_process_F01B
 
 				clrb	bit1, var_schedule_flag_41
 
-bg_ne_process_F01B:							; CODE XREF: iv6_ne_process+49↑j
+bg_ne_process_F01B:						; CODE XREF: iv6_ne_process+49↑j
 				cmp	b, #04h
 				bne	bg_ne_process_F053
 
@@ -12866,7 +12866,7 @@ bg_ne_process_F01B:							; CODE XREF: iv6_ne_process+49↑j
 
 				add	d, var_ne_2
 
-bg_ne_process_F03D:							; CODE XREF: iv6_ne_process+6B↑j
+bg_ne_process_F03D:						; CODE XREF: iv6_ne_process+6B↑j
 				sub	d, #0035h
 				add	d, var_prev_asr2_time
 				sub	d, var_ign_dwell_offset
@@ -12880,11 +12880,11 @@ bg_ne_process_F03D:							; CODE XREF: iv6_ne_process+6B↑j
 				jsr	ignition_schedule_off
 
 
-bg_ne_process_F052:							; CODE XREF: iv6_ne_process+7C↑j
+bg_ne_process_F052:						; CODE XREF: iv6_ne_process+7C↑j
 								; iv6_ne_process+7E↑j
 				ei
 
-bg_ne_process_F053:							; CODE XREF: iv6_ne_process+4F↑j
+bg_ne_process_F053:						; CODE XREF: iv6_ne_process+4F↑j
 								; iv6_ne_process+51↑j ...
 				pull	b
 				tbbc	bit2, var_ignition_flags, loc_F07F
@@ -12894,7 +12894,7 @@ bg_ne_process_F053:							; CODE XREF: iv6_ne_process+4F↑j
 
 				clrb	bit4, var_ignition_flags
 
-bg_ne_process_F05D:							; CODE XREF: iv6_ne_process+8B↑j
+bg_ne_process_F05D:						; CODE XREF: iv6_ne_process+8B↑j
 				tbbs	bit4, var_ignition_flags, bg_ne_process_F07C
 
 				ld	a, #2Bh
@@ -12910,18 +12910,18 @@ bg_ne_process_F05D:							; CODE XREF: iv6_ne_process+8B↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-bg_ne_process_F072:							; CODE XREF: iv6_ne_process+9D↑j
+bg_ne_process_F072:						; CODE XREF: iv6_ne_process+9D↑j
 				cmp	b, #05h
 				bne	bg_ne_process_F07C
 
 				di
 				setb	bit0, DOUT
 
-bg_ne_process_F079:							; CODE XREF: iv6_ne_process+A2↑j
+bg_ne_process_F079:						; CODE XREF: iv6_ne_process+A2↑j
 				jsr	ignition_set_immediate
 
 
-bg_ne_process_F07C:							; CODE XREF: iv6_ne_process:bg_ne_process_F05D↑j
+bg_ne_process_F07C:						; CODE XREF: iv6_ne_process:bg_ne_process_F05D↑j
 								; iv6_ne_process+A6↑j
 				jmp	bg_ne_process_F1E1
 
@@ -13137,7 +13137,7 @@ loc_F15A:							; CODE XREF: iv6_ne_process+BA↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ignition_update_off_time:							; CODE XREF: iv6_ne_process+188↑p
+ignition_update_off_time:					; CODE XREF: iv6_ne_process+188↑p
 								; int_vector_9_ignition+A2↓p
 				sub	d, var_ign_dwell_offset
 				mov	d, x
@@ -13167,7 +13167,7 @@ loc_F192:							; CODE XREF: ignition_update_off_time+C↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ignition_schedule_off:							; CODE XREF: iv6_ne_process+81↑p
+ignition_schedule_off:						; CODE XREF: iv6_ne_process+81↑p
 								; ignition_update_off_time+7↑j ...
 				st	x, var_ign_next_cpr
 				di
@@ -13191,7 +13191,7 @@ loc_F1AE:							; CODE XREF: ignition_schedule_off+4↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ignition_schedule_on:							; CODE XREF: iv6_ne_process+1A9↑p
+ignition_schedule_on:						; CODE XREF: iv6_ne_process+1A9↑p
 				st	d, var_ign_next_cpr
 				di
 				tbbs	bit3, var_ignition_flags, ignition_set_on_time
@@ -13205,13 +13205,13 @@ ignition_schedule_on:							; CODE XREF: iv6_ne_process+1A9↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ignition_set_on_time:							; CODE XREF: ignition_schedule_on+4↑j
+ignition_set_on_time:						; CODE XREF: ignition_schedule_on+4↑j
 								; int_vector_9_ignition+E↓p
 				di
 				clrb	bit0, DOUT
 				clrb	bit1, var_ignition_flags
 
-ignition_set_time:							; CODE XREF: ignition_schedule_off+15↑j
+ignition_set_time:						; CODE XREF: ignition_schedule_off+15↑j
 				ld	d, var_ign_next_cpr
 				sub	d, #0004h
 				cmp	d, TIMER		; Timer	MSB (bit11~bit18)
@@ -13223,7 +13223,7 @@ ignition_set_time:							; CODE XREF: ignition_schedule_off+15↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ignition_set_immediate:							; CODE XREF: iv6_ne_process:bg_ne_process_F079↑p
+ignition_set_immediate:						; CODE XREF: iv6_ne_process:bg_ne_process_F079↑p
 				ld	d, TIMER		; Timer	MSB (bit11~bit18)
 
 loc_F1CE:							; CODE XREF: ignition_set_on_time+D↑j
@@ -13241,7 +13241,7 @@ ignition_done:							; CODE XREF: ignition_schedule_off+E↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-ignition_timing_to_cpr:							; CODE XREF: iv6_ne_process+179↑p
+ignition_timing_to_cpr:						; CODE XREF: iv6_ne_process+179↑p
 								; iv6_ne_process+196↑p
 				mov	d, y
 				mul	a, var_ne_sum3
@@ -13258,7 +13258,7 @@ ignition_timing_to_cpr:							; CODE XREF: iv6_ne_process+179↑p
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR iv6_ne_process
 
-bg_ne_process_F1E1:							; CODE XREF: iv6_ne_process+43↑j
+bg_ne_process_F1E1:						; CODE XREF: iv6_ne_process+43↑j
 								; iv6_ne_process:bg_ne_process_F07C↑j ...
 				ld	a, va_ne_count_2
 				bpz	bg_ne_process_F1E8
@@ -13267,7 +13267,7 @@ bg_ne_process_F1E1:							; CODE XREF: iv6_ne_process+43↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-bg_ne_process_F1E8:							; CODE XREF: iv6_ne_process+215↑j
+bg_ne_process_F1E8:						; CODE XREF: iv6_ne_process+215↑j
 				ld	d, var_inj_pw_inj1
 				tbbs	bit0, var_flags_46, bg_ne_process_F20F
 
@@ -13280,7 +13280,7 @@ bg_ne_process_F1E8:							; CODE XREF: iv6_ne_process+215↑j
 				bcs	bg_ne_process_F20F
 
 
-bg_ne_process_F1FB:							; CODE XREF: iv6_ne_process+226↑j
+bg_ne_process_F1FB:						; CODE XREF: iv6_ne_process+226↑j
 				cmp	#11h, va_ne_count_2
 				bne	bg_ne_process_F20F
 
@@ -13296,7 +13296,7 @@ bg_ne_process_F1FB:							; CODE XREF: iv6_ne_process+226↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-bg_ne_process_F20F:							; CODE XREF: iv6_ne_process+21D↑j
+bg_ne_process_F20F:						; CODE XREF: iv6_ne_process+21D↑j
 								; iv6_ne_process+22B↑j ...
 				clrb	bit5, var_flags_44
 				ld	x, #table_injector_control
@@ -13317,7 +13317,7 @@ bg_ne_process_F20F:							; CODE XREF: iv6_ne_process+21D↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-bg_ne_process_F22C:							; CODE XREF: iv6_ne_process+249↑j
+bg_ne_process_F22C:						; CODE XREF: iv6_ne_process+249↑j
 								; iv6_ne_process+24E↑j ...
 				tbbc	bit7, var_ignition_flags, loc_F230
 
@@ -13331,7 +13331,7 @@ loc_F230:							; CODE XREF: iv6_ne_process:bg_ne_process_F22C↑j
 				jsr	injector_update
 
 
-bg_ne_process_F238:							; CODE XREF: iv6_ne_process+23F↑j
+bg_ne_process_F238:						; CODE XREF: iv6_ne_process+23F↑j
 								; iv6_ne_process+27C↓j ...
 				ld	a, #02h
 				st	a, var_inj_active
@@ -13341,7 +13341,7 @@ bg_ne_process_F238:							; CODE XREF: iv6_ne_process+23F↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-bg_ne_process_F244:							; CODE XREF: iv6_ne_process+220↑j
+bg_ne_process_F244:						; CODE XREF: iv6_ne_process+220↑j
 				ld	b, var_inj_sched_ne
 				mov	b, a
 				cmp	b, #35h
@@ -13380,7 +13380,7 @@ bg_ne_process_F244:							; CODE XREF: iv6_ne_process+220↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-bg_ne_process_F280:							; CODE XREF: iv6_ne_process+2A8↑j
+bg_ne_process_F280:						; CODE XREF: iv6_ne_process+2A8↑j
 				cmp	a, #0FDh
 				bcc	bg_ne_process_F28E
 
@@ -13392,19 +13392,19 @@ bg_ne_process_F280:							; CODE XREF: iv6_ne_process+2A8↑j
 
 				clrb	bit3, var_schedule_flag_41
 
-bg_ne_process_F28E:							; CODE XREF: iv6_ne_process+2B4↑j
+bg_ne_process_F28E:						; CODE XREF: iv6_ne_process+2B4↑j
 								; iv6_ne_process+2BC↑j
 				cmp	a, #0FBh
 				bcc	bg_ne_process_F294
 
 				ld	a, #0FBh
 
-bg_ne_process_F294:							; CODE XREF: iv6_ne_process+2AC↑j
+bg_ne_process_F294:						; CODE XREF: iv6_ne_process+2AC↑j
 								; iv6_ne_process+2B0↑j ...
 				add	a, b
 				st	a, var_inj_next_ne
 
-bg_ne_process_F298:							; CODE XREF: iv6_ne_process+274↑j
+bg_ne_process_F298:						; CODE XREF: iv6_ne_process+274↑j
 				ld	a, var_inj_active
 				mul	a, #06h
 				add	b, var_inj_next_ne
@@ -13413,13 +13413,13 @@ bg_ne_process_F298:							; CODE XREF: iv6_ne_process+274↑j
 
 				add	b, #18h
 
-bg_ne_process_F2A6:							; CODE XREF: iv6_ne_process+2D4↑j
+bg_ne_process_F2A6:						; CODE XREF: iv6_ne_process+2D4↑j
 				cmp	b, #18h
 				bcs	bg_ne_process_F2AC
 
 				sub	b, #18h
 
-bg_ne_process_F2AC:							; CODE XREF: iv6_ne_process+2DA↑j
+bg_ne_process_F2AC:						; CODE XREF: iv6_ne_process+2DA↑j
 				clr	a
 				div	d, #06h
 				shl	b
@@ -13429,7 +13429,7 @@ bg_ne_process_F2AC:							; CODE XREF: iv6_ne_process+2DA↑j
 				add	a, b
 				st	a, var_inj_sched_ne
 
-bg_ne_process_F2B7:							; CODE XREF: iv6_ne_process+25B↑j
+bg_ne_process_F2B7:						; CODE XREF: iv6_ne_process+25B↑j
 								; iv6_ne_process+286↑j
 				tbbc	bit5, var_flags_44, bg_ne_process_F2D7
 
@@ -13444,7 +13444,7 @@ bg_ne_process_F2B7:							; CODE XREF: iv6_ne_process+25B↑j
 				and	b, #30h
 				add	a, #06h
 
-bg_ne_process_F2CC:							; CODE XREF: iv6_ne_process+2F6↑j
+bg_ne_process_F2CC:						; CODE XREF: iv6_ne_process+2F6↑j
 				add	a, b
 				cmp	a, va_ne_count_2
 				bne	bg_ne_process_F2D9
@@ -13454,10 +13454,10 @@ bg_ne_process_F2CC:							; CODE XREF: iv6_ne_process+2F6↑j
 				bcs	bg_ne_process_F2D9
 
 
-bg_ne_process_F2D7:							; CODE XREF: iv6_ne_process:bg_ne_process_F2B7↑j
+bg_ne_process_F2D7:						; CODE XREF: iv6_ne_process:bg_ne_process_F2B7↑j
 				clrb	bit3, var_schedule_flag_41
 
-bg_ne_process_F2D9:							; CODE XREF: iv6_ne_process+301↑j
+bg_ne_process_F2D9:						; CODE XREF: iv6_ne_process+301↑j
 								; iv6_ne_process+307↑j
 				bra	bg_ne_process_F321
 
@@ -13471,7 +13471,7 @@ table_injector_control:		.db 10h, 40h, 80h, 20h		; DATA XREF: iv6_ne_process+235
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-calc_inj_phase_lead:							; CODE XREF: divide_d_by_x+215D↑p
+calc_inj_phase_lead:						; CODE XREF: divide_d_by_x+215D↑p
 				ld	d, var_inj_pw_inj1
 				add	d, #0591h
 				rorc	a
@@ -13518,7 +13518,7 @@ loc_F318:							; CODE XREF: calc_inj_phase_lead+2D↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR iv6_ne_process
 
-bg_ne_process_F321:							; CODE XREF: iv6_ne_process+217↑j
+bg_ne_process_F321:						; CODE XREF: iv6_ne_process+217↑j
 								; iv6_ne_process:bg_ne_process_F2D9↑j
 				jsr	knock_processing
 
@@ -13530,10 +13530,10 @@ bg_ne_process_F321:							; CODE XREF: iv6_ne_process+217↑j
 				bne	bg_ne_process_F330
 
 
-bg_ne_process_F32E:							; CODE XREF: iv6_ne_process+35A↑j
+bg_ne_process_F32E:						; CODE XREF: iv6_ne_process+35A↑j
 				clrb	bit2, var_schedule_flag_41
 
-bg_ne_process_F330:							; CODE XREF: iv6_ne_process+35E↑j
+bg_ne_process_F330:						; CODE XREF: iv6_ne_process+35E↑j
 				and	a, #07h
 				bne	bg_ne_process_F346
 
@@ -13547,7 +13547,7 @@ bg_ne_process_F330:							; CODE XREF: iv6_ne_process+35E↑j
 				or	a, #02h
 				st	a, unk_1D5
 
-bg_ne_process_F346:							; CODE XREF: iv6_ne_process+364↑j
+bg_ne_process_F346:						; CODE XREF: iv6_ne_process+364↑j
 				ret
 
 ; END OF FUNCTION CHUNK	FOR iv6_ne_process
@@ -13702,7 +13702,7 @@ no_injection:							; CODE XREF: injectors_batch_update+5↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_limiters_active:					; CODE XREF: injectors_batch_update↑p
+check_limiters_active:						; CODE XREF: injectors_batch_update↑p
 								; ROM:F376↑p
 				mov	d, y
 				ld	a, #10011100b
@@ -13714,7 +13714,7 @@ check_limiters_active:					; CODE XREF: injectors_batch_update↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_limiters_active_2:						; CODE XREF: injector_update↑p
+check_limiters_active_2:					; CODE XREF: injector_update↑p
 				mov	d, y
 				ld	a, #10011111b
 
@@ -13741,7 +13741,7 @@ loc_F3E6:							; CODE XREF: check_limiters_active_2+5↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-knock_mcu_update:							; CODE XREF: ROM:int_vector_e_ne_EFC4↑p
+knock_mcu_update:						; CODE XREF: ROM:int_vector_e_ne_EFC4↑p
 				ld	b, var_ne_count
 				ld	a, var_knock_info
 				cmpz	b
@@ -13858,7 +13858,7 @@ loc_F467:							; CODE XREF: knock_mcu_update+77↑j
 				bne	loc_F483
 
 
-knock_mcu_reset:							; CODE XREF: knock_mcu_update+7C↑j
+knock_mcu_reset:						; CODE XREF: knock_mcu_update+7C↑j
 				clrb	bit2, DOUT
 				div	d, #00h
 				div	d, #00h
@@ -13929,7 +13929,7 @@ locret_F4A3:							; CODE XREF: knock_mcu_update+1E↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-knock_processing:							; CODE XREF: iv6_ne_process:bg_ne_process_F321↑p
+knock_processing:						; CODE XREF: iv6_ne_process:bg_ne_process_F321↑p
 				ld	b, va_ne_count_2
 				bpz	loc_F4AB
 
@@ -14288,7 +14288,7 @@ locret_F63E:							; CODE XREF: ROM:F4A8↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-knock_retard_decay:							; CODE XREF: calc_4ms_corrections+207↑p
+knock_retard_decay:						; CODE XREF: calc_4ms_corrections+207↑p
 				tbbc	bit5, var_flags_46, loc_F64D
 
 				di
@@ -14343,7 +14343,7 @@ int_vector_9_ignition:						; DATA XREF: ROM:FFF0↓o
 				push	x
 				push	y
 				clrb	bit0, IRQL
-				tbbc	bit0, LDOUT, ignition_on	; Latch	DOUT
+				tbbc	bit0, LDOUT, ignition_on ; Latch	DOUT
 
 				clrb	bit0, var_ignition_flags
 				tbbc	bit5, var_ignition_flags, fixed_dwell
@@ -14368,7 +14368,7 @@ ignition_off:							; CODE XREF: int_vector_9_ignition+11↑j
 
 				jsr	check_starter_and_set_flag
 
-				tbbs	bit4, IRQLL, igf_detected	; Interrupt Request Flag LSB
+				tbbs	bit4, IRQLL, igf_detected ; Interrupt Request Flag LSB
 
 				ld	d, var_igf_miss_count
 				inc	a
@@ -14395,7 +14395,7 @@ igf_count_lt_5:							; CODE XREF: int_vector_9_ignition+31↑j
 				tbbs	bit0, var_io_input1, igf_reset_low_counter
 
 
-igf_count_rpm_lt_3000:							; CODE XREF: int_vector_9_ignition+3D↑j
+igf_count_rpm_lt_3000:						; CODE XREF: int_vector_9_ignition+3D↑j
 				cmp	b, #01h
 				bgt	loc_F6B9
 
@@ -14407,7 +14407,7 @@ loc_F6B9:							; CODE XREF: int_vector_9_ignition+49↑j
 
 				dec	b
 
-igf_error_count_nz:							; CODE XREF: int_vector_9_ignition+4E↑j
+igf_error_count_nz:						; CODE XREF: int_vector_9_ignition+4E↑j
 				cmp	b, #09h
 				bcs	igf_store_counter
 
@@ -14426,11 +14426,11 @@ igf_detected:							; CODE XREF: int_vector_9_ignition+25↑j
 				clrb	bit2, var_error_flags1
 				ld	a, #01h
 
-igf_reset_low_counter:							; CODE XREF: int_vector_9_ignition+38↑j
+igf_reset_low_counter:						; CODE XREF: int_vector_9_ignition+38↑j
 								; int_vector_9_ignition+42↑j ...
 				ld	b, #01h
 
-igf_store_counter:							; CODE XREF: int_vector_9_ignition+53↑j
+igf_store_counter:						; CODE XREF: int_vector_9_ignition+53↑j
 								; int_vector_9_ignition+58↑j ...
 				st	d, var_igf_miss_count
 				bra	loc_F6EA
@@ -14441,7 +14441,7 @@ igf_store_counter:							; CODE XREF: int_vector_9_ignition+53↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_IGF_error:							; CODE XREF: ROM:DEF0↑p
+check_IGF_error:						; CODE XREF: ROM:DEF0↑p
 				tbbs	bit4, var_flags_4D, loc_F6E0
 
 				clr	var_igt_timer
@@ -15245,7 +15245,7 @@ loc_FA40:							; CODE XREF: ROM:FA22↑j
 				inc	a
 				and	a, #7Fh
 
-adc_next_slot:						; CODE XREF: ROM:F9F2↑j
+adc_next_slot:							; CODE XREF: ROM:F9F2↑j
 								; ROM:FA0A↑j
 				st	a, var_adc_idx
 
@@ -15293,7 +15293,7 @@ table_adc_ch_trac:		.db 82h, 03h, 81h, 80h		; DATA XREF: ROM:F9E2↑o
 				.db 82h, 08h, 01h, 80h
 
 
-table_adc_ch_low_pri:	.db 04h, 0Ah, 03h, 06h		; DATA XREF: ROM:F9FA↑o
+table_adc_ch_low_pri:		.db 04h, 0Ah, 03h, 06h		; DATA XREF: ROM:F9FA↑o
 				.db 04h, 05h, 03h, 07h
 				.db 04h, 0Ah, 03h, 09h
 				.db 04h, 0Dh, 03h, 0Ch
@@ -15455,7 +15455,7 @@ loc_FB2E:							; CODE XREF: ROM:FB2A↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-adc_handler_pim_ok:							; CODE XREF: ROM:FB11↑j
+adc_handler_pim_ok:						; CODE XREF: ROM:FB11↑j
 				and	a, #0FEh
 				tbbs	bit2, var_flags_40, loc_FB3C
 
@@ -15566,7 +15566,7 @@ loc_FBAF:							; CODE XREF: ROM:loc_FB5F↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-validate_nv_trim_pim:							; CODE XREF: divide_d_by_x+47C↑p
+validate_nv_trim_pim:						; CODE XREF: divide_d_by_x+47C↑p
 				ld	b, nv_unk_trim_98
 				ld	y, #nv_98_limits
 				jsr	y + 18h
@@ -16202,25 +16202,25 @@ adc_handler_o2_sensor:						; DATA XREF: ROM:table_adc_handler↑o
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-adc_handler_iscv_pos:							; DATA XREF: ROM:table_adc_handler↑o
+adc_handler_iscv_pos:						; DATA XREF: ROM:table_adc_handler↑o
 				st	b, var_adc_iscv_pos
 				jmp	adc_complete
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-adc_handler_iscv_fb:							; DATA XREF: ROM:table_adc_handler↑o
+adc_handler_iscv_fb:						; DATA XREF: ROM:table_adc_handler↑o
 				st	b, var_adc_iscv_fb
 				jmp	adc_complete
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-adc_handler_iscv_3:							; DATA XREF: ROM:table_adc_handler↑o
+adc_handler_iscv_3:						; DATA XREF: ROM:table_adc_handler↑o
 				st	b, var_adc_iscv_3
 				jmp	adc_complete
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-adc_handler_iscv_4:							; DATA XREF: ROM:table_adc_handler↑o
+adc_handler_iscv_4:						; DATA XREF: ROM:table_adc_handler↑o
 				st	b, var_adc_iscv_4
 				jmp	adc_complete
 
@@ -16590,7 +16590,7 @@ adc_handler_complete:						; DATA XREF: ROM:table_adc_handler↑o
 				.db  5Fh ; _
 				.db  5Fh ; _
 				.dw 5076h
-diag_cal_ptr_FFDC:			.dw 8305h			; DATA XREF: ROM:FA2F↑o
+diag_cal_ptr_FFDC:		.dw 8305h			; DATA XREF: ROM:FA2F↑o
 				.dw IV0				; External interrupt 0
 				.dw int_vector_1_serial_rx	; External interrupt 1
 				.dw IVf				; External interrupt 2

@@ -332,7 +332,7 @@ dmarx_limiter_flags:		.block 1			; CE88↓r ...
 								; 43.5 - Set if	throttle shut
 								; 43.6 - Set if	rev limit active
 								; 43.7 - Set if	boost limit exceeded
-var_flags_44:				.block 1			; CDFD↓r
+var_flags_44:			.block 1			; CDFD↓r
 								; Only bit0 used, entirely within
 								; calc_ignition_timing's PORTB.2 drive
 								; logic (see that function's header):
@@ -396,7 +396,7 @@ var_flags_46:			.block 1			; CEAD↓r ...
 								;   +0x14 (capped at 0xC8) - reads as a
 								;   "boost mode" hysteresis latch, not
 								;   independently confirmed.
-var_flags_47:				.block 1			; loc_C8C3↓r ...
+var_flags_47:			.block 1			; loc_C8C3↓r ...
 								; A multi-purpose status byte - each bit
 								; below is an independent flag, unrelated
 								; to the others except by sharing this
@@ -446,7 +446,7 @@ var_flags_47:				.block 1			; loc_C8C3↓r ...
 								;   var_input_bits.2 goes clear - see that
 								;   function's own header for the full
 								;   mechanism.
-var_flags_48:				.block 1			; C70C↓r ...
+var_flags_48:			.block 1			; C70C↓r ...
 								; Bit 0 - Two unrelated uses: (1) right
 								;   before negate_rD's label, `setb
 								;   bit0,var_flags_48` immediately followed by
@@ -568,22 +568,22 @@ var_rpm_div_25:			.block 1			; C985↓w ...
 ; externally via serial_debug_check's generic RAM-word debug protocol
 ; (see its header comment) - not dead code, just not consumed by any
 ; ECU control-flow.
-var_rpm_deviation_51:				.block 1			; C9FA↓w
+var_rpm_deviation_51:		.block 1			; C9FA↓w
 var_spd:			.block 1			; CCC6↓r ...
 var_enrichment_unk_53:		.block 1			; loc_CB27↓w ...
 				.block 1
-var_dma_sync_timeout_55:				.block 1			; loc_D4FD↓r ...
-var_dma_rearm_cnt_56:				.block 1			; D533↓r ...
+var_dma_sync_timeout_55:	.block 1			; loc_D4FD↓r ...
+var_dma_rearm_cnt_56:		.block 1			; D533↓r ...
 var_map_temp_x:			.block 2			; C6B0↓w ...
 var_map_temp:			.block 1			; C6C1↓w ...
-var_map_temp2_5A:				.block 1			; C6D4↓w
+var_map_temp2_5A:		.block 1			; C6D4↓w
 								; Written once, inside a bilinear
 								; map-interpolation helper alongside
 								; var_map_temp/var_map_temp_x - a scratch
 								; temp of the same family. No reader
 								; found anywhere in this file.
 				.block 24h
-clear_vars_end:				.block 1			; C880↓o
+clear_vars_end:			.block 1			; C880↓o
 				; The last byte clear_variables zeroes: the loop walks Y from var_flags_40
 				; doing st a, [y] while y <= this address, so the cleared region is
 				; var_flags_40..007Fh inclusive. An ADDRESS used as a bound - the byte
@@ -985,7 +985,7 @@ dmarx_nv_trim_o2:		.block 1			; CB94↓r
 								; CPU1's own short-term/long-term fuel
 								; multiplier.
 								;
-dmarx_lambda_state:			.block 1			; C9BE↓r ...
+dmarx_lambda_state:		.block 1			; C9BE↓r ...
 								; CPU1's O2 loop state byte, 0x80 neutral. Forced
 								; to 0x80 when fuel cut engages and 0x66 on the
 								; overrun path.
@@ -995,7 +995,7 @@ dmarx_knock_info:		.block 3			; CF43↓r ...
 								; CPU1's 3-byte knock info block
 								; (nv_table_knock_info), copied verbatim across
 								; the link.
-dmarx_add_enrichment_DB:			.block 1			; loc_D0D3↓r
+dmarx_add_enrichment_DB:	.block 1			; loc_D0D3↓r
 dmarx_obd_inj:			.block 1			; table_odb↓o
 								; OBD injection snapshot from CPU1 - one of the
 								; addresses table_odb serializes onto the
@@ -1013,7 +1013,7 @@ dmarx_knock:			.block 1			; CA10↓r
 								; CPU1's knock level; indexes
 								; table_knock_enrichment here to give
 								; var_knock_enrichment.
-dmarx_pw_loop_mode:			.block 1			; CE79↓r
+dmarx_pw_loop_mode:		.block 1			; CE79↓r
 								; CPU1's var_pw_loop_mode, received over DMA.
 								;   Named for a duty because drive_DOUT0 treats it
 								;   as one - it compares it against a 0..198
@@ -1031,7 +1031,7 @@ dmarx_pw_loop_mode:			.block 1			; CE79↓r
 								;   The second byte is a separate field (below),
 								;   not the low half of a 16-bit value: drive_DOUT0
 								;   reads this with `ld b`, one byte.
-dmarx_tps_delta_E2:			.block 1
+dmarx_tps_delta_E2:		.block 1
 								; CPU1's dmatx_tps_delta (021Dh). Received but
 								;   never read anywhere in this ROM.
 var_spd_edge_count:		.block 1			; D580↓o ...
@@ -1041,11 +1041,11 @@ var_spd_time:			.block 2			; D5FE↓r ...
 								; Clock	time of	previous speed signal edge
 var_spd_prev:			.block 1			; D62B↓w
 								; Previous calculated road speed
-var_rpm_smooth_e8:				.block 1			; C96A↓w ...
+var_rpm_smooth_e8:		.block 1			; C96A↓w ...
 				.block 1
-var_rpm_smooth_ea:				.block 1			; C96C↓w ...
+var_rpm_smooth_ea:		.block 1			; C96C↓w ...
 				.block 1
-var_rpm_smooth_ec:				.block 1			; C96E↓w ...
+var_rpm_smooth_ec:		.block 1			; C96E↓w ...
 				.block 1
 var_rpm_div_spd:		.block 1			; CF37↓r ...
 var_input_bits_temp:		.block 1			; D697↓o
@@ -1063,7 +1063,7 @@ var_enrichment_unk_FE:		.block 1			; loc_CB4D↓w ...
 var_enrichment_unk_100:		.block 1			; loc_CB9D↓w ...
 				.block 1
 var_fuel_enrichment:		.block 1			; loc_CAD7↓w
-var_enrichment_unk_103:			.block 1			; loc_CBE3↓w ...
+var_enrichment_unk_103:		.block 1			; loc_CBE3↓w ...
 				.block 1
 var_tham_enrich_unk:		.block 1			; CD91↓w
 var_knock_fuel_enrichment:	.block 1			; loc_CA6D↓w ...
@@ -1073,13 +1073,13 @@ var_throttle_enrichment:	.block 1			; loc_CAA2↓w ...
 var_knock_enrichment:		.block 1			; no_knock_enrich↓w ...
 var_unk_ect_table_10A:		.block 1			; loc_CACF↓r ...
 				.block 1
-var_ve_x_pim_x_rpm:	.block 1			; CC97↓w ...
+var_ve_x_pim_x_rpm:		.block 1			; CC97↓w ...
 var_pim2_peak:			.block 2			; loc_CCF9↓w ...
 								; Smoothed peak	hold of	dmarx_pim2
 				.block 1
 				.block 1
 var_unk_111:			.block 1			; CE36↓w
-var_knock_unk_112:			.block 1			; CE3D↓w
+var_knock_unk_112:		.block 1			; CE3D↓w
 var_vf:				.block 1			; D1BE↓w ...
 								; VF signal (0 to 11), converted externally to analogue	voltage
 var_max_retard_unk:		.block 1			; CD73↓w ...
@@ -1095,7 +1095,7 @@ var_knock_info:			.block 1			; loc_CF51↓w
 var_tvsv_scale_knock:		.block 1			; CF66↓w ...
 var_tvsv_scale_total:		.block 1			; loc_CF97↓w ...
 var_tvsv_scale_tha:		.block 1			; CF71↓w ...
-var_tvsv_scale_base_11E:			.block 1			; CF0A↓w ...
+var_tvsv_scale_base_11E:	.block 1			; CF0A↓w ...
 var_tvsv_scale_limiter:		.block 1			; loc_CE97↓w ...
 var_tvsv_unk_120:		.block 1			; loc_CFC4↓w ...
 var_obd_flags1:			.block 1			; loc_D0D9↓w ...
@@ -1131,7 +1131,7 @@ var_odb_flags2:			.block 1			; loc_D0F9↓w ...
 var_odb_shift_reg:		.block 1			; D105↓r ...
 				.block 1
 var_odb_byte_count:		.block 1			; C8B1↓w ...
-var_asr0n_shadow_126:			.block 1			; C8A6↓w ...
+var_asr0n_shadow_126:		.block 1			; C8A6↓w ...
 								; Software shadow of the ASR0N register. ASR0
 								; write configures the DMA engine while ASR0 read
 								; returns the latched I/O-transition timer value,
@@ -1143,21 +1143,21 @@ var_serbus_rx:			.block 23h			; C839↓t ...
 dmarx_flags1:			.block 1			; D222↓r ...
 dmarx_flags2:			.block 1			; D1FB↓r ...
 				.block 1
-dmatx_ve_corr_map:	.block 2			; C83E↓t ...
-dmatx_ve_corr_map_tps:			.block 2			; loc_CE67↓w
-dmatx_ve_x_pim_x_rpm:			.block 2			; loc_CCA0↓w
+dmatx_ve_corr_map:		.block 2			; C83E↓t ...
+dmatx_ve_corr_map_tps:		.block 2			; loc_CE67↓w
+dmatx_ve_x_pim_x_rpm:		.block 2			; loc_CCA0↓w
 dmatx_scaled_ve:		.block 2			; CC76↓w
 								; The scaled VE value sent to CPU1, where it
 								; enters calc_inj_pw_base as the base of the
 								; injector pulse-width chain.
 dmatx_rpm_x_5p12:		.block 2			; C97F↓w
 dmatx_warmup_enrichment_157:	.block 1			; CB09↓w
-dmatx_enrichment_unk_158:			.block 1			; CB29↓w ...
-dmatx_enrichment_unk_159:			.block 1			; CB4F↓w ...
-dmatx_enrichment_unk_15A:			.block 1			; CBA0↓w ...
+dmatx_enrichment_unk_158:	.block 1			; CB29↓w ...
+dmatx_enrichment_unk_159:	.block 1			; CB4F↓w ...
+dmatx_enrichment_unk_15A:	.block 1			; CBA0↓w ...
 dmatx_unk_enrich:		.block 1			; CB78↓w
 dmatx_tham_enrich:		.block 1			; CD94↓w
-dmatx_enrichment_unk_15D:			.block 1			; CBE6↓w ...
+dmatx_enrichment_unk_15D:	.block 1			; CBE6↓w ...
 dmatx_fuel_enrichment:		.block 1			; CADB↓w
 dmatx_unk_15F:			.block 1			; CE39↓w
 								; Defaulted to 0xFF alongside var_unk_111
@@ -1168,7 +1168,7 @@ dmatx_knock_unk_160:		.block 1			; CE40↓w
 dmatx_max_retard_161:		.block 1			; CD76↓w
 								; Maximum knock retard, from var_max_retard_unk.
 								; CPU1 receives it as dmarx_max_retard_23B_161.
-dmatx_lambda_trim_162:			.block 1			; loc_CCDA↓w
+dmatx_lambda_trim_162:		.block 1			; loc_CCDA↓w
 dmatx_ign_timing:		.block 1			; loc_CD27↓w
 								; Primary ignition timing sent to CPU1, selected
 								; there against dmatx_ign_timing_fallback1 by
@@ -1224,10 +1224,10 @@ dmatx_unk_168:			.block 1			; CC1A↓w
 								; see session_journal.md). Base/nominal ISCV duty,
 								; table_C376_rpm(RPM)/32 - refined by CPU1's own idle
 								; control loop (idle_control_system.md). Was dmatx_unk_168.
-dmatx_status1_169:			.block 1			; loc_D5B4↓w
-dmatx_diag_mode_16A:			.block 1			; CAC6↓r ...
-dmatx_status2_16B:			.block 1			; loc_D5D1↓w
-dmatx_ign_advance_hi_16C:			.block 1			; D1DD↓w
+dmatx_status1_169:		.block 1			; loc_D5B4↓w
+dmatx_diag_mode_16A:		.block 1			; CAC6↓r ...
+dmatx_status2_16B:		.block 1			; loc_D5D1↓w
+dmatx_ign_advance_hi_16C:	.block 1			; D1DD↓w
 								; = CPU1's dmarx_ign_advance_hi (0xDA
 								; offset formula, exact match). Written
 								; once, to the fixed constant 0xC0, right
@@ -1237,7 +1237,7 @@ dmatx_ign_advance_hi_16C:			.block 1			; D1DD↓w
 								; mode rather than a normal computed
 								; ignition-advance term; not independently
 								; confirmed.
-dmatx_ign_retard_pair:			.block 2			; loc_CD61↓w ...
+dmatx_ign_retard_pair:		.block 2			; loc_CD61↓w ...
 								; A PAIR of single-byte ignition retard values, not a 16-bit
 								;   number. calc_ignition_timing selects a 2-byte entry from
 								;   table_rpm_ignition_retard (by var_flags_45 bit 1) and stores
@@ -2545,7 +2545,7 @@ min_max_done:							; C60B↑j
 
 				ld	a, dmarx_ect
 
-table_pair_interpolate_rpm_entry:							; CF6E↓p ...
+table_pair_interpolate_rpm_entry:				; CF6E↓p ...
 ; table_pair_interpolate_rpm_entry: entry point into table_pair_interpolate
 ; (falls through below) with B defaulted to 0 and D set to var_rpm_x_5p12
 ; before the call - table_pair_interpolate's own first instruction
@@ -2734,7 +2734,7 @@ loc_C677:							; C673↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-interp_table_pair:							; C65D↑j ...
+interp_table_pair:						; C65D↑j ...
 ; ---------------------------------------------------------------------------
 ; interp_table_pair: linear interpolation between two adjacent table bytes
 ;
@@ -3071,7 +3071,7 @@ locret_C713:							; C70C↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-mult_rDrX_saturate:							; CC73↓p
+mult_rDrX_saturate:						; CC73↓p
 				bsr	mult_rDrX
 				mov	y, d
 				push	a
@@ -3200,7 +3200,7 @@ mult_rArX:							; C79E↓p ...
 ; End of function mult_rArX
 
 
-signed_proportional_update:							; CCEB↓p
+signed_proportional_update:					; CCEB↓p
 ; Byte-for-byte identical to CPU1's signed_proportional_update
 ; (3S-GTE/D151803-9651, sub_C56D) - moves *Y a fraction (B/256) of the way
 ; from its current value toward D, signed. Confirmed instruction-by-
@@ -3398,13 +3398,13 @@ clear_variables:
 
 clear_variables_low:						; C883↓j
 				st	a, [y]			; clear	8 bits at a time
-				cmp	y, #clear_vars_end		; reached end of block?
+				cmp	y, #clear_vars_end	; reached end of block?
 				ble	clear_variables_low	; loop back if not
 				ld	y, #var_ne_count	; load address of second block
 
 clear_variables_high:						; C88C↓j
 				st	d, [y]			; clear	16 bits	at a time
-				cmp	y, #(dmatx_ign_retard_pair+1)	; reached end of block?
+				cmp	y, #(dmatx_ign_retard_pair+1) ; reached end of block?
 				ble	clear_variables_high	; loop back if not
 ; End of function clear_variables
 
@@ -3712,7 +3712,7 @@ loc_C9E0:							; C9BA↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_rpm_smooth_filter:							; CD83↓p
+update_rpm_smooth_filter:					; CD83↓p
 ; ---------------------------------------------------------------------------
 ; update_rpm_smooth_filter: RPM low-pass filter + deviation sample
 ;
@@ -3963,7 +3963,7 @@ loc_CAE4:							; CADE↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_ect_enrich_clamp:							; loc_D333↓p
+update_ect_enrich_clamp:					; loc_D333↓p
 ; Refreshes var_unk_ect_table_10A (the ECT-table clamp ceiling that
 ; main_continue_2's fuel-enrichment min() is bounded against - see the
 ; enrichment-chain header above main_continue_2) from table_ect_C3F5.
@@ -4012,7 +4012,7 @@ loc_CB2C:							; CB11↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_enrichment_unk_53:							; CDAE↓p
+decay_enrichment_unk_53:					; CDAE↓p
 ; Decay var_enrichment_unk_53 toward 0 by x0xF0/256 (~93.75%) per call when
 ; nonzero - see the header above main_continue_2 for the whole
 ; enrichment-chain/decay-function pattern this belongs to.
@@ -4049,7 +4049,7 @@ loc_CB52:							; CB42↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_enrichment_unk_FE:							; CD86↓p
+decay_enrichment_unk_FE:					; CD86↓p
 ; Decay var_enrichment_unk_FE toward 0 by x0xF8/256 (~96.9%) per call, but
 ; only when var_cnt32ms_B2 (a full byte, no truncation) < 0x3D or
 ; dmarx_pim2's high byte (16-bit var, cmp #imm8 truncates to one byte -
@@ -4109,7 +4109,7 @@ loc_CB9D:							; CB7D↑j ...
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_enrichment_unk_100:							; loc_CDBB↓p
+decay_enrichment_unk_100:					; loc_CDBB↓p
 ; Decrement var_enrichment_unk_100 by 3 (clamped to 0), but only when an
 ; ECT-table lookup (table_C3A3_ect, ECT halved above ~0x51/2 - the halving
 ; matches a similar >67C branch in calc_ignition_timing's own ECT reads)
@@ -4167,7 +4167,7 @@ loc_CBE9:							; CBD3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_var_enrichment_unk_103:							; CDB1↓p
+decay_var_enrichment_unk_103:					; CDB1↓p
 ; Decay var_enrichment_unk_103 toward 0 by x0xF0/256 (~93.75%) per call when nonzero -
 ; same shape as decay_enrichment_unk_53. See the header above
 ; main_continue_2 for the whole enrichment-chain/decay-function pattern
@@ -4390,7 +4390,7 @@ loc_CCDA:							; CCA5↑j ...
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_rpm_filter_EA:							; loc_C9DD↑p
+update_rpm_filter_EA:						; loc_C9DD↑p
 ; update_rpm_filter_EA: smooth var_rpm_smooth_ea toward D at ~12.5%/call (B=0x20/256
 ; via signed_proportional_update), hard-resetting it to raw RPM first when
 ; dmarx_var_flags_46.0 is clear. Only reached (via loc_C9DD, in
@@ -5221,7 +5221,7 @@ loc_D084:							; D07B↑j ...
 ; The three port writes just below (PORTB.4 clear, PORTB.1 set, DOUT.3
 ; clear) are unrelated one-off pin inits, not part of either warning
 ; block - probably just sharing this tick since it's a convenient place.
-; 
+;
 ; Worth knowing when comparing against the ST205: D151804-0471 writes these
 ; same three pins in the same order at this same point in its tick, but
 ; through conditional blocks gated on dmarx_ect and var_rpm_x_5p12 rather
@@ -5567,7 +5567,7 @@ loc_D1D8:							; D0B2↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-factory_selfcheck:							; D388↓p
+factory_selfcheck:						; D388↓p
 
 ; FUNCTION CHUNK AT D316 SIZE 00000001 BYTES
 
@@ -5791,7 +5791,7 @@ loc_D2C3:							; D2C4↓j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-selfcheck_io_pump:							; D251↑p
+selfcheck_io_pump:						; D251↑p
 ; Keeps I/O reads and the CPU1 DMA link alive while factory_selfcheck is
 ; parked in its idle/test loop. Mirrors check_startup's own reset-detection
 ; check (same IRQLL.0/PORTB.6 -> loc_D2E9 exit) so a genuine reset can
@@ -5884,7 +5884,7 @@ loc_D317:							; loc_D1D8↑j
 				jmp	loc_D38B
 
 loc_D31E:							; D319↑j
-				ld	d, #COUNTER_ARG(var_cnt64ms_BC, 03h)	; Increment counters at	0BCh - 0BEh
+				ld	d, #COUNTER_ARG(var_cnt64ms_BC, 03h) ; Increment counters at	0BCh - 0BEh
 				jsr	increment_counters
 				ld	a, var_cnt_BF
 				inc	a
@@ -6146,10 +6146,10 @@ loc_D411:							; D40D↑j
 				ld	y, #var_ne_table	; Get base address of NE table
 				add	y, b			; Calculate address to store new value
 				cmp	a, #08h			; A = previous call's no-data flag (see header) -
-							; check if it was >= 8 (no valid prior sample)
+								; check if it was >= 8 (no valid prior sample)
 				bcc	loc_D42F		; If so, skip the delta calc below - use the
-							; 0x5500 sentinel instead (no valid prior ASR2
-							; sample to diff against)
+								; 0x5500 sentinel instead (no valid prior ASR2
+								; sample to diff against)
 				mov	x, d			; Copy X to D
 				sub	d, var_asr2_count2	; Get delta from previous ASR2 value
 				cmp	a, #55h			; Check	if delta less than 5500h
@@ -6579,7 +6579,7 @@ loc_D57B:							; D583↓j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_dmatx_status_flags:							; loc_D38B↑p
+update_dmatx_status_flags:					; loc_D38B↑p
 ; ---------------------------------------------------------------------------
 ; update_dmatx_status_flags: pack misc status bits into two DMA bytes
 ;
@@ -7293,7 +7293,7 @@ loc_D694:							; D690↑j
 				.db 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh
 				.db 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh
 
-			.org 0FFDAh
+				.org 0FFDAh
 rom_checksum:			.dw 148Eh
 								; The ROM checksum word, patched by checksum.exe after
 								; assembly - see the build steps in CLAUDE.md. Not a
@@ -7304,7 +7304,7 @@ rom_version:			.dw 8646h			; D653↑o
 								; protocol asks for index 0x1F - the 'identify device'
 								; query.
 
-			.org 0FFDEh
+				.org 0FFDEh
 				.dw int_vector_0		; External interrupt 0
 				.dw int_vector_unhandled	; External interrupt 1
 				.dw int_vector_unhandled	; External interrupt 2

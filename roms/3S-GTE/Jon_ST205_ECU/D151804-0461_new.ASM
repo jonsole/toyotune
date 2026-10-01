@@ -1382,14 +1382,14 @@ rom_start:
 ; *************************************************
 ; Extended serial diagnostics
 ; *************************************************
-serial_diag_extended:                
-                        
+serial_diag_extended:
+
 ; Flush any stale data in UART receive buffer
 .diag_flush:
 				ld      a, SIDR_SODR
 				tbbs    bit7, SSD, .diag_flush          ; Loop back if SSD.7 set (data in receive buffer)
-                        
-; Send sync byte                        
+
+; Send sync byte
 				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
 				ld      a, serial_diag_mode             ; Copy mode value...
 				;clrb    bit1, PORTD_ASRIN
@@ -1406,63 +1406,63 @@ serial_diag_extended:
 
 ; Wait for MSB of command/address to be received
 .diag_msb_wait:
-				tbbs    bit7, SSD, .diag_msb_found      ; Exit loop if SSD.7 set (data in receive buffer)
+				tbbs    bit7, SSD, .diag_msb_found ; Exit loop if SSD.7 set (data in receive buffer)
 				dec     b                               ; Repeat for 14 iterations...
 				bne     .diag_msb_wait                  ; ...loop back if more iterations
-				ret					; Timed out waiting for data
+				ret				; Timed out waiting for data
 
 ; MSB of command/address received
-.diag_msb_found:                                              
+.diag_msb_found:
 				tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
 				ld      a, SIDR_SODR                    ; Store MSB in A
 
-; Wait for LSB of command/address to be received                        
+; Wait for LSB of command/address to be received
 .diag_lsb_wait:
-				tbbs    bit7, SSD, .diag_lsb_found      ; Exit loop if SSD.7 set (data in receive buffer)
+				tbbs    bit7, SSD, .diag_lsb_found ; Exit loop if SSD.7 set (data in receive buffer)
 				dec     b                               ; Repeat for 14 iterations...
 				bne     .diag_lsb_wait                  ; ...loop back if more iterations
-				ret		                      	; Timed out waiting for data
+				ret				; Timed out waiting for data
 
 ; LSB of command/address received
-.diag_lsb_found:        	tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
+.diag_lsb_found:		tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
 				ld      b, SIDR_SODR                    ; Store LSB in B, 16 bit value now in D
 
-				tbbs    bit0, SSD, .diag_command        ; Read Serial Status Register, jump if parity bit is set (command selection bit)
+				tbbs    bit0, SSD, .diag_command ; Read Serial Status Register, jump if parity bit is set (command selection bit)
 				jmp     y + 00h                         ; Not command, so jump to mode handler routine
 
 ; Handler for read 16 mode
 .diag_data_read16_mode:
 				mov     d, y                            ; Move address to Y
-				ld      d, [y]                          ; Read 2 bytes and increment address                        
+				ld      d, [y]                          ; Read 2 bytes and increment address
 
 ; Transmit word in D
 .diag_tx_word:
 				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
 				st      a, SIDR_SODR                    ; Write 1st byte to serial Tx buffer
-				div     d, #00h                         ; Wait for a bit...                        
+				div     d, #00h                         ; Wait for a bit...
 				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
 				st      b, SIDR_SODR                    ; Write 2nd byte to serial Tx buffer
 				ret
-				
+
 ; Handler for write 16 bits mode, address phase
 .diag_addr_write16_mode:
 				st      d, serial_diag_address          ; Store write address
-				ld      #0DCh, serial_diag_mode         ; Move to data_write16 mode
+				ld      #0DCh, serial_diag_mode	; Move to data_write16 mode
 				bra     .diag_tx_word                   ; Echo back address
-                        
+
 ; Handler for write 16 bits mode, data phase
 .diag_data_write16_mode:
 				ld      y, serial_diag_address          ; Retrieve write address
 				st      d, [y]                          ; Write 16 bit value in D, increment write address
 				st      y, serial_diag_address          ; Store write address
 				bra     .diag_tx_word                   ; Echo back address
-                        
+
 ; Handler for write 8 bits mode, address phase
 .diag_addr_write8_mode:
 				st      d, serial_diag_address          ; Store write address
-				ld      #0DEh, serial_diag_mode         ; Move to data_write8 mode    
+				ld      #0DEh, serial_diag_mode	; Move to data_write8 mode
 				bra     .diag_tx_word                   ; Echo back address
-                        
+
 ; Handler for write 16 bits mode, data phase
 .diag_data_write8_mode:
 				ld      y, serial_diag_address          ; Retrieve write address
@@ -1470,16 +1470,16 @@ serial_diag_extended:
 				st      y, serial_diag_address          ; Store write address
 				bra     .diag_tx_word                   ; Echo back address
 
-; Command received, store and echo back              
+; Command received, store and echo back
 .diag_command:
 				cmp     b, #0DAh                        ; Check if command < 0DAh...
 				bcs     .diag_drop                      ; Jump if it is, command is invalid
 				cmp     b, #0DEh                        ; Check if command > 0DEh
-				bgt     .diag_drop                      ; Jump if it is, command is invalid                                
-				st      b, serial_diag_mode             ; Store new diagnostic mode                        
-				bra     .diag_tx_word                   ; Echo back command  
-                        
-; Drop any data in buffer                        
+				bgt     .diag_drop                      ; Jump if it is, command is invalid
+				st      b, serial_diag_mode             ; Store new diagnostic mode
+				bra     .diag_tx_word                   ; Echo back command
+
+; Drop any data in buffer
 .diag_drop:
 				ld      a, SIDR_SODR
 				tbbs    bit7, SSD, .diag_drop            ; Loop back if SSD.7 set (data in receive buffer)
@@ -1487,8 +1487,8 @@ serial_diag_extended:
 
 .diag_mode_table:
 				.dw     .diag_data_read16_mode          ; 0DAh
-				.dw     .diag_addr_write16_mode         ; 0DBh
-				.dw     .diag_data_write16_mode         ; 0DCh
+				.dw     .diag_addr_write16_mode	; 0DBh
+				.dw     .diag_data_write16_mode	; 0DCh
 				.dw     .diag_addr_write8_mode          ; 0DDh
 				.dw     .diag_data_write8_mode          ; 0DEh
 
@@ -1496,7 +1496,7 @@ serial_diag_init:		ld	a, #0DAh
 				st	a, serial_diag_mode
 				jmp	init_ne_counters
 
-				
+
 				;.segment ROM
 				.org 0C000h
 unk_C000:			.db  5Fh ; _			; DATA XREF: sub_E094+E4o
@@ -4875,7 +4875,7 @@ loc_CD3F:							; CODE XREF: async_throttle_inject+2-j
 				cmp	#0Eh, var_tps		; Check	if TPS is not open enough
 				bcs	locret_CD62		; Jump is so, not worth	injecting fuel
 
-				tbbs	bit0, var_flags_46, locret_CD62	; Test and set async throttle flag
+				tbbs	bit0, var_flags_46, locret_CD62 ; Test and set async throttle flag
 
 				tbs	bit3, unk_40		; Jump if flag already set
 				bne	locret_CD62
@@ -5227,7 +5227,7 @@ loc_CEBF:							; CODE XREF: sub_C57A+93E-j
 
 check_open_or_closed_loop:					; CODE XREF: sub_C57A+94B-j
 				clr	var_cnt_CD
-				tbbs	bit6, var_io_input1, open_loop_CEFD	; Force open loop when TE2 connected to E1
+				tbbs	bit6, var_io_input1, open_loop_CEFD ; Force open loop when TE2 connected to E1
 
 				tbbs	bit0, var_flags_46, open_loop_CEFD
 
@@ -13460,14 +13460,14 @@ injector_update:		bsr	check_inj_limiters
 
 				; scale injector pulsewidth for different size injectors
 				jsr	scale_injector_pw
-				bcs	injector_skip				
-				
+				bcs	injector_skip
+
 				mov	d, y
 				ld	a, unk_1D5
 				or	a, #01h
 				st	a, unk_1D5
 				mov	y, d
-				
+
 ; *************** S U B	R O U T	I N E ***************************************
 injector_drive:			push	d			; Store injector pulsewidth for later
 				clr	a
@@ -13477,12 +13477,12 @@ injector_drive:			push	d			; Store injector pulsewidth for later
 				ld	a, LDOUT		; Get current injectors state
 				cmpb	a, x + 00h		; Check if injector is on...
 				bne	injector_already_on	; ...jump if it is
-				
+
 				; adjust injection pulsewidth for injector latency
 				pull	d			; Retreive injector pulsewidth
 				push	d			; Save it again!
 				add	d, var_inj_battery_adjust ; Add calculated injector latency to pulsewidth
-				push	x			
+				push	x
 				bra	loc_F3A1
 
 ; ***************************************************************************
@@ -13493,15 +13493,15 @@ injector_already_on:		ld	d, y + 00h		; Get time when injector will be turned off
 				bne	loc_F39D		; ...jump if it is not
 				clr	a			; Injector switch off time has passed...
 				clr	b			; ...so clear D
-				
+
 loc_F39D:			push	x
 				mov	s, x
 				add	d, x + 02h		; Add injector pulsewidth to current duration remaining
 
-				
+
 loc_F3A1:			bcc	loc_F3A6		; Jump if no overflow
 				ld	d, #0FFFFh		; Set to maximum pulsewidth
-				
+
 loc_F3A6:			push	d
 				mov	s, x
 				ld	d, var_ne_sum3
@@ -13552,7 +13552,7 @@ limiter_active:			setc
 
 
 				.org 0F3E9h
-				
+
 ; *************** S U B	R O U T	I N E ***************************************
 sub_F3E9:							; CODE XREF: ROM:loc_EFC4-p
 				ld	b, unk_A1
@@ -16045,24 +16045,24 @@ adc_handler_complete:						; DATA XREF: ROM:table_adc_handler-o
 
 ; *************** S U B	R O U T	I N E ***************************************
 ; Scale injector pulsewidth in rD
-; 
+;
 scale_injector_pw:		xch	x, y			; Store X in Y
 
 				mov	d, x
 				push 	x
 				ld	a, #00h
-				
+
 				jsr	mult_rArX
 				pop	x
 				sub	d, x
 				mov	x, d
 				xch	x, y			; Restore X
-				
+
 				cmp	d, #000Dh
 				ret
 
-				
-				
+
+
 ; *************** S U B	R O U T	I N E ***************************************
 ; Compute (rA * rX)/100h, result in rD and rX
 ; Used to scale a variable by some fraction 80h = 50%, 40h = 25%, and so on
@@ -16083,16 +16083,16 @@ mult_rArX:							; CODE XREF: sub_C54C+Ep
 				mov	x, d
 				ret
 
-				
-				
-				
-				
-				
-				
-				
-				
+
+
+
+
+
+
+
+
 				.org 0FFDAh
-				
+
 				.dw 5076h
 word_FFDC:			.dw 8305h			; DATA XREF: ROM:FA2F-o
 				.dw IV0				; External interrupt 0

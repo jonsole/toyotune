@@ -1,7 +1,7 @@
 
 
 ; enum flags_1 (bitfield)
-flags_1_1:			 .equ 00000000000000000000000000000001b
+flags_1_1:			.equ 00000000000000000000000000000001b
 
 ;
 ; ษอออออออออออออออออออออออออออออออออออออออออออออออออออออออออออออออออออออออออป
@@ -4251,7 +4251,7 @@ loc_D317:							; loc_D1D8j
 				jmp	loc_D38B
 
 loc_D31E:							; D319j
-				ld	d, #(var_cnt64ms_BC << 8) | 03h	; Increment counters at	0BCh - 0BEh
+				ld	d, #(var_cnt64ms_BC << 8) | 03h ; Increment counters at	0BCh - 0BEh
 				jsr	increment_counters
 				ld	a, var_cnt_BF
 				inc	a
@@ -5326,11 +5326,11 @@ loc_D694:							; D690j
 				.db 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh
 				.db 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh,	5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh, 5Fh
 
-			.org 0FFDAh
+				.org 0FFDAh
 rom_checksum:			.dw 148Eh
 rom_version:			.dw 8646h			; D653o
 
-			.org 0FFDEh
+				.org 0FFDEh
 				.dw int_vector_0		; External interrupt 0
 				.dw int_vector_unhandled	; External interrupt 1
 				.dw int_vector_unhandled	; External interrupt 2

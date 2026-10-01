@@ -148,60 +148,60 @@ CPR7L:				.block 1			; Timer	comparison #3 LSB
 ; Segment type:	Pure data
 				;.segment RAM
 				.org 40h
-var_flags_40:				.block 1			; DATA XREF: check_startup:loc_C9D7↓r
+var_flags_40:			.block 1			; DATA XREF: check_startup:loc_C9D7↓r
 								; check_startup:main_continue↓r ...
-var_flags_41:				.block 1			; DATA XREF: check_startup-B86↓r
+var_flags_41:			.block 1			; DATA XREF: check_startup-B86↓r
 								; check_startup:loc_C9FF↓r ...
-dmarx_var_flags_46:				.block 1			; DATA XREF: check_startup-AEF↓r
+dmarx_var_flags_46:		.block 1			; DATA XREF: check_startup-AEF↓r
 								; check_startup-9A0↓r ...
-dmarx_limiter_flags:				.block 1			; DATA XREF: check_startup-4EC↓r
+dmarx_limiter_flags:		.block 1			; DATA XREF: check_startup-4EC↓r
 								; check_startup-4E9↓r ...
-var_flags_44:				.block 1			; DATA XREF: check_startup-5F2↓r
+var_flags_44:			.block 1			; DATA XREF: check_startup-5F2↓r
 								; check_startup-5EF↓r ...
-var_flags_45:				.block 1			; DATA XREF: check_startup-6AC↓r
+var_flags_45:			.block 1			; DATA XREF: check_startup-6AC↓r
 								; check_startup-6A6↓r
 var_flags_46:			.block 1			; DATA XREF: check_startup-51D↓r
 								; check_startup-50A↓r ...
-var_flags_47:				.block 1			; DATA XREF: check_startup:loc_C969↓r
+var_flags_47:			.block 1			; DATA XREF: check_startup:loc_C969↓r
 								; check_startup-AF7↓r ...
-var_flags_48:				.block 1			; DATA XREF: update_rpm_smooth_filter+12↓r
+var_flags_48:			.block 1			; DATA XREF: update_rpm_smooth_filter+12↓r
 								; check_startup+57↓r
-var_input_bits:				.block 1			; DATA XREF: check_startup-AE7↓r
+var_input_bits:			.block 1			; DATA XREF: check_startup-AE7↓r
 								; check_startup:loc_C9F2↓r ...
 				.block 1
-dmarx_unk_4B:				.block 1			; DATA XREF: check_startup-499↓r
+dmarx_unk_4B:			.block 1			; DATA XREF: check_startup-499↓r
 								; copy_serbus_rx+13↓w
 				.block 1
 				.block 1
-dmarx_flags_1:				.block 1			; DATA XREF: check_startup-732↓r
+dmarx_flags_1:			.block 1			; DATA XREF: check_startup-732↓r
 								; check_startup-55A↓r ...
 var_enrich_flags:		.block 1			; DATA XREF: check_startup-9ED↓r
 								; check_startup-971↓r ...
 var_rpm_div_25:			.block 1			; DATA XREF: check_startup-A98↓w
 								; check_startup-A17↓r ...
-var_rpm_deviation_51:				.block 1			; DATA XREF: update_rpm_smooth_filter+18↓w
+var_rpm_deviation_51:		.block 1			; DATA XREF: update_rpm_smooth_filter+18↓w
 var_spd:			.block 1			; DATA XREF: check_startup-73A↓r
 								; check_startup-488↓r ...
-var_enrichment_unk_53:				.block 1			; DATA XREF: check_startup:loc_CBD2↓w
+var_enrichment_unk_53:		.block 1			; DATA XREF: check_startup:loc_CBD2↓w
 								; decay_enrichment_unk_53↓r ...
 				.block 1
-var_ect_enrich_scale_55:				.block 1			; DATA XREF: check_startup-8E4↓w
+var_ect_enrich_scale_55:	.block 1			; DATA XREF: check_startup-8E4↓w
 								; ECT-derived scale factor for var_enrichment_unk_53: written by
 								; `ld y, #0C3FDh / jsr table_ect_pair_interpolate / st a, <this>`, then
 								; applied as `ld x, var_enrichment_unk_53 / ld a, <this> / jsr mult_rArX`.
 								; ST205-SPECIFIC - 9661 has no slot here at all. Its var_dma_sync_timeout
 								; sits at 0055h where this ROM's is at 0056h, so 0055h is an insertion.
 								; decay_enrichment_unk_53+4↓r
-var_dma_sync_timeout_56:				.block 1			; DATA XREF: serial_dma_start:loc_D6DC↓r
+var_dma_sync_timeout_56:	.block 1			; DATA XREF: serial_dma_start:loc_D6DC↓r
 								; IV0+4↓r ...
-var_dma_rearm_cnt_57:				.block 1			; DATA XREF: serial_dma_start+65↓r
+var_dma_rearm_cnt_57:		.block 1			; DATA XREF: serial_dma_start+65↓r
 								; serial_dma_start:loc_D718↓w ...
-var_map_temp_x:				.block 1			; DATA XREF: map_rD_4_rX_map_interpolate+5↓w
+var_map_temp_x:			.block 1			; DATA XREF: map_rD_4_rX_map_interpolate+5↓w
 								; map_rD_4_rX_map_interpolate+1C↓r ...
 				.block 1
-var_map_temp:				.block 1			; DATA XREF: map_rD_4_rX_map_interpolate+16↓w
+var_map_temp:			.block 1			; DATA XREF: map_rD_4_rX_map_interpolate+16↓w
 								; map_rD_4_rX_map_interpolate+18↓r ...
-var_map_temp2_5B:				.block 1			; DATA XREF: map_rD_4_rX_map_interpolate+29↓w
+var_map_temp2_5B:		.block 1			; DATA XREF: map_rD_4_rX_map_interpolate+29↓w
 				.block 1
 				.block 1
 				.block 1
@@ -270,44 +270,44 @@ var_map_temp2_5B:				.block 1			; DATA XREF: map_rD_4_rX_map_interpolate+29↓w
 				.block 1
 				.block 1
 				.block 1
-var_ne_count:				.block 1			; DATA XREF: IVe+4↓r
+var_ne_count:			.block 1			; DATA XREF: IVe+4↓r
 								; IVe:loc_D5AB↓w ...
-var_ne_count_dup:				.block 1			; DATA XREF: init_ne_counters+10↓w
+var_ne_count_dup:		.block 1			; DATA XREF: init_ne_counters+10↓w
 								; check_starter_running+10↓w	...
-var_cnt4ms_obd_byte:				.block 1			; DATA XREF: check_startup:main_loop↓w
+var_cnt4ms_obd_byte:		.block 1			; DATA XREF: check_startup:main_loop↓w
 								; iv6_4ms_process+57↓r
-var_cnt4ms_A3:				.block 1			; DATA XREF: check_starter_running+7↓r
+var_cnt4ms_A3:			.block 1			; DATA XREF: check_starter_running+7↓r
 								; check_starter_running+19↓w
-var_cnt4ms_A4:				.block 1			; DATA XREF: iv6_4ms_process+1B↓r
+var_cnt4ms_A4:			.block 1			; DATA XREF: iv6_4ms_process+1B↓r
 								; iv6_4ms_process+20↓w
-var_cnt4ms_A5:				.block 1			; DATA XREF: check_startup-B83↓r
+var_cnt4ms_A5:			.block 1			; DATA XREF: check_startup-B83↓r
 								; int_vector_4_kph+F↓r ...
 				.block 1
-var_cnt4ms_A7:				.block 1			; DATA XREF: check_startup-4D3↓w
+var_cnt4ms_A7:			.block 1			; DATA XREF: check_startup-4D3↓w
 								; check_startup:loc_D020↓r
 var_cnt4ms_A8:			.block 1			; DATA XREF: check_startup-3E8↓r
 								; check_startup-380↓w
-var_cnt4ms_A9:				.block 1			; DATA XREF: check_startup-321↓w
+var_cnt4ms_A9:			.block 1			; DATA XREF: check_startup-321↓w
 								; check_startup:loc_D1A4↓r
-var_cnt4ms_AA:				.block 1			; DATA XREF: check_startup-AD1↓w
-var_cnt4ms_AB:				.block 1			; DATA XREF: check_startup-ADB↓w
-var_cnt4ms_AC:				.block 1			; DATA XREF: check_startup-ACC↓w
-var_cnt4ms_AD:				.block 1			; DATA XREF: check_startup-B80↓r
+var_cnt4ms_AA:			.block 1			; DATA XREF: check_startup-AD1↓w
+var_cnt4ms_AB:			.block 1			; DATA XREF: check_startup-ADB↓w
+var_cnt4ms_AC:			.block 1			; DATA XREF: check_startup-ACC↓w
+var_cnt4ms_AD:			.block 1			; DATA XREF: check_startup-B80↓r
 								; serial_dma_start+4A↓r	...
-var_cnt4ms_AE:				.block 1			; DATA XREF: check_startup-B7D↓r
+var_cnt4ms_AE:			.block 1			; DATA XREF: check_startup-B7D↓r
 								; serial_dma_start↓r ...
-var_cnt8ms_AF:				.block 1			; DATA XREF: check_startup-B89↓r
+var_cnt8ms_AF:			.block 1			; DATA XREF: check_startup-B89↓r
 								; check_startup-AB8↓r
-var_cnt8ms_1s_prescale_B0:				.block 1			; DATA XREF: check_startup:loc_CE62↓r
+var_cnt8ms_1s_prescale_B0:	.block 1			; DATA XREF: check_startup:loc_CE62↓r
 								; check_startup-65A↓w
 				.block 1
-var_cnt32ms_B2:				.block 1			; DATA XREF: check_startup-AEC↓w
+var_cnt32ms_B2:			.block 1			; DATA XREF: check_startup-AEC↓w
 								; decay_enrichment_unk_100↓r
-var_cnt32ms_B3:				.block 1			; DATA XREF: check_startup-604↓w
+var_cnt32ms_B3:			.block 1			; DATA XREF: check_startup-604↓w
 								; check_startup:loc_CEC1↓r
-var_cnt32ms_B4:				.block 1			; DATA XREF: check_startup:loc_D197↓w
+var_cnt32ms_B4:			.block 1			; DATA XREF: check_startup:loc_D197↓w
 								; check_startup:loc_D199↓r
-var_cnt32ms_B5:				.block 1			; DATA XREF: update_odb_flags:loc_D303↓w
+var_cnt32ms_B5:			.block 1			; DATA XREF: update_odb_flags:loc_D303↓w
 								; Tick rate established from the increment dispatch, not guessed: the call
 								; `ld d, #0B209h / jsr increment_counters` bumps a 9-counter block based at
 								; 0B2h, i.e. 0B2h..0BAh, and it runs under var_flags_41.6 - the 32 ms path.
@@ -318,34 +318,34 @@ var_cnt32ms_B5:				.block 1			; DATA XREF: update_odb_flags:loc_D303↓w
 								; per-symbol search because increment_counters walks a RANGE and names
 								; nothing. Purposes are not established - the names claim rate and role only.
 								; update_odb_flags+F7↓r	...
-var_cnt32ms_B6:				.block 1			; DATA XREF: update_odb_flags+E3↓w
+var_cnt32ms_B6:			.block 1			; DATA XREF: update_odb_flags+E3↓w
 								; update_odb_flags:loc_D325↓r ...
-var_cnt32ms_B7:				.block 1			; DATA XREF: update_odb_flags+EA↓w
+var_cnt32ms_B7:			.block 1			; DATA XREF: update_odb_flags+EA↓w
 								; update_odb_flags:loc_D33B↓r ...
-var_cnt32ms_B8:				.block 1			; DATA XREF: update_odb_flags+12D↓r
+var_cnt32ms_B8:			.block 1			; DATA XREF: update_odb_flags+12D↓r
 								; update_odb_flags:loc_D350↓w
-var_cnt32ms_B9:				.block 1			; DATA XREF: check_startup-2E8↓r
+var_cnt32ms_B9:			.block 1			; DATA XREF: check_startup-2E8↓r
 								; check_startup:loc_D1E2↓w
-var_cnt32ms_tvsv_limiter:				.block 1			; DATA XREF: check_startup-B6F↓r
+var_cnt32ms_tvsv_limiter:	.block 1			; DATA XREF: check_startup-B6F↓r
 								; check_startup:loc_CFDB↓w ...
-var_cnt64ms_BB:				.block 1			; DATA XREF: check_startup:loc_D550↓w
+var_cnt64ms_BB:			.block 1			; DATA XREF: check_startup:loc_D550↓w
 								; check_startup:loc_D55B↓r ...
-var_cnt64ms_map_enrichment:		.block 1			; DATA XREF: check_startup-9E1↓w
+var_cnt64ms_map_enrichment:	.block 1			; DATA XREF: check_startup-9E1↓w
 								; check_startup-9D8↓r ...
-var_cnt64ms_BD:				.block 1			; DATA XREF: check_startup:loc_CF6A↓w
+var_cnt64ms_BD:			.block 1			; DATA XREF: check_startup:loc_CF6A↓w
 								; check_startup:loc_CF6E↓r ...
-var_cnt64ms_BE:				.block 1			; DATA XREF: check_startup:loc_CF9B↓w
+var_cnt64ms_BE:			.block 1			; DATA XREF: check_startup:loc_CF9B↓w
 								; check_startup-51F↓r
-var_cnt64ms_BF:				.block 1			; DATA XREF: check_startup-52C↓w
+var_cnt64ms_BF:			.block 1			; DATA XREF: check_startup-52C↓w
 								; check_startup:loc_CF99↓w
-var_cnt64ms_C0:				.block 1			; DATA XREF: update_odb_flags+CB↓r
+var_cnt64ms_C0:			.block 1			; DATA XREF: update_odb_flags+CB↓r
 								; update_odb_flags:loc_D2F2↓w
-var_cnt_C1:				.block 1			; DATA XREF: check_startup+42↓r
+var_cnt_C1:			.block 1			; DATA XREF: check_startup+42↓r
 								; check_startup+45↓w
 				.block 1
-var_cnt1s_level_C3:				.block 1			; DATA XREF: check_startup-B75↓r
+var_cnt1s_level_C3:		.block 1			; DATA XREF: check_startup-B75↓r
 								; check_startup-2C6↓w ...
-var_cnt1s_throttle_C4:				.block 1			; DATA XREF: check_startup-B72↓r
+var_cnt1s_throttle_C4:		.block 1			; DATA XREF: check_startup-B72↓r
 								; check_startup-2C1↓w ...
 var_rpm_x_5p12:			.block 1			; DATA XREF: table_pair_interpolate_rpm_entry+2↓r
 								; check_startup:loc_CA21↓w ...
@@ -356,41 +356,41 @@ dmarx_pim2:			.block 1			; DATA XREF: check_startup:loc_CADC↓r
 dmarx_tps:			.block 1			; DATA XREF: check_startup-993↓r
 								; check_startup-5A9↓r ...
 				.block 1
-dmarx_ect:				.block 1			; DATA XREF: table_ect_pair_interpolate↓r
+dmarx_ect:			.block 1			; DATA XREF: table_ect_pair_interpolate↓r
 								; table_rb_fixed_64_ect_interp↓r ...
 				.block 1
-dmarx_inj_pw_inj1:				.block 1			; DATA XREF: check_startup-33B↓r
+dmarx_inj_pw_inj1:		.block 1			; DATA XREF: check_startup-33B↓r
 				.block 1
 dmarx_pim:			.block 1			; DATA XREF: check_startup-7B4↓r
 								; check_startup-70F↓r ...
 				.block 1
 dmarx_tha:			.block 1			; DATA XREF: check_startup-8F7↓r
 								; check_startup-82C↓r ...
-dmarx_tham:				.block 1			; DATA XREF: check_startup-674↓r
-dmarx_battery:				.block 1			; DATA XREF: check_startup-35A↓r
+dmarx_tham:			.block 1			; DATA XREF: check_startup-674↓r
+dmarx_battery:			.block 1			; DATA XREF: check_startup-35A↓r
 								; check_startup-34D↓r ...
 				.block 1
-dmarx_cnt_startup:				.block 1			; DATA XREF: check_startup-758↓r
+dmarx_cnt_startup:		.block 1			; DATA XREF: check_startup-758↓r
 								; check_startup+8A↓r
-dmarx_unk_D6:				.block 1			; DATA XREF: decay_enrichment_unk_102+14↓r
+dmarx_unk_D6:			.block 1			; DATA XREF: decay_enrichment_unk_102+14↓r
 								; check_startup-355↓r
-dmarx_nv_trim_o2:				.block 1			; DATA XREF: check_startup-876↓r
-dmarx_lambda_state:				.block 1			; DATA XREF: check_startup-A5F↓r
+dmarx_nv_trim_o2:		.block 1			; DATA XREF: check_startup-876↓r
+dmarx_lambda_state:		.block 1			; DATA XREF: check_startup-A5F↓r
 								; check_startup-753↓r
-dmarx_adc_lambda:				.block 1			; DATA XREF: update_odb_flags:loc_D249↓r
+dmarx_adc_lambda:		.block 1			; DATA XREF: update_odb_flags:loc_D249↓r
 								; update_odb_flags+15E↓r
 				.block 1
 				.block 1
 				.block 1
-dmarx_add_enrichment_DD:				.block 1			; DATA XREF: check_startup-544↓r
+dmarx_add_enrichment_DD:	.block 1			; DATA XREF: check_startup-544↓r
 								; update_odb_flags:loc_D23A↓r
 				.block 1
 				.block 1
 				.block 1
-dmarx_obd_o2_sensor:				.block 1			; DATA XREF: update_odb_flags+14C↓r
-dmarx_knock:				.block 1			; DATA XREF: check_startup-A0D↓r
-dmarx_pw_loop_mode:				.block 1			; DATA XREF: drive_dout0+D↓r
-dmarx_tps_delta_E4:				.block 1			; DATA XREF: check_startup-573↓r
+dmarx_obd_o2_sensor:		.block 1			; DATA XREF: update_odb_flags+14C↓r
+dmarx_knock:			.block 1			; DATA XREF: check_startup-A0D↓r
+dmarx_pw_loop_mode:		.block 1			; DATA XREF: drive_dout0+D↓r
+dmarx_tps_delta_E4:		.block 1			; DATA XREF: check_startup-573↓r
 								; Throttle rate of change, received from CPU1. Confirmed by the DMA offset:
 								; this pair's CPU1->CPU2 offset is +133h, so 00E4h here is 0217h in 0461,
 								; which is dmatx_tps_delta - exactly as 9661's 00E2h is 9651's 021Dh.
@@ -401,14 +401,14 @@ dmarx_tps_delta_E4:				.block 1			; DATA XREF: check_startup-573↓r
 								; Read here as one term of a gate: intake air below 0D7h, coolant below
 								; 0F140h, and this within a signed window of about +/-0Ch - i.e. throttle
 								; steady. Named for its address in THIS ROM, as 9661 names its own.
-var_spd_edge_count:				.block 1			; DATA XREF: int_vector_4_kph+20↓r
+var_spd_edge_count:		.block 1			; DATA XREF: int_vector_4_kph+20↓r
 								; int_vector_4_kph+25↓w
 				.block 1
-var_spd_time:				.block 1			; DATA XREF: int_vector_4_kph+14↓r
+var_spd_time:			.block 1			; DATA XREF: int_vector_4_kph+14↓r
 								; int_vector_4_kph+1B↓r ...
 				.block 1
-var_spd_prev:				.block 1			; DATA XREF: update_spd+15↓w
-var_rpm_smooth_ea:				.block 1			; DATA XREF: check_startup-AB1↓w
+var_spd_prev:			.block 1			; DATA XREF: update_spd+15↓w
+var_rpm_smooth_ea:		.block 1			; DATA XREF: check_startup-AB1↓w
 								; NOTE: these three were mis-stamped. They carried 9661's addresses
 								; (e8/ea/ec) while sitting at 00EAh/00ECh/00EEh here - every one off by two
 								; slots, so looking up var_rpm_smooth_ea in this ROM landed you on the
@@ -418,50 +418,50 @@ var_rpm_smooth_ea:				.block 1			; DATA XREF: check_startup-AB1↓w
 								; Renamed simultaneously (e8->ea, ea->ec, ec->ee); sequentially they collide.
 								; check_startup-A53↓r ...
 				.block 1
-var_rpm_smooth_ec:				.block 1			; DATA XREF: check_startup-AAF↓w
+var_rpm_smooth_ec:		.block 1			; DATA XREF: check_startup-AAF↓w
 								; check_startup-743↓r ...
 				.block 1
-var_rpm_smooth_ee:				.block 1			; DATA XREF: check_startup-AAD↓w
+var_rpm_smooth_ee:		.block 1			; DATA XREF: check_startup-AAD↓w
 								; update_rpm_smooth_filter+2↓r ...
 				.block 1
 var_rpm_div_spd:		.block 1			; DATA XREF: check_startup-43D↓r
 								; check_startup-3FD↓r ...
 				.block 1
-var_ne_table:				.block 6			; DATA XREF: iv6_ne_process+2F↓r
-var_ne_sum:				.block 1			; DATA XREF: calc_rpm↓r
+var_ne_table:			.block 6			; DATA XREF: iv6_ne_process+2F↓r
+var_ne_sum:			.block 1			; DATA XREF: calc_rpm↓r
 								; check_startup-74A↓r ...
 				.block 1
-var_asr2_count:				.block 1			; DATA XREF: iv6_ne_process+2↓w
+var_asr2_count:			.block 1			; DATA XREF: iv6_ne_process+2↓w
 				.block 1
-var_asr2_count2:				.block 1			; DATA XREF: iv6_ne_process+23↓r
+var_asr2_count2:		.block 1			; DATA XREF: iv6_ne_process+23↓r
 								; iv6_ne_process:loc_D612↓w
 				.block 1
 var_map_ve:			.block 1			; DATA XREF: check_startup-797↓w
 								; check_startup-784↓r
-var_warmup_enrichment_FF:				.block 1			; DATA XREF: check_startup-90F↓w
+var_warmup_enrichment_FF:	.block 1			; DATA XREF: check_startup-90F↓w
 								; update_odb_flags:loc_D22F↓r
-var_enrichment_unk_100:			.block 1			; DATA XREF: check_startup:loc_CC00↓w
+var_enrichment_unk_100:		.block 1			; DATA XREF: check_startup:loc_CC00↓w
 								; decay_enrichment_unk_100+C↓r ...
 				.block 1
-var_enrichment_unk_102:			.block 1			; DATA XREF: check_startup:loc_CC54↓w
+var_enrichment_unk_102:		.block 1			; DATA XREF: check_startup:loc_CC54↓w
 								; decay_enrichment_unk_102↓r ...
 				.block 1
-var_fuel_enrichment:			.block 1			; DATA XREF: check_startup:loc_CB82↓w
-var_enrichment_unk_105:			.block 1			; DATA XREF: check_startup:loc_CC9A↓w
+var_fuel_enrichment:		.block 1			; DATA XREF: check_startup:loc_CB82↓w
+var_enrichment_unk_105:		.block 1			; DATA XREF: check_startup:loc_CC9A↓w
 								; decay_enrichment_unk_105↓r ...
 				.block 1
-var_tham_enrich_unk:			.block 1			; DATA XREF: check_startup-66F↓w
+var_tham_enrich_unk:		.block 1			; DATA XREF: check_startup-66F↓w
 var_knock_fuel_enrichment:	.block 1			; DATA XREF: check_startup:loc_CB18↓w
 								; check_startup-961↓r
 var_knock_error_enrichment:	.block 1			; DATA XREF: check_startup:loc_CB28↓w
-var_throttle_enrichment:			.block 1			; DATA XREF: check_startup:loc_CB4D↓w
+var_throttle_enrichment:	.block 1			; DATA XREF: check_startup:loc_CB4D↓w
 								; check_startup:loc_CB67↓r
 var_knock_enrichment:		.block 1			; DATA XREF: check_startup:no_knock_enrich↓w
 								; check_startup-9B0↓r
-var_unk_ect_table_10C:			.block 1			; DATA XREF: check_startup:loc_CB7A↓r
+var_unk_ect_table_10C:		.block 1			; DATA XREF: check_startup:loc_CB7A↓r
 								; check_startup-942↓r ...
 				.block 1
-var_ve_x_pim_x_rpm:			.block 1			; DATA XREF: check_startup-769↓w
+var_ve_x_pim_x_rpm:		.block 1			; DATA XREF: check_startup-769↓w
 								; check_startup+5A↓r
 var_pim2_peak:			.block 1			; DATA XREF: check_startup:loc_CDBA↓w
 								; check_startup-6F1↓r ...
@@ -469,10 +469,10 @@ var_pim2_peak:			.block 1			; DATA XREF: check_startup:loc_CDBA↓w
 				.block 1
 				.block 1
 var_unk_113:			.block 1			; DATA XREF: check_startup-5CF↓w
-var_knock_unk_114:			.block 1			; DATA XREF: check_startup-5C8↓w
-var_vf:			.block 1			; DATA XREF: update_odb_flags+16E↓w
+var_knock_unk_114:		.block 1			; DATA XREF: check_startup-5C8↓w
+var_vf:				.block 1			; DATA XREF: update_odb_flags+16E↓w
 								; generate_vf_PORTA_4+9↓r
-var_max_retard_unk:			.block 1			; DATA XREF: check_startup-68D↓w
+var_max_retard_unk:		.block 1			; DATA XREF: check_startup-68D↓w
 var_unk_117:			.block 1			; DATA XREF: drive_dout0↓r
 								; drive_dout0:loc_CF32↓w ...
 var_tvsv_cnt:			.block 1			; DATA XREF: drive_dout2↓r
@@ -490,13 +490,13 @@ var_tvsv_scale_total:		.block 1			; DATA XREF: check_startup:loc_D0BE↓w
 								; check_startup-3E4↓r ...
 var_tvsv_scale_tha:		.block 1			; DATA XREF: check_startup-429↓w
 								; check_startup:loc_D0AE↓r
-var_tvsv_scale_base_120:			.block 1			; DATA XREF: check_startup-46A↓w
+var_tvsv_scale_base_120:	.block 1			; DATA XREF: check_startup-46A↓w
 								; check_startup-3B1↓r ...
 var_tvsv_scale_limiter:		.block 1			; DATA XREF: check_startup:loc_CFE4↓w
 								; check_startup:loc_D0B6↓r
 var_tvsv_unk_122:		.block 1			; DATA XREF: check_startup:loc_D0EB↓w
 								; check_startup-3B8↓r
-var_add_enrich_latch_123:			.block 1			; DATA XREF: check_startup-542↓w
+var_add_enrich_latch_123:	.block 1			; DATA XREF: check_startup-542↓w
 								; Latches dmarx_add_enrichment_DD (`ld a, dmarx_add_enrichment_DD /
 								; st a, <this>`) so the TVSV RPM map result can be compared against it:
 								; `jsr map_rD_16_rX_map_interpolate / cmp a, <this> / bgt`.
@@ -505,12 +505,12 @@ var_add_enrich_latch_123:			.block 1			; DATA XREF: check_startup-542↓w
 								; check_startup-531↓r
 var_obd_flags1:			.block 1			; DATA XREF: update_odb_flags:loc_D240↓w
 var_odb_flags2:			.block 1			; DATA XREF: update_odb_flags:loc_D260↓w
-var_odb_shift_reg:			.block 1			; DATA XREF: ROM:D26C↓r
+var_odb_shift_reg:		.block 1			; DATA XREF: ROM:D26C↓r
 								; ROM:loc_D29C↓w ...
 				.block 1
-var_odb_byte_count:			.block 1			; DATA XREF: check_startup-B6A↓w
+var_odb_byte_count:		.block 1			; DATA XREF: check_startup-B6A↓w
 								; ROM:next_odb_byte↓r ...
-var_asr0n_shadow_129:			.block 1			; DATA XREF: check_startup-B78↓w
+var_asr0n_shadow_129:		.block 1			; DATA XREF: check_startup-B78↓w
 								; check_startup-B27↓r ...
 var_serbus_rx:			.block 1
 								; The inter-CPU serial receive staging buffer, 23h bytes at 012Ah. Named to
@@ -558,39 +558,39 @@ dmarx_flags1:			.block 1			; DATA XREF: factory_selfcheck+47↓r
 dmarx_flags2:			.block 1			; DATA XREF: factory_selfcheck+20↓r
 								; factory_selfcheck:loc_D3DB↓r ...
 				.block 1
-dmatx_ve_corr_map:			.block 1			; DATA XREF: check_startup-5B7↓w
+dmatx_ve_corr_map:		.block 1			; DATA XREF: check_startup-5B7↓w
 				.block 1
-dmatx_ve_corr_map_tps:			.block 1			; DATA XREF: check_startup:loc_CF23↓w
+dmatx_ve_corr_map_tps:		.block 1			; DATA XREF: check_startup:loc_CF23↓w
 				.block 1
-dmatx_ve_x_pim_x_rpm:			.block 1			; DATA XREF: check_startup:loc_CD61↓w
+dmatx_ve_x_pim_x_rpm:		.block 1			; DATA XREF: check_startup:loc_CD61↓w
 				.block 1
-dmatx_scaled_ve:			.block 1			; DATA XREF: check_startup-78A↓w
+dmatx_scaled_ve:		.block 1			; DATA XREF: check_startup-78A↓w
 								; Same field as 9661's. Confirmed by context rather than layout: both do
 								; `jsr mult_rDrX_saturate / st d, <this> / ld x, #8C4Eh / ld a, var_map_ve`
 								; - 9661 writes that constant in decimal (35918), which is the same value.
 				.block 1
-dmatx_rpm_x_5p12:			.block 1			; DATA XREF: check_startup-A9E↓w
+dmatx_rpm_x_5p12:		.block 1			; DATA XREF: check_startup-A9E↓w
 				.block 1
-dmatx_warmup_enrichment_15A:			.block 1			; DATA XREF: check_startup-90D↓w
-dmatx_enrichment_unk_15B:			.block 1			; DATA XREF: check_startup-8ED↓w
+dmatx_warmup_enrichment_15A:	.block 1			; DATA XREF: check_startup-90D↓w
+dmatx_enrichment_unk_15B:	.block 1			; DATA XREF: check_startup-8ED↓w
 								; decay_enrichment_unk_53+B↓w
-dmatx_enrichment_unk_15C:			.block 1			; DATA XREF: check_startup-8BE↓w
+dmatx_enrichment_unk_15C:	.block 1			; DATA XREF: check_startup-8BE↓w
 								; decay_enrichment_unk_100+17↓w
-dmatx_enrichment_unk_15D:			.block 1			; DATA XREF: check_startup-86A↓w
+dmatx_enrichment_unk_15D:	.block 1			; DATA XREF: check_startup-86A↓w
 								; decay_enrichment_unk_102+25↓w
-dmatx_unk_enrich:			.block 1			; DATA XREF: check_startup-892↓w
-dmatx_tham_enrich:			.block 1			; DATA XREF: check_startup-66C↓w
-dmatx_enrichment_unk_160:			.block 1			; DATA XREF: check_startup-824↓w
+dmatx_unk_enrich:		.block 1			; DATA XREF: check_startup-892↓w
+dmatx_tham_enrich:		.block 1			; DATA XREF: check_startup-66C↓w
+dmatx_enrichment_unk_160:	.block 1			; DATA XREF: check_startup-824↓w
 								; decay_enrichment_unk_105+D↓w
-dmatx_fuel_enrichment:			.block 1			; DATA XREF: check_startup-93B↓w
+dmatx_fuel_enrichment:		.block 1			; DATA XREF: check_startup-93B↓w
 dmatx_unk_162:			.block 1			; DATA XREF: check_startup-5CC↓w
-dmatx_knock_unk_163:			.block 1			; DATA XREF: check_startup-5C5↓w
-dmatx_max_retard_164:			.block 1			; DATA XREF: check_startup-68A↓w
-dmatx_lambda_trim_165:			.block 1			; DATA XREF: check_startup:loc_CD9B↓w
-dmatx_ign_timing:			.block 1			; DATA XREF: check_startup:loc_CDE8↓w
-dmatx_ign_timing_fallback1:			.block 1			; DATA XREF: check_startup-806↓w
-dmatx_ign_timing_fallback2:			.block 1			; DATA XREF: check_startup-7FB↓w
-dmatx_ign_timing_unk_169:			.block 1			; DATA XREF: check_startup-7D5↓w
+dmatx_knock_unk_163:		.block 1			; DATA XREF: check_startup-5C5↓w
+dmatx_max_retard_164:		.block 1			; DATA XREF: check_startup-68A↓w
+dmatx_lambda_trim_165:		.block 1			; DATA XREF: check_startup:loc_CD9B↓w
+dmatx_ign_timing:		.block 1			; DATA XREF: check_startup:loc_CDE8↓w
+dmatx_ign_timing_fallback1:	.block 1			; DATA XREF: check_startup-806↓w
+dmatx_ign_timing_fallback2:	.block 1			; DATA XREF: check_startup-7FB↓w
+dmatx_ign_timing_unk_169:	.block 1			; DATA XREF: check_startup-7D5↓w
 dmatx_unk_16A:			.block 1			; DATA XREF: check_startup-7BA↓w
 dmatx_unk_16B:			.block 1			; DATA XREF: check_startup-7F0↓w
 								; Purpose unconfirmed. CPU2 writes it once, from an RPM-indexed
@@ -617,12 +617,12 @@ dmatx_unk_16B:			.block 1			; DATA XREF: check_startup-7F0↓w
 								;   a different CPU2 part in that car, a transient on the
 								;   inter-CPU DMA (CPU1 does no frame-integrity check on the
 								;   received block), or a setter not yet found.
-dmatx_status1_16C:			.block 1			; DATA XREF: update_dmatx_status_flags:loc_D79D↓w
-dmatx_diag_mode_16D:			.block 1			; DATA XREF: check_startup-950↓r
+dmatx_status1_16C:		.block 1			; DATA XREF: update_dmatx_status_flags:loc_D79D↓w
+dmatx_diag_mode_16D:		.block 1			; DATA XREF: check_startup-950↓r
 								; check_startup:loc_CFF0↓r ...
-dmatx_status2_16E:			.block 1			; DATA XREF: update_dmatx_status_flags:loc_D7BA↓w
-dmatx_ign_advance_hi_16F:			.block 1			; DATA XREF: factory_selfcheck+2↓w
-dmatx_ign_retard_pair:			.block 1			; DATA XREF: check_startup:loc_CE22↓w
+dmatx_status2_16E:		.block 1			; DATA XREF: update_dmatx_status_flags:loc_D7BA↓w
+dmatx_ign_advance_hi_16F:	.block 1			; DATA XREF: factory_selfcheck+2↓w
+dmatx_ign_retard_pair:		.block 1			; DATA XREF: check_startup:loc_CE22↓w
 				.block 1
 				.block 1
 				.block 1
@@ -1297,9 +1297,9 @@ rom_start:			.db  5Fh ; _			; DATA XREF: factory_selfcheck+C3↓o
 
 
 				; public int_vector_unhandled
-int_vector_unhandled:								; CODE XREF: int_vector_unhandled↓j
+int_vector_unhandled:						; CODE XREF: int_vector_unhandled↓j
 								; DATA XREF: ROM:FFE0↓o	...
-				bra	int_vector_unhandled			; IV1
+				bra	int_vector_unhandled	; IV1
 								; IV2
 								; IV3
 								; IV5
@@ -1384,7 +1384,7 @@ map_ignition_C1A4:		.dw 0200h			; DATA XREF: check_startup-700↓o
 ;	     -2.83,  -0.45,   1.92,   4.29
 ;	      6.66,   9.03,   11.41, 13.78
 ;*******************************************************************************
-map_fuel_enrichment_C2CA:			.dw 0400h			; DATA XREF: check_startup-9C7↓o
+map_fuel_enrichment_C2CA:	.dw 0400h			; DATA XREF: check_startup-9C7↓o
 				.db 0Eh				; 15
 				.dw 0113h
 				.db 0Bh				; 12
@@ -1563,7 +1563,7 @@ table_C3F4_ect:			.db  18h			; DATA XREF: check_startup-902↓o
 				.db  40h ; @
 
 
-table_C43E_tham:			.db  1Dh			; DATA XREF: check_startup-677↓o
+table_C43E_tham:		.db  1Dh			; DATA XREF: check_startup-677↓o
 				.db 0C0h ; └
 				.db 0F1h ; ±
 				.db 0C9h ; ╔
@@ -1643,13 +1643,13 @@ table_ect_C490:			.db  1Fh			; DATA XREF: update_ect_enrich_clamp↓o
 				.db  4Dh ; M
 
 
-table_ignition_retard:			.db  00h			; DATA XREF: check_startup-6EA↓o
+table_ignition_retard:		.db  00h			; DATA XREF: check_startup-6EA↓o
 				.db  09h
 				.db  11h
 				.db  1Ah
 
 
-table_rpm_ignition_retard:			.db  00h			; DATA XREF: check_startup-6A9↓o
+table_rpm_ignition_retard:	.db  00h			; DATA XREF: check_startup-6A9↓o
 				.db  00h
 				.db  00h
 				.db  1Ah
@@ -1763,7 +1763,7 @@ table_C5B0_rpm_div_25:		.db 080, 160			; DATA XREF: check_startup-3F7↓o
 				.db  00h
 
 
-map_ve_corr_map_tps:			.db  00h			; DATA XREF: check_startup-5A7↓o
+map_ve_corr_map_tps:		.db  00h			; DATA XREF: check_startup-5A7↓o
 				.db  00h
 				.db  03h
 				.db  01h
@@ -1777,7 +1777,7 @@ map_ve_corr_map_tps:			.db  00h			; DATA XREF: check_startup-5A7↓o
 				.db 00h, 00h, 00h, 00h
 
 
-table_ve_corr_map:			.db  01h			; DATA XREF: check_startup-5C0↓o
+table_ve_corr_map:		.db  01h			; DATA XREF: check_startup-5C0↓o
 				.db  13h
 				.db  05h
 				.db 0AEh ; «
@@ -1788,7 +1788,7 @@ table_ve_corr_map:			.db  01h			; DATA XREF: check_startup-5C0↓o
 				.db  00h
 
 
-map_max_knock_retard_C5E9:			.dw 0200h			; DATA XREF: check_startup-693↓o
+map_max_knock_retard_C5E9:	.dw 0200h			; DATA XREF: check_startup-693↓o
 				.db  0Fh			; 16
 				.dw 0313h
 				.db  09h			; 10
@@ -1846,7 +1846,7 @@ min_max_done:							; CODE XREF: clamp_rD+8↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_ect_pair_interpolate:							; CODE XREF: check_startup-8E7↓p
+table_ect_pair_interpolate:					; CODE XREF: check_startup-8E7↓p
 				; One-instruction entry wrapper that loads ECT and falls into the pair
 				; interpolator, same as 9651's. It reads dmarx_ect rather than var_ect
 				; because CPU2 has no coolant sensor of its own - the value arrives over
@@ -1858,7 +1858,7 @@ table_ect_pair_interpolate:							; CODE XREF: check_startup-8E7↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_pair_interpolate_rpm_entry:							; CODE XREF: check_startup-42C↓p
+table_pair_interpolate_rpm_entry:				; CODE XREF: check_startup-42C↓p
 								; check_startup-3D0↓p ...
 				clr	b
 ; ───────────────────────────────────────────────────────────────────────────
@@ -1933,7 +1933,7 @@ loc_C6ED:							; CODE XREF: table_pair_interpolate_rpm_entry+2F↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_rD_fixed32_interpolate:							; CODE XREF: check_startup-7F3↓p
+table_rD_fixed32_interpolate:					; CODE XREF: check_startup-7F3↓p
 				shr	d
 ; End of function table_rD_fixed32_interpolate
 
@@ -1941,7 +1941,7 @@ table_rD_fixed32_interpolate:							; CODE XREF: check_startup-7F3↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_rD_fixed16_interpolate:							; CODE XREF: check_startup-809↓p
+table_rD_fixed16_interpolate:					; CODE XREF: check_startup-809↓p
 								; check_startup-7FE↓p ...
 				shr	d
 ; End of function table_rD_fixed16_interpolate
@@ -1971,7 +1971,7 @@ loc_C6FE:							; CODE XREF: table_rD_fixed8_interpolate+3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_rb_fixed_64_ect_interp:							; CODE XREF: update_ect_enrich_clamp+3↓p
+table_rb_fixed_64_ect_interp:					; CODE XREF: update_ect_enrich_clamp+3↓p
 								; check_startup-7EA↓p ...
 
 ; FUNCTION CHUNK AT C70F SIZE 00000010 BYTES
@@ -1987,7 +1987,7 @@ table_rb_fixed_64_ect_interp:							; CODE XREF: update_ect_enrich_clamp+3↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-table_rb_fixed_32_ect_interp:							; CODE XREF: check_startup-920↓p
+table_rb_fixed_32_ect_interp:					; CODE XREF: check_startup-920↓p
 								; check_startup-8FF↓p ...
 				ld	b, dmarx_ect
 ; End of function table_rb_fixed_32_ect_interp
@@ -2010,7 +2010,7 @@ table_rB_fixed_16_interpolate:					; CODE XREF: check_startup-8C4↓p
 
 ; START	OF FUNCTION CHUNK FOR table_rb_fixed_64_ect_interp
 
-table_rB_fixed_rA_interpolate:							; CODE XREF: table_rb_fixed_64_ect_interp+4↑j
+table_rB_fixed_rA_interpolate:					; CODE XREF: table_rb_fixed_64_ect_interp+4↑j
 				sub	b, y + 00h
 				bcs	loc_C738
 
@@ -2030,7 +2030,7 @@ loc_C71A:							; CODE XREF: table_rb_fixed_64_ect_interp+14↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-interp_table_pair:							; CODE XREF: table_rD_fixed8_interpolate+9↑j
+interp_table_pair:						; CODE XREF: table_rD_fixed8_interpolate+9↑j
 								; map_rD_4_rX_map_interpolate+1E↓p ...
 				add	a, #02h
 				add	y, a
@@ -2172,7 +2172,7 @@ map_interpolate_3d:
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-increment_counters:							; CODE XREF: check_startup-680↓p
+increment_counters:						; CODE XREF: check_startup-680↓p
 								; check_startup-662↓p ...
 				ld	x, #0000h
 				add	x, a
@@ -2243,7 +2243,7 @@ divide_rD_2:
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-divide_rD_16_signed:							; CODE XREF: check_startup-A4D↓p
+divide_rD_16_signed:						; CODE XREF: check_startup-A4D↓p
 				shra	a
 				rorc	b
 				shra	a
@@ -2260,7 +2260,7 @@ divide_rD_16_signed:							; CODE XREF: check_startup-A4D↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-divide_rD_128_saturate:							; CODE XREF: check_startup-A9B↓p
+divide_rD_128_saturate:						; CODE XREF: check_startup-A9B↓p
 				shr	d
 ; End of function divide_rD_128_saturate
 
@@ -2268,7 +2268,7 @@ divide_rD_128_saturate:							; CODE XREF: check_startup-A9B↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-divide_rD_64_saturate:							; CODE XREF: check_startup-7D8↓p
+divide_rD_64_saturate:						; CODE XREF: check_startup-7D8↓p
 								; check_startup-7BD↓p
 				shr	d
 				shr	d
@@ -2278,7 +2278,7 @@ divide_rD_64_saturate:							; CODE XREF: check_startup-7D8↓p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-divide_rD_16_saturate:							; CODE XREF: update_rpm_smooth_filter:loc_CA94↓p
+divide_rD_16_saturate:						; CODE XREF: update_rpm_smooth_filter:loc_CA94↓p
 				shr	d
 				shr	d
 				shr	d
@@ -2312,7 +2312,7 @@ locret_C7AC:							; CODE XREF: divide_rD_16_saturate+5↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-mult_rDrX_saturate:							; CODE XREF: check_startup-78D↓p
+mult_rDrX_saturate:						; CODE XREF: check_startup-78D↓p
 				bsr	mult_rDrX
 
 				mov	y, d
@@ -2450,7 +2450,7 @@ mult_rArX:							; CODE XREF: ROM:C841↓p
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-signed_proportional_update:							; CODE XREF: update_rpm_filter_EC+C↓p
+signed_proportional_update:					; CODE XREF: update_rpm_filter_EC+C↓p
 				push	b
 				mov	x, d
 				sub	d, y + 00h
@@ -2656,7 +2656,7 @@ loc_C922:							; CODE XREF: ROM:C926↓j
 
 				ld	y, #00A0h
 
-clear_variables_high:							; CODE XREF: ROM:C92F↓j
+clear_variables_high:						; CODE XREF: ROM:C92F↓j
 				st	d, [y]
 				cmp	y, #0171h
 				ble	clear_variables_high
@@ -2938,7 +2938,7 @@ loc_CA84:							; CODE XREF: check_startup-A63↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_rpm_smooth_filter:							; CODE XREF: check_startup-67D↓p
+update_rpm_smooth_filter:					; CODE XREF: check_startup-67D↓p
 				clrb	bit0, var_flags_48
 				ld	d, var_rpm_smooth_ee
 				sub	d, var_rpm_x_5p12
@@ -2972,7 +2972,7 @@ loc_CA9C:							; CODE XREF: update_rpm_smooth_filter+12↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR check_startup
 
-main_continue_2:							; CODE XREF: check_startup:loc_CA84↑j
+main_continue_2:						; CODE XREF: check_startup:loc_CA84↑j
 				clr	a			; Default to no	fuel enrichment
 				cmp	#50h, var_rpm_div_25	; Check	RPM against 2000rpm
 				bcs	no_knock_enrich		; Jump if RPM is less than 2000rpm
@@ -2991,7 +2991,7 @@ main_continue_2:							; CODE XREF: check_startup:loc_CA84↑j
 				jsr	map_rD_16_rX_map_interpolate
 
 
-no_knock_enrich:							; CODE XREF: check_startup-A14↑j
+no_knock_enrich:						; CODE XREF: check_startup-A14↑j
 								; check_startup-A0F↑j
 				st	a, var_knock_enrichment	; Store	enrichment due to knock
 				ld	y, #table_rpm_no_knock_map_enrich ; Get	address	of fuel	enrichment threshold table when	no knock
@@ -3016,7 +3016,7 @@ loc_CADC:							; CODE XREF: check_startup-9ED↑j
 				cmp	a, dmarx_pim2		; Compare threshold with manifold pressure
 				ble	loc_CAE4		; Jump if threshold less than manifold pressure
 
-				clr	var_cnt64ms_map_enrichment	; Threshold not	exceeded, so reset timer
+				clr	var_cnt64ms_map_enrichment ; Threshold not	exceeded, so reset timer
 				bra	closed_loop		; Jump forward to clear	enrichment flags
 
 ; ───────────────────────────────────────────────────────────────────────────
@@ -3041,7 +3041,7 @@ open_loop:							; CODE XREF: check_startup-9DA↑j
 								; check_startup-9D5↑j
 				ld	#0FEh, var_cnt64ms_map_enrichment
 				setb	bit0, var_enrich_flags
-				ld	y, #map_fuel_enrichment_C2CA		; Get address of fuel enrichment map
+				ld	y, #map_fuel_enrichment_C2CA ; Get address of fuel enrichment map
 				clrb	bit6, var_enrich_flags
 				ld	d, dmarx_pim2		; Index	map by manifold	pressure
 				jsr	divide_rD_16
@@ -3177,7 +3177,7 @@ loc_CB8F:							; CODE XREF: check_startup-938↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_ect_enrich_clamp:							; CODE XREF: check_startup:loc_D512↓p
+update_ect_enrich_clamp:					; CODE XREF: check_startup:loc_D512↓p
 				ld	y, #table_ect_C490
 				jsr	table_rb_fixed_64_ect_interp
 
@@ -3189,7 +3189,7 @@ update_ect_enrich_clamp:							; CODE XREF: check_startup:loc_D512↓p
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR check_startup
 
-main_continue_3:							; CODE XREF: check_startup-92F↑j
+main_continue_3:						; CODE XREF: check_startup-92F↑j
 				ld	y, #0C431h
 				jsr	table_rb_fixed_32_ect_interp
 
@@ -3238,7 +3238,7 @@ loc_CBDF:							; CODE XREF: check_startup-905↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_enrichment_unk_53:							; CODE XREF: check_startup-652↓p
+decay_enrichment_unk_53:					; CODE XREF: check_startup-652↓p
 				ld	x, var_enrichment_unk_53
 				beq	locret_CBEF
 
@@ -3280,7 +3280,7 @@ loc_CC06:							; CODE XREF: check_startup-8CC↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_enrichment_unk_100:							; CODE XREF: check_startup-67A↓p
+decay_enrichment_unk_100:					; CODE XREF: check_startup-67A↓p
 								; Multiplicative decay of var_enrichment_unk_100 by 0F8h/256, with the high
 								; byte published as dmatx_enrichment_unk_15C. Same shape as
 								; decay_enrichment_unk_53 and _105 in this file, and named the same way -
@@ -3358,7 +3358,7 @@ loc_CC54:							; CODE XREF: check_startup-88D↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_enrichment_unk_102:							; CODE XREF: check_startup:loc_CE7C↓p
+decay_enrichment_unk_102:					; CODE XREF: check_startup:loc_CE7C↓p
 								; Decay of var_enrichment_unk_102, publishing the high byte as
 								; dmatx_enrichment_unk_15D. SUBTRACTIVE here, not multiplicative - it takes
 								; 3 off per call, saturating at zero - and conditional: an ECT-indexed
@@ -3430,7 +3430,7 @@ loc_CCA0:							; CODE XREF: check_startup-837↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-decay_enrichment_unk_105:							; CODE XREF: check_startup-64F↓p
+decay_enrichment_unk_105:					; CODE XREF: check_startup-64F↓p
 				ld	x, var_enrichment_unk_105
 				beq	locret_CCB2
 
@@ -3598,7 +3598,7 @@ loc_CD9B:							; CODE XREF: check_startup-75B↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_rpm_filter_EC:							; CODE XREF: check_startup:loc_CA81↑p
+update_rpm_filter_EC:						; CODE XREF: check_startup:loc_CA81↑p
 				ld	x, var_rpm_x_5p12
 				tbbc	bit0, dmarx_var_flags_46, loc_CDA7
 
@@ -3616,7 +3616,7 @@ loc_CDA7:							; CODE XREF: update_rpm_filter_EC+2↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR check_startup
 
-calc_ignition_timing:							; CODE XREF: check_startup-723↑j
+calc_ignition_timing:						; CODE XREF: check_startup-723↑j
 				ld	d, dmarx_pim2
 				cmp	d, dmarx_pim
 				bcc	loc_CDBA
@@ -4685,7 +4685,7 @@ loc_D218:							; CODE XREF: check_startup-2B3↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_odb_flags:							; CODE XREF: check_startup+54↓p
+update_odb_flags:						; CODE XREF: check_startup+54↓p
 
 ; FUNCTION CHUNK AT D2E0 SIZE 000000AE BYTES
 ; FUNCTION CHUNK AT D3A2 SIZE 00000001 BYTES
@@ -4886,7 +4886,7 @@ loc_D2DD:							; CODE XREF: output_odb_bit+13↑j
 								; output_odb_bit+1C↑j
 				clrb	bit4, PORTA
 
-output_odb_bit_return:							; CODE XREF: output_odb_bit+3↑j
+output_odb_bit_return:						; CODE XREF: output_odb_bit+3↑j
 				ret
 
 ; End of function output_odb_bit
@@ -5115,7 +5115,7 @@ loc_D387:							; CODE XREF: update_odb_flags+150↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-generate_vf_PORTA_4:							; CODE XREF: iv6_4ms_process+18↓p
+generate_vf_PORTA_4:						; CODE XREF: iv6_4ms_process+18↓p
 				tbbs	bit1, var_input_bits, locret_D3A1
 
 				setb	bit5, PORTA
@@ -5155,7 +5155,7 @@ loc_D3A3:							; CODE XREF: check_startup:loc_D218↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-factory_selfcheck:							; CODE XREF: check_startup+A6↓p
+factory_selfcheck:						; CODE XREF: check_startup+A6↓p
 
 ; FUNCTION CHUNK AT D4F5 SIZE 00000001 BYTES
 
@@ -5295,7 +5295,7 @@ selfcheck_run:							; CODE XREF: factory_selfcheck+40↑j
 				st	d, IMASK		; Interrupt Request Mask MSB
 				ld	x, #0DA80h
 
-selfcheck_delay:							; CODE XREF: factory_selfcheck+9F↓j
+selfcheck_delay:						; CODE XREF: factory_selfcheck+9F↓j
 				inc	x
 				bne	selfcheck_delay
 
@@ -5304,11 +5304,11 @@ selfcheck_loop:							; CODE XREF: factory_selfcheck+109↓j
 				clrb	bit0, PORTA
 				clr	a
 
-ram_check_write:							; CODE XREF: factory_selfcheck+C1↓j
+ram_check_write:						; CODE XREF: factory_selfcheck+C1↓j
 				mov	a, b
 				ld	y, #var_flags_40
 
-ram_check_write_loop:							; CODE XREF: factory_selfcheck+AD↓j
+ram_check_write_loop:						; CODE XREF: factory_selfcheck+AD↓j
 				st	a, [y]
 				inc	a
 				cmp	y, #ram_end
@@ -5316,7 +5316,7 @@ ram_check_write_loop:							; CODE XREF: factory_selfcheck+AD↓j
 
 				ld	y, #var_flags_40
 
-ram_check_verify_loop:							; CODE XREF: factory_selfcheck+BA↓j
+ram_check_verify_loop:						; CODE XREF: factory_selfcheck+BA↓j
 				ld	a, [y]
 				cmp	a, b
 				bne	selfcheck_failed
@@ -5335,10 +5335,10 @@ ram_check_verify_loop:							; CODE XREF: factory_selfcheck+BA↓j
 				clr	a
 				clr	b
 
-rom_checksum_loop_outer:							; CODE XREF: factory_selfcheck+D8↓j
+rom_checksum_loop_outer:					; CODE XREF: factory_selfcheck+D8↓j
 				ld	y, #0100h
 
-rom_checksum_loop_inner:							; CODE XREF: factory_selfcheck+D0↓j
+rom_checksum_loop_inner:					; CODE XREF: factory_selfcheck+D0↓j
 				add	d, x + 00h
 				inc	x
 				inc	x
@@ -5360,7 +5360,7 @@ rom_checksum_loop_inner:							; CODE XREF: factory_selfcheck+D0↓j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-selfcheck_failed:							; CODE XREF: factory_selfcheck+B4↑j
+selfcheck_failed:						; CODE XREF: factory_selfcheck+B4↑j
 								; factory_selfcheck+DD↑j
 				clr	b
 
@@ -5407,7 +5407,7 @@ loc_D4A2:							; CODE XREF: factory_selfcheck+FD↓j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-selfcheck_io_pump:							; CODE XREF: factory_selfcheck+8A↑p
+selfcheck_io_pump:						; CODE XREF: factory_selfcheck+8A↑p
 				push	d
 				jsr	check_io_inputs
 
@@ -5648,7 +5648,7 @@ IVe:								; DATA XREF: ROM:FFFA↓o
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-g2_low:							; CODE XREF: IVe+6↑j
+g2_low:								; CODE XREF: IVe+6↑j
 				clr	a
 				cmp	b, #35h
 				beq	loc_D5AA
@@ -5657,7 +5657,7 @@ g2_low:							; CODE XREF: IVe+6↑j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-g1_low:							; CODE XREF: IVe+9↑j
+g1_low:								; CODE XREF: IVe+9↑j
 				ld	a, #20h
 				cmp	b, #15h
 				beq	loc_D5AA
@@ -5682,7 +5682,7 @@ loc_D5AB:							; CODE XREF: IVe+D↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-init_ne_counters:							; CODE XREF: check_startup:loc_C931↑p
+init_ne_counters:						; CODE XREF: check_startup:loc_C931↑p
 								; check_startup-AAB↑p
 				ld	d, #5500h
 				ld	y, #00F2h
@@ -5701,7 +5701,7 @@ init_ne_counters:							; CODE XREF: check_startup:loc_C931↑p
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_starter_running:							; CODE XREF: iv6_4ms_process+F↓p
+check_starter_running:						; CODE XREF: iv6_4ms_process+F↓p
 				tbbc	bit2, var_input_bits, loc_D5D6
 
 				tbs	bit7, var_flags_47
@@ -5732,7 +5732,7 @@ locret_D5DD:							; CODE XREF: check_starter_running+5↑j
 ; ───────────────────────────────────────────────────────────────────────────
 ; START	OF FUNCTION CHUNK FOR IVe
 
-int_vector_e_return:							; CODE XREF: IVe+3A↑j
+int_vector_e_return:						; CODE XREF: IVe+3A↑j
 				clrb	bit4, var_flags_40
 				setb	bit1, IRQLL
 				pull	y
@@ -5816,7 +5816,7 @@ locret_D62E:							; CODE XREF: iv6_ne_process+45↑j
 
 
 				; public int_vector_c_timer
-int_vector_c_timer:								; DATA XREF: ROM:FFF6↓o
+int_vector_c_timer:						; DATA XREF: ROM:FFF6↓o
 				clrb	bit4, IRQL
 				push	x
 				push	y
@@ -5842,7 +5842,7 @@ loc_D63D:							; CODE XREF: int_vector_c_timer+9↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-iv6_4ms_process:							; CODE XREF: int_vector_6_sw_int+F↓p
+iv6_4ms_process:						; CODE XREF: int_vector_6_sw_int+F↓p
 				ld	d, #0A20Dh
 				jsr	increment_counters
 
@@ -5935,7 +5935,7 @@ loc_D6A9:							; CODE XREF: iv6_4ms_process+5A↑j
 				jsr	next_odb_byte
 
 
-update_4ms_return:							; CODE XREF: iv6_4ms_process+41↑j
+update_4ms_return:						; CODE XREF: iv6_4ms_process+41↑j
 								; iv6_4ms_process+45↑j	...
 				ret
 
@@ -5945,7 +5945,7 @@ update_4ms_return:							; CODE XREF: iv6_4ms_process+41↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-serial_dma_start:							; CODE XREF: selfcheck_io_pump+4↑p
+serial_dma_start:						; CODE XREF: selfcheck_io_pump+4↑p
 								; iv6_4ms_process+C↑p
 				cmp	#04h, var_cnt4ms_AE
 				ble	loc_D6BE
@@ -6111,7 +6111,7 @@ loc_D75A:							; CODE XREF: copy_serbus_rx+E↓j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-update_dmatx_status_flags:							; CODE XREF: check_startup:loc_D56A↑p
+update_dmatx_status_flags:					; CODE XREF: check_startup:loc_D56A↑p
 				clr	a
 				tbbs	bit3, PORTB, loc_D77F	; Port B Data Register
 
@@ -6185,7 +6185,7 @@ loc_D7BA:							; CODE XREF: update_dmatx_status_flags:loc_D7B5↑j
 
 
 				; public int_vector_6_sw_int
-int_vector_6_sw_int:								; DATA XREF: ROM:FFEA↓o
+int_vector_6_sw_int:						; DATA XREF: ROM:FFEA↓o
 				clrb	bit1, IRQLL
 				push	x
 				push	y
@@ -6202,7 +6202,7 @@ loc_D7C9:							; CODE XREF: int_vector_6_sw_int+6↑j
 				jsr	iv6_4ms_process
 
 
-int_vector_6_return:							; CODE XREF: int_vector_6_sw_int+D↑j
+int_vector_6_return:						; CODE XREF: int_vector_6_sw_int+D↑j
 				pull	y
 				pull	x
 				reti
@@ -6214,7 +6214,7 @@ int_vector_6_return:							; CODE XREF: int_vector_6_sw_int+D↑j
 
 
 				; public int_vector_4_kph
-int_vector_4_kph:								; DATA XREF: ROM:FFE6↓o
+int_vector_4_kph:						; DATA XREF: ROM:FFE6↓o
 
 ; FUNCTION CHUNK AT D817 SIZE 00000003 BYTES
 
@@ -6273,13 +6273,13 @@ update_spd:							; CODE XREF: iv6_4ms_process+22↑p
 
 				ld	a, #0FFh
 
-update_spd_not_max:							; CODE XREF: update_spd+A↑j
+update_spd_not_max:						; CODE XREF: update_spd+A↑j
 				cmp	a, #02h
 				bgt	update_spd_not_min
 
 				clr	a
 
-update_spd_not_min:							; CODE XREF: update_spd+10↑j
+update_spd_not_min:						; CODE XREF: update_spd+10↑j
 				xch	a, var_spd
 				st	a, var_spd_prev
 				ret
@@ -6299,14 +6299,14 @@ int_return:							; CODE XREF: int_vector_4_kph:loc_D7FD↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-serial_debug_check:							; CODE XREF: iv6_4ms_process+9↑p
+serial_debug_check:						; CODE XREF: iv6_4ms_process+9↑p
 				clrb	bit1, SSD
 				ld	a, #0DAh
 				st	a, SIDR_SODR		; Serial Input/Output Data Register
 				ld	a, #0Eh
 
-serial_wait_for_data:							; CODE XREF: serial_debug_check+C↓j
-				tbbs	bit7, SSD, serial_data_found	; Serial Status	Data Register
+serial_wait_for_data:						; CODE XREF: serial_debug_check+C↓j
+				tbbs	bit7, SSD, serial_data_found ; Serial Status	Data Register
 
 				dec	a
 				bne	serial_wait_for_data
@@ -6315,11 +6315,11 @@ serial_wait_for_data:							; CODE XREF: serial_debug_check+C↓j
 
 ; ───────────────────────────────────────────────────────────────────────────
 
-serial_data_found:							; CODE XREF: serial_debug_check:serial_wait_for_data↑j
+serial_data_found:						; CODE XREF: serial_debug_check:serial_wait_for_data↑j
 				tbbc	bit6, SSD, loc_D831	; Serial Status	Data Register
 
 
-serial_drop_rx_data:							; CODE XREF: serial_debug_check+E↑j
+serial_drop_rx_data:						; CODE XREF: serial_debug_check+E↑j
 				ld	a, SIDR_SODR		; Serial Input/Output Data Register
 				bra	serial_debug_return
 
@@ -6347,7 +6347,7 @@ loc_D840:							; CODE XREF: serial_debug_check+20↑j
 				clrb	bit1, SSD
 				st	b, SIDR_SODR		; Serial Input/Output Data Register
 
-serial_debug_return:							; CODE XREF: serial_debug_check+15↑j
+serial_debug_return:						; CODE XREF: serial_debug_check+15↑j
 				clrb	bit3, IRQLL
 				ret
 
@@ -6357,7 +6357,7 @@ serial_debug_return:							; CODE XREF: serial_debug_check+15↑j
 ; ███████████████ S U B	R O U T	I N E ███████████████████████████████████████
 
 
-check_io_inputs:							; CODE XREF: check_startup-B67↑p
+check_io_inputs:						; CODE XREF: check_startup-B67↑p
 								; check_startup-B64↑p ...
 				clr	a
 				tbbs	bit6, PORTB, loc_D856	; Port B Data Register
@@ -16480,21 +16480,21 @@ loc_D87D:							; CODE XREF: check_io_inputs+29↑j
 				.db  86h ; å
 				.db  53h ; S
 				.dw IV0				; External interrupt 0
-				.dw int_vector_unhandled				; External interrupt 1
-				.dw int_vector_unhandled				; External interrupt 2
-				.dw int_vector_unhandled				; External interrupt 3
-				.dw int_vector_4_kph				; External interrupt 4
-				.dw int_vector_unhandled				; External interrupt 5
-				.dw int_vector_6_sw_int				; External interrupt 6
-				.dw int_vector_unhandled				; External interrupt 7
-				.dw int_vector_unhandled				; External interrupt 8
-				.dw int_vector_unhandled				; External interrupt 9
-				.dw int_vector_unhandled				; External interrupt a
-				.dw int_vector_unhandled				; External interrupt b
-				.dw int_vector_c_timer				; External interrupt c
-				.dw int_vector_unhandled				; External interrupt d
+				.dw int_vector_unhandled	; External interrupt 1
+				.dw int_vector_unhandled	; External interrupt 2
+				.dw int_vector_unhandled	; External interrupt 3
+				.dw int_vector_4_kph		; External interrupt 4
+				.dw int_vector_unhandled	; External interrupt 5
+				.dw int_vector_6_sw_int		; External interrupt 6
+				.dw int_vector_unhandled	; External interrupt 7
+				.dw int_vector_unhandled	; External interrupt 8
+				.dw int_vector_unhandled	; External interrupt 9
+				.dw int_vector_unhandled	; External interrupt a
+				.dw int_vector_unhandled	; External interrupt b
+				.dw int_vector_c_timer		; External interrupt c
+				.dw int_vector_unhandled	; External interrupt d
 				.dw IVe				; External interrupt e
-				.dw int_vector_unhandled				; External interrupt f
+				.dw int_vector_unhandled	; External interrupt f
 				.dw __RESET			; Processor reset
 ; end of 'ROM'
 

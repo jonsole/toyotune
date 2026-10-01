@@ -1110,7 +1110,7 @@ table_knock_info:		.block 3			; DATA XREF: sub_C59B:loc_C7DAo
 				;.segment ROM
 				.org 08000h
 				.db  5Fh
-				
+
 				;.segment ROM
 				.org 0C000h
 unk_C000:			.db  5Fh ; _			; DATA XREF: sub_E115+EEo
@@ -5236,7 +5236,7 @@ write_rB_nv_ram:						; CODE XREF: sub_C59B+B8Ap
 
 sub_D1A1:							; CODE XREF: sub_E454+28p
 				ld	b, #80h
-				tbbc	bit0, var_flags_42, locret_D1DC	; Jump if trims	are not	valid
+				tbbc	bit0, var_flags_42, locret_D1DC ; Jump if trims	are not	valid
 
 				tbbc	bit2, var_flags_46, loc_D1AD
 

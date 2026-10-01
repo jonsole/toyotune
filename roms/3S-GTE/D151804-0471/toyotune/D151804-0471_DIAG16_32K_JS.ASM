@@ -1215,14 +1215,14 @@ unk_300:			.block 1			; DATA XREF: sub_D3A6+AAo
 ; Extended serial diagnostics
 ; *************************************************
 rom_start:
-serial_diag_extended:                
-                        
+serial_diag_extended:
+
 ; Flush any stale data in UART receive buffer
 .diag_flush:
 				ld      a, SIDR_SODR
 				tbbs    bit7, SSD, .diag_flush          ; Loop back if SSD.7 set (data in receive buffer)
-                        
-; Send sync byte                        
+
+; Send sync byte
 				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
 				ld      a, serial_diag_mode             ; Copy mode value...
 				st      a, SIDR_SODR                    ; ...to serial Tx buffer
@@ -1237,64 +1237,64 @@ serial_diag_extended:
 
 ; Wait for MSB of command/address to be received
 .diag_msb_wait:
-				tbbs    bit7, SSD, .diag_msb_found      ; Exit loop if SSD.7 set (data in receive buffer)
+				tbbs    bit7, SSD, .diag_msb_found ; Exit loop if SSD.7 set (data in receive buffer)
 				dec     b                               ; Repeat for 14 iterations...
 				bne     .diag_msb_wait                  ; ...loop back if more iterations
 .diag_exit			clrb	bit3, IRQLL
-				ret					; Timed out waiting for data
+				ret				; Timed out waiting for data
 
 ; MSB of command/address received
-.diag_msb_found:                                              
+.diag_msb_found:
 				tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
 				ld      a, SIDR_SODR                    ; Store MSB in A
 
-; Wait for LSB of command/address to be received                        
+; Wait for LSB of command/address to be received
 .diag_lsb_wait:
-				tbbs    bit7, SSD, .diag_lsb_found      ; Exit loop if SSD.7 set (data in receive buffer)
+				tbbs    bit7, SSD, .diag_lsb_found ; Exit loop if SSD.7 set (data in receive buffer)
 				dec     b                               ; Repeat for 14 iterations...
 				bne     .diag_lsb_wait                  ; ...loop back if more iterations
 				bra	.diag_exit
 
 ; LSB of command/address received
-.diag_lsb_found:        	tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
+.diag_lsb_found:		tbbs    bit6, SSD, .diag_drop           ; Jump if SSD.6 (buffer overflow) set
 				ld      b, SIDR_SODR                    ; Store LSB in B, 16 bit value now in D
 
-				tbbs    bit0, SSD, .diag_command        ; Read Serial Status Register, jump if parity bit is set (command selection bit)
+				tbbs    bit0, SSD, .diag_command ; Read Serial Status Register, jump if parity bit is set (command selection bit)
 				jmp     y + 00h                         ; Not command, so jump to mode handler routine
 
 ; Handler for read 16 mode
 .diag_data_read16_mode:
 				mov     d, y                            ; Move address to Y
-				ld      d, [y]                          ; Read 2 bytes and increment address                        
+				ld      d, [y]                          ; Read 2 bytes and increment address
 
 ; Transmit word in D
 .diag_tx_word:
 				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
 				st      a, SIDR_SODR                    ; Write 1st byte to serial Tx buffer
-				div     d, #00h                         ; Wait for a bit...                        
+				div     d, #00h                         ; Wait for a bit...
 				clrb    bit1, SSD                       ; Clear SSD.1 which sets parity bit to space (DIAG)
 				st      b, SIDR_SODR                    ; Write 2nd byte to serial Tx buffer
 				bra	.diag_exit
-				
+
 ; Handler for write 16 bits mode, address phase
 .diag_addr_write16_mode:
 				st      d, serial_diag_address          ; Store write address
-				ld      #0DCh, serial_diag_mode         ; Move to data_write16 mode
+				ld      #0DCh, serial_diag_mode	; Move to data_write16 mode
 				bra     .diag_tx_word                   ; Echo back address
-                        
+
 ; Handler for write 16 bits mode, data phase
 .diag_data_write16_mode:
 				ld      y, serial_diag_address          ; Retrieve write address
 				st      d, [y]                          ; Write 16 bit value in D, increment write address
 				st      y, serial_diag_address          ; Store write address
 				bra     .diag_tx_word                   ; Echo back address
-                        
+
 ; Handler for write 8 bits mode, address phase
 .diag_addr_write8_mode:
 				st      d, serial_diag_address          ; Store write address
-				ld      #0DEh, serial_diag_mode         ; Move to data_write8 mode    
+				ld      #0DEh, serial_diag_mode	; Move to data_write8 mode
 				bra     .diag_tx_word                   ; Echo back address
-                        
+
 ; Handler for write 16 bits mode, data phase
 .diag_data_write8_mode:
 				ld      y, serial_diag_address          ; Retrieve write address
@@ -1302,16 +1302,16 @@ serial_diag_extended:
 				st      y, serial_diag_address          ; Store write address
 				bra     .diag_tx_word                   ; Echo back address
 
-; Command received, store and echo back              
+; Command received, store and echo back
 .diag_command:
 				cmp     b, #0DAh                        ; Check if command < 0DAh...
 				bcs     .diag_drop                      ; Jump if it is, command is invalid
 				cmp     b, #0DEh                        ; Check if command > 0DEh
-				bgt     .diag_drop                      ; Jump if it is, command is invalid                                
-				st      b, serial_diag_mode             ; Store new diagnostic mode                        
-				bra     .diag_tx_word                   ; Echo back command  
-                        
-; Drop any data in buffer                        
+				bgt     .diag_drop                      ; Jump if it is, command is invalid
+				st      b, serial_diag_mode             ; Store new diagnostic mode
+				bra     .diag_tx_word                   ; Echo back command
+
+; Drop any data in buffer
 .diag_drop:
 				ld      a, SIDR_SODR
 				tbbs    bit7, SSD, .diag_drop            ; Loop back if SSD.7 set (data in receive buffer)
@@ -1319,8 +1319,8 @@ serial_diag_extended:
 
 .diag_mode_table:
 				.dw     .diag_data_read16_mode          ; 0DAh
-				.dw     .diag_addr_write16_mode         ; 0DBh
-				.dw     .diag_data_write16_mode         ; 0DCh
+				.dw     .diag_addr_write16_mode	; 0DBh
+				.dw     .diag_data_write16_mode	; 0DCh
 				.dw     .diag_addr_write8_mode          ; 0DDh
 				.dw     .diag_data_write8_mode          ; 0DEh
 
@@ -1340,7 +1340,7 @@ serial_diag_init:		ld	a, #0DAh
 ;	      13.78,  16.15,  18.52
 ;*******************************************************************************
 map_ve_ext:			.dw 0200h			; DATA XREF: sub_D4C1-7B7o
-				.db 25-1			; no. columns - 1 
+				.db 25-1			; no. columns - 1
 				.dw 0226h
 				.db 19-1			; no. of rows - 1
 				;   400	 600  800 1000 1200 1400 1600 1800 2000	2200 2400 2600 2800 3200 3600 4000 4400	4800 5200 5600 6000 6400 6800 7200 8000
@@ -1375,7 +1375,7 @@ map_ve_ext:			.dw 0200h			; DATA XREF: sub_D4C1-7B7o
 ;	      6.66,   9.03,   11.41,  13.78,  16.15,  18.52
 ;*******************************************************************************
 map_ignition_C1A4:		.dw 0200h			; DATA XREF: sub_D4C1-700o
-				.db 25-1			; no. columns - 1 
+				.db 25-1			; no. columns - 1
 				.dw 0113h
 				.db 14-1			; no, rows - 1
 				;   400	 600  800 1000 1200 1400 1600 1800 2000	2200 2400 2600 2800 3200 3600 4000 4400	4800 5200 5600 6000 6400 6800 7200 8000
@@ -1399,12 +1399,12 @@ map_ignition_C1A4:		.dw 0200h			; DATA XREF: sub_D4C1-700o
 ;X = RPM    800, 1600, 2400, 2800, 3200, 3600, 4000, 4400, 4800, 5200,
 ;	   5600, 6000, 6400, 6800, 7200, 8000
 ;Y = PIM PSI -12.32,  -9.94,  -7.57,  -5.20,  -2.83,  -0.45,   1.92,   4.29
-;	      6.66,   9.03,   11.41,  13.78,  16.15,  18.52 
+;	      6.66,   9.03,   11.41,  13.78,  16.15,  18.52
 ;*******************************************************************************
 map_fuel_ext:			.dw 0400h			; DATA XREF: sub_D4C1-9C7o
-				.db 16-1			; no. columns - 1 
+				.db 16-1			; no. columns - 1
 				.dw 0113h
-				.db 14-1			; no. rows - 1 
+				.db 14-1			; no. rows - 1
 				;   800	1600 2400 2800 3200 3600 4000 4400 4800	5200 5600 6000 6400 6800 7200 8000
 				.db 000, 000, 000, 000,	000, 000, 000, 000, 000, 000, 000, 000,	000, 008, 013, 018 ;	-12.32
 				.db 000, 000, 000, 000,	000, 000, 000, 000, 000, 000, 000, 000,	000, 008, 013, 018 ;	-9.94

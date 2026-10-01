@@ -626,7 +626,7 @@ var_cnt_EA:			.block 1			; DATA XREF: sub_C59B+3CEw
 								; sub_C59B+C69t ...
 var_cnt_EB:			.block 1			; DATA XREF: sub_C59B:loc_CB45w
 								; sub_C59B:loc_CB63w ...
-var_o2_heater_current_error_cnt:.block 1			; DATA XREF: ROM:loc_DE08w
+var_o2_heater_current_error_cnt:	.block 1		; DATA XREF: ROM:loc_DE08w
 								; ROM:loc_DE0Ar
 var_cnt_ED:			.block 1			; DATA XREF: ROM:DE22r
 								; ROM:DE56w
@@ -5152,7 +5152,7 @@ loc_D0BA:							; CODE XREF: sub_C59B+AF8j
 loc_D0C6:							; CODE XREF: sub_C59B+B27j
 				tbbs	bit0, unk_40, open_loop_mode_D0A9
 
-				tbbc	bit1, var_flags_46, open_loop_mode_D0A9	; Jump if open loop mode
+				tbbc	bit1, var_flags_46, open_loop_mode_D0A9 ; Jump if open loop mode
 
 				cmp	#0E3h, var_ect		; 80 deg
 				ble	open_loop_mode_D0A9
@@ -5331,7 +5331,7 @@ write_rB_nv_ram:						; CODE XREF: sub_C59B+B8Ap
 
 sub_D1A1:							; CODE XREF: sub_E454+28p
 				ld	b, #80h
-				tbbc	bit0, var_flags_42, locret_D1DC	; Jump if trims	are not	valid
+				tbbc	bit0, var_flags_42, locret_D1DC ; Jump if trims	are not	valid
 
 				tbbc	bit2, var_flags_46, loc_D1AD
 
@@ -5461,7 +5461,7 @@ loc_D23C:							; CODE XREF: sub_C59B+C91j
 				inc	unk_6B
 
 loc_D23E:							; CODE XREF: sub_C59B+C9Fj
-				tbbs	bit1, var_flags_46, closed_loop_control	; Jump if closed loop mode
+				tbbs	bit1, var_flags_46, closed_loop_control ; Jump if closed loop mode
 
 				jmp	loc_D2BC
 
@@ -14982,7 +14982,7 @@ adc_handler_pim:						; DATA XREF: ROM:table_adc_handlero
 ; FUNCTION CHUNK AT FB1A SIZE 00000003 BYTES
 
 				ld	y, #pim_adc_limits	; Get PIM limits
-				jsr	y + (clamp_rB -	pim_adc_limits)	; Check	and clamp
+				jsr	y + (clamp_rB -	pim_adc_limits) ; Check	and clamp
 
 				ld	a, var_flags_18C	; Get flags
 				bcc	adc_handler_pim_ok	; Jump if PIM value not	out of range
@@ -15185,7 +15185,7 @@ loc_FC66:							; CODE XREF: adc_handler_o2_heater+5j
 				st	a, var_adc_o2_heater	; Store	O2 sensor heater current
 				ld	b, var_adc_lambda	; Get current lambda value
 				ld	y, #table_adc_lambda_C249
-				tbbs	bit2, var_flags_46, adc_handler_throttle_closed	; Jump if throttle closed for set period
+				tbbs	bit2, var_flags_46, adc_handler_throttle_closed ; Jump if throttle closed for set period
 
 				inc	y
 				ld	a, var_adc_o2_sensor
@@ -15787,7 +15787,7 @@ loc_FEE7:							; CODE XREF: ROM:FE46j
 
 adc_handler_tha:						; DATA XREF: ROM:table_adc_handlero
 				ld	y, #tha_adc_limits	; Get THA limits
-				jsr	y + (clamp_rB -	tha_adc_limits)	; Check	and clamp
+				jsr	y + (clamp_rB -	tha_adc_limits) ; Check	and clamp
 
 				ld	a, var_flags_18C	; Get flags
 				bcc	loc_FF0D		; Jump if THA value not	out of range
@@ -15917,7 +15917,7 @@ loc_FF6A:							; CODE XREF: adc_handler_battery+5j
 
 adc_handler_ect:						; DATA XREF: ROM:table_adc_handlero
 				ld	y, #ect_adc_limits	; Get ECT limits
-				jsr	y + (clamp_rB -	ect_adc_limits)	; Check	and clamp
+				jsr	y + (clamp_rB -	ect_adc_limits) ; Check	and clamp
 
 				ld	a, var_flags_18C	; Get flags
 				bcc	loc_FF9F
