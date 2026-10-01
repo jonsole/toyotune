@@ -105,12 +105,12 @@
     },
 
     "register": {
-      "name": "variable.language.register.d8x",
+      "name": "support.type.register.d8x",
       "match": "(?i)(?<![.A-Za-z0-9_$])(?:a|b|d|x|y|s|pc|ocr)(?![A-Za-z0-9_$])"
     },
 
     "bit": {
-      "name": "constant.language.bit.d8x",
+      "name": "constant.numeric.bit.d8x",
       "match": "(?i)(?<![.A-Za-z0-9_$])bit[0-7](?![A-Za-z0-9_$])"
     },
 

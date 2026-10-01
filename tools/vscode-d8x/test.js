@@ -281,7 +281,7 @@ async function grammarTests() {
   };
 
   test('load/store with register and symbol', expect('\t\t\t\tld\td, var_temp_w', [
-    ['ld', 'keyword.other.mnemonic.d8x'], ['d', 'variable.language.register.d8x'],
+    ['ld', 'keyword.other.mnemonic.d8x'], ['d', 'support.type.register.d8x'],
     ['var_temp_w', 'variable.other.d8x']]));
   test('code label with xref comment', expect('loc_C47C:\t\t\t\t\t\t\t; CODE XREF: sub_C476+2j', [
     ['loc_C47C', 'entity.name.function.label.d8x'], ['CODE XREF:', 'comment.line.xref.d8x']]));
@@ -291,12 +291,12 @@ async function grammarTests() {
   test('branch to an unnamed target', expect('\t\t\t\tbcc\tloc_C47C', [
     ['bcc', 'keyword.control.flow.d8x'], ['loc_C47C', 'entity.name.function.unnamed.d8x']]));
   test('bit-test branch', expect('\t\t\t\ttbbc\tbit3, var_flags_4E, loc_D905', [
-    ['tbbc', 'keyword.control.flow.d8x'], ['bit3', 'constant.language.bit.d8x'],
+    ['tbbc', 'keyword.control.flow.d8x'], ['bit3', 'constant.numeric.bit.d8x'],
     ['var_flags_4E', 'variable.other.d8x'], ['loc_D905', 'entity.name.function.unnamed.d8x']]));
   test('call to a named routine', expect('\t\t\t\tjsr\tvalidate_nv_trim_pim', [
     ['jsr', 'keyword.control.flow.d8x'], ['validate_nv_trim_pim', 'entity.name.function.d8x']]));
   test('indexed operand and trailing comment', expect('\t\t\t\tld\ta, y + 01h\t\t; A = max', [
-    ['y', 'variable.language.register.d8x'], ['01h', 'constant.numeric.hex.d8x'],
+    ['y', 'support.type.register.d8x'], ['01h', 'constant.numeric.hex.d8x'],
     ['A = max', 'comment.line.semicolon.d8x']]));
   test('immediate and hardware register', expect('\t\t\t\tst\ta, PORTA', [
     ['PORTA', 'variable.other.constant.hwreg.d8x']]));
