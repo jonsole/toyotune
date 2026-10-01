@@ -1,0 +1,58 @@
+{
+  "name": "d8x-asm",
+  "displayName": "Denso D8X Assembly",
+  "description": "Syntax highlighting, go to definition, find references, hover and outline for Toyota/Denso D8X ECU disassemblies",
+  "version": "0.1.0",
+  "publisher": "toyotune",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:d8x"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "d8x",
+        "aliases": [
+          "D8X Assembly",
+          "d8x"
+        ],
+        "extensions": [
+          ".asm",
+          ".ASM",
+          ".d8x"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "d8x",
+        "scopeName": "source.d8x",
+        "path": "./syntaxes/d8x.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "D8X Assembly",
+      "properties": {
+        "d8x.references.includeComments": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include mentions of a symbol in comment prose in Find All References. IDA's '; CODE XREF:'/'; DATA XREF:' lists are always left out, since each one only mirrors a code reference already found."
+        },
+        "d8x.hover.maxCommentLines": {
+          "type": "integer",
+          "default": 40,
+          "minimum": 0,
+          "description": "Most comment lines a symbol's hover shows from the block above its definition and the comment beside it."
+        }
+      }
+    }
+  }
+}

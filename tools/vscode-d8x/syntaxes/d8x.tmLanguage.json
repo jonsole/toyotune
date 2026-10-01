@@ -1,0 +1,168 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "D8X Assembly",
+  "scopeName": "source.d8x",
+  "comment": "Mirrors the line syntax accepted by roms/d8x_assembler/asm_d8x.py. A label is anything at column 0 (colon optional); the first word after it is the mnemonic or directive. The two mnemonic lists must equal instruction.opcodes - package_vsix.py checks this.",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#statement" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.semicolon.d8x",
+      "begin": ";",
+      "end": "$",
+      "beginCaptures": { "0": { "name": "punctuation.definition.comment.d8x" } },
+      "patterns": [
+        { "name": "comment.line.xref.d8x", "match": "\\b(?:CODE|DATA) XREF:" }
+      ]
+    },
+
+    "statement": {
+      "begin": "^(?!\\s*(?:;|$))(?:([.A-Za-z0-9_$]+)(:?)(?=[ \\t]+\\.(?i:block|db|dw|equ)\\b)|([.A-Za-z0-9_$]+)(:?))?[ \\t]*",
+      "beginCaptures": {
+        "1": { "name": "entity.name.variable.d8x" },
+        "2": { "name": "punctuation.separator.label.d8x" },
+        "3": { "name": "entity.name.function.label.d8x" },
+        "4": { "name": "punctuation.separator.label.d8x" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#define" },
+        { "include": "#directive" },
+        { "include": "#mnemonic-flow" },
+        { "include": "#mnemonic-other" },
+        { "include": "#macro-call" },
+        { "include": "#comment" }
+      ]
+    },
+
+    "define": {
+      "match": "\\G(\\.(?i:define))[ \\t]+(\\.?[A-Za-z_][A-Za-z0-9_]*)(?:\\(([^)]*)\\))?",
+      "captures": {
+        "1": { "name": "keyword.control.directive.d8x" },
+        "2": { "name": "entity.name.function.macro.d8x" },
+        "3": { "name": "variable.parameter.d8x" }
+      }
+    },
+
+    "directive": {
+      "begin": "\\G(\\.[A-Za-z]+)(?![A-Za-z0-9_])",
+      "beginCaptures": { "1": { "name": "keyword.control.directive.d8x" } },
+      "end": "(?=;)|$",
+      "patterns": [ { "include": "#operands" } ]
+    },
+
+    "mnemonic-flow": {
+      "comment": "Branches, jumps, calls and returns. The last operand is the target, so it is scoped as a function name.",
+      "begin": "\\G(?i:(bra|brn|bcc|bcs|beq|bne|bgt|ble|bgea|bgta|blea|blta|bmi|bpz|bvc|bvs|bsr|jmp|jsr|reti|ret|tbbc|tbbs))(?![A-Za-z0-9_])",
+      "beginCaptures": { "1": { "name": "keyword.control.flow.d8x" } },
+      "end": "(?=;)|$",
+      "patterns": [
+        { "include": "#string" },
+        { "include": "#register" },
+        { "include": "#bit" },
+        { "include": "#hwreg" },
+        { "include": "#number" },
+        { "include": "#branch-target" },
+        { "include": "#symbol" },
+        { "include": "#punctuation" }
+      ]
+    },
+
+    "mnemonic-other": {
+      "begin": "\\G(?i:(add|addc|adj|and|clr|clrb|clrc|clrv|cmp|cmpb|cmpz|db|dec|di|div|ei|inc|ld|mov|mul|neg|nmi|nop|or|pull|push|rolc|rorc|setb|setc|setv|shl|shr|shra|st|sub|subc|tbs|wait|xch|xor))(?![A-Za-z0-9_])",
+      "beginCaptures": { "1": { "name": "keyword.other.mnemonic.d8x" } },
+      "end": "(?=;)|$",
+      "patterns": [ { "include": "#operands" } ]
+    },
+
+    "macro-call": {
+      "comment": "Anything else in mnemonic position is a .macro invocation (or a typo the assembler will reject).",
+      "begin": "\\G(\\.?[A-Za-z_][A-Za-z0-9_$]*)",
+      "beginCaptures": { "1": { "name": "entity.name.function.macro.call.d8x" } },
+      "end": "(?=;)|$",
+      "patterns": [ { "include": "#operands" } ]
+    },
+
+    "operands": {
+      "patterns": [
+        { "include": "#string" },
+        { "include": "#register" },
+        { "include": "#bit" },
+        { "include": "#hwreg" },
+        { "include": "#number" },
+        { "include": "#symbol" },
+        { "include": "#punctuation" }
+      ]
+    },
+
+    "string": {
+      "patterns": [
+        { "name": "string.quoted.double.d8x", "match": "\"[^\"]*\"" },
+        { "name": "string.quoted.single.d8x", "match": "'[^']*'" }
+      ]
+    },
+
+    "register": {
+      "name": "variable.language.register.d8x",
+      "match": "(?i)(?<![.A-Za-z0-9_$])(?:a|b|d|x|y|s|pc|ocr)(?![A-Za-z0-9_$])"
+    },
+
+    "bit": {
+      "name": "constant.language.bit.d8x",
+      "match": "(?i)(?<![.A-Za-z0-9_$])bit[0-7](?![A-Za-z0-9_$])"
+    },
+
+    "hwreg": {
+      "comment": "On-chip special function registers, 0x00-0x3F (the FSR segment at the top of every ROM).",
+      "name": "variable.other.constant.hwreg.d8x",
+      "match": "(?<![.A-Za-z0-9_$])(?:DDRA|DDRB|WDC|TIMER3|TIMERL|TIMER|SIDR_SODR|SMRC_SIR|CPR[0-7]L?|ASR[01][PN]L?|ASR[23]L?|REG_1[CD]|OMODE|PORTAL|PORTA|PORTB|PBCS|TAIT|LDOUT|DOUT|DOM|PORTC|PORTD_ASRIN|RAMST|SSD|IRQLL|IRQL|IMASKL|IMASK|UNK34L?)(?![A-Za-z0-9_$])"
+    },
+
+    "number": {
+      "patterns": [
+        { "name": "constant.numeric.hex.d8x", "match": "(?<![.A-Za-z0-9_$])[0-9][0-9A-Fa-f]*[hH](?![A-Za-z0-9_$])" },
+        { "name": "constant.numeric.hex.d8x", "match": "\\$[0-9A-Fa-f]+(?![A-Za-z0-9_$])" },
+        { "name": "constant.numeric.binary.d8x", "match": "(?<![.A-Za-z0-9_$])[01]+[bB](?![A-Za-z0-9_$])" },
+        { "name": "constant.numeric.decimal.d8x", "match": "(?<![.A-Za-z0-9_$])[0-9]+(?![A-Za-z0-9_$])" }
+      ]
+    },
+
+    "branch-target": {
+      "patterns": [
+        {
+          "name": "entity.name.function.unnamed.d8x",
+          "match": "(?<![.A-Za-z0-9_$])(?:sub|loc|locret|nullsub|j)_[0-9A-Fa-f]+(?=[ \\t]*(?:;|$))"
+        },
+        {
+          "name": "entity.name.function.d8x",
+          "match": "(?<![.A-Za-z0-9_$])\\.?[A-Za-z_][A-Za-z0-9_$]*(?=[ \\t]*(?:;|$))"
+        }
+      ]
+    },
+
+    "symbol": {
+      "comment": "IDA's auto-generated names mean 'not yet understood' in this repo, so they get their own scope and can be dimmed.",
+      "patterns": [
+        {
+          "name": "variable.other.unnamed.d8x",
+          "match": "(?<![.A-Za-z0-9_$])(?:sub|loc|locret|unk|byte|word|off|nullsub|j|asc|stru)_[0-9A-Fa-f]+(?![A-Za-z0-9_$])"
+        },
+        {
+          "name": "variable.other.d8x",
+          "match": "(?<![.A-Za-z0-9_$])\\.?[A-Za-z_][A-Za-z0-9_$]*"
+        }
+      ]
+    },
+
+    "punctuation": {
+      "patterns": [
+        { "name": "keyword.operator.immediate.d8x", "match": "#" },
+        { "name": "keyword.operator.arithmetic.d8x", "match": "<<|>>|[-+*/&|]" },
+        { "name": "punctuation.separator.d8x", "match": "," },
+        { "name": "punctuation.section.brackets.d8x", "match": "[\\[\\]()]" }
+      ]
+    }
+  }
+}

@@ -10,7 +10,16 @@
 
   // Let CMake Tools feed IntelliSense from compile_commands.json, so include
   // paths and defines never have to be duplicated into c_cpp_properties.json.
-  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+
+  // Every .asm in this repo is D8X. The language comes from the local
+  // extension in tools/vscode-d8x (install: python
+  // tools/vscode-d8x/package_vsix.py --install); naming it here stops any
+  // other installed assembler extension that claims .asm from winning.
+  "files.associations": {
+    "*.asm": "d8x",
+    "*.ASM": "d8x"
+  }
 
   // NOTE ON .ASM ENCODING - deliberately not configured here.
   //
