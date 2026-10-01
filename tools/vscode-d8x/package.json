@@ -2,7 +2,7 @@
   "name": "d8x-asm",
   "displayName": "Denso D8X Assembly",
   "description": "Syntax highlighting, go to definition, find references, hover and outline for Toyota/Denso D8X ECU disassemblies",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "toyotune",
   "license": "UNLICENSED",
   "engines": {
@@ -12,9 +12,6 @@
     "Programming Languages"
   ],
   "main": "./extension.js",
-  "activationEvents": [
-    "onLanguage:d8x"
-  ],
   "contributes": {
     "languages": [
       {
@@ -38,6 +35,13 @@
         "path": "./syntaxes/d8x.tmLanguage.json"
       }
     ],
+    "configurationDefaults": {
+      "[d8x]": {
+        "editor.tabSize": 8,
+        "editor.insertSpaces": false,
+        "editor.detectIndentation": false
+      }
+    },
     "configuration": {
       "title": "D8X Assembly",
       "properties": {

@@ -29,6 +29,10 @@ The packager first checks the grammar's mnemonic lists against `instruction.opco
 
 **Scope is one file.** Every `.ASM` here is a complete ROM with no `.include`. The same name in two ROMs (`-9651` and `-9661`, say) is two different things, so nothing resolves across files. For a symbol's counterpart on the other CPU, see the DMA offsets in `CLAUDE.md`.
 
+## Tab width
+
+IDA lays these files out with 8-column tabs: mnemonics at column 32, comments at column 64. VS Code defaults to 4, and can't detect a width from a file indented only with tabs, so the comments come out ragged. The extension makes 8 the default for this language. `roms/tidy_asm.py` puts a file back on IDA's columns after edits have moved things.
+
 ## Encoding
 
 This extension only reads the text the editor has already decoded; it never saves. Saving is still the risk described in `.vscode/settings.json` and `CLAUDE.md`. Most `.ASM` files are CP437, and opened as UTF-8 their banner bytes show as `�` and are corrupted on save. Check the encoding in the status bar before saving.
