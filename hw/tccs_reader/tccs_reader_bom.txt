@@ -1,0 +1,82 @@
+Partlist exported from C:/Users/jonso/OneDrive/Documents/GitHub/toyotune/hw/tccs_reader/tccs_reader.sch at 08/10/2026 19:11
+
+Part Value              Device             Package         Description                
+C1   0.1uF              C-EUC0603          C0603           CAPACITOR, European symbol 
+C2   0.01uF             C-EUC0603          C0603           CAPACITOR, European symbol 
+C3   47pF               C-EUC0603          C0603           CAPACITOR, European symbol 
+C4   0.1uF              C-EUC0603          C0603           CAPACITOR, European symbol 
+C5   0.1uF              C-EUC0603          C0603           CAPACITOR, European symbol 
+C6   0.1uF              C-EUC0603          C0603           CAPACITOR, European symbol 
+C7   0.1uF              C-EUC0603          C0603           CAPACITOR, European symbol 
+C8   47pF               C-EUC0603          C0603           CAPACITOR, European symbol 
+C9   1uF                C-EUC0603          C0603           CAPACITOR, European symbol 
+C10  0.1uF              C-EUC0603          C0603           CAPACITOR, European symbol 
+C11  0.1uF              C-EUC0603          C0603           CAPACITOR, European symbol 
+C13  10pF               C-EUC0603          C0603           CAPACITOR, European symbol 
+C14  10pF               C-EUC0603          C0603           CAPACITOR, European symbol 
+FB1  MI0805K400R        MI0805K400R        R0805                                      
+H5   MOUNT-PAD-ROUND2.8 MOUNT-PAD-ROUND2.8 2,8-PAD         MOUNTING PAD, round        
+H6   MOUNT-PAD-ROUND2.8 MOUNT-PAD-ROUND2.8 2,8-PAD         MOUNTING PAD, round        
+H7   MOUNT-PAD-ROUND2.8 MOUNT-PAD-ROUND2.8 2,8-PAD         MOUNTING PAD, round        
+H8   MOUNT-PAD-ROUND2.8 MOUNT-PAD-ROUND2.8 2,8-PAD         MOUNTING PAD, round        
+IC1  74HCT573PW         74HCT573PW         PW_R-PDSO-G20   8-bit D latch BUS DRIVER   
+IC2                     D151803-9661       SDIP-64                                    
+IC3  SN741G04           SN741G04           DCK_R-PDSO-G5                              
+IC4  IC_FT230X-SSOP-16  IC_FT230X-SSOP-16  SSOP-16-FTDI    BASIC USB to UART IC       
+IC5  CAT28C256          CAT28C256          PDIP28                                     
+IC6  D151803-HEADER     D151803-HEADER     SDIP-64-HEADER                             
+IC7  MIC2025-2YMM       MIC2025-2YMM       MSOP8                                      
+IC8  SN74AHCT1G125DCKR  SN74AHCT1G125DCKR  DCK_R-PDSO-G5                              
+JP1                     PINHD-1X2          1X02            PIN HEADER                 
+JP2                     PINHD-1X5          1X05            PIN HEADER                 
+JP3                     PINHD-1X8          1X08            PIN HEADER                 
+JP4                     PINHD-1X1          1X01            PIN HEADER                 
+PWR                     LEDCHIP-LED0603    CHIP-LED0603    LED                        
+PWR1                    LEDCHIP-LED0603    CHIP-LED0603    LED                        
+PWR2                    LEDCHIP-LED0603    CHIP-LED0603    LED                        
+PWR3                    LEDCHIP-LED0603    CHIP-LED0603    LED                        
+PWR4                    LEDCHIP-LED0603    CHIP-LED0603    LED                        
+R1   330R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R2   27R                R-EU_R0603         R0603           RESISTOR, European symbol  
+R3   27R                R-EU_R0603         R0603           RESISTOR, European symbol  
+R4   270R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R5   270R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R6   10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R7   10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R8   10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R9   10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R10  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R11  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R12  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R13  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R14  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R15  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R16  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R17  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R18  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R19  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R20  330R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R21  330R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R22  330R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R23  330R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R24  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R25  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R26  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R27  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R28  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R29  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R30  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R31  150R               R-EU_R0603         R0603           RESISTOR, European symbol  
+R32  10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R33  10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R34  10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R35  10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+R36  10k                R-EU_R0603         R0603           RESISTOR, European symbol  
+RX                      LEDCHIP-LED0603    CHIP-LED0603    LED                        
+SW1  B3U-1000           B3U-1000           B3U-1000                                   
+SW2  B3U-1000           B3U-1000           B3U-1000                                   
+SW3  B3U-1000           B3U-1000           B3U-1000                                   
+TX                      LEDCHIP-LED0603    CHIP-LED0603    LED                        
+U$3  SDIP64-ZIF         SDIP64-ZIF         SDIP-64-ZIF                                
+X1   12MHz              CRYSTAL5X3         CRYSTAL-SMD-5X3 Crystals                   
+X2                      USB-B-H            USB-B-H         USB Connectors             
